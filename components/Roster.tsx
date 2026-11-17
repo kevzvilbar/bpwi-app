@@ -1194,9 +1194,10 @@ export default function Roster(p: {
                     style={{
                       background: isToday ? '#0369a1' : d.isWeekend ? '#1e293b' : '#0f172a',
                       color: '#ffffff',
-                      minWidth: 46,
-                      padding: '3px 2px',
+                      minWidth: 58,
+                      padding: '3px 4px',
                       textAlign: 'center',
+                      whiteSpace: 'nowrap',
                     }}
                   >
                     <div style={{ lineHeight: 1.1 }}>{d.dayNum}</div>
@@ -1318,6 +1319,9 @@ export default function Roster(p: {
                             textAlign: 'center',
                             cursor: p.canEdit ? 'pointer' : 'default',
                             height: 28,
+                            padding: '0 4px',
+                            whiteSpace: 'nowrap',
+                            fontSize: 10.5,
                             background: bg,
                             color: fg,
                             fontWeight: 800,
@@ -1340,7 +1344,16 @@ export default function Roster(p: {
                     <td className="sticky-col-duty tabular-nums" style={{ background: 'var(--surface)', color: 'var(--text)', textAlign: 'center', fontWeight: 700 }}>
                       {duty}
                     </td>
-                    <td className="sticky-col-oc tabular-nums" style={{ background: ocCount ? 'rgba(124, 58, 237, 0.14)' : 'var(--surface)', color: ocCount ? 'var(--violet)' : 'var(--text-muted)', textAlign: 'center', fontWeight: 700 }}>
+                    <td
+                      className="sticky-col-oc tabular-nums"
+                      style={{
+                        background: 'var(--surface)',
+                        boxShadow: ocCount ? 'inset 0 0 0 999px rgba(124, 58, 237, 0.14)' : undefined,
+                        color: ocCount ? 'var(--violet)' : 'var(--text-muted)',
+                        textAlign: 'center',
+                        fontWeight: 700,
+                      }}
+                    >
                       {ocCount}
                     </td>
                     <td className="sticky-col-hours tabular-nums" style={{ background: 'var(--surface)', color: 'var(--text)', textAlign: 'center', fontWeight: 600 }}>
@@ -1349,7 +1362,16 @@ export default function Roster(p: {
                     <td className="sticky-col-off tabular-nums" style={{ background: 'var(--surface)', textAlign: 'center', color: 'var(--text-secondary)' }}>
                       {off}
                     </td>
-                    <td className="sticky-col-leaves tabular-nums" style={{ background: leaves ? 'rgba(234, 179, 8, 0.16)' : 'var(--surface)', color: leaves ? '#ca8a04' : 'var(--text-muted)', textAlign: 'center', fontWeight: 700 }}>
+                    <td
+                      className="sticky-col-leaves tabular-nums"
+                      style={{
+                        background: 'var(--surface)',
+                        boxShadow: leaves ? 'inset 0 0 0 999px rgba(234, 179, 8, 0.16)' : undefined,
+                        color: leaves ? '#ca8a04' : 'var(--text-muted)',
+                        textAlign: 'center',
+                        fontWeight: 700,
+                      }}
+                    >
                       {leaves}
                     </td>
                   </tr>

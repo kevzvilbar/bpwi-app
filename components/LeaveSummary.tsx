@@ -112,6 +112,16 @@ export default function LeaveSummary(p: { year: number; operators: Op[]; areas: 
                 <tr key={o.id}><td style={{ ...td, textAlign: 'left', fontWeight: 600 }}>{o.full_name}</td>
                   {MONTHS.map((_, i) => { const n = byMonth.get(o.id + i) ?? 0; return <td key={i} className="tabular-nums" style={{ ...td, color: n ? 'var(--text)' : 'var(--text-muted)', fontWeight: n ? 700 : 400 }}>{n || '·'}</td>; })}</tr>))}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td style={{ ...td, textAlign: 'left', fontWeight: 700 }}>All operators</td>
+                  {MONTHS.map((_, i) => (
+                    <td key={i} className="tabular-nums" style={{ ...td, fontWeight: 700 }}>
+                      {p.operators.reduce((s, o) => s + (byMonth.get(o.id + i) ?? 0), 0)}
+                    </td>
+                  ))}
+                </tr>
+              </tfoot>
             </table>
           </div>
           </div>
