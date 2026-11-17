@@ -294,21 +294,9 @@ export default function Nav(p: { role: string; userName: string; canEdit: boolea
               </button>
             </div>
 
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-              Navigation
-            </div>
-            <div style={{ display: 'grid', gap: 6 }}>
-              {primaryLinks.map((l) => (
-                <Link key={l.href} href={l.href} className="btn" style={{ justifyContent: 'flex-start', textDecoration: 'none' }}>
-                  <Icon name={l.icon} />
-                  <span>{l.label}</span>
-                </Link>
-              ))}
-            </div>
-
             {(p.canEdit || p.isAdmin) && (
               <>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginTop: 6 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                   Administration
                 </div>
                 <div style={{ display: 'grid', gap: 6 }}>
@@ -326,7 +314,10 @@ export default function Nav(p: { role: string; userName: string; canEdit: boolea
               </>
             )}
 
-            <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: 10, display: 'grid', gap: 8, marginTop: 6 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginTop: 6 }}>
+              Appearance
+            </div>
+            <div style={{ display: 'grid', gap: 8 }}>
               <button className="btn" style={{ justifyContent: 'space-between' }} onClick={toggleDark}>
                 <span>Dark Mode</span>
                 <b>{dark ? 'ON' : 'OFF'}</b>

@@ -115,9 +115,23 @@ export default function CallSheet(p: {
   }, [areaBy, asgBy, nowMinutes, onlyStandby, p.operators, prevAsgBy, sbBy, search, shiftBy]);
 
   const priorityList = useMemo(
-    () => sortedAndFiltered.filter((x) => x.standbyType || x.isNow),
+    () => sortedAndFiltered.filter((x) => Boolean(x.standbyType)),
     [sortedAndFiltered],
   );
+
+  const coverageCounts = useMemo(() => {
+    let standby = 0;
+    let onDutyNow = 0;
+    let onDutyToday = 0;
+    let offOrLeave = 0;
+    for (const x of sortedAndFiltered) {
+      if (x.standbyType) standby += 1;
+      if (x.isNow) onDutyNow += 1;
+      if (x.isOnDuty) onDutyToday += 1;
+      else offOrLeave += 1;
+    }
+    return { standby, onDutyNow, onDutyToday, offOrLeave };
+  }, [sortedAndFiltered]);
 
   return (
     <div style={{ padding: 14, maxWidth: 1440, margin: '0 auto' }}>
@@ -172,17 +186,37 @@ export default function CallSheet(p: {
 
       {/* Desktop / Tablet 2-Column Side-by-Side Layout (> 640px) */}
       <div className="call-sheet-table-wrap call-sheet-split">
-        {/* Left Column: Priority Dispatch (Standby & On Duty Now) */}
-        <section className="card" style={{ padding: 12, display: 'grid', gap: 10 }} aria-label="Priority dispatch">
+        {/* Left Column: Standby Dispatch & Shift Coverage Summary */}
+        <section className="card" style={{ padding: 12, display: 'grid', gap: 10 }} aria-label="Emergency standby dispatch">
+          <div style={{ display: 'grid', gap: 6, padding: 10, borderRadius: 8, background: 'var(--surface-muted)', border: '1px solid var(--border-light)' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+              Today&apos;s Shift Summary
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 11.5, fontWeight: 700 }}>
+              <span style={{ background: 'rgba(124, 58, 237, 0.14)', color: 'var(--violet)', padding: '2px 8px', borderRadius: 999 }}>
+                {coverageCounts.standby} Standby
+              </span>
+              <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: 999 }}>
+                {coverageCounts.onDutyNow} On Duty Now
+              </span>
+              <span style={{ background: '#dbeafe', color: '#1e40af', padding: '2px 8px', borderRadius: 999 }}>
+                {coverageCounts.onDutyToday} Duty Today
+              </span>
+              <span style={{ background: 'var(--surface)', color: 'var(--text-secondary)', border: '1px solid var(--border)', padding: '2px 8px', borderRadius: 999 }}>
+                {coverageCounts.offOrLeave} Off / Leave
+              </span>
+            </div>
+          </div>
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong style={{ fontSize: 14 }}>Priority Dispatch</strong>
+            <strong style={{ fontSize: 14 }}>Emergency Standby</strong>
             <span style={{ fontSize: 11.5, color: 'var(--text-secondary)', fontWeight: 600 }}>
-              {priorityList.length} ready
+              {priorityList.length} on call
             </span>
           </div>
           {priorityList.length === 0 ? (
             <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
-              No standby or currently active shift operators match the filter.
+              No standby operators assigned or matching the filter.
             </p>
           ) : (
             priorityList.map(({ op, shift, area, standbyType, isOnDuty, isNow }) => (

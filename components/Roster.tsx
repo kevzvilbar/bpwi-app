@@ -782,6 +782,22 @@ export default function Roster(p: {
           style={{ width: 170, minHeight: 36, padding: '5px 10px', fontSize: 12.5 }}
         />
 
+        <div className="desktop-only" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', fontSize: 11.5 }}>
+          <strong style={{ color: 'var(--text)' }}>Today ({p.today}):</strong>
+          <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
+            {todayCoverage.duty} On Duty
+          </span>
+          <span style={{ background: 'rgba(124, 58, 237, 0.14)', color: 'var(--violet)', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
+            {todayCoverage.sb} Standby
+          </span>
+          <span style={{ background: 'var(--surface-muted)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>
+            {todayCoverage.off} Off
+          </span>
+          <span style={{ background: '#ffe4e6', color: '#9f1239', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
+            {todayCoverage.leave} Leave
+          </span>
+        </div>
+
         <span
           aria-live="polite"
           style={{
@@ -883,74 +899,42 @@ export default function Roster(p: {
         </div>
       )}
 
-      {/* Today's Coverage Strip */}
-      <div
-        className="no-print card"
-        style={{
-          display: 'flex',
-          gap: 10,
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 8,
-          padding: '6px 12px',
-          fontSize: 12,
-        }}
-      >
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <strong style={{ color: 'var(--text)' }}>Today ({p.today}):</strong>
-          <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
-            {todayCoverage.duty} On Duty
-          </span>
-          <span style={{ background: 'rgba(124, 58, 237, 0.14)', color: 'var(--violet)', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
-            {todayCoverage.sb} Standby
-          </span>
-          <span style={{ background: 'var(--surface-muted)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>
-            {todayCoverage.off} Off
-          </span>
-          <span style={{ background: '#ffe4e6', color: '#9f1239', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
-            {todayCoverage.leave} Leave
-          </span>
-        </div>
-        <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-          <b>PW</b> Plant Works · <b>OC</b> On-Call · <b>DWP</b> Deep Well · <b>ERP</b> Electro-Mech · <b>Lvs</b> Leaves
-        </span>
-      </div>
-
-      {/* Always-visible Shift Legend on desktop; collapsible on mobile */}
-      <div
-        className={`card ${mobileToolsOpen ? '' : 'desktop-only'}`}
-        style={{
-          display: 'flex',
-          gap: 10,
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          marginBottom: 8,
-          padding: '6px 12px',
-          fontSize: 11.5,
-        }}
-      >
-        <strong style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: 10.5 }}>Shift Legend:</strong>
-        {p.shifts.map((s) => (
-          <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <span
-              style={{
-                background: s.background_color,
-                color: s.text_color,
-                border: '1px solid var(--border)',
-                borderRadius: 4,
-                padding: '1px 6px',
-                fontWeight: 700,
-                fontSize: 11,
-              }}
-            >
-              {s.code}
+      {/* Shift Legend (for viewers, print, or mobile drawer toggle) */}
+      {(!p.canEdit || mobileToolsOpen) && (
+        <div
+          className="card"
+          style={{
+            display: 'flex',
+            gap: 10,
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            marginBottom: 8,
+            padding: '6px 12px',
+            fontSize: 11.5,
+          }}
+        >
+          <strong style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: 10.5 }}>Shift Legend:</strong>
+          {p.shifts.map((s) => (
+            <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <span
+                style={{
+                  background: s.background_color,
+                  color: s.text_color,
+                  border: '1px solid var(--border)',
+                  borderRadius: 4,
+                  padding: '1px 6px',
+                  fontWeight: 700,
+                  fontSize: 11,
+                }}
+              >
+                {s.code}
+              </span>
+              <span style={{ color: 'var(--text-secondary)' }}>{s.description ?? (s.is_off ? 'Off' : 'Duty')}</span>
             </span>
-            <span style={{ color: 'var(--text-secondary)' }}>{s.description ?? (s.is_off ? 'Off' : 'Duty')}</span>
-          </span>
-        ))}
-        <span style={{ color: 'var(--text-secondary)' }}>· Duty cells without an area code show <b>PW</b></span>
-      </div>
+          ))}
+          <span style={{ color: 'var(--text-secondary)' }}>· Duty cells without an area code show <b>PW</b></span>
+        </div>
+      )}
 
       {/* Paint Palette Bar (Editors only; collapsible on mobile) */}
       {p.canEdit && (
@@ -1143,7 +1127,7 @@ export default function Roster(p: {
         className="schedule-container desktop-only-grid"
         style={{
           overflow: 'auto',
-          maxHeight: '72vh',
+          maxHeight: '78vh',
           background: '#ffffff',
           borderRadius: 10,
           border: '1px solid #cbd5e1',
@@ -1425,6 +1409,9 @@ export default function Roster(p: {
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
           <span style={{ width: 8, height: 8, borderRadius: 2, background: '#0f766e', display: 'inline-block' }} />
           Teal / Rose dot = PM scheduled / overdue
+        </span>
+        <span>
+          <b>PW</b> Plant Works · <b>OC</b> On-Call · <b>DWP</b> Deep Well · <b>ERP</b> Electro-Mech · <b>Lvs</b> Leaves
         </span>
         {p.canEdit && <span>Tip: drag across cells to paint, arrow keys + Enter for keyboard, right-click or long-press for menu.</span>}
       </div>

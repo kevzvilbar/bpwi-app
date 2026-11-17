@@ -12,7 +12,10 @@ const td = { padding: '4px 8px', borderBottom: '1px solid var(--border-light)', 
 export default function LeaveSummary(p: { year: number; operators: Op[]; areas: Area[]; rows: Row[]; error: string }) {
   const router = useRouter();
   const [showHoliday, setShowHoliday] = useState(false);
-  const areas = p.areas.filter((a) => showHoliday || a.category === 'leave');
+  const [showRd, setShowRd] = useState(false);
+  const areas = p.areas.filter(
+    (a) => (showHoliday || a.category === 'leave') && (showRd || a.code.toUpperCase() !== 'RD'),
+  );
   const areaIds = new Set(areas.map((a) => a.id));
 
   const byCode = useMemo(() => {
@@ -46,6 +49,7 @@ export default function LeaveSummary(p: { year: number; operators: Op[]; areas: 
         <b>{p.year}</b>
         <button className="btn" onClick={() => router.push(`/leave?y=${p.year + 1}`)}>›</button>
         <label style={{ fontSize: 13 }}><input type="checkbox" checked={showHoliday} onChange={(e) => setShowHoliday(e.target.checked)} /> include holidays</label>
+        <label style={{ fontSize: 13 }}><input type="checkbox" checked={showRd} onChange={(e) => setShowRd(e.target.checked)} /> include Rest Days (RD)</label>
         {p.error && <span role="alert" style={{ color: '#b91c1c', fontSize: 12 }}>{p.error}</span>}
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           <button className="btn" onClick={exportCsv}>Export CSV</button><button className="btn" onClick={() => window.print()}>Print</button>
