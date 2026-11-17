@@ -22,6 +22,7 @@ type Shift = { id: string; is_off: boolean };
 type Area = { id: string; code: string; name: string | null; category: string };
 type Asg = { operator_id: string; schedule_date: string; shift_type_id: string | null; area_code_id: string | null };
 type Standby = { operator_id: string; schedule_date: string; standby_type: string };
+type ActivityType = { id?: string; code: string; label: string; short_label: string; color: string; sort_order: number };
 
 const PRESETS: Record<string, { label: string; short: string; color: string }> = {
   FLUSH: { label: 'Line Flushing', short: 'Flushing', color: '#0284c7' },
@@ -102,6 +103,7 @@ export default function PmPlanner(p: {
   month: string;
   today: string;
   tasks: Task[];
+  activityTypes: ActivityType[];
   operators: Op[];
   shifts: Shift[];
   areas: Area[];
@@ -113,6 +115,10 @@ export default function PmPlanner(p: {
 }) {
   const router = useRouter();
   const [tasks, setTasks] = useState(p.tasks);
+  const [actTypes, setActTypes] = useState<ActivityType[]>(p.activityTypes);
+  const [editActsOpen, setEditActsOpen] = useState(false);
+  const [actDraft, setActDraft] = useState<ActivityType[]>([]);
+  const [savingActs, setSavingActs] = useState(false);
   const [view, setView] = useState<'month' | 'week'>('month');
   const [selectedDate, setSelectedDate] = useState(() =>
     p.today.startsWith(p.month) ? p.today : `${p.month}-01`,
@@ -125,6 +131,7 @@ export default function PmPlanner(p: {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => setTasks(p.tasks), [p.tasks]);
+  useEffect(() => setActTypes(p.activityTypes), [p.activityTypes]);
 
   const [y, mo] = p.month.split('-').map(Number);
   const monthLabel = `${MONTHS_FULL[(mo - 1 + 12) % 12]} ${y}`;
@@ -140,25 +147,40 @@ export default function PmPlanner(p: {
   }, [tasks]);
 
   const activityChips = useMemo(() => {
-    const map = new Map<string, { type: string; label: string; color: string; count: number }>();
+    const map = new Map<string, { type: string; label: string; short: string; color: string; count: number; sort: number }>();
+    let idx = 0;
     for (const [k, v] of Object.entries(PRESETS)) {
-      map.set(k, { type: k, label: v.short, color: v.color, count: 0 });
+      map.set(k, { type: k, label: v.label, short: v.short, color: v.color, count: 0, sort: idx++ });
+    }
+    for (const a of actTypes) {
+      map.set(a.code, {
+        type: a.code,
+        label: a.label,
+        short: a.short_label,
+        color: a.color,
+        count: 0,
+        sort: a.sort_order ?? idx++,
+      });
     }
     for (const t of tasks) {
       if (!map.has(t.activity_type)) {
         map.set(t.activity_type, {
           type: t.activity_type,
           label: t.title,
+          short: t.title,
           color: activityColor(t.activity_type, t.title),
           count: 0,
+          sort: idx++,
         });
       }
       if (t.scheduled_date.startsWith(p.month)) {
         map.get(t.activity_type)!.count += 1;
       }
     }
-    return Array.from(map.values());
-  }, [p.month, tasks]);
+    return Array.from(map.values()).sort((a, b) => a.sort - b.sort);
+  }, [actTypes, p.month, tasks]);
+
+  const activityMeta = useMemo(() => new Map(activityChips.map((c) => [c.type, c])), [activityChips]);
 
   const asgByDateOp = useMemo(() => {
     const m = new Map<string, Asg>();
@@ -241,8 +263,8 @@ export default function PmPlanner(p: {
   const edit = (t: Task): Draft => ({
     id: t.id,
     legacy_key: t.legacy_key,
-    typeKey: PRESETS[t.activity_type] ? t.activity_type : '__custom',
-    custom: PRESETS[t.activity_type] ? '' : t.title,
+    typeKey: activityMeta.has(t.activity_type) ? t.activity_type : '__custom',
+    custom: activityMeta.has(t.activity_type) ? '' : t.title,
     locations: t.locations.join(', '),
     asset: t.asset ?? '',
     assignees: t.assigned_operator_ids,
@@ -263,7 +285,7 @@ export default function PmPlanner(p: {
     const activity_type = isCustom
       ? draft.custom.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').slice(0, 30)
       : draft.typeKey;
-    const title = isCustom ? draft.custom.trim() : PRESETS[draft.typeKey].label;
+    const title = isCustom ? draft.custom.trim() : (activityMeta.get(draft.typeKey)?.label ?? draft.typeKey);
     const base = {
       organization_id: p.orgId,
       activity_type,
@@ -375,13 +397,56 @@ export default function PmPlanner(p: {
   }
 
   useEffect(() => {
-    if (!draft) return;
+    if (!draft && !editActsOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !busy) setDraft(null);
+      if (e.key === 'Escape' && !busy && !savingActs) {
+        setDraft(null);
+        setEditActsOpen(false);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [busy, draft]);
+  }, [busy, draft, editActsOpen, savingActs]);
+
+  function openEditActivities() {
+    setActDraft(
+      activityChips.map((c, idx) => ({
+        code: c.type,
+        label: c.label,
+        short_label: c.short,
+        color: c.color,
+        sort_order: idx,
+      })),
+    );
+    setEditActsOpen(true);
+  }
+
+  async function saveActivities() {
+    const cleaned = actDraft
+      .map((a, idx) => ({
+        organization_id: p.orgId,
+        code: a.code.trim().toUpperCase().replace(/[^A-Z0-9_]+/g, '_').slice(0, 30),
+        label: a.label.trim() || a.code,
+        short_label: a.short_label.trim() || a.label.trim() || a.code,
+        color: a.color || '#0284c7',
+        sort_order: idx,
+      }))
+      .filter((a) => a.code.length > 0);
+    if (cleaned.length === 0) return;
+
+    setSavingActs(true);
+    setMsg('');
+    const sb = supabaseBrowser();
+    const { error } = await sb.from('pm_activity_types').upsert(cleaned, { onConflict: 'organization_id,code' });
+    setSavingActs(false);
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
+    setActTypes(cleaned);
+    setEditActsOpen(false);
+    router.refresh();
+  }
 
   const monthTasks = visible.filter((t) => t.scheduled_date.startsWith(p.month));
   const counts = {
@@ -500,7 +565,7 @@ export default function PmPlanner(p: {
                     opacity: typeFilter && !active ? 0.5 : 1,
                   }}
                 >
-                  <span>{c.label}</span>
+                  <span>{c.short}</span>
                   <span
                     style={{
                       background: 'rgba(255,255,255,0.25)',
@@ -514,6 +579,11 @@ export default function PmPlanner(p: {
                 </button>
               );
             })}
+            {p.canEdit && (
+              <button className="btn" onClick={openEditActivities} title="Edit activity names & colors">
+                ✎ Edit
+              </button>
+            )}
           </div>
 
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -651,10 +721,12 @@ export default function PmPlanner(p: {
                 </div>
 
                 {list.map((t) => {
-                  const color = activityColor(t.activity_type, t.title);
+                  const meta = activityMeta.get(t.activity_type);
+                  const color = meta?.color ?? activityColor(t.activity_type, t.title);
                   const isDone = t.status === 'done';
                   const conflict = hasConflict(t);
-                  const shortTitle = PRESETS[t.activity_type]?.short ?? t.title;
+                  const shortTitle = meta?.short ?? t.title;
+                  const fullTitle = meta?.label ?? t.title;
                   const chipText = t.locations.length ? `${shortTitle} - ${t.locations[0]}` : shortTitle;
 
                   return (
@@ -665,7 +737,7 @@ export default function PmPlanner(p: {
                         setSelectedDate(d);
                         if (p.canEdit) setDraft(edit(t));
                       }}
-                      title={`${t.title}\n${t.locations.join(', ')}${t.asset ? '\n' + t.asset : ''}\n${t.assigned_operator_ids
+                      title={`${fullTitle}\n${t.locations.join(', ')}${t.asset ? '\n' + t.asset : ''}\n${t.assigned_operator_ids
                         .map((id) => opBy.get(id)?.full_name)
                         .filter(Boolean)
                         .join(', ')}${conflict ? '\n⚠ Crew conflict (off/leave/standby)' : ''}`}
@@ -822,7 +894,8 @@ export default function PmPlanner(p: {
               <p style={{ margin: 0, fontSize: 12, color: '#94a3b8' }}>No maintenance tasks scheduled for this day.</p>
             ) : (
               dayTasks.map((t) => {
-                const color = activityColor(t.activity_type, t.title);
+                const meta = activityMeta.get(t.activity_type);
+                const color = meta?.color ?? activityColor(t.activity_type, t.title);
                 const availableOps = p.operators.filter((o) => !t.assigned_operator_ids.includes(o.id));
                 return (
                   <div
@@ -839,7 +912,7 @@ export default function PmPlanner(p: {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontWeight: 700, fontSize: 12.5 }}>
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block' }} />
-                        {t.title}
+                        {meta?.label ?? t.title}
                       </span>
                       <span
                         style={{
@@ -1006,9 +1079,9 @@ export default function PmPlanner(p: {
             <label style={{ fontSize: 13 }}>
               Activity
               <select className="input" value={draft.typeKey} onChange={(e) => setDraft({ ...draft, typeKey: e.target.value })}>
-                {Object.entries(PRESETS).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v.label}
+                {activityChips.map((c) => (
+                  <option key={c.type} value={c.type}>
+                    {c.label}
                   </option>
                 ))}
                 <option value="__custom">+ Custom activity…</option>
@@ -1124,6 +1197,126 @@ export default function PmPlanner(p: {
                   {busy ? 'Saving…' : 'Save'}
                 </button>
               </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit PM Activities & Colors Modal */}
+      {editActsOpen && (
+        <div
+          className="no-print"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-acts-title"
+          onClick={() => !savingActs && setEditActsOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15,23,42,.45)',
+            display: 'grid',
+            placeItems: 'center',
+            padding: 16,
+            zIndex: 55,
+            overflow: 'auto',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 12, padding: 20, width: '100%', maxWidth: 640, display: 'grid', gap: 12 }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 id="edit-acts-title" style={{ margin: 0, fontSize: 17 }}>
+                Edit PM Activity Names &amp; Colors
+              </h2>
+              <button
+                className="btn"
+                onClick={() =>
+                  setActDraft((a) => [
+                    ...a,
+                    {
+                      code: `CUSTOM_${a.length + 1}`,
+                      label: 'New Activity',
+                      short_label: 'New Activity',
+                      color: '#0284c7',
+                      sort_order: a.length,
+                    },
+                  ])
+                }
+              >
+                + Add activity
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gap: 8, maxHeight: '58vh', overflow: 'auto', paddingRight: 4 }}>
+              {actDraft.map((a, i) => (
+                <div
+                  key={`${a.code}-${i}`}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '40px 1fr 1fr 110px',
+                    gap: 8,
+                    alignItems: 'center',
+                    padding: '6px 8px',
+                    background: '#f8fafc',
+                    borderRadius: 8,
+                    border: '1px solid #e2e8f0',
+                  }}
+                >
+                  <input
+                    type="color"
+                    aria-label={`Color for ${a.label}`}
+                    value={a.color}
+                    onChange={(e) =>
+                      setActDraft((list) => list.map((x, j) => (j === i ? { ...x, color: e.target.value } : x)))
+                    }
+                    style={{ width: 36, height: 30, padding: 0, border: '1px solid #cbd5e1', borderRadius: 6, cursor: 'pointer' }}
+                  />
+                  <input
+                    className="input"
+                    aria-label="Full activity name"
+                    placeholder="Full name (e.g. Line Flushing)"
+                    value={a.label}
+                    onChange={(e) =>
+                      setActDraft((list) => list.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))
+                    }
+                  />
+                  <input
+                    className="input"
+                    aria-label="Short pill label"
+                    placeholder="Pill label (e.g. Flushing)"
+                    value={a.short_label}
+                    onChange={(e) =>
+                      setActDraft((list) => list.map((x, j) => (j === i ? { ...x, short_label: e.target.value } : x)))
+                    }
+                  />
+                  <span
+                    style={{
+                      background: a.color,
+                      color: '#ffffff',
+                      borderRadius: 999,
+                      padding: '4px 10px',
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      textAlign: 'center',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {a.short_label || a.label || a.code}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button className="btn" onClick={() => setEditActsOpen(false)} disabled={savingActs}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" onClick={saveActivities} disabled={savingActs}>
+                {savingActs ? 'Saving…' : 'Save changes'}
+              </button>
             </div>
           </div>
         </div>

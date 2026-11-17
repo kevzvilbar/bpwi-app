@@ -4,12 +4,12 @@ import { createClient } from '@supabase/supabase-js';
 import { supabaseServer } from '@/lib/supabase/server';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 
-const DEFAULT_PM: Record<string, string> = {
-  FLUSH: 'Line Flushing',
-  TANK: 'Tank Cleaning',
-  PULL: 'Deep Well Pump & Motor Pull-out',
-  THERM: 'Thermal Scanning',
-  LEVEL: 'Water Level Monitoring',
+const DEFAULT_PM_META: Record<string, { label: string; short: string; color: string }> = {
+  FLUSH: { label: 'Line Flushing', short: 'Flushing', color: '#0284c7' },
+  TANK: { label: 'Tank Cleaning', short: 'Tank Cleaning', color: '#0d9488' },
+  PULL: { label: 'Deep Well Pump & Motor Pull-out', short: 'Pull-out', color: '#db2777' },
+  THERM: { label: 'Thermal Scanning', short: 'Thermal Scan', color: '#ea580c' },
+  LEVEL: { label: 'Water Level Monitoring', short: 'SWL&PWL', color: '#ca8a04' },
 };
 
 export async function POST(req: Request) {
@@ -122,7 +122,40 @@ export async function POST(req: Request) {
     }
 
     const typeLabel = (k: string) =>
-      st.pmTypeOverrides?.[k]?.label ?? st.pmCustomTypes?.find((c: any) => c.id === k)?.label ?? DEFAULT_PM[k] ?? k;
+      st.pmTypeOverrides?.[k]?.label ?? st.pmCustomTypes?.find((c: any) => c.id === k)?.label ?? DEFAULT_PM_META[k]?.label ?? k;
+
+    const activityRows: any[] = [];
+    const seenCodes = new Set<string>();
+    let sortIdx = 0;
+    for (const [code, meta] of Object.entries(DEFAULT_PM_META)) {
+      const ov = st.pmTypeOverrides?.[code];
+      seenCodes.add(code);
+      activityRows.push({
+        organization_id: org,
+        code,
+        label: ov?.label ?? meta.label,
+        short_label: ov?.short ?? ov?.label ?? meta.short,
+        color: ov?.color ?? meta.color,
+        sort_order: sortIdx++,
+      });
+    }
+    for (const c of st.pmCustomTypes ?? []) {
+      if (!c?.id || seenCodes.has(c.id)) continue;
+      seenCodes.add(c.id);
+      const ov = st.pmTypeOverrides?.[c.id];
+      activityRows.push({
+        organization_id: org,
+        code: c.id,
+        label: ov?.label ?? c.label ?? c.id,
+        short_label: ov?.short ?? c.short ?? c.label ?? c.id,
+        color: ov?.color ?? c.color ?? '#7c3aed',
+        sort_order: sortIdx++,
+      });
+    }
+    if (activityRows.length > 0) {
+      await db.from('pm_activity_types').upsert(activityRows, { onConflict: 'organization_id,code' });
+    }
+
     const pm = (st.pmTasks ?? []).map((t: any) => ({
       organization_id: org,
       legacy_key: t.id,

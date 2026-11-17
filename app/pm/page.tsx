@@ -22,8 +22,9 @@ export default async function PmPage({ searchParams }: { searchParams: Promise<{
   const first = gridStart.toISOString().slice(0, 10);
   const last = gridEnd.toISOString().slice(0, 10);
 
-  const [tasks, ops, shifts, areas, asg, standby] = await Promise.all([
+  const [tasks, activityTypes, ops, shifts, areas, asg, standby] = await Promise.all([
     sb.from('pm_tasks').select('*').gte('scheduled_date', first).lte('scheduled_date', last).order('scheduled_date'),
+    sb.from('pm_activity_types').select('id, code, label, short_label, color, sort_order').order('sort_order').order('code'),
     sb.from('operators').select('id, full_name, phone_number').eq('is_active', true).order('sort_order'),
     sb.from('shift_types').select('id, is_off'),
     sb.from('area_codes').select('id, code, name, category'),
@@ -54,6 +55,7 @@ export default async function PmPage({ searchParams }: { searchParams: Promise<{
       month={month}
       today={today}
       tasks={tasks.data ?? []}
+      activityTypes={activityTypes.error ? [] : (activityTypes.data ?? [])}
       operators={ops.data ?? []}
       shifts={shifts.data ?? []}
       areas={areas.data ?? []}
