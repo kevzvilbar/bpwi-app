@@ -129,6 +129,7 @@ export default function PmPlanner(p: {
   const [areaFilter, setAreaFilter] = useState('');
   const [msg, setMsg] = useState(p.error);
   const [busy, setBusy] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [confirmDel, setConfirmDel] = useState<{
     scope: 'one' | 'series' | 'following';
     target?: { id: string; legacy_key: string | null; date: string };
@@ -512,13 +513,14 @@ export default function PmPlanner(p: {
           <button className="btn" onClick={() => go(1)} title="Next">
             ›
           </button>
-          <strong style={{ fontSize: 16, margin: '0 4px', color: 'var(--text)' }}>{monthLabel}</strong>
+          <strong className="desktop-only" style={{ fontSize: 16, margin: '0 4px', color: 'var(--text)' }}>{monthLabel}</strong>
           <input
             type="month"
+            aria-label="Select month"
             value={p.month}
             onChange={(e) => e.target.value && router.push(`/pm?m=${e.target.value}`)}
             className="input"
-            style={{ width: 'auto', minHeight: 36, padding: '4px 6px', fontSize: 12 }}
+            style={{ width: 'auto', minHeight: 36, padding: '4px 6px', fontSize: 12.5, fontWeight: 600 }}
           />
 
           <div
@@ -596,26 +598,36 @@ export default function PmPlanner(p: {
           </div>
 
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-            <select className="btn" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="">All statuses</option>
-              <option value="planned">Planned</option>
-              <option value="done">Done</option>
-              <option value="postponed">Postponed</option>
-            </select>
-            <select className="btn" value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)}>
-              <option value="">All areas</option>
-              {allLocations.map((l) => (
-                <option key={l} value={l}>
-                  {l}
-                </option>
-              ))}
-            </select>
-            <button className="btn" onClick={() => window.print()}>
-              Print
+            <button
+              className="btn mobile-only-block"
+              style={{ display: undefined }}
+              onClick={() => setFiltersOpen((o) => !o)}
+              aria-expanded={filtersOpen}
+            >
+              {filtersOpen ? 'Hide Filters' : 'Filters'}
             </button>
-            <button className="btn" onClick={exportIcs}>
-              Export .ics
-            </button>
+            <div className={filtersOpen ? '' : 'desktop-only'} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              <select className="btn" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="">All statuses</option>
+                <option value="planned">Planned</option>
+                <option value="done">Done</option>
+                <option value="postponed">Postponed</option>
+              </select>
+              <select className="btn" value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)}>
+                <option value="">All areas</option>
+                {allLocations.map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+              <button className="btn" onClick={() => window.print()}>
+                Print
+              </button>
+              <button className="btn" onClick={exportIcs}>
+                Export .ics
+              </button>
+            </div>
             {p.canEdit && (
               <button
                 className="btn"
@@ -697,6 +709,7 @@ export default function PmPlanner(p: {
             return (
               <div
                 key={d}
+                className="pm-day-cell"
                 onClick={() => setSelectedDate(d)}
                 onDoubleClick={() => p.canEdit && setDraft(blank(d))}
                 onDragOver={(e) => {
@@ -709,7 +722,7 @@ export default function PmPlanner(p: {
                 }}
                 style={{
                   background: isToday ? 'var(--surface-muted)' : inMonth ? 'var(--surface)' : 'var(--bg)',
-                  minHeight: view === 'week' ? 320 : 96,
+                  minHeight: view === 'week' ? 320 : undefined,
                   padding: 4,
                   cursor: 'pointer',
                   outline: isSelected ? '2px solid #0f766e' : 'none',

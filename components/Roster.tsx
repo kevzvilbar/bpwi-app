@@ -107,6 +107,7 @@ export default function Roster(p: {
   const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
   const [focused, setFocused] = useState<{ r: number; c: number }>({ r: 0, c: 0 });
+  const [clipboard, setClipboard] = useState<{ shift_type_id: string | null; area_code_id: string | null } | null>(null);
 
   // Drag-to-paint state
   const dragRef = useRef<{
@@ -577,6 +578,35 @@ export default function Roster(p: {
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
       void clearCell(op.id, date);
+      return;
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+      const existing = cell.get(cellKey(op.id, date));
+      setClipboard(existing ? { shift_type_id: existing.shift_type_id, area_code_id: existing.area_code_id } : { shift_type_id: null, area_code_id: null });
+      return;
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+      e.preventDefault();
+      if (!clipboard || !p.canEdit) return;
+      if (!clipboard.shift_type_id && !clipboard.area_code_id) {
+        void clearCell(op.id, date);
+        return;
+      }
+      const prevCell = cell.get(cellKey(op.id, date)) ?? null;
+      const nextRow: Row = { operator_id: op.id, schedule_date: date, shift_type_id: clipboard.shift_type_id, area_code_id: clipboard.area_code_id };
+      setRows((r) => [...r.filter((x) => !(x.operator_id === op.id && x.schedule_date === date)), nextRow]);
+      setUndoStack((s) => [...s.slice(-29), [{ kind: 'shift', opId: op.id, date, prev: prevCell, next: nextRow }]]);
+      setRedoStack([]);
+      setSavingCount((c) => c + 1);
+      void supabaseBrowser()
+        .from('schedule_assignments')
+        .upsert({ ...nextRow, organization_id: p.orgId }, { onConflict: 'operator_id,schedule_date' })
+        .then(({ error }) => {
+          setSavingCount((c) => c - 1);
+          if (error) {
+            rollbackShiftKeys([{ opId: op.id, date, prev: prevCell }]);
+            setSaveState('error');
+            setMsg(friendlyError(error.message));
+          }
+        });
       return;
     } else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
       e.preventDefault();

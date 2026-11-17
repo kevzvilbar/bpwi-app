@@ -452,11 +452,19 @@ select {
 }
 
 /* PM Calendar mobile compact dots */
+.pm-day-cell {
+  min-height: 96px;
+}
+
 .pm-mobile-dots {
   display: none;
 }
 
 @media (max-width: 640px) {
+  .pm-day-cell {
+    min-height: 52px;
+  }
+
   .pm-desktop-pill {
     display: none !important;
   }
