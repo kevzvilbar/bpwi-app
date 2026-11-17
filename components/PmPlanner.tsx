@@ -371,6 +371,16 @@ export default function PmPlanner(p: {
     }
   }
 
+  async function rescheduleTask(taskId: string, newDate: string) {
+    if (!p.canEdit) return;
+    setTasks((ts) => ts.map((x) => (x.id === taskId ? { ...x, scheduled_date: newDate } : x)));
+    const { error } = await supabaseBrowser().from('pm_tasks').update({ scheduled_date: newDate }).eq('id', taskId);
+    if (error) {
+      setMsg(error.message);
+      router.refresh();
+    }
+  }
+
   function exportIcs() {
     const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//BP Waterworks//PM Calendar//EN'];
     for (const t of visible) {
@@ -690,6 +700,14 @@ export default function PmPlanner(p: {
                 key={d}
                 onClick={() => setSelectedDate(d)}
                 onDoubleClick={() => p.canEdit && setDraft(blank(d))}
+                onDragOver={(e) => {
+                  if (p.canEdit) e.preventDefault();
+                }}
+                onDrop={(e) => {
+                  if (!p.canEdit) return;
+                  const taskId = e.dataTransfer.getData('text/plain');
+                  if (taskId) void rescheduleTask(taskId, d);
+                }}
                 style={{
                   background: isToday ? '#f0fdfa' : isWeekend ? '#fffbf7' : inMonth ? '#ffffff' : '#f8fafc',
                   minHeight: view === 'week' ? 320 : 106,
@@ -732,6 +750,8 @@ export default function PmPlanner(p: {
                   return (
                     <div
                       key={t.id}
+                      draggable={p.canEdit}
+                      onDragStart={(e) => e.dataTransfer.setData('text/plain', t.id)}
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelectedDate(d);
@@ -1050,28 +1070,19 @@ export default function PmPlanner(p: {
         </aside>
       </div>
 
-      {/* Create / Edit Modal */}
+      {/* Create / Edit Modal (Bottom Sheet on mobile, Dialog on desktop) */}
       {draft && (
         <div
-          className="no-print"
+          className="no-print modal-overlay"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pm-dialog-title"
           onClick={() => !busy && setDraft(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15,23,42,.45)',
-            display: 'grid',
-            placeItems: 'center',
-            padding: 16,
-            zIndex: 50,
-            overflow: 'auto',
-          }}
         >
           <div
+            className="modal-sheet"
             onClick={(e) => e.stopPropagation()}
-            style={{ background: '#fff', borderRadius: 12, padding: 20, width: '100%', maxWidth: 480, display: 'grid', gap: 10 }}
+            style={{ display: 'grid', gap: 10 }}
           >
             <h2 id="pm-dialog-title" style={{ margin: 0, fontSize: 17 }}>
               {draft.id ? 'Edit task' : 'Schedule PM task'}
@@ -1205,25 +1216,16 @@ export default function PmPlanner(p: {
       {/* Edit PM Activities & Colors Modal */}
       {editActsOpen && (
         <div
-          className="no-print"
+          className="no-print modal-overlay"
           role="dialog"
           aria-modal="true"
           aria-labelledby="edit-acts-title"
           onClick={() => !savingActs && setEditActsOpen(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15,23,42,.45)',
-            display: 'grid',
-            placeItems: 'center',
-            padding: 16,
-            zIndex: 55,
-            overflow: 'auto',
-          }}
         >
           <div
+            className="modal-sheet"
             onClick={(e) => e.stopPropagation()}
-            style={{ background: '#fff', borderRadius: 12, padding: 20, width: '100%', maxWidth: 640, display: 'grid', gap: 12 }}
+            style={{ maxWidth: 640, display: 'grid', gap: 12 }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 id="edit-acts-title" style={{ margin: 0, fontSize: 17 }}>

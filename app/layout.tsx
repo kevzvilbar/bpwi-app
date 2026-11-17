@@ -1,11 +1,29 @@
+import type { Viewport } from 'next';
 import './globals.css';
 import Nav from '@/components/Nav';
+import PwaRegister from '@/components/PwaRegister';
 import { getProfile } from '@/lib/profile';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 
 export const metadata = {
   title: 'BP Waterworks · Plant Operations Schedule',
   description: 'Plant operations roster and schedule monitoring for BP Waterworks, Inc.',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default' as const,
+    title: 'BPWI Ops',
+  },
+  icons: {
+    icon: '/icon-192.png',
+    apple: '/icon-192.png',
+  },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#0f172a',
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
@@ -21,8 +39,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en">
       <body>
+        <PwaRegister />
         <Nav role={profile.role} userName={profile.name} canEdit={profile.canEdit} isAdmin={profile.isAdmin} />
-        {children}
+        <main className="app-main">{children}</main>
       </body>
     </html>
   );

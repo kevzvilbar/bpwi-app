@@ -8,10 +8,44 @@
   --text-secondary: #475569;
   --text-muted: #64748b;
   --primary: #0f172a;
+  --primary-fg: #ffffff;
   --accent: #0369a1;
   --teal: #0f766e;
   --violet: #7c3aed;
   --danger: #b91c1c;
+  --header-bg: #0f172a;
+  --header-fg: #ffffff;
+  --radius: 10px;
+}
+
+[data-theme='dark'] {
+  --bg: #0b1120;
+  --surface: #111827;
+  --surface-muted: #1e293b;
+  --border: #334155;
+  --border-light: #1e293b;
+  --text: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --primary: #2563eb;
+  --primary-fg: #ffffff;
+  --accent: #38bdf8;
+  --header-bg: #020617;
+  --header-fg: #f8fafc;
+}
+
+[data-contrast='high'] {
+  --border: #0f172a;
+  --border-light: #334155;
+  --text: #000000;
+  --text-secondary: #0f172a;
+}
+
+[data-theme='dark'][data-contrast='high'] {
+  --border: #f8fafc;
+  --border-light: #cbd5e1;
+  --text: #ffffff;
+  --text-secondary: #f1f5f9;
 }
 
 *,
@@ -20,8 +54,12 @@
   box-sizing: border-box;
 }
 
+html,
 body {
   margin: 0;
+  padding: 0;
+  max-width: 100%;
+  overflow-x: clip;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: var(--bg);
   color: var(--text);
@@ -69,20 +107,20 @@ select {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 5px 11px;
-  border-radius: 6px;
+  padding: 6px 12px;
+  min-height: 36px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s;
+  transition: background-color 0.15s, border-color 0.15s;
 }
 
 .btn:hover:not(:disabled) {
   background: var(--surface-muted);
-  border-color: #94a3b8;
 }
 
 .btn:disabled {
@@ -92,23 +130,23 @@ select {
 
 .btn-primary {
   background: var(--primary);
-  color: #ffffff;
+  color: var(--primary-fg);
   border-color: var(--primary);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #1e293b;
-  border-color: #1e293b;
+  opacity: 0.92;
 }
 
 .input {
   width: 100%;
+  min-height: 38px;
   padding: 7px 10px;
-  border-radius: 6px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
-  font-size: 13.5px;
+  font-size: 14px;
 }
 
 .input:focus {
@@ -117,21 +155,89 @@ select {
   border-color: #2563eb;
 }
 
-/* Dialog backdrop */
-dialog.app-dialog {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 20px;
-  width: min(480px, calc(100vw - 24px));
-  max-height: calc(100vh - 32px);
-  overflow: auto;
-  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.25);
+.card {
   background: var(--surface);
-  color: var(--text);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  container-type: inline-size;
 }
 
-dialog.app-dialog::backdrop {
-  background: rgba(15, 23, 42, 0.45);
+/* Top App Bar & Bottom Nav */
+.app-topbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-light);
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+.desktop-nav {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  background: var(--surface-muted);
+  border-radius: 8px;
+}
+
+.bottom-nav {
+  display: none;
+}
+
+.app-main {
+  padding-bottom: 16px;
+}
+
+/* Modal & Bottom Sheet */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(15, 23, 42, 0.5);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  overflow: auto;
+}
+
+.modal-sheet {
+  width: 100%;
+  max-width: 520px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
+  max-height: 88vh;
+  overflow: auto;
+}
+
+/* Slide-out Drawer */
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.drawer-panel {
+  width: min(320px, 86vw);
+  height: 100%;
+  background: var(--surface);
+  color: var(--text);
+  border-left: 1px solid var(--border);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
 }
 
 /* Schedule Table & Sticky Headers */
@@ -149,78 +255,23 @@ dialog.app-dialog::backdrop {
   user-select: none;
 }
 
-.sticky-col-idx {
-  position: sticky;
-  left: 0;
-  z-index: 25;
-}
-.sticky-col-name {
-  position: sticky;
-  left: 36px;
-  z-index: 25;
-}
+.sticky-col-idx { position: sticky; left: 0; z-index: 25; }
+.sticky-col-name { position: sticky; left: 36px; z-index: 25; }
+.sticky-header-month { position: sticky; top: 0; z-index: 35; }
+.sticky-header-days { position: sticky; top: 26px; z-index: 35; }
+.sticky-corner-idx { position: sticky; top: 0; left: 0; z-index: 45; }
+.sticky-corner-name { position: sticky; top: 0; left: 36px; z-index: 45; }
+.sticky-col-duty { position: sticky; right: 168px; z-index: 25; }
+.sticky-col-oc { position: sticky; right: 126px; z-index: 25; }
+.sticky-col-hours { position: sticky; right: 84px; z-index: 25; }
+.sticky-col-off { position: sticky; right: 42px; z-index: 25; }
+.sticky-col-leaves { position: sticky; right: 0; z-index: 25; }
+.sticky-corner-stat { position: sticky; top: 0; z-index: 45; }
 
-.sticky-header-month {
-  position: sticky;
-  top: 0;
-  z-index: 35;
-}
-.sticky-header-days {
-  position: sticky;
-  top: 26px;
-  z-index: 35;
-}
-
-.sticky-corner-idx {
-  position: sticky;
-  top: 0;
-  left: 0;
-  z-index: 45;
-}
-.sticky-corner-name {
-  position: sticky;
-  top: 0;
-  left: 36px;
-  z-index: 45;
-}
-
-.sticky-col-duty {
-  position: sticky;
-  right: 168px;
-  z-index: 25;
-}
-.sticky-col-oc {
-  position: sticky;
-  right: 126px;
-  z-index: 25;
-}
-.sticky-col-hours {
-  position: sticky;
-  right: 84px;
-  z-index: 25;
-}
-.sticky-col-off {
-  position: sticky;
-  right: 42px;
-  z-index: 25;
-}
-.sticky-col-leaves {
-  position: sticky;
-  right: 0;
-  z-index: 25;
-}
-.sticky-corner-stat {
-  position: sticky;
-  top: 0;
-  z-index: 45;
-}
-
-/* Leave days: striped so they never look like plain rest days */
 .cell-leave {
   background-image: repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.08) 0 4px, transparent 4px 8px) !important;
 }
 
-/* On-Call (Standby) overlay */
 .cell-oncall-active {
   box-shadow: inset 0 0 0 1.5px #ffffff, inset 0 0 0 3.5px var(--violet);
 }
@@ -251,7 +302,6 @@ dialog.app-dialog::backdrop {
   pointer-events: none;
 }
 
-/* Preventive maintenance cell indicator */
 .pm-mark {
   position: absolute;
   left: 2px;
@@ -270,11 +320,6 @@ dialog.app-dialog::backdrop {
   background: #e11d48;
 }
 
-.operator-row:hover td.sticky-col-idx,
-.operator-row:hover td.sticky-col-name {
-  background: var(--surface-muted) !important;
-}
-
 /* PM Planner responsive split */
 .pm-layout {
   display: grid;
@@ -283,24 +328,103 @@ dialog.app-dialog::backdrop {
   align-items: start;
 }
 
-@media (max-width: 1024px) {
-  .pm-layout {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Call Sheet responsive table -> cards */
-.call-sheet-cards {
+/* Responsive table -> cards */
+.responsive-cards {
   display: none;
 }
 
-@media (max-width: 640px) {
-  .call-sheet-table-wrap {
-    display: none;
+.desktop-only-grid {
+  display: block;
+}
+
+.mobile-only-schedule {
+  display: none;
+}
+
+@media (max-width: 1024px) {
+  .desktop-nav,
+  .desktop-only {
+    display: none !important;
   }
+
+  .desktop-only-grid {
+    display: none !important;
+  }
+
+  .mobile-only-schedule {
+    display: block;
+  }
+
+  .pm-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .btn,
+  .input,
+  select {
+    min-height: 44px;
+  }
+
+  .app-main {
+    padding-bottom: calc(74px + env(safe-area-inset-bottom));
+  }
+
+  .bottom-nav {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+    box-shadow: 0 -2px 12px rgba(15, 23, 42, 0.08);
+  }
+
+  .bottom-nav a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-height: 48px;
+    text-decoration: none;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 8px;
+    color: var(--text-secondary);
+  }
+
+  .bottom-nav a[aria-current='page'] {
+    color: var(--accent);
+    background: var(--surface-muted);
+    font-weight: 700;
+  }
+}
+
+@media (max-width: 640px) {
+  .responsive-table-wrap,
+  .call-sheet-table-wrap {
+    display: none !important;
+  }
+
+  .responsive-cards,
   .call-sheet-cards {
     display: grid;
     gap: 10px;
+  }
+
+  .modal-overlay {
+    place-items: end center;
+    padding: 0;
+  }
+
+  .modal-sheet {
+    max-width: 100%;
+    border-radius: 16px 16px 0 0;
+    padding: 18px 16px calc(20px + env(safe-area-inset-bottom));
   }
 }
 
@@ -309,7 +433,8 @@ dialog.app-dialog::backdrop {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  .no-print {
+  .no-print,
+  .bottom-nav {
     display: none !important;
   }
   body {

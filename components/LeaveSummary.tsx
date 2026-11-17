@@ -53,6 +53,42 @@ export default function LeaveSummary(p: { year: number; operators: Op[]; areas: 
       </div>
       {areas.length === 0 ? <p style={{ color: '#64748b' }}>No leave area codes defined yet. Add some (category “leave”) under Operators &amp; Setup.</p> : (
         <>
+          <div className="responsive-cards">
+            {p.operators.map((o) => {
+              const tot = opTotal(o.id);
+              return (
+                <div key={o.id} className="card" style={{ padding: 12, display: 'grid', gap: 6 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <strong style={{ fontSize: 14 }}>{o.full_name}</strong>
+                    <span style={{ fontSize: 12.5, fontWeight: 700 }}>{tot} days</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {areas.map((a) => {
+                      const n = byCode.get(o.id + a.id) ?? 0;
+                      if (!n) return null;
+                      return (
+                        <span
+                          key={a.id}
+                          style={{
+                            background: a.background_color,
+                            color: a.text_color,
+                            padding: '2px 8px',
+                            borderRadius: 6,
+                            fontSize: 12,
+                            fontWeight: 700,
+                            border: '1px solid var(--border)',
+                          }}
+                        >
+                          {a.code}: {n}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="responsive-table-wrap">
           <h3 style={{ margin: '4px 0' }}>Days by leave type</h3>
           <div style={{ overflow: 'auto', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, marginBottom: 16, maxHeight: '45vh' }}>
             <table style={{ borderCollapse: 'collapse', width: '100%' }}>
@@ -77,6 +113,7 @@ export default function LeaveSummary(p: { year: number; operators: Op[]; areas: 
                   {MONTHS.map((_, i) => { const n = byMonth.get(o.id + i) ?? 0; return <td key={i} className="tabular-nums" style={{ ...td, color: n ? '#0f172a' : '#64748b', fontWeight: n ? 700 : 400 }}>{n || '·'}</td>; })}</tr>))}
               </tbody>
             </table>
+          </div>
           </div>
         </>)}
     </div>

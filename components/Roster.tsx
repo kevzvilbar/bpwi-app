@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import RosterMobileViews from '@/components/RosterMobileViews';
 
 type Op = { id: string; full_name: string; position: string | null };
 type Shift = {
@@ -947,9 +948,32 @@ export default function Roster(p: {
         </div>
       )}
 
-      {/* Spreadsheet Schedule Table */}
+      {/* Mobile & Tablet Views (<= 1024px, defaults to Day View) */}
+      <RosterMobileViews
+        month={p.month}
+        today={p.today}
+        days={days}
+        operators={filteredOperators}
+        cell={cell}
+        standbyMap={standbyMap}
+        shiftBy={shiftBy}
+        areaBy={areaBy}
+        canEdit={p.canEdit}
+        onCellTap={(opId, date) => void activateCell(opId, date)}
+        onCellMenu={(op, date, coords) =>
+          setCtxMenu({
+            x: coords?.clientX ?? 16,
+            y: coords?.clientY ?? 200,
+            opId: op.id,
+            opName: op.full_name,
+            date,
+          })
+        }
+      />
+
+      {/* Desktop Spreadsheet Schedule Table (> 1024px only) */}
       <div
-        className="schedule-container"
+        className="schedule-container desktop-only-grid"
         style={{
           overflow: 'auto',
           maxHeight: '72vh',
@@ -957,6 +981,7 @@ export default function Roster(p: {
           borderRadius: 10,
           border: '1px solid #cbd5e1',
           boxShadow: '0 1px 4px rgba(15, 23, 42, 0.05)',
+          touchAction: 'pan-x pan-y pinch-zoom',
         }}
       >
         <table ref={gridRef} className="schedule-table" role="grid" aria-label={`Monthly schedule for ${monthLabel}`}>
@@ -1273,28 +1298,16 @@ export default function Roster(p: {
         </div>
       )}
 
-      {/* Import JSON Modal */}
+      {/* Import JSON Modal (Bottom Sheet on mobile, Dialog on desktop) */}
       {importOpen && (
         <div
-          className="no-print"
+          className="no-print modal-overlay"
           role="dialog"
           aria-modal="true"
           aria-labelledby="import-dialog-title"
           onClick={() => !importing && setImportOpen(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 50,
-            background: 'rgba(15, 23, 42, 0.45)',
-            display: 'grid',
-            placeItems: 'center',
-            padding: 16,
-          }}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ width: '100%', maxWidth: 440, background: '#ffffff', borderRadius: 12, padding: 22, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}
-          >
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
             <h2 id="import-dialog-title" style={{ margin: '0 0 6px', fontSize: 17 }}>
               Import Legacy JSON Backup
             </h2>

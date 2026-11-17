@@ -216,25 +216,34 @@ export default function CallSheet(p: {
                   </td>
                   <td style={{ padding: '8px 10px' }}>
                     {op.phone_number ? (
-                      <a
-                        href={`tel:${op.phone_number}`}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          minHeight: 36,
-                          padding: '6px 12px',
-                          borderRadius: 8,
-                          background: '#0369a1',
-                          color: '#ffffff',
-                          textDecoration: 'none',
-                          fontWeight: 700,
-                          fontSize: 13,
-                          fontFamily: 'ui-monospace, monospace',
-                        }}
-                      >
-                        Call {op.phone_number}
-                      </a>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <a
+                          href={`tel:${op.phone_number}`}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            minHeight: 38,
+                            padding: '6px 12px',
+                            borderRadius: 8,
+                            background: '#0369a1',
+                            color: '#ffffff',
+                            textDecoration: 'none',
+                            fontWeight: 700,
+                            fontSize: 13,
+                            fontFamily: 'ui-monospace, monospace',
+                          }}
+                        >
+                          Call {op.phone_number}
+                        </a>
+                        <a
+                          href={`sms:${op.phone_number}`}
+                          className="btn"
+                          style={{ minHeight: 38, textDecoration: 'none', fontWeight: 700 }}
+                        >
+                          SMS
+                        </a>
+                      </div>
                     ) : (
                       <span style={{ color: '#64748b' }}>No phone</span>
                     )}
@@ -301,25 +310,40 @@ export default function CallSheet(p: {
             </div>
 
             {op.phone_number ? (
-              <a
-                href={`tel:${op.phone_number}`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  minHeight: 44,
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  background: '#0369a1',
-                  color: '#ffffff',
-                  textDecoration: 'none',
-                  fontWeight: 700,
-                  fontSize: 14,
-                  fontFamily: 'ui-monospace, monospace',
-                }}
-              >
-                Tap to Call · {op.phone_number}
-              </a>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
+                <a
+                  href={`tel:${op.phone_number}`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minHeight: 44,
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    background: '#0369a1',
+                    color: '#ffffff',
+                    textDecoration: 'none',
+                    fontWeight: 700,
+                    fontSize: 14,
+                    fontFamily: 'ui-monospace, monospace',
+                  }}
+                >
+                  Call · {op.phone_number}
+                </a>
+                <a
+                  href={`sms:${op.phone_number}`}
+                  className="btn"
+                  style={{
+                    minHeight: 44,
+                    padding: '10px 16px',
+                    textDecoration: 'none',
+                    fontWeight: 700,
+                    fontSize: 14,
+                  }}
+                >
+                  SMS
+                </a>
+              </div>
             ) : (
               <div style={{ fontSize: 12.5, color: '#64748b' }}>No phone number on file</div>
             )}
