@@ -21,8 +21,14 @@ export default function GlobalError({
       >
         <h2 style={{ margin: 0, fontSize: 17, color: 'var(--danger)' }}>Unable to load this page</h2>
         <p style={{ margin: 0, fontSize: 13.5, color: 'var(--text-secondary)' }}>
-          {error.message || 'An unexpected error occurred while fetching schedule data.'}
+          We couldn&apos;t load the latest schedule data right now. Please check your connection and try again.
         </p>
+        {error.message && (
+          <details style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            <summary style={{ cursor: 'pointer' }}>Technical details</summary>
+            <div style={{ marginTop: 4 }}>{error.message}</div>
+          </details>
+        )}
         <div>
           <button className="btn btn-primary" onClick={reset}>
             Try again

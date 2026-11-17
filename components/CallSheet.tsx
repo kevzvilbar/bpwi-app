@@ -154,6 +154,17 @@ export default function CallSheet(p: {
         </button>
       </div>
 
+      <details className="no-print card" style={{ padding: '7px 12px', marginBottom: 10, fontSize: 12, color: 'var(--text-secondary)' }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Code Glossary (OC, DWP, ERP, PW, RD)</summary>
+        <div style={{ marginTop: 6, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          <span><b>OC</b> = General On-Call</span>
+          <span><b>DWP</b> = Deep Well Pull-out Standby</span>
+          <span><b>ERP</b> = Electro-Mechanical Repair Standby</span>
+          <span><b>PW</b> = Plant Works (default station)</span>
+          <span><b>RD</b> = Rest Day</span>
+        </div>
+      </details>
+
       {/* Desktop / Tablet Table */}
       <div className="call-sheet-table-wrap card" style={{ overflow: 'auto' }}>
         <table className="schedule-table" style={{ fontSize: 13 }}>

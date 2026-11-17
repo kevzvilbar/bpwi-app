@@ -710,6 +710,24 @@ export default function Roster(p: {
     [cell, days, filteredOperators, shiftBy],
   );
 
+  const todayCoverage = useMemo(() => {
+    let duty = 0;
+    let sb = 0;
+    let off = 0;
+    let leave = 0;
+    for (const o of p.operators) {
+      const k = cellKey(o.id, p.today);
+      const r = cell.get(k);
+      const s = r?.shift_type_id ? shiftBy.get(r.shift_type_id) : undefined;
+      const a = r?.area_code_id ? areaBy.get(r.area_code_id) : undefined;
+      if (standbyMap.has(k)) sb += 1;
+      if (a?.category === 'leave') leave += 1;
+      else if (s && !s.is_off) duty += 1;
+      else if (s?.is_off) off += 1;
+    }
+    return { duty, sb, off, leave };
+  }, [areaBy, cell, p.operators, p.today, shiftBy, standbyMap]);
+
   const selectedShift = shiftId ? shiftBy.get(shiftId) : undefined;
   const selectedArea = areaId ? areaBy.get(areaId) : undefined;
   const brushLabel =
@@ -864,6 +882,40 @@ export default function Roster(p: {
           </button>
         </div>
       )}
+
+      {/* Today's Coverage Strip */}
+      <div
+        className="no-print card"
+        style={{
+          display: 'flex',
+          gap: 10,
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 8,
+          padding: '6px 12px',
+          fontSize: 12,
+        }}
+      >
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <strong style={{ color: 'var(--text)' }}>Today ({p.today}):</strong>
+          <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
+            {todayCoverage.duty} On Duty
+          </span>
+          <span style={{ background: 'rgba(124, 58, 237, 0.14)', color: 'var(--violet)', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
+            {todayCoverage.sb} Standby
+          </span>
+          <span style={{ background: 'var(--surface-muted)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>
+            {todayCoverage.off} Off
+          </span>
+          <span style={{ background: '#ffe4e6', color: '#9f1239', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
+            {todayCoverage.leave} Leave
+          </span>
+        </div>
+        <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+          <b>PW</b> Plant Works · <b>OC</b> On-Call · <b>DWP</b> Deep Well · <b>ERP</b> Electro-Mech · <b>Lvs</b> Leaves
+        </span>
+      </div>
 
       {/* Always-visible Shift Legend on desktop; collapsible on mobile */}
       <div
@@ -1309,7 +1361,7 @@ export default function Roster(p: {
           {filteredOperators.length > 0 && (
             <tfoot>
               <tr>
-                <td colSpan={2} className="sticky-col-idx" style={{ position: 'sticky', bottom: 0, zIndex: 30, background: '#f8fafc', padding: '5px 8px', fontWeight: 700, borderTop: '2px solid #94a3b8' }}>
+                <td colSpan={2} className="sticky-col-idx" style={{ position: 'sticky', bottom: 0, zIndex: 30, background: 'var(--surface-muted)', color: 'var(--text)', padding: '5px 8px', fontWeight: 700, borderTop: '2px solid var(--border)' }}>
                   On Duty Count
                 </td>
                 {dailyWorkingCounts.map((cnt, idx) => (
@@ -1320,18 +1372,18 @@ export default function Roster(p: {
                       position: 'sticky',
                       bottom: 0,
                       zIndex: 20,
-                      background: '#f8fafc',
+                      background: 'var(--surface-muted)',
                       textAlign: 'center',
                       fontWeight: 700,
-                      color: cnt === 0 ? '#64748b' : '#0f172a',
-                      borderTop: '2px solid #94a3b8',
+                      color: cnt === 0 ? 'var(--text-muted)' : 'var(--text)',
+                      borderTop: '2px solid var(--border)',
                       padding: '5px 2px',
                     }}
                   >
                     {cnt}
                   </td>
                 ))}
-                <td colSpan={5} style={{ position: 'sticky', bottom: 0, zIndex: 20, background: '#f8fafc', borderTop: '2px solid #94a3b8' }} />
+                <td colSpan={5} style={{ position: 'sticky', bottom: 0, zIndex: 20, background: 'var(--surface-muted)', borderTop: '2px solid var(--border)' }} />
               </tr>
             </tfoot>
           )}
@@ -1339,7 +1391,7 @@ export default function Roster(p: {
       </div>
 
       {/* Legend Strip */}
-      <div className="no-print" style={{ marginTop: 8, display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', fontSize: 12, color: '#475569' }}>
+      <div className="no-print" style={{ marginTop: 8, display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
           <span style={{ width: 14, height: 14, borderRadius: 3, background: '#f5f3ff', boxShadow: 'inset 0 0 0 2px #7c3aed', display: 'inline-block' }} />
           Violet ring + corner = Standby (OC/DWP/ERP)
@@ -1367,34 +1419,35 @@ export default function Roster(p: {
             left: Math.min(ctxMenu.x, window.innerWidth - 240),
             zIndex: 60,
             width: 230,
-            background: '#ffffff',
-            border: '1px solid #cbd5e1',
+            background: 'var(--surface)',
+            color: 'var(--text)',
+            border: '1px solid var(--border)',
             borderRadius: 8,
-            boxShadow: '0 10px 25px rgba(15, 23, 42, 0.18)',
+            boxShadow: '0 10px 25px rgba(15, 23, 42, 0.25)',
             padding: '4px 0',
             fontSize: 12.5,
           }}
         >
-          <div style={{ padding: '5px 10px', borderBottom: '1px solid #f1f5f9', fontSize: 11, fontWeight: 700, color: '#475569', display: 'flex', justifyContent: 'space-between' }}>
+          <div style={{ padding: '5px 10px', borderBottom: '1px solid var(--border-light)', fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
             <span>CELL ACTIONS</span>
-            <span style={{ color: '#0369a1' }}>
+            <span style={{ color: 'var(--accent)' }}>
               {ctxMenu.opName.split(' ')[0]} · {ctxMenu.date.slice(5)}
             </span>
           </div>
           {[
-            { label: 'Set General On-Call (OC)', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, 'OC'), color: '#5b21b6' },
-            { label: 'Deep Well Standby (DWP)', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, 'DWP'), color: '#5b21b6' },
-            { label: 'Electro-Mech Repair (ERP)', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, 'ERP'), color: '#5b21b6' },
-            { label: 'Remove Standby', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, null), color: '#475569' },
+            { label: 'Set General On-Call (OC)', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, 'OC'), color: 'var(--violet)' },
+            { label: 'Deep Well Standby (DWP)', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, 'DWP'), color: 'var(--violet)' },
+            { label: 'Electro-Mech Repair (ERP)', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, 'ERP'), color: 'var(--violet)' },
+            { label: 'Remove Standby', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, null), color: 'var(--text-secondary)' },
             {
               label: 'Fill Right to Month End',
               fn: () => {
                 const count = days.filter((d) => d.date >= ctxMenu.date).length;
                 setConfirmFill({ opId: ctxMenu.opId, opName: ctxMenu.opName, date: ctxMenu.date, count });
               },
-              color: '#0f172a',
+              color: 'var(--text)',
             },
-            { label: 'Clear Shift (No Duty)', fn: () => clearCell(ctxMenu.opId, ctxMenu.date), color: '#b91c1c' },
+            { label: 'Clear Shift (No Duty)', fn: () => clearCell(ctxMenu.opId, ctxMenu.date), color: 'var(--danger)' },
           ].map((item) => (
             <button
               key={item.label}

@@ -1,30 +1,36 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 
 export default function PwaRegister() {
+  const pathname = usePathname();
   const [offline, setOffline] = useState(false);
   const [cachedAt, setCachedAt] = useState('');
 
   useEffect(() => {
+    const key = `bpwi-sync-${pathname}`;
     const syncStamp = () => {
       const now = new Intl.DateTimeFormat('en-GB', {
         hour: '2-digit',
         minute: '2-digit',
         hour12: false,
       }).format(new Date());
+      localStorage.setItem(key, now);
       localStorage.setItem('bpwi-last-sync', now);
       setCachedAt(now);
     };
 
+    const readStamp = () => localStorage.getItem(key) ?? localStorage.getItem('bpwi-last-sync') ?? '';
+
     const isOff = !navigator.onLine;
     setOffline(isOff);
     if (!isOff) syncStamp();
-    else setCachedAt(localStorage.getItem('bpwi-last-sync') ?? '');
+    else setCachedAt(readStamp());
 
     const onOffline = () => {
       setOffline(true);
-      setCachedAt(localStorage.getItem('bpwi-last-sync') ?? '');
+      setCachedAt(readStamp());
     };
     const onOnline = () => {
       setOffline(false);
@@ -41,7 +47,7 @@ export default function PwaRegister() {
       window.removeEventListener('offline', onOffline);
       window.removeEventListener('online', onOnline);
     };
-  }, []);
+  }, [pathname]);
 
   if (!offline) return null;
   return (

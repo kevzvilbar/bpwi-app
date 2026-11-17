@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { getSupabaseEnv } from '@/lib/supabase/env';
@@ -18,6 +18,13 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [info, setInfo] = useState('');
+
+  useEffect(() => {
+    localStorage.removeItem('bpwi-last-sync');
+    if ('caches' in window) {
+      caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))).catch(() => {});
+    }
+  }, []);
 
   const configWarning =
     !isConfigured || urlError === 'missing_config'

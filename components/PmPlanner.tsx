@@ -711,8 +711,21 @@ export default function PmPlanner(p: {
               <div
                 key={d}
                 className="pm-day-cell"
+                role="button"
+                tabIndex={0}
+                aria-label={`${d}, ${list.length} PM ${list.length === 1 ? 'task' : 'tasks'}${isToday ? ', Today' : ''}`}
+                aria-pressed={isSelected}
                 onClick={() => setSelectedDate(d)}
                 onDoubleClick={() => p.canEdit && setDraft(blank(d))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelectedDate(d);
+                  } else if (e.key.toLowerCase() === 'n' && p.canEdit) {
+                    e.preventDefault();
+                    setDraft(blank(d));
+                  }
+                }}
                 onDragOver={(e) => {
                   if (p.canEdit) e.preventDefault();
                 }}
