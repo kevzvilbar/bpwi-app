@@ -1,78 +1,282 @@
 'use client';
+
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 
 type Task = {
-  id: string; legacy_key: string | null; activity_type: string; title: string; locations: string[]; asset: string | null;
-  assigned_operator_ids: string[]; scheduled_date: string; status: 'planned' | 'done' | 'postponed'; completed_at: string | null; remarks: string | null;
+  id: string;
+  legacy_key: string | null;
+  activity_type: string;
+  title: string;
+  locations: string[];
+  asset: string | null;
+  assigned_operator_ids: string[];
+  scheduled_date: string;
+  status: 'planned' | 'done' | 'postponed';
+  completed_at: string | null;
+  remarks: string | null;
 };
-type Op = { id: string; full_name: string };
+type Op = { id: string; full_name: string; phone_number: string | null };
+type Shift = { id: string; is_off: boolean };
+type Area = { id: string; code: string; name: string | null; category: string };
+type Asg = { operator_id: string; schedule_date: string; shift_type_id: string | null; area_code_id: string | null };
+type Standby = { operator_id: string; schedule_date: string; standby_type: string };
 
-const PRESETS: Record<string, string> = {
-  FLUSH: 'Line Flushing', TANK: 'Tank Cleaning', PULL: 'Deep Well Pump & Motor Pull-out', THERM: 'Thermal Scanning', LEVEL: 'Water Level Monitoring',
+const PRESETS: Record<string, { label: string; short: string; color: string }> = {
+  FLUSH: { label: 'Line Flushing', short: 'Flushing', color: '#0284c7' },
+  TANK: { label: 'Tank Cleaning', short: 'Tank Cleaning', color: '#0d9488' },
+  PULL: { label: 'Deep Well Pump & Motor Pull-out', short: 'Pull-out', color: '#db2777' },
+  THERM: { label: 'Thermal Scanning', short: 'Thermal Scan', color: '#ea580c' },
+  LEVEL: { label: 'Water Level Monitoring', short: 'SWL&PWL', color: '#ca8a04' },
 };
-const STATUS_COLOR = { planned: ['#dbeafe', '#1e40af'], done: ['#dcfce7', '#166534'], postponed: ['#fef3c7', '#92400e'] } as const;
-const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const addDays = (d: string, n: number) => { const t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
-const addMonths = (d: string, n: number) => {
+const CUSTOM_PALETTE = ['#7c3aed', '#4f46e5', '#059669', '#be185d', '#0369a1'];
+const WD = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const MONTHS_FULL = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+function activityColor(type: string, title?: string) {
+  if (PRESETS[type]) return PRESETS[type].color;
+  if (/mmf|backwash/i.test(type) || /mmf|backwash/i.test(title ?? '')) return '#7c3aed';
+  let h = 0;
+  for (let i = 0; i < type.length; i++) h = (h * 31 + type.charCodeAt(i)) >>> 0;
+  return CUSTOM_PALETTE[h % CUSTOM_PALETTE.length];
+}
+
+function addDays(d: string, n: number) {
+  const t = new Date(d + 'T00:00:00Z');
+  t.setUTCDate(t.getUTCDate() + n);
+  return t.toISOString().slice(0, 10);
+}
+
+function addMonths(d: string, n: number) {
   const [y, m, day] = d.split('-').map(Number);
   const t = new Date(Date.UTC(y, m - 1 + n, 1));
   const max = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate();
   t.setUTCDate(Math.min(day, max));
   return t.toISOString().slice(0, 10);
-};
+}
+
+function diffDays(a: string, b: string) {
+  return Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 86400000);
+}
+
+function formatDayHeading(date: string) {
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(date + 'T00:00:00Z'));
+}
+
+function formatShortDay(date: string) {
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(date + 'T00:00:00Z'));
+}
 
 type Draft = {
-  id?: string; legacy_key?: string | null; typeKey: string; custom: string; locations: string; asset: string; assignees: string[];
-  date: string; status: Task['status']; remarks: string; repeat: 'none' | 'weekly' | 'monthly'; count: number;
+  id?: string;
+  legacy_key?: string | null;
+  typeKey: string;
+  custom: string;
+  locations: string;
+  asset: string;
+  assignees: string[];
+  date: string;
+  status: Task['status'];
+  remarks: string;
+  repeat: 'none' | 'weekly' | 'monthly';
+  count: number;
 };
 
-export default function PmPlanner(p: { month: string; today: string; tasks: Task[]; operators: Op[]; orgId: string; canEdit: boolean; error: string }) {
+export default function PmPlanner(p: {
+  month: string;
+  today: string;
+  tasks: Task[];
+  operators: Op[];
+  shifts: Shift[];
+  areas: Area[];
+  assignments: Asg[];
+  standby: Standby[];
+  orgId: string;
+  canEdit: boolean;
+  error: string;
+}) {
   const router = useRouter();
   const [tasks, setTasks] = useState(p.tasks);
+  const [view, setView] = useState<'month' | 'week'>('month');
+  const [selectedDate, setSelectedDate] = useState(() =>
+    p.today.startsWith(p.month) ? p.today : `${p.month}-01`,
+  );
   const [draft, setDraft] = useState<Draft | null>(null);
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [areaFilter, setAreaFilter] = useState('');
   const [msg, setMsg] = useState(p.error);
   const [busy, setBusy] = useState(false);
+
   useEffect(() => setTasks(p.tasks), [p.tasks]);
 
   const [y, mo] = p.month.split('-').map(Number);
-  const opName = useMemo(() => new Map(p.operators.map((o) => [o.id, o.full_name])), [p.operators]);
-  const types = useMemo(() => Array.from(new Set([...Object.keys(PRESETS), ...tasks.map((t) => t.activity_type)])), [tasks]);
-  const label = (t: string) => PRESETS[t] ?? tasks.find((x) => x.activity_type === t)?.title ?? t;
+  const monthLabel = `${MONTHS_FULL[(mo - 1 + 12) % 12]} ${y}`;
 
-  const visible = tasks.filter((t) => (!typeFilter || t.activity_type === typeFilter) && (!statusFilter || t.status === statusFilter));
-  const byDate = useMemo(() => { const m = new Map<string, Task[]>(); visible.forEach((t) => m.set(t.scheduled_date, [...(m.get(t.scheduled_date) ?? []), t])); return m; }, [visible]);
+  const opBy = useMemo(() => new Map(p.operators.map((o) => [o.id, o])), [p.operators]);
+  const shiftBy = useMemo(() => new Map(p.shifts.map((s) => [s.id, s])), [p.shifts]);
+  const areaBy = useMemo(() => new Map(p.areas.map((a) => [a.id, a])), [p.areas]);
 
-  const startDow = new Date(y, mo - 1, 1).getDay();
-  const dim = new Date(y, mo, 0).getDate();
-  const cells: (string | null)[] = [...Array(startDow).fill(null), ...Array.from({ length: dim }, (_, i) => `${p.month}-${String(i + 1).padStart(2, '0')}`)];
-  while (cells.length % 7) cells.push(null);
+  const allLocations = useMemo(() => {
+    const s = new Set<string>();
+    tasks.forEach((t) => t.locations.forEach((l) => s.add(l)));
+    return Array.from(s).sort();
+  }, [tasks]);
 
-  const go = (d: number) => { const t = new Date(y, mo - 1 + d, 1); router.push(`/pm?m=${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`); };
-  const blank = (date: string): Draft => ({ typeKey: 'FLUSH', custom: '', locations: '', asset: '', assignees: [], date, status: 'planned', remarks: '', repeat: 'none', count: 4 });
+  const activityChips = useMemo(() => {
+    const map = new Map<string, { type: string; label: string; color: string; count: number }>();
+    for (const [k, v] of Object.entries(PRESETS)) {
+      map.set(k, { type: k, label: v.short, color: v.color, count: 0 });
+    }
+    for (const t of tasks) {
+      if (!map.has(t.activity_type)) {
+        map.set(t.activity_type, {
+          type: t.activity_type,
+          label: t.title,
+          color: activityColor(t.activity_type, t.title),
+          count: 0,
+        });
+      }
+      if (t.scheduled_date.startsWith(p.month)) {
+        map.get(t.activity_type)!.count += 1;
+      }
+    }
+    return Array.from(map.values());
+  }, [p.month, tasks]);
+
+  const asgByDateOp = useMemo(() => {
+    const m = new Map<string, Asg>();
+    p.assignments.forEach((a) => m.set(`${a.schedule_date}:${a.operator_id}`, a));
+    return m;
+  }, [p.assignments]);
+
+  const standbyByDate = useMemo(() => {
+    const m = new Map<string, Standby[]>();
+    p.standby.forEach((s) => m.set(s.schedule_date, [...(m.get(s.schedule_date) ?? []), s]));
+    return m;
+  }, [p.standby]);
+
+  const visible = useMemo(
+    () =>
+      tasks.filter(
+        (t) =>
+          (!typeFilter || t.activity_type === typeFilter) &&
+          (!statusFilter || t.status === statusFilter) &&
+          (!areaFilter || t.locations.includes(areaFilter)),
+      ),
+    [areaFilter, statusFilter, tasks, typeFilter],
+  );
+
+  const byDate = useMemo(() => {
+    const m = new Map<string, Task[]>();
+    visible.forEach((t) => m.set(t.scheduled_date, [...(m.get(t.scheduled_date) ?? []), t]));
+    return m;
+  }, [visible]);
+
+  const gridDays = useMemo(() => {
+    if (view === 'week') {
+      const dow = new Date(selectedDate + 'T00:00:00Z').getUTCDay();
+      const start = addDays(selectedDate, -dow);
+      return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+    }
+    const firstOfMonth = new Date(Date.UTC(y, mo - 1, 1));
+    const lastOfMonth = new Date(Date.UTC(y, mo, 0));
+    const start = addDays(`${p.month}-01`, -firstOfMonth.getUTCDay());
+    const total = firstOfMonth.getUTCDay() + lastOfMonth.getUTCDate() + (6 - lastOfMonth.getUTCDay());
+    return Array.from({ length: total }, (_, i) => addDays(start, i));
+  }, [mo, p.month, selectedDate, view, y]);
+
+  const go = (d: number) => {
+    if (view === 'week') {
+      const next = addDays(selectedDate, d * 7);
+      setSelectedDate(next);
+      if (!next.startsWith(p.month)) router.push(`/pm?m=${next.slice(0, 7)}`);
+      return;
+    }
+    const t = new Date(y, mo - 1 + d, 1);
+    router.push(`/pm?m=${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`);
+  };
+
+  function hasConflict(t: Task) {
+    if (t.status === 'done') return false;
+    const sbList = new Set((standbyByDate.get(t.scheduled_date) ?? []).map((s) => s.operator_id));
+    for (const opId of t.assigned_operator_ids ?? []) {
+      if (sbList.has(opId)) return true;
+      const a = asgByDateOp.get(`${t.scheduled_date}:${opId}`);
+      if (a?.shift_type_id && shiftBy.get(a.shift_type_id)?.is_off) return true;
+      if (a?.area_code_id && areaBy.get(a.area_code_id)?.category === 'leave') return true;
+    }
+    return false;
+  }
+
+  const blank = (date: string): Draft => ({
+    typeKey: 'FLUSH',
+    custom: '',
+    locations: '',
+    asset: '',
+    assignees: [],
+    date,
+    status: 'planned',
+    remarks: '',
+    repeat: 'none',
+    count: 4,
+  });
+
   const edit = (t: Task): Draft => ({
-    id: t.id, legacy_key: t.legacy_key, typeKey: PRESETS[t.activity_type] ? t.activity_type : '__custom', custom: PRESETS[t.activity_type] ? '' : t.title,
-    locations: t.locations.join(', '), asset: t.asset ?? '', assignees: t.assigned_operator_ids, date: t.scheduled_date, status: t.status,
-    remarks: t.remarks ?? '', repeat: 'none', count: 1,
+    id: t.id,
+    legacy_key: t.legacy_key,
+    typeKey: PRESETS[t.activity_type] ? t.activity_type : '__custom',
+    custom: PRESETS[t.activity_type] ? '' : t.title,
+    locations: t.locations.join(', '),
+    asset: t.asset ?? '',
+    assignees: t.assigned_operator_ids,
+    date: t.scheduled_date,
+    status: t.status,
+    remarks: t.remarks ?? '',
+    repeat: 'none',
+    count: 1,
   });
 
   async function save() {
     if (!draft) return;
     const isCustom = draft.typeKey === '__custom';
-    if (isCustom && !draft.custom.trim()) { setMsg('Enter a name for the custom activity.'); return; }
-    const activity_type = isCustom ? draft.custom.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').slice(0, 30) : draft.typeKey;
-    const title = isCustom ? draft.custom.trim() : PRESETS[draft.typeKey];
+    if (isCustom && !draft.custom.trim()) {
+      setMsg('Enter a name for the custom activity.');
+      return;
+    }
+    const activity_type = isCustom
+      ? draft.custom.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').slice(0, 30)
+      : draft.typeKey;
+    const title = isCustom ? draft.custom.trim() : PRESETS[draft.typeKey].label;
     const base = {
-      organization_id: p.orgId, activity_type, title,
-      locations: draft.locations.split(',').map((s) => s.trim()).filter(Boolean), asset: draft.asset.trim() || null,
-      assigned_operator_ids: draft.assignees, status: draft.status, remarks: draft.remarks.trim() || null,
+      organization_id: p.orgId,
+      activity_type,
+      title,
+      locations: draft.locations.split(',').map((s) => s.trim()).filter(Boolean),
+      asset: draft.asset.trim() || null,
+      assigned_operator_ids: draft.assignees,
+      status: draft.status,
+      remarks: draft.remarks.trim() || null,
       completed_at: draft.status === 'done' ? p.today : null,
     };
-    setBusy(true); setMsg('');
+    setBusy(true);
+    setMsg('');
     const sb = supabaseBrowser();
     let error;
     if (draft.id) {
@@ -81,127 +285,826 @@ export default function PmPlanner(p: { month: string; today: string; tasks: Task
       const series = `S${Date.now().toString(36)}`;
       const n = draft.repeat === 'none' ? 1 : Math.min(Math.max(draft.count, 1), 60);
       const rows = Array.from({ length: n }, (_, i) => ({
-        ...base, legacy_key: `${series}-${i}`,
-        scheduled_date: draft.repeat === 'weekly' ? addDays(draft.date, 7 * i) : draft.repeat === 'monthly' ? addMonths(draft.date, i) : draft.date,
+        ...base,
+        legacy_key: `${series}-${i}`,
+        scheduled_date:
+          draft.repeat === 'weekly'
+            ? addDays(draft.date, 7 * i)
+            : draft.repeat === 'monthly'
+              ? addMonths(draft.date, i)
+              : draft.date,
       }));
       ({ error } = await sb.from('pm_tasks').insert(rows));
     }
     setBusy(false);
-    if (error) { setMsg(error.message); return; }
-    setDraft(null); router.refresh();
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
+    setDraft(null);
+    router.refresh();
   }
 
-  async function remove(scope: 'one' | 'series' | 'following') {
-    if (!draft?.id) return;
-    if (!confirm(scope === 'one' ? 'Delete this task?' : scope === 'series' ? 'Delete the whole series?' : 'Delete this and following tasks in the series?')) return;
+  async function remove(scope: 'one' | 'series' | 'following', target?: { id: string; legacy_key: string | null; date: string }) {
+    const t = target ?? (draft?.id ? { id: draft.id, legacy_key: draft.legacy_key ?? null, date: draft.date } : null);
+    if (!t) return;
+    if (
+      !confirm(
+        scope === 'one'
+          ? 'Delete this task?'
+          : scope === 'series'
+            ? 'Delete the whole series?'
+            : 'Delete this and following tasks in the series?',
+      )
+    )
+      return;
     const sb = supabaseBrowser();
-    const series = draft.legacy_key?.split('-')[0];
+    const series = t.legacy_key?.split('-')[0];
     let q = sb.from('pm_tasks').delete();
-    if (scope === 'one' || !series) q = q.eq('id', draft.id);
-    else { q = q.like('legacy_key', `${series}-%`); if (scope === 'following') q = q.gte('scheduled_date', draft.date); }
+    if (scope === 'one' || !series) q = q.eq('id', t.id);
+    else {
+      q = q.like('legacy_key', `${series}-%`);
+      if (scope === 'following') q = q.gte('scheduled_date', t.date);
+    }
     const { error } = await q;
-    if (error) { setMsg(error.message); return; }
-    setDraft(null); router.refresh();
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
+    setDraft(null);
+    router.refresh();
   }
 
-  async function quickStatus(t: Task, status: Task['status']) {
-    setTasks((ts) => ts.map((x) => (x.id === t.id ? { ...x, status } : x)));
-    const { error } = await supabaseBrowser().from('pm_tasks').update({ status, completed_at: status === 'done' ? p.today : null }).eq('id', t.id);
-    if (error) { setMsg(error.message); router.refresh(); }
+  async function updateTask(t: Task, patch: Partial<Pick<Task, 'status' | 'assigned_operator_ids'>>) {
+    const nextCompleted =
+      patch.status !== undefined ? (patch.status === 'done' ? p.today : null) : t.completed_at;
+    setTasks((ts) => ts.map((x) => (x.id === t.id ? { ...x, ...patch, completed_at: nextCompleted } : x)));
+    const { error } = await supabaseBrowser()
+      .from('pm_tasks')
+      .update({ ...patch, completed_at: nextCompleted })
+      .eq('id', t.id);
+    if (error) {
+      setMsg(error.message);
+      router.refresh();
+    }
   }
 
-  const counts = { planned: 0, done: 0, postponed: 0 };
-  visible.forEach((t) => counts[t.status]++);
-  const overdue = visible.filter((t) => t.status === 'planned' && t.scheduled_date < p.today).length;
+  function exportIcs() {
+    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//BP Waterworks//PM Calendar//EN'];
+    for (const t of visible) {
+      const dt = t.scheduled_date.replace(/-/g, '');
+      const nextDt = addDays(t.scheduled_date, 1).replace(/-/g, '');
+      const crew = t.assigned_operator_ids.map((id) => opBy.get(id)?.full_name).filter(Boolean).join(', ');
+      lines.push(
+        'BEGIN:VEVENT',
+        `UID:${t.id}@bpwi`,
+        `DTSTART;VALUE=DATE:${dt}`,
+        `DTEND;VALUE=DATE:${nextDt}`,
+        `SUMMARY:${t.title}${t.locations.length ? ' - ' + t.locations.join(', ') : ''}`,
+        `DESCRIPTION:${[crew ? 'Crew: ' + crew : '', t.asset ? 'Asset: ' + t.asset : '', t.remarks ?? ''].filter(Boolean).join(' | ')}`,
+        'END:VEVENT',
+      );
+    }
+    lines.push('END:VCALENDAR');
+    const url = URL.createObjectURL(new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bpwi-pm-${p.month}.ics`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const monthTasks = visible.filter((t) => t.scheduled_date.startsWith(p.month));
+  const counts = {
+    total: monthTasks.length,
+    planned: monthTasks.filter((t) => t.status === 'planned').length,
+    done: monthTasks.filter((t) => t.status === 'done').length,
+  };
+  const nextTask = visible.find((t) => t.status === 'planned' && t.scheduled_date >= p.today);
+
+  // Selected Day Inspector stats
+  const dayTasks = byDate.get(selectedDate) ?? [];
+  const dayStandby = standbyByDate.get(selectedDate) ?? [];
+  let onDuty = 0;
+  let onRest = 0;
+  let onLeave = 0;
+  for (const op of p.operators) {
+    const a = asgByDateOp.get(`${selectedDate}:${op.id}`);
+    const s = a?.shift_type_id ? shiftBy.get(a.shift_type_id) : undefined;
+    const ar = a?.area_code_id ? areaBy.get(a.area_code_id) : undefined;
+    if (ar?.category === 'leave') onLeave += 1;
+    else if (s && !s.is_off) onDuty += 1;
+    else if (s?.is_off) onRest += 1;
+  }
+  const dayDelta = diffDays(p.today, selectedDate);
+  const dayRel = dayDelta === 0 ? 'Today' : dayDelta > 0 ? `in ${dayDelta} d` : `${Math.abs(dayDelta)} d ago`;
 
   return (
-    <div style={{ padding: 14 }}>
-      <div className="no-print" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', marginBottom: 10 }}>
-        <strong>Preventive Maintenance</strong>
-        <button className="btn" onClick={() => go(-1)}>‹</button>
-        <input type="month" value={p.month} onChange={(e) => e.target.value && router.push(`/pm?m=${e.target.value}`)} style={{ padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontWeight: 600 }} />
-        <button className="btn" onClick={() => go(1)}>›</button>
-        <button className="btn" onClick={() => router.push(`/pm?m=${p.today.slice(0, 7)}`)}>Today</button>
-        <select className="btn" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-          <option value="">All activities</option>{types.map((t) => <option key={t} value={t}>{label(t)}</option>)}
-        </select>
-        <select className="btn" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="">All statuses</option><option value="planned">Planned</option><option value="done">Done</option><option value="postponed">Postponed</option>
-        </select>
-        <span style={{ fontSize: 12, color: '#475569' }}>Planned {counts.planned} · Done {counts.done} · Postponed {counts.postponed}{overdue > 0 && <b style={{ color: '#b91c1c' }}> · Overdue {overdue}</b>}</span>
-        {msg && <span role="alert" style={{ color: '#b91c1c', fontSize: 12 }}>{msg}</span>}
-        <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          {p.canEdit && <button className="btn btn-primary" onClick={() => setDraft(blank(p.today.startsWith(p.month) ? p.today : `${p.month}-01`))}>+ New task</button>}
-          <button className="btn" onClick={() => window.print()}>Print</button>
-        </span>
-      </div>
+    <div style={{ padding: '10px 14px 16px', maxWidth: '100%' }}>
+      {/* Top Toolbar */}
+      <div
+        className="no-print"
+        style={{
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: 10,
+          padding: '10px 14px',
+          marginBottom: 8,
+          display: 'grid',
+          gap: 8,
+        }}
+      >
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            className="btn"
+            onClick={() => {
+              setSelectedDate(p.today);
+              router.push(`/pm?m=${p.today.slice(0, 7)}`);
+            }}
+          >
+            Today
+          </button>
+          <button className="btn" onClick={() => go(-1)} title="Previous">
+            ‹
+          </button>
+          <button className="btn" onClick={() => go(1)} title="Next">
+            ›
+          </button>
+          <strong style={{ fontSize: 16, margin: '0 4px', color: '#0f172a' }}>{monthLabel}</strong>
+          <input
+            type="month"
+            value={p.month}
+            onChange={(e) => e.target.value && router.push(`/pm?m=${e.target.value}`)}
+            style={{ padding: '4px 6px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12 }}
+          />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 1, background: '#e2e8f0', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
-        {WD.map((d) => <div key={d} style={{ background: '#0f172a', color: '#fff', textAlign: 'center', padding: 5, fontSize: 12, fontWeight: 600 }}>{d}</div>)}
-        {cells.map((d, i) => (
-          <div key={i} onClick={() => d && p.canEdit && setDraft(blank(d))}
-            style={{ background: d ? (d === p.today ? '#eff6ff' : '#fff') : '#f8fafc', minHeight: 96, padding: 4, cursor: d && p.canEdit ? 'pointer' : 'default', outline: d === p.today ? '2px solid #3b82f6' : 'none', outlineOffset: -2 }}>
-            {d && <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>{+d.slice(8)}</div>}
-            {d && (byDate.get(d) ?? []).map((t) => {
-              const [bg, fg] = STATUS_COLOR[t.status];
+          <div
+            style={{
+              display: 'inline-flex',
+              padding: 2,
+              background: '#f1f5f9',
+              borderRadius: 7,
+              marginLeft: 4,
+            }}
+          >
+            {(['month', 'week'] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 5,
+                  border: 'none',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  background: view === v ? '#ffffff' : 'transparent',
+                  color: view === v ? '#0f172a' : '#64748b',
+                  boxShadow: view === v ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+                }}
+              >
+                {v === 'month' ? 'Month' : 'Week'}
+              </button>
+            ))}
+          </div>
+
+          {/* Activity Filter Pills */}
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center', marginLeft: 4 }}>
+            {activityChips.map((c) => {
+              const active = typeFilter === c.type;
               return (
-                <div key={t.id} onClick={(e) => { e.stopPropagation(); if (p.canEdit) setDraft(edit(t)); }}
-                  title={`${t.title}\n${t.locations.join(', ')}${t.asset ? '\n' + t.asset : ''}\n${t.assigned_operator_ids.map((id) => opName.get(id)).filter(Boolean).join(', ')}\n${t.remarks ?? ''}`}
-                  style={{ background: bg, color: fg, borderRadius: 4, padding: '2px 4px', margin: '2px 0', fontSize: 10.5, lineHeight: 1.25, cursor: p.canEdit ? 'pointer' : 'default', borderLeft: `3px solid ${fg}`, textDecoration: t.status === 'done' ? 'line-through' : 'none' }}>
-                  <b>{t.title}</b>
-                  {t.locations.length > 0 && <div style={{ opacity: 0.85 }}>{t.locations.join(', ')}</div>}
-                  {p.canEdit && t.status !== 'done' && <button onClick={(e) => { e.stopPropagation(); quickStatus(t, 'done'); }} className="no-print" style={{ fontSize: 9, marginTop: 1, border: 'none', background: 'rgba(255,255,255,.7)', borderRadius: 3, cursor: 'pointer' }}>✓ done</button>}
-                </div>
+                <button
+                  key={c.type}
+                  onClick={() => setTypeFilter(active ? '' : c.type)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    padding: '4px 10px',
+                    borderRadius: 999,
+                    border: active ? '2px solid #0f172a' : '1px solid transparent',
+                    background: c.color,
+                    color: '#ffffff',
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    opacity: typeFilter && !active ? 0.5 : 1,
+                  }}
+                >
+                  <span>{c.label}</span>
+                  <span
+                    style={{
+                      background: 'rgba(255,255,255,0.25)',
+                      borderRadius: 999,
+                      padding: '0 6px',
+                      fontSize: 10.5,
+                    }}
+                  >
+                    {c.count}
+                  </span>
+                </button>
               );
             })}
           </div>
-        ))}
+
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <select className="btn" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="">All statuses</option>
+              <option value="planned">Planned</option>
+              <option value="done">Done</option>
+              <option value="postponed">Postponed</option>
+            </select>
+            <select className="btn" value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)}>
+              <option value="">All areas</option>
+              {allLocations.map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
+            <button className="btn" onClick={() => window.print()}>
+              Print
+            </button>
+            <button className="btn" onClick={exportIcs}>
+              Export .ics
+            </button>
+            {p.canEdit && (
+              <button
+                className="btn"
+                style={{ background: '#0f766e', borderColor: '#0f766e', color: '#ffffff', fontWeight: 700 }}
+                onClick={() => setDraft(blank(selectedDate))}
+              >
+                + Schedule PM
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Summary Strip */}
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', fontSize: 12, color: '#475569' }}>
+          <span>
+            <strong style={{ color: '#0f766e' }}>●</strong> <b>{counts.total}</b> scheduled this month
+          </span>
+          <span>
+            <strong style={{ color: '#2563eb' }}>●</strong> <b>{counts.planned}</b> planned
+          </span>
+          <span>
+            <strong style={{ color: '#16a34a' }}>●</strong> <b>{counts.done}</b> done
+          </span>
+          {nextTask && (
+            <span>
+              <strong style={{ color: '#0284c7' }}>●</strong> Next: <b>{formatShortDay(nextTask.scheduled_date)}</b>{' '}
+              {PRESETS[nextTask.activity_type]?.short ?? nextTask.title}
+              {nextTask.locations.length ? ` · ${nextTask.locations.join(', ')}` : ''}
+            </span>
+          )}
+          {msg && (
+            <span role="alert" style={{ color: '#b91c1c', fontWeight: 600 }}>
+              {msg}
+            </span>
+          )}
+        </div>
       </div>
 
+      {/* Main Split: Calendar Grid + Day Inspector Sidebar */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 310px', gap: 12, alignItems: 'start' }}>
+        {/* Calendar Grid */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+            gap: 1,
+            background: '#e2e8f0',
+            border: '1px solid #cbd5e1',
+            borderRadius: 10,
+            overflow: 'hidden',
+          }}
+        >
+          {WD.map((d) => (
+            <div
+              key={d}
+              style={{
+                background: '#f8fafc',
+                color: '#64748b',
+                textAlign: 'center',
+                padding: '6px 4px',
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: '0.04em',
+              }}
+            >
+              {d}
+            </div>
+          ))}
+
+          {gridDays.map((d) => {
+            const inMonth = d.startsWith(p.month);
+            const isToday = d === p.today;
+            const isSelected = d === selectedDate;
+            const dow = new Date(d + 'T00:00:00Z').getUTCDay();
+            const isWeekend = dow === 0 || dow === 6;
+            const dayNum = +d.slice(8);
+            const list = byDate.get(d) ?? [];
+
+            return (
+              <div
+                key={d}
+                onClick={() => setSelectedDate(d)}
+                onDoubleClick={() => p.canEdit && setDraft(blank(d))}
+                style={{
+                  background: isToday ? '#f0fdfa' : isWeekend ? '#fffbf7' : inMonth ? '#ffffff' : '#f8fafc',
+                  minHeight: view === 'week' ? 320 : 106,
+                  padding: 4,
+                  cursor: 'pointer',
+                  outline: isSelected ? '2px solid #0f766e' : 'none',
+                  outlineOffset: -2,
+                  opacity: inMonth ? 1 : 0.6,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 4 }}>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minWidth: 22,
+                      height: 20,
+                      padding: '0 5px',
+                      borderRadius: 999,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      background: isToday ? '#0284c7' : 'transparent',
+                      color: isToday ? '#ffffff' : inMonth ? '#334155' : '#94a3b8',
+                    }}
+                  >
+                    {dayNum === 1 ? `${MONTHS_FULL[+d.slice(5, 7) - 1].slice(0, 3)} 1` : dayNum}
+                  </span>
+                </div>
+
+                {list.map((t) => {
+                  const color = activityColor(t.activity_type, t.title);
+                  const isDone = t.status === 'done';
+                  const conflict = hasConflict(t);
+                  const shortTitle = PRESETS[t.activity_type]?.short ?? t.title;
+                  const chipText = t.locations.length ? `${shortTitle} - ${t.locations[0]}` : shortTitle;
+
+                  return (
+                    <div
+                      key={t.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedDate(d);
+                        if (p.canEdit) setDraft(edit(t));
+                      }}
+                      title={`${t.title}\n${t.locations.join(', ')}${t.asset ? '\n' + t.asset : ''}\n${t.assigned_operator_ids
+                        .map((id) => opBy.get(id)?.full_name)
+                        .filter(Boolean)
+                        .join(', ')}${conflict ? '\n⚠ Crew conflict (off/leave/standby)' : ''}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        background: isDone ? '#ffffff' : color,
+                        color: isDone ? color : '#ffffff',
+                        border: `1.5px solid ${color}`,
+                        borderRadius: 999,
+                        padding: '2px 6px',
+                        margin: '2px 0',
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        lineHeight: 1.25,
+                        cursor: 'pointer',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (p.canEdit) updateTask(t, { status: isDone ? 'planned' : 'done' });
+                        }}
+                        title={isDone ? 'Mark as planned' : 'Mark as done'}
+                        style={{
+                          width: 13,
+                          height: 13,
+                          minWidth: 13,
+                          borderRadius: '50%',
+                          border: `1.5px solid ${isDone ? color : '#ffffff'}`,
+                          background: isDone ? color : 'transparent',
+                          color: '#ffffff',
+                          fontSize: 8.5,
+                          lineHeight: 1,
+                          padding: 0,
+                          display: 'grid',
+                          placeItems: 'center',
+                          cursor: p.canEdit ? 'pointer' : 'default',
+                        }}
+                      >
+                        {isDone ? '✓' : ''}
+                      </button>
+                      <span
+                        style={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          flex: 1,
+                          textDecoration: isDone ? 'line-through' : 'none',
+                          opacity: isDone ? 0.85 : 1,
+                        }}
+                      >
+                        {chipText}
+                      </span>
+                      {conflict && (
+                        <span
+                          title="Crew conflict"
+                          style={{
+                            background: '#f59e0b',
+                            color: '#ffffff',
+                            borderRadius: 3,
+                            padding: '0 3px',
+                            fontSize: 9,
+                            fontWeight: 900,
+                          }}
+                        >
+                          ⚠
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Right-Hand Day Inspector Sidebar */}
+        <aside
+          className="no-print"
+          style={{
+            background: '#ffffff',
+            border: '1px solid #cbd5e1',
+            borderRadius: 10,
+            padding: 14,
+            position: 'sticky',
+            top: 12,
+            display: 'grid',
+            gap: 10,
+          }}
+        >
+          <div>
+            <h3 style={{ margin: 0, fontSize: 15, color: '#0f172a' }}>{formatDayHeading(selectedDate)}</h3>
+            <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>
+              {dayTasks.length} PM {dayTasks.length === 1 ? 'task' : 'tasks'} · {dayRel}
+            </div>
+          </div>
+
+          {/* Crew & Standby Summary */}
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', fontSize: 11, fontWeight: 700 }}>
+            <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 7px', borderRadius: 999 }}>
+              {onDuty} on duty
+            </span>
+            <span style={{ background: '#fef9c3', color: '#854d0e', padding: '2px 7px', borderRadius: 999 }}>
+              {onRest} rest
+            </span>
+            <span style={{ background: '#ffe4e6', color: '#9f1239', padding: '2px 7px', borderRadius: 999 }}>
+              {onLeave} leave
+            </span>
+            <span style={{ background: '#f3e8ff', color: '#6b21a8', padding: '2px 7px', borderRadius: 999 }}>
+              ⚡ {dayStandby.length} standby
+            </span>
+          </div>
+
+          {dayStandby.length > 0 && (
+            <div style={{ display: 'grid', gap: 4 }}>
+              {dayStandby.map((sb) => {
+                const op = opBy.get(sb.operator_id);
+                if (!op) return null;
+                return (
+                  <div
+                    key={sb.operator_id}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      background: '#faf5ff',
+                      border: '1px solid #e9d5ff',
+                      borderRadius: 6,
+                      padding: '4px 8px',
+                      fontSize: 11.5,
+                    }}
+                  >
+                    <span style={{ fontWeight: 600, color: '#3b0764' }}>{op.full_name}</span>
+                    <span style={{ color: '#6b21a8', fontFamily: 'ui-monospace, monospace', fontSize: 10.5 }}>
+                      {sb.standby_type}
+                      {op.phone_number ? ` · ${op.phone_number}` : ''}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 10, display: 'grid', gap: 8 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>
+              MAINTENANCE TASKS
+            </div>
+
+            {dayTasks.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 12, color: '#94a3b8' }}>No maintenance tasks scheduled for this day.</p>
+            ) : (
+              dayTasks.map((t) => {
+                const color = activityColor(t.activity_type, t.title);
+                const availableOps = p.operators.filter((o) => !t.assigned_operator_ids.includes(o.id));
+                return (
+                  <div
+                    key={t.id}
+                    style={{
+                      border: '1px solid #e2e8f0',
+                      borderRadius: 8,
+                      padding: 10,
+                      display: 'grid',
+                      gap: 6,
+                      background: '#f8fafc',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontWeight: 700, fontSize: 12.5 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block' }} />
+                        {t.title}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: '1px 6px',
+                          borderRadius: 999,
+                          background: t.status === 'done' ? '#dcfce7' : t.status === 'postponed' ? '#fef3c7' : '#e2e8f0',
+                          color: t.status === 'done' ? '#166534' : t.status === 'postponed' ? '#92400e' : '#334155',
+                        }}
+                      >
+                        {t.status}
+                      </span>
+                    </div>
+
+                    {t.locations.length > 0 && (
+                      <div style={{ fontSize: 12, color: '#475569' }}>{t.locations.join(', ')}</div>
+                    )}
+
+                    {/* Crew Chips */}
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {t.assigned_operator_ids.map((id) => {
+                        const op = opBy.get(id);
+                        if (!op) return null;
+                        return (
+                          <span
+                            key={id}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              background: '#dcfce7',
+                              color: '#166534',
+                              padding: '2px 7px',
+                              borderRadius: 999,
+                              fontSize: 11,
+                              fontWeight: 600,
+                            }}
+                          >
+                            {op.full_name}
+                            {p.canEdit && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateTask(t, {
+                                    assigned_operator_ids: t.assigned_operator_ids.filter((x) => x !== id),
+                                  })
+                                }
+                                style={{
+                                  border: 'none',
+                                  background: 'transparent',
+                                  color: '#166534',
+                                  cursor: 'pointer',
+                                  padding: 0,
+                                  fontWeight: 800,
+                                }}
+                              >
+                                ×
+                              </button>
+                            )}
+                          </span>
+                        );
+                      })}
+                    </div>
+
+                    {p.canEdit && (
+                      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                        <select
+                          className="btn"
+                          style={{ padding: '3px 6px', fontSize: 11 }}
+                          value={t.status}
+                          onChange={(e) => updateTask(t, { status: e.target.value as Task['status'] })}
+                        >
+                          <option value="planned">Planned</option>
+                          <option value="done">Done</option>
+                          <option value="postponed">Postponed</option>
+                        </select>
+                        <select
+                          className="btn"
+                          style={{ padding: '3px 6px', fontSize: 11, flex: 1 }}
+                          value=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              updateTask(t, { assigned_operator_ids: [...t.assigned_operator_ids, e.target.value] });
+                            }
+                          }}
+                        >
+                          <option value="">+ Add crew…</option>
+                          {availableOps.map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.full_name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {p.canEdit && (
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button className="btn" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => setDraft(edit(t))}>
+                          Edit
+                        </button>
+                        <button
+                          className="btn"
+                          style={{ padding: '2px 8px', fontSize: 11, color: '#b91c1c' }}
+                          onClick={() => remove('one', { id: t.id, legacy_key: t.legacy_key, date: t.scheduled_date })}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {p.canEdit && (
+            <button
+              className="btn"
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                borderRadius: 999,
+                background: '#0f766e',
+                borderColor: '#0f766e',
+                color: '#ffffff',
+                fontWeight: 700,
+              }}
+              onClick={() => setDraft(blank(selectedDate))}
+            >
+              + Schedule PM on this day
+            </button>
+          )}
+        </aside>
+      </div>
+
+      {/* Create / Edit Modal */}
       {draft && (
-        <div className="no-print" style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.45)', display: 'grid', placeItems: 'center', padding: 16, zIndex: 50, overflow: 'auto' }}>
+        <div
+          className="no-print"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15,23,42,.45)',
+            display: 'grid',
+            placeItems: 'center',
+            padding: 16,
+            zIndex: 50,
+            overflow: 'auto',
+          }}
+        >
           <div style={{ background: '#fff', borderRadius: 12, padding: 20, width: '100%', maxWidth: 480, display: 'grid', gap: 10 }}>
-            <h2 style={{ margin: 0, fontSize: 17 }}>{draft.id ? 'Edit task' : 'New task'}</h2>
-            <label style={{ fontSize: 13 }}>Activity
+            <h2 style={{ margin: 0, fontSize: 17 }}>{draft.id ? 'Edit task' : 'Schedule PM task'}</h2>
+            <label style={{ fontSize: 13 }}>
+              Activity
               <select className="input" value={draft.typeKey} onChange={(e) => setDraft({ ...draft, typeKey: e.target.value })}>
-                {Object.entries(PRESETS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}<option value="__custom">+ Custom activity…</option>
-              </select></label>
-            {draft.typeKey === '__custom' && <input className="input" placeholder="Custom activity name" value={draft.custom} onChange={(e) => setDraft({ ...draft, custom: e.target.value })} />}
-            <label style={{ fontSize: 13 }}>Locations / sites (comma-separated)
-              <input className="input" value={draft.locations} onChange={(e) => setDraft({ ...draft, locations: e.target.value })} /></label>
-            <label style={{ fontSize: 13 }}>Asset <input className="input" value={draft.asset} onChange={(e) => setDraft({ ...draft, asset: e.target.value })} /></label>
+                {Object.entries(PRESETS).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v.label}
+                  </option>
+                ))}
+                <option value="__custom">+ Custom activity…</option>
+              </select>
+            </label>
+            {draft.typeKey === '__custom' && (
+              <input
+                className="input"
+                placeholder="Custom activity name (e.g. MMF Backwashing)"
+                value={draft.custom}
+                onChange={(e) => setDraft({ ...draft, custom: e.target.value })}
+              />
+            )}
+            <label style={{ fontSize: 13 }}>
+              Locations / sites (comma-separated)
+              <input className="input" value={draft.locations} onChange={(e) => setDraft({ ...draft, locations: e.target.value })} />
+            </label>
+            <label style={{ fontSize: 13 }}>
+              Asset <input className="input" value={draft.asset} onChange={(e) => setDraft({ ...draft, asset: e.target.value })} />
+            </label>
             <div style={{ display: 'flex', gap: 8 }}>
-              <label style={{ fontSize: 13, flex: 1 }}>Date <input type="date" className="input" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} /></label>
-              <label style={{ fontSize: 13, flex: 1 }}>Status
-                <select className="input" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as Task['status'] })}>
-                  <option value="planned">Planned</option><option value="done">Done</option><option value="postponed">Postponed</option></select></label>
+              <label style={{ fontSize: 13, flex: 1 }}>
+                Date <input type="date" className="input" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} />
+              </label>
+              <label style={{ fontSize: 13, flex: 1 }}>
+                Status
+                <select
+                  className="input"
+                  value={draft.status}
+                  onChange={(e) => setDraft({ ...draft, status: e.target.value as Task['status'] })}
+                >
+                  <option value="planned">Planned</option>
+                  <option value="done">Done</option>
+                  <option value="postponed">Postponed</option>
+                </select>
+              </label>
             </div>
             <fieldset style={{ border: '1px solid #e2e8f0', borderRadius: 8, maxHeight: 120, overflow: 'auto', fontSize: 12 }}>
               <legend>Assignees</legend>
               {p.operators.map((o) => (
                 <label key={o.id} style={{ display: 'inline-flex', gap: 4, margin: '2px 10px 2px 0' }}>
-                  <input type="checkbox" checked={draft.assignees.includes(o.id)} onChange={(e) => setDraft({ ...draft, assignees: e.target.checked ? [...draft.assignees, o.id] : draft.assignees.filter((x) => x !== o.id) })} />{o.full_name}
-                </label>))}
+                  <input
+                    type="checkbox"
+                    checked={draft.assignees.includes(o.id)}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        assignees: e.target.checked
+                          ? [...draft.assignees, o.id]
+                          : draft.assignees.filter((x) => x !== o.id),
+                      })
+                    }
+                  />
+                  {o.full_name}
+                </label>
+              ))}
             </fieldset>
-            <label style={{ fontSize: 13 }}>Remarks <input className="input" value={draft.remarks} onChange={(e) => setDraft({ ...draft, remarks: e.target.value })} /></label>
+            <label style={{ fontSize: 13 }}>
+              Remarks <input className="input" value={draft.remarks} onChange={(e) => setDraft({ ...draft, remarks: e.target.value })} />
+            </label>
             {!draft.id && (
               <div style={{ display: 'flex', gap: 8, alignItems: 'end' }}>
-                <label style={{ fontSize: 13, flex: 1 }}>Repeat
-                  <select className="input" value={draft.repeat} onChange={(e) => setDraft({ ...draft, repeat: e.target.value as Draft['repeat'] })}>
-                    <option value="none">Once</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label>
-                {draft.repeat !== 'none' && <label style={{ fontSize: 13, width: 120 }}>Occurrences
-                  <input type="number" min={2} max={60} className="input" value={draft.count} onChange={(e) => setDraft({ ...draft, count: +e.target.value })} /></label>}
-              </div>)}
+                <label style={{ fontSize: 13, flex: 1 }}>
+                  Repeat
+                  <select
+                    className="input"
+                    value={draft.repeat}
+                    onChange={(e) => setDraft({ ...draft, repeat: e.target.value as Draft['repeat'] })}
+                  >
+                    <option value="none">Once</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </label>
+                {draft.repeat !== 'none' && (
+                  <label style={{ fontSize: 13, width: 120 }}>
+                    Occurrences
+                    <input
+                      type="number"
+                      min={2}
+                      max={60}
+                      className="input"
+                      value={draft.count}
+                      onChange={(e) => setDraft({ ...draft, count: +e.target.value })}
+                    />
+                  </label>
+                )}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'space-between' }}>
               <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {draft.id && <button className="btn" style={{ color: '#b91c1c' }} onClick={() => remove('one')}>Delete</button>}
-                {draft.id && draft.legacy_key?.startsWith('S') && <>
-                  <button className="btn" style={{ color: '#b91c1c' }} onClick={() => remove('following')}>Delete this &amp; following</button>
-                  <button className="btn" style={{ color: '#b91c1c' }} onClick={() => remove('series')}>Delete series</button></>}
+                {draft.id && (
+                  <button className="btn" style={{ color: '#b91c1c' }} onClick={() => remove('one')}>
+                    Delete
+                  </button>
+                )}
+                {draft.id && draft.legacy_key?.startsWith('S') && (
+                  <>
+                    <button className="btn" style={{ color: '#b91c1c' }} onClick={() => remove('following')}>
+                      Delete this &amp; following
+                    </button>
+                    <button className="btn" style={{ color: '#b91c1c' }} onClick={() => remove('series')}>
+                      Delete series
+                    </button>
+                  </>
+                )}
               </span>
               <span style={{ display: 'flex', gap: 6 }}>
-                <button className="btn" onClick={() => setDraft(null)} disabled={busy}>Cancel</button>
-                <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+                <button className="btn" onClick={() => setDraft(null)} disabled={busy}>
+                  Cancel
+                </button>
+                <button className="btn btn-primary" onClick={save} disabled={busy}>
+                  {busy ? 'Saving…' : 'Save'}
+                </button>
               </span>
             </div>
           </div>
