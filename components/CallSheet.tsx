@@ -114,8 +114,13 @@ export default function CallSheet(p: {
     return enriched;
   }, [areaBy, asgBy, nowMinutes, onlyStandby, p.operators, prevAsgBy, sbBy, search, shiftBy]);
 
+  const priorityList = useMemo(
+    () => sortedAndFiltered.filter((x) => x.standbyType || x.isNow),
+    [sortedAndFiltered],
+  );
+
   return (
-    <div style={{ padding: 14, maxWidth: 1020 }}>
+    <div style={{ padding: 14, maxWidth: 1440, margin: '0 auto' }}>
       <div
         className="no-print card"
         style={{
@@ -165,9 +170,88 @@ export default function CallSheet(p: {
         </div>
       </details>
 
-      {/* Desktop / Tablet Table */}
-      <div className="call-sheet-table-wrap card" style={{ overflow: 'auto' }}>
-        <table className="schedule-table" style={{ fontSize: 13 }}>
+      {/* Desktop / Tablet 2-Column Side-by-Side Layout (> 640px) */}
+      <div className="call-sheet-table-wrap call-sheet-split">
+        {/* Left Column: Priority Dispatch (Standby & On Duty Now) */}
+        <section className="card" style={{ padding: 12, display: 'grid', gap: 10 }} aria-label="Priority dispatch">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <strong style={{ fontSize: 14 }}>Priority Dispatch</strong>
+            <span style={{ fontSize: 11.5, color: 'var(--text-secondary)', fontWeight: 600 }}>
+              {priorityList.length} ready
+            </span>
+          </div>
+          {priorityList.length === 0 ? (
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
+              No standby or currently active shift operators match the filter.
+            </p>
+          ) : (
+            priorityList.map(({ op, shift, area, standbyType, isOnDuty, isNow }) => (
+              <div
+                key={op.id}
+                style={{
+                  background: standbyType ? 'rgba(124, 58, 237, 0.1)' : 'var(--surface-muted)',
+                  border: standbyType ? '1.5px solid var(--violet)' : '1px solid var(--border)',
+                  borderRadius: 10,
+                  padding: 10,
+                  display: 'grid',
+                  gap: 6,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 6 }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{op.full_name}</div>
+                    {op.position && <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{op.position}</div>}
+                  </div>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {standbyType && (
+                      <span style={{ background: '#6d28d9', color: '#fff', padding: '2px 7px', borderRadius: 999, fontSize: 10.5, fontWeight: 700 }}>
+                        {standbyType}
+                      </span>
+                    )}
+                    {isNow && shift && (
+                      <span style={{ background: shift.background_color, color: shift.text_color, padding: '2px 7px', borderRadius: 6, fontSize: 10.5, fontWeight: 700, border: '1px solid var(--border)' }}>
+                        NOW · {shift.code}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  Station: <b>{area?.code ?? (isOnDuty ? 'PW' : op.default_station ?? '—')}</b>
+                </div>
+                {op.phone_number && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6 }}>
+                    <a
+                      href={`tel:${op.phone_number}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        minHeight: 36,
+                        padding: '5px 10px',
+                        borderRadius: 7,
+                        background: '#0369a1',
+                        color: '#ffffff',
+                        textDecoration: 'none',
+                        fontWeight: 700,
+                        fontSize: 12.5,
+                        fontFamily: 'ui-monospace, monospace',
+                      }}
+                    >
+                      Call {op.phone_number}
+                    </a>
+                    <a href={`sms:${op.phone_number}`} className="btn" style={{ textDecoration: 'none', fontWeight: 700 }}>
+                      SMS
+                    </a>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </section>
+
+        {/* Right Column: Full Roster Table */}
+        <div className="card" style={{ overflow: 'auto' }}>
+          <table className="schedule-table" style={{ fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--header-bg)', color: 'var(--header-fg)', textAlign: 'left' }}>
               <th style={{ padding: '8px 10px', width: 38, textAlign: 'center' }}>#</th>
@@ -297,6 +381,7 @@ export default function CallSheet(p: {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Mobile Card List (<= 640px) */}
