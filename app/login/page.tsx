@@ -92,22 +92,21 @@ function LoginForm() {
       }}
     >
       <div
+        className="card"
         style={{
           width: '100%',
           maxWidth: 380,
           padding: 28,
-          background: '#ffffff',
           borderRadius: 12,
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 4px 20px rgba(15, 23, 42, 0.08)',
+          boxShadow: '0 4px 20px rgba(15, 23, 42, 0.12)',
         }}
       >
         <div style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             BP Waterworks, Inc.
           </div>
-          <h1 style={{ fontSize: 20, margin: '4px 0 0', color: '#0f172a' }}>Plant Operations Schedule</h1>
-          <p style={{ fontSize: 13, color: '#64748b', margin: '4px 0 0' }}>
+          <h1 style={{ fontSize: 20, margin: '4px 0 0', color: 'var(--text)' }}>Plant Operations Schedule</h1>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '4px 0 0' }}>
             {mode === 'signin' ? 'Sign in to view or manage the monthly roster.' : 'Create an account to get started.'}
           </p>
         </div>
@@ -119,7 +118,7 @@ function LoginForm() {
             gap: 4,
             padding: 4,
             marginBottom: 16,
-            background: '#f1f5f9',
+            background: 'var(--surface-muted)',
             borderRadius: 8,
           }}
         >
@@ -133,8 +132,8 @@ function LoginForm() {
               fontSize: 13,
               fontWeight: 600,
               cursor: 'pointer',
-              background: mode === 'signin' ? '#ffffff' : 'transparent',
-              color: mode === 'signin' ? '#0f172a' : '#64748b',
+              background: mode === 'signin' ? 'var(--surface)' : 'transparent',
+              color: mode === 'signin' ? 'var(--text)' : 'var(--text-secondary)',
               boxShadow: mode === 'signin' ? '0 1px 3px rgba(15, 23, 42, 0.08)' : 'none',
             }}
           >
@@ -150,8 +149,8 @@ function LoginForm() {
               fontSize: 13,
               fontWeight: 600,
               cursor: 'pointer',
-              background: mode === 'signup' ? '#ffffff' : 'transparent',
-              color: mode === 'signup' ? '#0f172a' : '#64748b',
+              background: mode === 'signup' ? 'var(--surface)' : 'transparent',
+              color: mode === 'signup' ? 'var(--text)' : 'var(--text-secondary)',
               boxShadow: mode === 'signup' ? '0 1px 3px rgba(15, 23, 42, 0.08)' : 'none',
             }}
           >

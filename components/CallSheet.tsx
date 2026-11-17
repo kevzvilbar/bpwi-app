@@ -84,28 +84,26 @@ export default function CallSheet(p: {
   return (
     <div style={{ padding: 14, maxWidth: 1020 }}>
       <div
-        className="no-print"
+        className="no-print card"
         style={{
           display: 'flex',
           gap: 10,
           alignItems: 'center',
           flexWrap: 'wrap',
-          background: '#ffffff',
-          border: '1px solid #e2e8f0',
-          borderRadius: 10,
           padding: '10px 14px',
           marginBottom: 10,
         }}
       >
         <strong>Emergency Call Sheet</strong>
-        <span style={{ fontSize: 12, color: '#475569' }}>Today ({p.today}) · Standby first, then On Duty</span>
+        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Today ({p.today}) · Standby first, then On Duty</span>
         <input
           type="search"
           aria-label="Search operators"
           placeholder="Search name, station, phone…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 13, width: 220 }}
+          className="input"
+          style={{ width: 220, minHeight: 36, padding: '6px 10px', fontSize: 13 }}
         />
         <label style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
           <input type="checkbox" checked={onlyStandby} onChange={(e) => setOnlyStandby(e.target.checked)} />
@@ -122,10 +120,10 @@ export default function CallSheet(p: {
       </div>
 
       {/* Desktop / Tablet Table */}
-      <div className="call-sheet-table-wrap" style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 10, overflow: 'auto' }}>
+      <div className="call-sheet-table-wrap card" style={{ overflow: 'auto' }}>
         <table className="schedule-table" style={{ fontSize: 13 }}>
           <thead>
-            <tr style={{ background: '#0f172a', color: '#ffffff', textAlign: 'left' }}>
+            <tr style={{ background: 'var(--header-bg)', color: 'var(--header-fg)', textAlign: 'left' }}>
               <th style={{ padding: '8px 10px', width: 38, textAlign: 'center' }}>#</th>
               <th style={{ padding: '8px 10px' }}>Operator</th>
               <th style={{ padding: '8px 10px' }}>Status</th>
@@ -136,19 +134,19 @@ export default function CallSheet(p: {
           <tbody>
             {sortedAndFiltered.length === 0 ? (
               <tr>
-                <td colSpan={5} style={{ padding: 24, textAlign: 'center', color: '#475569' }}>
+                <td colSpan={5} style={{ padding: 24, textAlign: 'center', color: 'var(--text-secondary)' }}>
                   No operators match the current filter.
                 </td>
               </tr>
             ) : (
               sortedAndFiltered.map(({ op, shift, area, standbyType, isLeave, isOnDuty, isNow }, i) => (
-                <tr key={op.id} style={{ background: standbyType ? '#faf5ff' : '#ffffff' }}>
-                  <td className="tabular-nums" style={{ padding: '8px 10px', textAlign: 'center', color: '#475569' }}>
+                <tr key={op.id} style={{ background: standbyType ? 'rgba(124, 58, 237, 0.1)' : 'var(--surface)' }}>
+                  <td className="tabular-nums" style={{ padding: '8px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                     {i + 1}
                   </td>
                   <td style={{ padding: '8px 10px' }}>
-                    <div style={{ fontWeight: 700, color: '#0f172a' }}>{op.full_name}</div>
-                    {op.position && <div style={{ fontSize: 11.5, color: '#475569' }}>{op.position}</div>}
+                    <div style={{ fontWeight: 700, color: 'var(--text)' }}>{op.full_name}</div>
+                    {op.position && <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{op.position}</div>}
                   </td>
                   <td style={{ padding: '8px 10px' }}>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -211,7 +209,7 @@ export default function CallSheet(p: {
                       )}
                     </div>
                   </td>
-                  <td style={{ padding: '8px 10px', color: '#334155', fontWeight: 500 }}>
+                  <td style={{ padding: '8px 10px', color: 'var(--text)', fontWeight: 500 }}>
                     {area?.code ?? (isOnDuty ? 'PW' : op.default_station ?? '—')}
                   </td>
                   <td style={{ padding: '8px 10px' }}>
@@ -260,10 +258,10 @@ export default function CallSheet(p: {
         {sortedAndFiltered.map(({ op, shift, area, standbyType, isLeave, isOnDuty }) => (
           <div
             key={op.id}
+            className="card"
             style={{
-              background: standbyType ? '#faf5ff' : '#ffffff',
-              border: standbyType ? '1.5px solid #7c3aed' : '1px solid #cbd5e1',
-              borderRadius: 10,
+              background: standbyType ? 'rgba(124, 58, 237, 0.1)' : 'var(--surface)',
+              border: standbyType ? '1.5px solid var(--violet)' : '1px solid var(--border)',
               padding: 14,
               display: 'grid',
               gap: 8,
@@ -271,8 +269,8 @@ export default function CallSheet(p: {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8 }}>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 15, color: '#0f172a' }}>{op.full_name}</div>
-                {op.position && <div style={{ fontSize: 12, color: '#475569' }}>{op.position}</div>}
+                <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>{op.full_name}</div>
+                {op.position && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{op.position}</div>}
               </div>
               {standbyType && (
                 <span
@@ -290,7 +288,7 @@ export default function CallSheet(p: {
               )}
             </div>
 
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 12.5, color: '#334155' }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--text-secondary)' }}>
               <span>
                 Status:{' '}
                 <b>

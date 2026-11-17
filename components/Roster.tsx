@@ -98,6 +98,7 @@ export default function Roster(p: {
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [msg, setMsg] = useState(p.initialError ?? '');
   const [showHint, setShowHint] = useState(false);
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const [confirmFill, setConfirmFill] = useState<{ opId: string; opName: string; date: string; count: number } | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -749,15 +750,23 @@ export default function Roster(p: {
         )}
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <button className="btn" onClick={exportCsv}>
+          <button
+            className="btn mobile-only-block"
+            style={{ display: undefined }}
+            onClick={() => setMobileToolsOpen((o) => !o)}
+            aria-expanded={mobileToolsOpen}
+          >
+            {mobileToolsOpen ? 'Hide Brush & Legend' : `Brush: ${brushLabel}`}
+          </button>
+          <button className="btn desktop-only" onClick={exportCsv}>
             Export CSV
           </button>
-          <button className="btn" onClick={() => window.print()}>
+          <button className="btn desktop-only" onClick={() => window.print()}>
             Print
           </button>
           {p.role === 'admin' && (
             <button
-              className="btn"
+              className="btn desktop-only"
               onClick={() => {
                 setImportStatus('');
                 setImportOpen(true);
@@ -822,9 +831,9 @@ export default function Roster(p: {
         </div>
       )}
 
-      {/* Always-visible Shift Legend (for Viewers & Print) */}
+      {/* Always-visible Shift Legend on desktop; collapsible on mobile */}
       <div
-        className="card"
+        className={`card ${mobileToolsOpen ? '' : 'desktop-only'}`}
         style={{
           display: 'flex',
           gap: 10,
@@ -857,10 +866,10 @@ export default function Roster(p: {
         <span style={{ color: 'var(--text-secondary)' }}>· Duty cells without an area code show <b>PW</b></span>
       </div>
 
-      {/* Paint Palette Bar (Editors only) */}
+      {/* Paint Palette Bar (Editors only; collapsible on mobile) */}
       {p.canEdit && (
         <div
-          className="no-print card"
+          className={`no-print card ${mobileToolsOpen ? '' : 'desktop-only'}`}
           style={{
             display: 'flex',
             gap: 5,
@@ -1129,12 +1138,12 @@ export default function Roster(p: {
 
                 return (
                   <tr key={o.id} className="operator-row">
-                    <td className="sticky-col-idx tabular-nums" style={{ background: '#f8fafc', color: '#475569', textAlign: 'center', fontSize: 10.5, fontWeight: 600 }}>
+                    <td className="sticky-col-idx tabular-nums" style={{ background: 'var(--surface-muted)', color: 'var(--text-secondary)', textAlign: 'center', fontSize: 10.5, fontWeight: 600 }}>
                       {rIdx + 1}
                     </td>
-                    <td className="sticky-col-name" style={{ background: '#ffffff', padding: '3px 8px', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                      <div style={{ color: '#0f172a' }}>{o.full_name}</div>
-                      {o.position && <div style={{ fontSize: 10.5, fontWeight: 400, color: '#475569' }}>{o.position}</div>}
+                    <td className="sticky-col-name" style={{ background: 'var(--surface)', padding: '3px 8px', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      <div style={{ color: 'var(--text)' }}>{o.full_name}</div>
+                      {o.position && <div style={{ fontSize: 10.5, fontWeight: 400, color: 'var(--text-secondary)' }}>{o.position}</div>}
                     </td>
 
                     {days.map((d, cIdx) => {
@@ -1239,19 +1248,19 @@ export default function Roster(p: {
                       );
                     })}
 
-                    <td className="sticky-col-duty tabular-nums" style={{ background: '#ffffff', textAlign: 'center', fontWeight: 700 }}>
+                    <td className="sticky-col-duty tabular-nums" style={{ background: 'var(--surface)', color: 'var(--text)', textAlign: 'center', fontWeight: 700 }}>
                       {duty}
                     </td>
-                    <td className="sticky-col-oc tabular-nums" style={{ background: ocCount ? '#f5f3ff' : '#ffffff', color: ocCount ? '#5b21b6' : '#64748b', textAlign: 'center', fontWeight: 700 }}>
+                    <td className="sticky-col-oc tabular-nums" style={{ background: ocCount ? 'rgba(124, 58, 237, 0.14)' : 'var(--surface)', color: ocCount ? 'var(--violet)' : 'var(--text-muted)', textAlign: 'center', fontWeight: 700 }}>
                       {ocCount}
                     </td>
-                    <td className="sticky-col-hours tabular-nums" style={{ background: '#ffffff', textAlign: 'center', fontWeight: 600 }}>
+                    <td className="sticky-col-hours tabular-nums" style={{ background: 'var(--surface)', color: 'var(--text)', textAlign: 'center', fontWeight: 600 }}>
                       {hrs}
                     </td>
-                    <td className="sticky-col-off tabular-nums" style={{ background: '#ffffff', textAlign: 'center', color: '#475569' }}>
+                    <td className="sticky-col-off tabular-nums" style={{ background: 'var(--surface)', textAlign: 'center', color: 'var(--text-secondary)' }}>
                       {off}
                     </td>
-                    <td className="sticky-col-leaves tabular-nums" style={{ background: leaves ? '#fefce8' : '#ffffff', color: leaves ? '#854d0e' : '#64748b', textAlign: 'center', fontWeight: 700 }}>
+                    <td className="sticky-col-leaves tabular-nums" style={{ background: leaves ? 'rgba(234, 179, 8, 0.16)' : 'var(--surface)', color: leaves ? '#ca8a04' : 'var(--text-muted)', textAlign: 'center', fontWeight: 700 }}>
                       {leaves}
                     </td>
                   </tr>

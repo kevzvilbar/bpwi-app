@@ -41,8 +41,16 @@ type UserProfile = {
 
 type Tab = 'operators' | 'shifts' | 'areas' | 'users';
 
-const cell = { padding: 4, borderBottom: '1px solid #e2e8f0' };
-const inp = { width: '100%', padding: '5px 7px', border: '1px solid #cbd5e1', borderRadius: 4, fontSize: 12.5 } as const;
+const cell = { padding: 4, borderBottom: '1px solid var(--border-light)' };
+const inp = {
+  width: '100%',
+  padding: '5px 7px',
+  border: '1px solid var(--border)',
+  borderRadius: 4,
+  fontSize: 12.5,
+  background: 'var(--surface)',
+  color: 'var(--text)',
+} as const;
 
 export default function Setup(p: {
   operators: Op[];
@@ -155,7 +163,7 @@ export default function Setup(p: {
         )}
       </div>
 
-      <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 10, overflow: 'auto' }}>
+      <div className="card" style={{ overflow: 'auto' }}>
         {tab === 'operators' && (
           <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5 }}>
             <thead>
@@ -492,17 +500,17 @@ export default function Setup(p: {
 
       {confirmDel && (
         <div
+          className="modal-overlay"
           role="dialog"
           aria-modal="true"
           aria-labelledby="del-dialog-title"
           onClick={() => setConfirmDel(null)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'grid', placeItems: 'center', padding: 16, zIndex: 55 }}
         >
-          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 20, maxWidth: 400, width: '100%', display: 'grid', gap: 12 }}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400, display: 'grid', gap: 12 }}>
             <h2 id="del-dialog-title" style={{ margin: 0, fontSize: 16 }}>
               Delete {confirmDel.label}?
             </h2>
-            <p style={{ margin: 0, fontSize: 13, color: '#475569' }}>
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
               Schedule entries using this item may be affected.
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>

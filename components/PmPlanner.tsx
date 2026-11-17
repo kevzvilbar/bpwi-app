@@ -129,6 +129,10 @@ export default function PmPlanner(p: {
   const [areaFilter, setAreaFilter] = useState('');
   const [msg, setMsg] = useState(p.error);
   const [busy, setBusy] = useState(false);
+  const [confirmDel, setConfirmDel] = useState<{
+    scope: 'one' | 'series' | 'following';
+    target?: { id: string; legacy_key: string | null; date: string };
+  } | null>(null);
 
   useEffect(() => setTasks(p.tasks), [p.tasks]);
   useEffect(() => setActTypes(p.activityTypes), [p.activityTypes]);
@@ -327,19 +331,12 @@ export default function PmPlanner(p: {
     router.refresh();
   }
 
-  async function remove(scope: 'one' | 'series' | 'following', target?: { id: string; legacy_key: string | null; date: string }) {
+  async function executeRemove() {
+    if (!confirmDel) return;
+    const { scope, target } = confirmDel;
+    setConfirmDel(null);
     const t = target ?? (draft?.id ? { id: draft.id, legacy_key: draft.legacy_key ?? null, date: draft.date } : null);
     if (!t) return;
-    if (
-      !confirm(
-        scope === 'one'
-          ? 'Delete this task?'
-          : scope === 'series'
-            ? 'Delete the whole series?'
-            : 'Delete this and following tasks in the series?',
-      )
-    )
-      return;
     const sb = supabaseBrowser();
     const series = t.legacy_key?.split('-')[0];
     let q = sb.from('pm_tasks').delete();
@@ -355,6 +352,10 @@ export default function PmPlanner(p: {
     }
     setDraft(null);
     router.refresh();
+  }
+
+  function remove(scope: 'one' | 'series' | 'following', target?: { id: string; legacy_key: string | null; date: string }) {
+    setConfirmDel({ scope, target });
   }
 
   async function updateTask(t: Task, patch: Partial<Pick<Task, 'status' | 'assigned_operator_ids'>>) {
@@ -736,6 +737,28 @@ export default function PmPlanner(p: {
                   </span>
                 </div>
 
+                {/* Mobile compact dots (<= 640px) */}
+                {list.length > 0 && (
+                  <div className="pm-mobile-dots" aria-hidden="true">
+                    {list.map((t) => {
+                      const meta = activityMeta.get(t.activity_type);
+                      const color = meta?.color ?? activityColor(t.activity_type, t.title);
+                      return (
+                        <span
+                          key={t.id}
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: '50%',
+                            background: t.status === 'done' ? 'transparent' : color,
+                            border: `2px solid ${color}`,
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+
                 {list.map((t) => {
                   const meta = activityMeta.get(t.activity_type);
                   const color = meta?.color ?? activityColor(t.activity_type, t.title);
@@ -748,6 +771,7 @@ export default function PmPlanner(p: {
                   return (
                     <div
                       key={t.id}
+                      className="pm-desktop-pill"
                       draggable={p.canEdit}
                       onDragStart={(e) => e.dataTransfer.setData('text/plain', t.id)}
                       onClick={(e) => {
@@ -882,15 +906,15 @@ export default function PmPlanner(p: {
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      background: '#faf5ff',
-                      border: '1px solid #e9d5ff',
+                      background: 'rgba(124, 58, 237, 0.12)',
+                      border: '1px solid rgba(124, 58, 237, 0.35)',
                       borderRadius: 6,
                       padding: '4px 8px',
                       fontSize: 11.5,
                     }}
                   >
-                    <span style={{ fontWeight: 600, color: '#3b0764' }}>{op.full_name}</span>
-                    <span style={{ color: '#6b21a8', fontFamily: 'ui-monospace, monospace', fontSize: 10.5 }}>
+                    <span style={{ fontWeight: 600, color: 'var(--text)' }}>{op.full_name}</span>
+                    <span style={{ color: 'var(--violet)', fontFamily: 'ui-monospace, monospace', fontSize: 10.5, fontWeight: 600 }}>
                       {sb.standby_type}
                       {op.phone_number ? ` · ${op.phone_number}` : ''}
                     </span>
@@ -1203,6 +1227,38 @@ export default function PmPlanner(p: {
                   {busy ? 'Saving…' : 'Save'}
                 </button>
               </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {confirmDel && (
+        <div
+          className="no-print modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pm-del-title"
+          onClick={() => setConfirmDel(null)}
+        >
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400, display: 'grid', gap: 12 }}>
+            <h2 id="pm-del-title" style={{ margin: 0, fontSize: 16 }}>
+              {confirmDel.scope === 'one'
+                ? 'Delete this task?'
+                : confirmDel.scope === 'series'
+                  ? 'Delete the entire series?'
+                  : 'Delete this and following tasks?'}
+            </h2>
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
+              This action cannot be undone.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button className="btn" onClick={() => setConfirmDel(null)}>
+                Cancel
+              </button>
+              <button className="btn" style={{ background: '#b91c1c', borderColor: '#b91c1c', color: '#fff' }} onClick={executeRemove}>
+                Delete
+              </button>
             </div>
           </div>
         </div>

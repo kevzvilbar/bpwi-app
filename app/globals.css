@@ -451,7 +451,24 @@ select {
   }
 }
 
+/* PM Calendar mobile compact dots */
+.pm-mobile-dots {
+  display: none;
+}
+
 @media (max-width: 640px) {
+  .pm-desktop-pill {
+    display: none !important;
+  }
+
+  .pm-mobile-dots {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 3px;
+    padding: 2px 0;
+  }
+
   .responsive-table-wrap,
   .call-sheet-table-wrap {
     display: none !important;
