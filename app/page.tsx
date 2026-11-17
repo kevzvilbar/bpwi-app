@@ -7,10 +7,11 @@ function manilaToday() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
 }
 
-export default async function Home({ searchParams }: { searchParams: { m?: string } }) {
-  const sb = supabaseServer();
+export default async function Home({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
+  const sp = await searchParams;
+  const sb = await supabaseServer();
   const today = manilaToday();
-  const month = /^\d{4}-\d{2}$/.test(searchParams.m ?? '') ? searchParams.m! : today.slice(0, 7);
+  const month = /^\d{4}-\d{2}$/.test(sp.m ?? '') ? sp.m! : today.slice(0, 7);
   const [y, mo] = month.split('-').map(Number);
   const first = `${month}-01`;
   const last = `${month}-${String(new Date(y, mo, 0).getDate()).padStart(2, '0')}`;

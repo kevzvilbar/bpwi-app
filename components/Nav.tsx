@@ -6,6 +6,7 @@ const LINKS = [
   { href: '/', label: 'Attendance Roster' },
   { href: '/pm', label: 'PM Calendar' },
   { href: '/leave', label: 'Leave Summary' },
+  { href: '/call-sheet', label: 'Call Sheet' },
   { href: '/generate', label: 'Generate Schedule' },
   { href: '/operators', label: 'Operators & Setup' },
 ];

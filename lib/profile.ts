@@ -1,7 +1,7 @@
 import { supabaseServer } from '@/lib/supabase/server';
 
 export async function getProfile() {
-  const sb = supabaseServer();
+  const sb = await supabaseServer();
   const { data: prof } = await sb.from('user_profiles').select('full_name, role, organization_id').maybeSingle();
   const role = (prof?.role ?? 'viewer') as string;
   return {

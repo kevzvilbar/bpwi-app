@@ -14,7 +14,7 @@ const DEFAULT_PM: Record<string, string> = {
 
 export async function POST(req: Request) {
   try {
-    const me = supabaseServer();
+    const me = await supabaseServer();
     const {
       data: { user },
     } = await me.auth.getUser();

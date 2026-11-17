@@ -3,10 +3,11 @@ import LeaveSummary from '@/components/LeaveSummary';
 
 export const dynamic = 'force-dynamic';
 
-export default async function LeavePage({ searchParams }: { searchParams: { y?: string } }) {
+export default async function LeavePage({ searchParams }: { searchParams: Promise<{ y?: string }> }) {
+  const sp = await searchParams;
   const { sb } = await getProfile();
   const thisYear = new Date().getFullYear();
-  const year = /^\d{4}$/.test(searchParams.y ?? '') ? Number(searchParams.y) : thisYear;
+  const year = /^\d{4}$/.test(sp.y ?? '') ? Number(sp.y) : thisYear;
   const [ops, areas] = await Promise.all([
     sb.from('operators').select('id, full_name, position').eq('is_active', true).order('sort_order'),
     sb.from('area_codes').select('id, code, name, category, background_color, text_color').in('category', ['leave', 'holiday']).order('code'),

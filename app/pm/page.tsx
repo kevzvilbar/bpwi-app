@@ -3,10 +3,11 @@ import PmPlanner from '@/components/PmPlanner';
 
 export const dynamic = 'force-dynamic';
 
-export default async function PmPage({ searchParams }: { searchParams: { m?: string } }) {
+export default async function PmPage({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
+  const sp = await searchParams;
   const { sb, orgId, canEdit } = await getProfile();
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
-  const month = /^\d{4}-\d{2}$/.test(searchParams.m ?? '') ? searchParams.m! : today.slice(0, 7);
+  const month = /^\d{4}-\d{2}$/.test(sp.m ?? '') ? sp.m! : today.slice(0, 7);
   const [y, mo] = month.split('-').map(Number);
   const first = `${month}-01`;
   const last = `${month}-${String(new Date(y, mo, 0).getDate()).padStart(2, '0')}`;

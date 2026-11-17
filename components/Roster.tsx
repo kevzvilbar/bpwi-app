@@ -95,6 +95,8 @@ export default function Roster(p: {
   const [importing, setImporting] = useState(false);
   const [importStatus, setImportStatus] = useState('');
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; opId: string; opName: string; date: string } | null>(null);
+  const [undoStack, setUndoStack] = useState<{ opId: string; date: string; prev: Row | null; next: Row | null }[][]>([]);
+  const [redoStack, setRedoStack] = useState<{ opId: string; date: string; prev: Row | null; next: Row | null }[][]>([]);
 
   useEffect(() => {
     setRows(p.rows);
@@ -103,6 +105,45 @@ export default function Roster(p: {
   useEffect(() => {
     setStandby(p.standby);
   }, [p.standby]);
+
+  useEffect(() => {
+    const sb = supabaseBrowser();
+    const channel = sb
+      .channel(`roster-sync-${p.month}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule_assignments' }, (payload) => {
+        const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as Partial<Row> | undefined;
+        if (!rec?.operator_id || !rec?.schedule_date || !rec.schedule_date.startsWith(p.month)) return;
+        if (payload.eventType === 'DELETE') {
+          setRows((r) => r.filter((x) => !(x.operator_id === rec.operator_id && x.schedule_date === rec.schedule_date)));
+        } else {
+          const nextRow: Row = {
+            operator_id: rec.operator_id,
+            schedule_date: rec.schedule_date,
+            shift_type_id: rec.shift_type_id ?? null,
+            area_code_id: rec.area_code_id ?? null,
+          };
+          setRows((r) => [...r.filter((x) => !(x.operator_id === nextRow.operator_id && x.schedule_date === nextRow.schedule_date)), nextRow]);
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'standby_assignments' }, (payload) => {
+        const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as Partial<Standby> | undefined;
+        if (!rec?.operator_id || !rec?.schedule_date || !rec.schedule_date.startsWith(p.month)) return;
+        if (payload.eventType === 'DELETE') {
+          setStandby((s) => s.filter((x) => !(x.operator_id === rec.operator_id && x.schedule_date === rec.schedule_date)));
+        } else {
+          const nextSb: Standby = {
+            operator_id: rec.operator_id,
+            schedule_date: rec.schedule_date,
+            standby_type: rec.standby_type ?? 'OC',
+          };
+          setStandby((s) => [...s.filter((x) => !(x.operator_id === nextSb.operator_id && x.schedule_date === nextSb.schedule_date)), nextSb]);
+        }
+      })
+      .subscribe();
+    return () => {
+      sb.removeChannel(channel);
+    };
+  }, [p.month]);
 
   useEffect(() => {
     if (!ctxMenu) return;
@@ -195,12 +236,85 @@ export default function Roster(p: {
     }
   }
 
+  async function applyHistory(entries: { opId: string; date: string; prev: Row | null; next: Row | null }[], dir: 'undo' | 'redo') {
+    const prevRows = rows;
+    const upserts: Row[] = [];
+    const deletes: { opId: string; date: string }[] = [];
+    const affected = new Set(entries.map((e) => cellKey(e.opId, e.date)));
+
+    for (const e of entries) {
+      const target = dir === 'undo' ? e.prev : e.next;
+      if (target) upserts.push(target);
+      else deletes.push({ opId: e.opId, date: e.date });
+    }
+
+    setRows((r) => [...r.filter((x) => !affected.has(cellKey(x.operator_id, x.schedule_date))), ...upserts]);
+    setSavingCount((c) => c + 1);
+    const sb = supabaseBrowser();
+    let errMsg = '';
+    if (upserts.length > 0) {
+      const { error } = await sb
+        .from('schedule_assignments')
+        .upsert(
+          upserts.map((u) => ({ ...u, organization_id: p.orgId })),
+          { onConflict: 'operator_id,schedule_date' },
+        );
+      if (error) errMsg = error.message;
+    }
+    for (const d of deletes) {
+      const { error } = await sb.from('schedule_assignments').delete().eq('operator_id', d.opId).eq('schedule_date', d.date);
+      if (error && !errMsg) errMsg = error.message;
+    }
+    setSavingCount((c) => c - 1);
+    if (errMsg) {
+      setRows(prevRows);
+      setMsg(errMsg);
+    }
+  }
+
+  function handleUndo() {
+    if (!p.canEdit || undoStack.length === 0) return;
+    const last = undoStack[undoStack.length - 1];
+    setUndoStack((s) => s.slice(0, -1));
+    setRedoStack((s) => [...s, last]);
+    void applyHistory(last, 'undo');
+  }
+
+  function handleRedo() {
+    if (!p.canEdit || redoStack.length === 0) return;
+    const last = redoStack[redoStack.length - 1];
+    setRedoStack((s) => s.slice(0, -1));
+    setUndoStack((s) => [...s, last]);
+    void applyHistory(last, 'redo');
+  }
+
+  useEffect(() => {
+    if (!p.canEdit) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        handleUndo();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
+
   async function clearCell(opId: string, date: string) {
     if (!p.canEdit) return;
     setMsg('');
     const k = cellKey(opId, date);
+    const existing = cell.get(k) ?? null;
+    if (!existing) return;
     const prev = rows;
     setRows((r) => r.filter((x) => cellKey(x.operator_id, x.schedule_date) !== k));
+    setUndoStack((s) => [...s.slice(-29), [{ opId, date, prev: existing, next: null }]]);
+    setRedoStack([]);
     setSavingCount((c) => c + 1);
     const { error } = await supabaseBrowser()
       .from('schedule_assignments')
@@ -222,6 +336,12 @@ export default function Roster(p: {
       return;
     }
     const targets = days.filter((d) => d.date >= fromDate).map((d) => d.date);
+    const history = targets.map((date) => ({
+      opId,
+      date,
+      prev: cell.get(cellKey(opId, date)) ?? null,
+      next: { operator_id: opId, schedule_date: date, shift_type_id: source.shift_type_id, area_code_id: source.area_code_id },
+    }));
     const payload = targets.map((date) => ({
       organization_id: p.orgId,
       operator_id: opId,
@@ -240,6 +360,8 @@ export default function Roster(p: {
         area_code_id,
       })),
     ]);
+    setUndoStack((s) => [...s.slice(-29), history]);
+    setRedoStack([]);
     setSavingCount((c) => c + 1);
     const { error } = await supabaseBrowser()
       .from('schedule_assignments')
@@ -268,8 +390,11 @@ export default function Roster(p: {
 
     if (!shiftId) return;
     const prev = rows;
+    const prevCell = cell.get(cellKey(opId, date)) ?? null;
     const row: Row = { operator_id: opId, schedule_date: date, shift_type_id: shiftId, area_code_id: areaId };
     setRows((r) => [...r.filter((x) => !(x.operator_id === opId && x.schedule_date === date)), row]);
+    setUndoStack((s) => [...s.slice(-29), [{ opId, date, prev: prevCell, next: row }]]);
+    setRedoStack([]);
     setSavingCount((c) => c + 1);
     const { error } = await supabaseBrowser()
       .from('schedule_assignments')
@@ -628,6 +753,26 @@ export default function Roster(p: {
             title="Click a cell to clear its shift assignment"
           >
             Clear Cell
+          </button>
+
+          <span style={{ width: 1, height: 18, background: '#e2e8f0', margin: '0 3px' }} />
+          <button
+            className="btn"
+            onClick={handleUndo}
+            disabled={undoStack.length === 0}
+            style={{ padding: '3px 8px', fontSize: 11.5 }}
+            title="Undo (Ctrl+Z)"
+          >
+            ↶ Undo
+          </button>
+          <button
+            className="btn"
+            onClick={handleRedo}
+            disabled={redoStack.length === 0}
+            style={{ padding: '3px 8px', fontSize: 11.5 }}
+            title="Redo (Ctrl+Y)"
+          >
+            ↷ Redo
           </button>
         </div>
       )}
