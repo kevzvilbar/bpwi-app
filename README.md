@@ -11,5 +11,6 @@
 
 ## Included (v1 core)
 Login, role-aware monthly roster with click-to-paint (admin/scheduler), RLS, audit triggers, realtime-ready tables, JSON importer.
+Also: PM Planner (`/pm`: monthly calendar, recurring series, status), Leave Summary (`/leave`), Generate Schedule (`/generate`: repeating shift cycles), Operators & Setup (`/operators`, admin only: operators, shift types, area/leave codes), OC standby painting, CSV/print exports.
 ## Not yet ported
-Standby painting UI, PM planner, leave summary, attendance, call sheet, CSV/print exports, user admin screens.
+Call sheet, in-app user/role admin screens (promote users via SQL: `update user_profiles set role='scheduler' where id=...`).
