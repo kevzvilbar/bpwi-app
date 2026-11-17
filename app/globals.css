@@ -1,3 +1,19 @@
+:root {
+  --bg: #f1f5f9;
+  --surface: #ffffff;
+  --surface-muted: #f8fafc;
+  --border: #cbd5e1;
+  --border-light: #e2e8f0;
+  --text: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --primary: #0f172a;
+  --accent: #0369a1;
+  --teal: #0f766e;
+  --violet: #7c3aed;
+  --danger: #b91c1c;
+}
+
 *,
 *::before,
 *::after {
@@ -7,8 +23,8 @@
 body {
   margin: 0;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #f1f5f9;
-  color: #1e293b;
+  background: var(--bg);
+  color: var(--text);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -18,13 +34,27 @@ select {
   font: inherit;
 }
 
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
 /* Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: var(--bg);
 }
 ::-webkit-scrollbar-thumb {
   background: #94a3b8;
@@ -41,9 +71,9 @@ select {
   gap: 6px;
   padding: 5px 11px;
   border-radius: 6px;
-  border: 1px solid #cbd5e1;
-  background: #ffffff;
-  color: #0f172a;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
@@ -51,19 +81,19 @@ select {
 }
 
 .btn:hover:not(:disabled) {
-  background: #f8fafc;
+  background: var(--surface-muted);
   border-color: #94a3b8;
 }
 
 .btn:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
 .btn-primary {
-  background: #0f172a;
+  background: var(--primary);
   color: #ffffff;
-  border-color: #0f172a;
+  border-color: var(--primary);
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -75,9 +105,9 @@ select {
   width: 100%;
   padding: 7px 10px;
   border-radius: 6px;
-  border: 1px solid #cbd5e1;
-  background: #ffffff;
-  color: #0f172a;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
   font-size: 13.5px;
 }
 
@@ -87,7 +117,24 @@ select {
   border-color: #2563eb;
 }
 
-/* Schedule Table & Sticky Headers (from legacy-standalone.html) */
+/* Dialog backdrop */
+dialog.app-dialog {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  width: min(480px, calc(100vw - 24px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.25);
+  background: var(--surface);
+  color: var(--text);
+}
+
+dialog.app-dialog::backdrop {
+  background: rgba(15, 23, 42, 0.45);
+}
+
+/* Schedule Table & Sticky Headers */
 .schedule-table {
   border-collapse: separate;
   border-spacing: 0;
@@ -97,8 +144,8 @@ select {
 
 .schedule-table th,
 .schedule-table td {
-  border-right: 1px solid #cbd5e1;
-  border-bottom: 1px solid #cbd5e1;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   user-select: none;
 }
 
@@ -175,7 +222,7 @@ select {
 
 /* On-Call (Standby) overlay */
 .cell-oncall-active {
-  box-shadow: inset 0 0 0 1.5px #ffffff, inset 0 0 0 3.5px #7c3aed;
+  box-shadow: inset 0 0 0 1.5px #ffffff, inset 0 0 0 3.5px var(--violet);
 }
 
 .oncall-corner-triangle {
@@ -185,8 +232,8 @@ select {
   width: 0;
   height: 0;
   border-style: solid;
-  border-width: 0 14px 14px 0;
-  border-color: transparent #7c3aed transparent transparent;
+  border-width: 0 16px 16px 0;
+  border-color: transparent var(--violet) transparent transparent;
   z-index: 10;
   pointer-events: none;
   filter: drop-shadow(-0.5px 0.5px 0 #ffffff);
@@ -196,7 +243,7 @@ select {
   position: absolute;
   top: 1px;
   right: 1px;
-  font-size: 7px;
+  font-size: 8.5px;
   font-weight: 900;
   color: #ffffff;
   line-height: 1;
@@ -209,10 +256,10 @@ select {
   position: absolute;
   left: 2px;
   bottom: 2px;
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 2px;
-  background: #0f766e;
+  background: var(--teal);
   border: 1.5px solid #ffffff;
   box-shadow: 0 0 0 0.5px rgba(15, 23, 42, 0.45);
   z-index: 9;
@@ -225,7 +272,36 @@ select {
 
 .operator-row:hover td.sticky-col-idx,
 .operator-row:hover td.sticky-col-name {
-  background: #f8fafc !important;
+  background: var(--surface-muted) !important;
+}
+
+/* PM Planner responsive split */
+.pm-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 310px;
+  gap: 12px;
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .pm-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Call Sheet responsive table -> cards */
+.call-sheet-cards {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .call-sheet-table-wrap {
+    display: none;
+  }
+  .call-sheet-cards {
+    display: grid;
+    gap: 10px;
+  }
 }
 
 @media print {

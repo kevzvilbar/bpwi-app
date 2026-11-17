@@ -1,4 +1,5 @@
 import { getProfile } from '@/lib/profile';
+import { manilaToday } from '@/lib/date';
 import PmPlanner from '@/components/PmPlanner';
 
 export const dynamic = 'force-dynamic';
@@ -6,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export default async function PmPage({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
   const sp = await searchParams;
   const { sb, orgId, canEdit } = await getProfile();
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
+  const today = manilaToday();
   const month = /^\d{4}-\d{2}$/.test(sp.m ?? '') ? sp.m! : today.slice(0, 7);
   const [y, mo] = month.split('-').map(Number);
 

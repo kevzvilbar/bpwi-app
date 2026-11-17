@@ -1,11 +1,8 @@
 import { supabaseServer } from '@/lib/supabase/server';
+import { manilaToday } from '@/lib/date';
 import Roster from '@/components/Roster';
 
 export const dynamic = 'force-dynamic';
-
-function manilaToday() {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
-}
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
   const sp = await searchParams;

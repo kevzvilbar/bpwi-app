@@ -8,8 +8,8 @@ type Shift = { id: string; code: string; description: string | null; is_off: boo
 const addDays = (d: string, n: number) => { const t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
 const diffDays = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
 
-export default function Generator(p: { operators: Op[]; shifts: Shift[]; orgId: string; canEdit: boolean }) {
-  const today = new Date().toISOString().slice(0, 10);
+export default function Generator(p: { today: string; operators: Op[]; shifts: Shift[]; orgId: string; canEdit: boolean }) {
+  const today = p.today;
   const [start, setStart] = useState(today);
   const [end, setEnd] = useState(addDays(today, 29));
   const [pattern, setPattern] = useState('');

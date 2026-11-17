@@ -60,8 +60,8 @@ export default function LeaveSummary(p: { year: number; operators: Op[]; areas: 
                 {areas.map((a) => <th key={a.id} style={th} title={a.name ?? ''}>{a.code}</th>)}<th style={th}>Total</th></tr></thead>
               <tbody>{p.operators.map((o) => (
                 <tr key={o.id}><td style={{ ...td, textAlign: 'left', fontWeight: 600 }}>{o.full_name}</td>
-                  {areas.map((a) => { const n = byCode.get(o.id + a.id) ?? 0; return <td key={a.id} style={{ ...td, background: n ? a.background_color : undefined, color: n ? a.text_color : '#cbd5e1', fontWeight: n ? 700 : 400 }}>{n || '·'}</td>; })}
-                  <td style={{ ...td, fontWeight: 700 }}>{opTotal(o.id)}</td></tr>))}
+                  {areas.map((a) => { const n = byCode.get(o.id + a.id) ?? 0; return <td key={a.id} className="tabular-nums" style={{ ...td, background: n ? a.background_color : undefined, color: n ? a.text_color : '#64748b', fontWeight: n ? 700 : 400 }}>{n || '·'}</td>; })}
+                  <td className="tabular-nums" style={{ ...td, fontWeight: 700 }}>{opTotal(o.id)}</td></tr>))}
               </tbody>
               <tfoot><tr><td style={{ ...td, textAlign: 'left', fontWeight: 700 }}>All operators</td>
                 {areas.map((a) => <td key={a.id} style={{ ...td, fontWeight: 700 }}>{p.operators.reduce((s, o) => s + (byCode.get(o.id + a.id) ?? 0), 0)}</td>)}
@@ -74,7 +74,7 @@ export default function LeaveSummary(p: { year: number; operators: Op[]; areas: 
               <thead><tr><th style={{ ...th, textAlign: 'left' }}>Operator</th>{MONTHS.map((m) => <th key={m} style={th}>{m}</th>)}</tr></thead>
               <tbody>{p.operators.map((o) => (
                 <tr key={o.id}><td style={{ ...td, textAlign: 'left', fontWeight: 600 }}>{o.full_name}</td>
-                  {MONTHS.map((_, i) => { const n = byMonth.get(o.id + i) ?? 0; return <td key={i} style={{ ...td, color: n ? '#0f172a' : '#cbd5e1', fontWeight: n ? 700 : 400 }}>{n || '·'}</td>; })}</tr>))}
+                  {MONTHS.map((_, i) => { const n = byMonth.get(o.id + i) ?? 0; return <td key={i} className="tabular-nums" style={{ ...td, color: n ? '#0f172a' : '#64748b', fontWeight: n ? 700 : 400 }}>{n || '·'}</td>; })}</tr>))}
               </tbody>
             </table>
           </div>

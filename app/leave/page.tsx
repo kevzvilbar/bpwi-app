@@ -1,4 +1,5 @@
 import { getProfile, fetchAll } from '@/lib/profile';
+import { manilaYear } from '@/lib/date';
 import LeaveSummary from '@/components/LeaveSummary';
 
 export const dynamic = 'force-dynamic';
@@ -6,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export default async function LeavePage({ searchParams }: { searchParams: Promise<{ y?: string }> }) {
   const sp = await searchParams;
   const { sb } = await getProfile();
-  const thisYear = new Date().getFullYear();
+  const thisYear = manilaYear();
   const year = /^\d{4}$/.test(sp.y ?? '') ? Number(sp.y) : thisYear;
   const [ops, areas] = await Promise.all([
     sb.from('operators').select('id, full_name, position').eq('is_active', true).order('sort_order'),

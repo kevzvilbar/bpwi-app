@@ -374,6 +374,15 @@ export default function PmPlanner(p: {
     URL.revokeObjectURL(url);
   }
 
+  useEffect(() => {
+    if (!draft) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !busy) setDraft(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [busy, draft]);
+
   const monthTasks = visible.filter((t) => t.scheduled_date.startsWith(p.month));
   const counts = {
     total: monthTasks.length,
@@ -567,7 +576,7 @@ export default function PmPlanner(p: {
       </div>
 
       {/* Main Split: Calendar Grid + Day Inspector Sidebar */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 310px', gap: 12, alignItems: 'start' }}>
+      <div className="pm-layout">
         {/* Calendar Grid */}
         <div
           style={{
@@ -633,8 +642,8 @@ export default function PmPlanner(p: {
                       borderRadius: 999,
                       fontSize: 11,
                       fontWeight: 700,
-                      background: isToday ? '#0284c7' : 'transparent',
-                      color: isToday ? '#ffffff' : inMonth ? '#334155' : '#94a3b8',
+                      background: isToday ? '#0369a1' : 'transparent',
+                      color: isToday ? '#ffffff' : inMonth ? '#334155' : '#64748b',
                     }}
                   >
                     {dayNum === 1 ? `${MONTHS_FULL[+d.slice(5, 7) - 1].slice(0, 3)} 1` : dayNum}
@@ -719,10 +728,10 @@ export default function PmPlanner(p: {
                           title="Crew conflict"
                           style={{
                             background: '#f59e0b',
-                            color: '#ffffff',
+                            color: '#451a03',
                             borderRadius: 3,
-                            padding: '0 3px',
-                            fontSize: 9,
+                            padding: '0 4px',
+                            fontSize: 9.5,
                             fontWeight: 900,
                           }}
                         >
@@ -972,6 +981,10 @@ export default function PmPlanner(p: {
       {draft && (
         <div
           className="no-print"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pm-dialog-title"
+          onClick={() => !busy && setDraft(null)}
           style={{
             position: 'fixed',
             inset: 0,
@@ -983,8 +996,13 @@ export default function PmPlanner(p: {
             overflow: 'auto',
           }}
         >
-          <div style={{ background: '#fff', borderRadius: 12, padding: 20, width: '100%', maxWidth: 480, display: 'grid', gap: 10 }}>
-            <h2 style={{ margin: 0, fontSize: 17 }}>{draft.id ? 'Edit task' : 'Schedule PM task'}</h2>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 12, padding: 20, width: '100%', maxWidth: 480, display: 'grid', gap: 10 }}
+          >
+            <h2 id="pm-dialog-title" style={{ margin: 0, fontSize: 17 }}>
+              {draft.id ? 'Edit task' : 'Schedule PM task'}
+            </h2>
             <label style={{ fontSize: 13 }}>
               Activity
               <select className="input" value={draft.typeKey} onChange={(e) => setDraft({ ...draft, typeKey: e.target.value })}>

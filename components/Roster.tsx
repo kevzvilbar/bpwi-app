@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 
@@ -40,22 +40,16 @@ type PmMarkTask = {
   title: string;
 };
 
+type ShiftHistoryItem = { kind: 'shift'; opId: string; date: string; prev: Row | null; next: Row | null };
+type StandbyHistoryItem = { kind: 'standby'; opId: string; date: string; prev: Standby | null; next: Standby | null };
+type HistoryEntry = (ShiftHistoryItem | StandbyHistoryItem)[];
+
 type ToolMode = 'paint' | 'erase' | 'standby';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS_FULL = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
 function cellKey(opId: string, date: string) {
@@ -95,8 +89,20 @@ export default function Roster(p: {
   const [importing, setImporting] = useState(false);
   const [importStatus, setImportStatus] = useState('');
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; opId: string; opName: string; date: string } | null>(null);
-  const [undoStack, setUndoStack] = useState<{ opId: string; date: string; prev: Row | null; next: Row | null }[][]>([]);
-  const [redoStack, setRedoStack] = useState<{ opId: string; date: string; prev: Row | null; next: Row | null }[][]>([]);
+  const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
+  const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
+  const [focused, setFocused] = useState<{ r: number; c: number }>({ r: 0, c: 0 });
+
+  // Drag-to-paint state
+  const dragRef = useRef<{
+    active: boolean;
+    visited: Set<string>;
+    entries: ShiftHistoryItem[];
+    upserts: Row[];
+    deletes: { opId: string; date: string }[];
+  } | null>(null);
+  const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gridRef = useRef<HTMLTableElement | null>(null);
 
   useEffect(() => {
     setRows(p.rows);
@@ -156,6 +162,17 @@ export default function Roster(p: {
     };
   }, [ctxMenu]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setCtxMenu(null);
+        if (!importing) setImportOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [importing]);
+
   const [y, mo] = p.month.split('-').map(Number);
   const monthLabel = `${MONTHS_FULL[(mo - 1 + 12) % 12]} ${y}`;
   const dayCount = new Date(y, mo, 0).getDate();
@@ -205,69 +222,85 @@ export default function Roster(p: {
     router.push(`/?m=${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`);
   };
 
-  async function setStandbyValue(opId: string, date: string, nextType: string | null) {
-    if (!p.canEdit) return;
-    setMsg('');
-    const k = cellKey(opId, date);
-    const prev = standby;
-    if (nextType === null) {
-      setStandby((s) => s.filter((x) => cellKey(x.operator_id, x.schedule_date) !== k));
-    } else {
-      setStandby((s) => [
-        ...s.filter((x) => cellKey(x.operator_id, x.schedule_date) !== k),
-        { operator_id: opId, schedule_date: date, standby_type: nextType },
-      ]);
-    }
-    setSavingCount((c) => c + 1);
-    const query =
-      nextType === null
-        ? supabaseBrowser().from('standby_assignments').delete().eq('operator_id', opId).eq('schedule_date', date)
-        : supabaseBrowser()
-            .from('standby_assignments')
-            .upsert(
-              { organization_id: p.orgId, operator_id: opId, schedule_date: date, standby_type: nextType },
-              { onConflict: 'operator_id,schedule_date' },
-            );
-    const { error } = await query;
-    setSavingCount((c) => c - 1);
-    if (error) {
-      setStandby(prev);
-      setMsg(error.message);
-    }
+  function rollbackShiftKeys(keys: { opId: string; date: string; prev: Row | null }[]) {
+    const keySet = new Set(keys.map((k) => cellKey(k.opId, k.date)));
+    const restore = keys.map((k) => k.prev).filter((x): x is Row => Boolean(x));
+    setRows((r) => [...r.filter((x) => !keySet.has(cellKey(x.operator_id, x.schedule_date))), ...restore]);
   }
 
-  async function applyHistory(entries: { opId: string; date: string; prev: Row | null; next: Row | null }[], dir: 'undo' | 'redo') {
-    const prevRows = rows;
-    const upserts: Row[] = [];
-    const deletes: { opId: string; date: string }[] = [];
-    const affected = new Set(entries.map((e) => cellKey(e.opId, e.date)));
+  function rollbackStandbyKeys(keys: { opId: string; date: string; prev: Standby | null }[]) {
+    const keySet = new Set(keys.map((k) => cellKey(k.opId, k.date)));
+    const restore = keys.map((k) => k.prev).filter((x): x is Standby => Boolean(x));
+    setStandby((s) => [...s.filter((x) => !keySet.has(cellKey(x.operator_id, x.schedule_date))), ...restore]);
+  }
+
+  async function applyHistory(entries: HistoryEntry, dir: 'undo' | 'redo') {
+    const shiftUpserts: Row[] = [];
+    const shiftDeletes: { opId: string; date: string }[] = [];
+    const shiftAffected = new Set<string>();
+    const shiftRollback: { opId: string; date: string; prev: Row | null }[] = [];
+
+    const sbUpserts: Standby[] = [];
+    const sbDeletes: { opId: string; date: string }[] = [];
+    const sbAffected = new Set<string>();
+    const sbRollback: { opId: string; date: string; prev: Standby | null }[] = [];
 
     for (const e of entries) {
-      const target = dir === 'undo' ? e.prev : e.next;
-      if (target) upserts.push(target);
-      else deletes.push({ opId: e.opId, date: e.date });
+      const k = cellKey(e.opId, e.date);
+      if (e.kind === 'shift') {
+        shiftAffected.add(k);
+        const target = dir === 'undo' ? e.prev : e.next;
+        const current = dir === 'undo' ? e.next : e.prev;
+        shiftRollback.push({ opId: e.opId, date: e.date, prev: current });
+        if (target) shiftUpserts.push(target);
+        else shiftDeletes.push({ opId: e.opId, date: e.date });
+      } else {
+        sbAffected.add(k);
+        const target = dir === 'undo' ? e.prev : e.next;
+        const current = dir === 'undo' ? e.next : e.prev;
+        sbRollback.push({ opId: e.opId, date: e.date, prev: current });
+        if (target) sbUpserts.push(target);
+        else sbDeletes.push({ opId: e.opId, date: e.date });
+      }
     }
 
-    setRows((r) => [...r.filter((x) => !affected.has(cellKey(x.operator_id, x.schedule_date))), ...upserts]);
+    if (shiftAffected.size > 0) {
+      setRows((r) => [...r.filter((x) => !shiftAffected.has(cellKey(x.operator_id, x.schedule_date))), ...shiftUpserts]);
+    }
+    if (sbAffected.size > 0) {
+      setStandby((s) => [...s.filter((x) => !sbAffected.has(cellKey(x.operator_id, x.schedule_date))), ...sbUpserts]);
+    }
+
     setSavingCount((c) => c + 1);
     const sb = supabaseBrowser();
     let errMsg = '';
-    if (upserts.length > 0) {
+
+    if (shiftUpserts.length > 0) {
       const { error } = await sb
         .from('schedule_assignments')
-        .upsert(
-          upserts.map((u) => ({ ...u, organization_id: p.orgId })),
-          { onConflict: 'operator_id,schedule_date' },
-        );
+        .upsert(shiftUpserts.map((u) => ({ ...u, organization_id: p.orgId })), { onConflict: 'operator_id,schedule_date' });
       if (error) errMsg = error.message;
     }
-    for (const d of deletes) {
+    for (const d of shiftDeletes) {
       const { error } = await sb.from('schedule_assignments').delete().eq('operator_id', d.opId).eq('schedule_date', d.date);
       if (error && !errMsg) errMsg = error.message;
     }
+
+    if (sbUpserts.length > 0) {
+      const { error } = await sb
+        .from('standby_assignments')
+        .upsert(sbUpserts.map((u) => ({ ...u, organization_id: p.orgId })), { onConflict: 'operator_id,schedule_date' });
+      if (error && !errMsg) errMsg = error.message;
+    }
+    for (const d of sbDeletes) {
+      const { error } = await sb.from('standby_assignments').delete().eq('operator_id', d.opId).eq('schedule_date', d.date);
+      if (error && !errMsg) errMsg = error.message;
+    }
+
     setSavingCount((c) => c - 1);
     if (errMsg) {
-      setRows(prevRows);
+      if (shiftRollback.length > 0) rollbackShiftKeys(shiftRollback);
+      if (sbRollback.length > 0) rollbackStandbyKeys(sbRollback);
       setMsg(errMsg);
     }
   }
@@ -305,25 +338,53 @@ export default function Roster(p: {
     return () => window.removeEventListener('keydown', onKeyDown);
   });
 
+  async function setStandbyValue(opId: string, date: string, nextType: string | null) {
+    if (!p.canEdit) return;
+    setMsg('');
+    const k = cellKey(opId, date);
+    const prevSb = standbyMap.get(k) ?? null;
+    const nextSb: Standby | null = nextType ? { operator_id: opId, schedule_date: date, standby_type: nextType } : null;
+
+    if (nextSb === null) {
+      setStandby((s) => s.filter((x) => cellKey(x.operator_id, x.schedule_date) !== k));
+    } else {
+      setStandby((s) => [...s.filter((x) => cellKey(x.operator_id, x.schedule_date) !== k), nextSb]);
+    }
+    setUndoStack((s) => [...s.slice(-29), [{ kind: 'standby', opId, date, prev: prevSb, next: nextSb }]]);
+    setRedoStack([]);
+    setSavingCount((c) => c + 1);
+
+    const query =
+      nextType === null
+        ? supabaseBrowser().from('standby_assignments').delete().eq('operator_id', opId).eq('schedule_date', date)
+        : supabaseBrowser()
+            .from('standby_assignments')
+            .upsert(
+              { organization_id: p.orgId, operator_id: opId, schedule_date: date, standby_type: nextType },
+              { onConflict: 'operator_id,schedule_date' },
+            );
+    const { error } = await query;
+    setSavingCount((c) => c - 1);
+    if (error) {
+      rollbackStandbyKeys([{ opId, date, prev: prevSb }]);
+      setMsg(error.message);
+    }
+  }
+
   async function clearCell(opId: string, date: string) {
     if (!p.canEdit) return;
     setMsg('');
     const k = cellKey(opId, date);
     const existing = cell.get(k) ?? null;
     if (!existing) return;
-    const prev = rows;
     setRows((r) => r.filter((x) => cellKey(x.operator_id, x.schedule_date) !== k));
-    setUndoStack((s) => [...s.slice(-29), [{ opId, date, prev: existing, next: null }]]);
+    setUndoStack((s) => [...s.slice(-29), [{ kind: 'shift', opId, date, prev: existing, next: null }]]);
     setRedoStack([]);
     setSavingCount((c) => c + 1);
-    const { error } = await supabaseBrowser()
-      .from('schedule_assignments')
-      .delete()
-      .eq('operator_id', opId)
-      .eq('schedule_date', date);
+    const { error } = await supabaseBrowser().from('schedule_assignments').delete().eq('operator_id', opId).eq('schedule_date', date);
     setSavingCount((c) => c - 1);
     if (error) {
-      setRows(prev);
+      rollbackShiftKeys([{ opId, date, prev: existing }]);
       setMsg(error.message);
     }
   }
@@ -336,7 +397,8 @@ export default function Roster(p: {
       return;
     }
     const targets = days.filter((d) => d.date >= fromDate).map((d) => d.date);
-    const history = targets.map((date) => ({
+    const history: HistoryEntry = targets.map((date) => ({
+      kind: 'shift',
       opId,
       date,
       prev: cell.get(cellKey(opId, date)) ?? null,
@@ -349,7 +411,6 @@ export default function Roster(p: {
       shift_type_id: source.shift_type_id,
       area_code_id: source.area_code_id,
     }));
-    const prev = rows;
     const targetSet = new Set(targets);
     setRows((r) => [
       ...r.filter((x) => !(x.operator_id === opId && targetSet.has(x.schedule_date))),
@@ -368,32 +429,88 @@ export default function Roster(p: {
       .upsert(payload, { onConflict: 'operator_id,schedule_date' });
     setSavingCount((c) => c - 1);
     if (error) {
-      setRows(prev);
+      rollbackShiftKeys(history.map((h) => ({ opId: h.opId, date: h.date, prev: (h as ShiftHistoryItem).prev })));
       setMsg(error.message);
     }
   }
 
-  async function handleCellClick(opId: string, date: string) {
+  function applyBrushLocal(opId: string, date: string) {
+    const batch = dragRef.current;
+    if (!batch) return;
+    const k = cellKey(opId, date);
+    if (batch.visited.has(k)) return;
+    batch.visited.add(k);
+
+    const prevCell = cell.get(k) ?? null;
+    if (mode === 'erase') {
+      if (!prevCell) return;
+      batch.entries.push({ kind: 'shift', opId, date, prev: prevCell, next: null });
+      batch.deletes.push({ opId, date });
+      setRows((r) => r.filter((x) => cellKey(x.operator_id, x.schedule_date) !== k));
+      return;
+    }
+
+    if (!shiftId) return;
+    const nextRow: Row = { operator_id: opId, schedule_date: date, shift_type_id: shiftId, area_code_id: areaId };
+    batch.entries.push({ kind: 'shift', opId, date, prev: prevCell, next: nextRow });
+    batch.upserts.push(nextRow);
+    setRows((r) => [...r.filter((x) => !(x.operator_id === opId && x.schedule_date === date)), nextRow]);
+  }
+
+  async function commitDragBatch() {
+    const batch = dragRef.current;
+    dragRef.current = null;
+    if (!batch || batch.entries.length === 0) return;
+
+    setUndoStack((s) => [...s.slice(-29), batch.entries]);
+    setRedoStack([]);
+    setSavingCount((c) => c + 1);
+
+    const sb = supabaseBrowser();
+    let errMsg = '';
+    if (batch.upserts.length > 0) {
+      const { error } = await sb
+        .from('schedule_assignments')
+        .upsert(batch.upserts.map((u) => ({ ...u, organization_id: p.orgId })), { onConflict: 'operator_id,schedule_date' });
+      if (error) errMsg = error.message;
+    }
+    for (const d of batch.deletes) {
+      const { error } = await sb.from('schedule_assignments').delete().eq('operator_id', d.opId).eq('schedule_date', d.date);
+      if (error && !errMsg) errMsg = error.message;
+    }
+
+    setSavingCount((c) => c - 1);
+    if (errMsg) {
+      rollbackShiftKeys(batch.entries.map((e) => ({ opId: e.opId, date: e.date, prev: e.prev })));
+      setMsg(errMsg);
+    }
+  }
+
+  useEffect(() => {
+    const onPointerUp = () => {
+      if (dragRef.current?.active) void commitDragBatch();
+    };
+    window.addEventListener('pointerup', onPointerUp);
+    return () => window.removeEventListener('pointerup', onPointerUp);
+  });
+
+  async function activateCell(opId: string, date: string) {
     if (!p.canEdit) return;
     setMsg('');
-
     if (mode === 'standby') {
       const existing = standbyMap.get(cellKey(opId, date));
       await setStandbyValue(opId, date, existing?.standby_type === standbyType ? null : standbyType);
       return;
     }
-
     if (mode === 'erase') {
       await clearCell(opId, date);
       return;
     }
-
     if (!shiftId) return;
-    const prev = rows;
     const prevCell = cell.get(cellKey(opId, date)) ?? null;
     const row: Row = { operator_id: opId, schedule_date: date, shift_type_id: shiftId, area_code_id: areaId };
     setRows((r) => [...r.filter((x) => !(x.operator_id === opId && x.schedule_date === date)), row]);
-    setUndoStack((s) => [...s.slice(-29), [{ opId, date, prev: prevCell, next: row }]]);
+    setUndoStack((s) => [...s.slice(-29), [{ kind: 'shift', opId, date, prev: prevCell, next: row }]]);
     setRedoStack([]);
     setSavingCount((c) => c + 1);
     const { error } = await supabaseBrowser()
@@ -401,9 +518,41 @@ export default function Roster(p: {
       .upsert({ ...row, organization_id: p.orgId }, { onConflict: 'operator_id,schedule_date' });
     setSavingCount((c) => c - 1);
     if (error) {
-      setRows(prev);
+      rollbackShiftKeys([{ opId, date, prev: prevCell }]);
       setMsg(error.message);
     }
+  }
+
+  function handleCellKeyDown(e: React.KeyboardEvent<HTMLTableCellElement>, rIdx: number, cIdx: number, op: Op, date: string) {
+    const maxR = filteredOperators.length - 1;
+    const maxC = days.length - 1;
+    let nr = rIdx;
+    let nc = cIdx;
+    if (e.key === 'ArrowRight') nc = Math.min(maxC, cIdx + 1);
+    else if (e.key === 'ArrowLeft') nc = Math.max(0, cIdx - 1);
+    else if (e.key === 'ArrowDown') nr = Math.min(maxR, rIdx + 1);
+    else if (e.key === 'ArrowUp') nr = Math.max(0, rIdx - 1);
+    else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      void activateCell(op.id, date);
+      return;
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      void clearCell(op.id, date);
+      return;
+    } else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+      e.preventDefault();
+      const rect = e.currentTarget.getBoundingClientRect();
+      setCtxMenu({ x: rect.left, y: rect.bottom + 2, opId: op.id, opName: op.full_name, date });
+      return;
+    } else {
+      return;
+    }
+
+    e.preventDefault();
+    setFocused({ r: nr, c: nc });
+    const nextTd = gridRef.current?.querySelector<HTMLTableCellElement>(`td[data-rc="${nr}-${nc}"]`);
+    nextTd?.focus();
   }
 
   function exportCsv() {
@@ -429,7 +578,7 @@ export default function Roster(p: {
           else duty += 1;
           hrs += Number(s.duration_hours ?? 0);
         }
-        return [s?.code ?? '', a?.code ?? '', sb ? `(${sb.standby_type})` : ''].filter(Boolean).join(' ');
+        return [s?.code ?? '', a?.code ?? (s && !s.is_off ? 'PW' : ''), sb ? `(${sb.standby_type})` : ''].filter(Boolean).join(' ');
       });
       lines.push(
         [o.full_name, o.position ?? '', ...cols, String(duty), String(ocCount), String(hrs), String(off), String(leaves)]
@@ -489,10 +638,19 @@ export default function Roster(p: {
     [cell, days, filteredOperators, shiftBy],
   );
 
+  const selectedShift = shiftId ? shiftBy.get(shiftId) : undefined;
+  const selectedArea = areaId ? areaBy.get(areaId) : undefined;
+  const brushLabel =
+    mode === 'erase'
+      ? 'Clear Cell'
+      : mode === 'standby'
+        ? `Standby (${standbyType})`
+        : `${selectedShift?.code ?? '—'} + ${selectedArea?.code ?? (selectedShift?.is_off ? 'none' : 'PW')}`;
+
   return (
     <div style={{ padding: '10px 14px 16px', maxWidth: '100%' }}>
       {/* Action & Filter Bar */}
-      <header
+      <div
         className="no-print"
         style={{
           display: 'flex',
@@ -504,26 +662,20 @@ export default function Roster(p: {
           background: '#ffffff',
           borderRadius: 10,
           border: '1px solid #e2e8f0',
-          boxShadow: '0 1px 2px rgba(15, 23, 42, 0.03)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <button className="btn" onClick={() => go(-1)} title="Previous month">
+          <button className="btn" onClick={() => go(-1)} aria-label="Previous month">
             ‹
           </button>
           <input
             type="month"
+            aria-label="Select month"
             value={p.month}
             onChange={(e) => e.target.value && router.push(`/?m=${e.target.value}`)}
-            style={{
-              padding: '4px 8px',
-              borderRadius: 6,
-              border: '1px solid #cbd5e1',
-              fontSize: 12.5,
-              fontWeight: 600,
-            }}
+            style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 12.5, fontWeight: 600 }}
           />
-          <button className="btn" onClick={() => go(1)} title="Next month">
+          <button className="btn" onClick={() => go(1)} aria-label="Next month">
             ›
           </button>
           <button className="btn" onClick={() => router.push(`/?m=${p.today.slice(0, 7)}`)}>
@@ -534,33 +686,26 @@ export default function Roster(p: {
         <input
           id="filterInput"
           type="search"
+          aria-label="Filter operators"
           placeholder="Filter operator…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{
-            padding: '5px 10px',
-            borderRadius: 6,
-            border: '1px solid #cbd5e1',
-            fontSize: 12.5,
-            width: 170,
-          }}
+          style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 12.5, width: 170 }}
         />
 
         <span
+          aria-live="polite"
           style={{
-            fontSize: 11,
-            fontWeight: 700,
-            padding: '2px 8px',
-            borderRadius: 999,
-            background: p.canEdit ? '#dbeafe' : '#f1f5f9',
-            color: p.canEdit ? '#1d4ed8' : '#475569',
-            textTransform: 'uppercase',
+            minWidth: 64,
+            fontSize: 12,
+            color: '#0369a1',
+            fontWeight: 600,
+            visibility: savingCount > 0 ? 'visible' : 'hidden',
           }}
         >
-          {p.role}
+          Saving…
         </span>
 
-        {savingCount > 0 && <span style={{ fontSize: 12, color: '#2563eb', fontWeight: 600 }}>Saving…</span>}
         {msg && (
           <span role="alert" style={{ fontSize: 12, color: '#b91c1c', fontWeight: 500 }}>
             {msg}
@@ -568,7 +713,6 @@ export default function Roster(p: {
         )}
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          {p.userName && <span style={{ fontSize: 12, color: '#64748b', marginRight: 4 }}>{p.userName}</span>}
           <button className="btn" onClick={exportCsv}>
             Export CSV
           </button>
@@ -586,17 +730,8 @@ export default function Roster(p: {
               Import JSON
             </button>
           )}
-          <button
-            className="btn"
-            onClick={async () => {
-              await supabaseBrowser().auth.signOut();
-              window.location.href = '/login';
-            }}
-          >
-            Sign out
-          </button>
         </div>
-      </header>
+      </div>
 
       {!p.orgId && (
         <div
@@ -612,12 +747,48 @@ export default function Roster(p: {
             fontSize: 12.5,
           }}
         >
-          Your account is signed in, but not yet linked to an organization in <code>user_profiles</code>. Run{' '}
-          <code>001_init.sql</code> and <code>002_auto_profile.sql</code> in Supabase SQL Editor, then refresh.
+          Your account is signed in and pending administrator activation / organization assignment.
         </div>
       )}
 
-      {/* Paint Palette Bar */}
+      {/* Always-visible Shift Legend (for Viewers & Print) */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 10,
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          marginBottom: 8,
+          padding: '6px 12px',
+          background: '#ffffff',
+          borderRadius: 8,
+          border: '1px solid #e2e8f0',
+          fontSize: 11.5,
+        }}
+      >
+        <strong style={{ color: '#475569', textTransform: 'uppercase', fontSize: 10.5 }}>Shift Legend:</strong>
+        {p.shifts.map((s) => (
+          <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span
+              style={{
+                background: s.background_color,
+                color: s.text_color,
+                border: '1px solid #cbd5e1',
+                borderRadius: 4,
+                padding: '1px 6px',
+                fontWeight: 700,
+                fontSize: 11,
+              }}
+            >
+              {s.code}
+            </span>
+            <span style={{ color: '#475569' }}>{s.description ?? (s.is_off ? 'Off' : 'Duty')}</span>
+          </span>
+        ))}
+        <span style={{ color: '#475569' }}>· Duty cells without an area code show <b>PW</b></span>
+      </div>
+
+      {/* Paint Palette Bar (Editors only) */}
       {p.canEdit && (
         <div
           className="no-print"
@@ -633,7 +804,21 @@ export default function Roster(p: {
             border: '1px solid #e2e8f0',
           }}
         >
-          <span style={{ fontSize: 10.5, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Shifts:</span>
+          <span
+            style={{
+              padding: '3px 9px',
+              borderRadius: 999,
+              background: '#0f172a',
+              color: '#ffffff',
+              fontSize: 11.5,
+              fontWeight: 700,
+              marginRight: 4,
+            }}
+          >
+            Brush: {brushLabel}
+          </span>
+
+          <span style={{ fontSize: 10.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Shifts:</span>
           {p.shifts.map((s) => (
             <button
               key={s.id}
@@ -658,9 +843,7 @@ export default function Roster(p: {
           ))}
 
           <span style={{ width: 1, height: 18, background: '#e2e8f0', margin: '0 3px' }} />
-          <span style={{ fontSize: 10.5, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-            Area / Leave:
-          </span>
+          <span style={{ fontSize: 10.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Area / Leave:</span>
           <button
             onClick={() => {
               setMode('paint');
@@ -675,7 +858,7 @@ export default function Roster(p: {
               border: mode === 'paint' && areaId === null ? '2px solid #2563eb' : '1px solid #cbd5e1',
             }}
           >
-            (none)
+            PW (default)
           </button>
           {p.areas.map((a) => (
             <button
@@ -714,12 +897,12 @@ export default function Roster(p: {
                 color: mode === 'standby' ? '#6d28d9' : '#0f172a',
                 fontWeight: 700,
               }}
-              title="Toggle Standby overlay (right-click any cell for quick actions)"
             >
-              ⚡ Standby ({standbyType})
+              Standby ({standbyType})
             </button>
             {mode === 'standby' && (
               <select
+                aria-label="Standby type"
                 value={standbyType}
                 onChange={(e) => setStandbyType(e.target.value as 'OC' | 'DWP' | 'ERP')}
                 style={{
@@ -750,29 +933,16 @@ export default function Roster(p: {
               color: mode === 'erase' ? '#991b1b' : '#0f172a',
               fontWeight: 600,
             }}
-            title="Click a cell to clear its shift assignment"
           >
             Clear Cell
           </button>
 
           <span style={{ width: 1, height: 18, background: '#e2e8f0', margin: '0 3px' }} />
-          <button
-            className="btn"
-            onClick={handleUndo}
-            disabled={undoStack.length === 0}
-            style={{ padding: '3px 8px', fontSize: 11.5 }}
-            title="Undo (Ctrl+Z)"
-          >
-            ↶ Undo
+          <button className="btn" onClick={handleUndo} disabled={undoStack.length === 0} style={{ padding: '3px 8px', fontSize: 11.5 }} title="Undo (Ctrl+Z)">
+            Undo
           </button>
-          <button
-            className="btn"
-            onClick={handleRedo}
-            disabled={redoStack.length === 0}
-            style={{ padding: '3px 8px', fontSize: 11.5 }}
-            title="Redo (Ctrl+Y)"
-          >
-            ↷ Redo
+          <button className="btn" onClick={handleRedo} disabled={redoStack.length === 0} style={{ padding: '3px 8px', fontSize: 11.5 }} title="Redo (Ctrl+Y)">
+            Redo
           </button>
         </div>
       )}
@@ -782,102 +952,46 @@ export default function Roster(p: {
         className="schedule-container"
         style={{
           overflow: 'auto',
-          maxHeight: '76vh',
+          maxHeight: '72vh',
           background: '#ffffff',
           borderRadius: 10,
           border: '1px solid #cbd5e1',
           boxShadow: '0 1px 4px rgba(15, 23, 42, 0.05)',
         }}
       >
-        <table className="schedule-table">
+        <table ref={gridRef} className="schedule-table" role="grid" aria-label={`Monthly schedule for ${monthLabel}`}>
           <thead>
-            {/* Row 1: Month Banner + Summary Group */}
             <tr style={{ height: 26 }}>
-              <th
-                rowSpan={2}
-                className="sticky-corner-idx"
-                style={{
-                  background: '#0f172a',
-                  color: '#94a3b8',
-                  width: 36,
-                  minWidth: 36,
-                  textAlign: 'center',
-                  fontSize: 10,
-                }}
-              >
+              <th rowSpan={2} className="sticky-corner-idx" style={{ background: '#0f172a', color: '#cbd5e1', width: 36, minWidth: 36, textAlign: 'center', fontSize: 10 }}>
                 #
               </th>
-              <th
-                rowSpan={2}
-                className="sticky-corner-name"
-                style={{
-                  background: '#0f172a',
-                  color: '#ffffff',
-                  minWidth: 165,
-                  padding: '4px 8px',
-                  textAlign: 'left',
-                }}
-              >
+              <th rowSpan={2} className="sticky-corner-name" style={{ background: '#0f172a', color: '#ffffff', minWidth: 165, padding: '4px 8px', textAlign: 'left' }}>
                 Operator ({filteredOperators.length})
               </th>
               <th
                 colSpan={days.length}
                 className="sticky-header-month"
-                style={{
-                  background: '#0f172a',
-                  color: '#e2e8f0',
-                  padding: '4px 8px',
-                  textAlign: 'center',
-                  fontSize: 11.5,
-                  letterSpacing: '0.03em',
-                  textTransform: 'uppercase',
-                }}
+                style={{ background: '#0f172a', color: '#f1f5f9', padding: '4px 8px', textAlign: 'center', fontSize: 11.5, letterSpacing: '0.03em', textTransform: 'uppercase' }}
               >
                 {monthLabel}
               </th>
-              <th
-                rowSpan={2}
-                className="sticky-corner-stat sticky-col-duty"
-                style={{ background: '#0f172a', color: '#ffffff', width: 42, minWidth: 42, textAlign: 'center' }}
-                title="Duty Days"
-              >
+              <th rowSpan={2} className="sticky-corner-stat sticky-col-duty" style={{ background: '#0f172a', color: '#ffffff', width: 42, minWidth: 42, textAlign: 'center' }}>
                 Duty
               </th>
-              <th
-                rowSpan={2}
-                className="sticky-corner-stat sticky-col-oc"
-                style={{ background: '#4c1d95', color: '#ede9fe', width: 42, minWidth: 42, textAlign: 'center' }}
-                title="On-Call / Standby Days"
-              >
+              <th rowSpan={2} className="sticky-corner-stat sticky-col-oc" style={{ background: '#4c1d95', color: '#f5f3ff', width: 42, minWidth: 42, textAlign: 'center' }}>
                 OC
               </th>
-              <th
-                rowSpan={2}
-                className="sticky-corner-stat sticky-col-hours"
-                style={{ background: '#0f172a', color: '#ffffff', width: 42, minWidth: 42, textAlign: 'center' }}
-                title="Total Duty Hours"
-              >
+              <th rowSpan={2} className="sticky-corner-stat sticky-col-hours" style={{ background: '#0f172a', color: '#ffffff', width: 42, minWidth: 42, textAlign: 'center' }}>
                 Hrs
               </th>
-              <th
-                rowSpan={2}
-                className="sticky-corner-stat sticky-col-off"
-                style={{ background: '#0f172a', color: '#94a3b8', width: 42, minWidth: 42, textAlign: 'center' }}
-                title="Rest / Off Days"
-              >
+              <th rowSpan={2} className="sticky-corner-stat sticky-col-off" style={{ background: '#0f172a', color: '#cbd5e1', width: 42, minWidth: 42, textAlign: 'center' }}>
                 Off
               </th>
-              <th
-                rowSpan={2}
-                className="sticky-corner-stat sticky-col-leaves"
-                style={{ background: '#0f172a', color: '#fde68a', width: 42, minWidth: 42, textAlign: 'center' }}
-                title="Leave Days"
-              >
+              <th rowSpan={2} className="sticky-corner-stat sticky-col-leaves" style={{ background: '#0f172a', color: '#fde68a', width: 42, minWidth: 42, textAlign: 'center' }}>
                 Lvs
               </th>
             </tr>
 
-            {/* Row 2: Day Number + Weekday */}
             <tr>
               {days.map((d) => {
                 const isToday = d.date === p.today;
@@ -886,15 +1000,15 @@ export default function Roster(p: {
                     key={d.date}
                     className="sticky-header-days"
                     style={{
-                      background: isToday ? '#1d4ed8' : d.isWeekend ? '#1e293b' : '#0f172a',
+                      background: isToday ? '#0369a1' : d.isWeekend ? '#1e293b' : '#0f172a',
                       color: '#ffffff',
-                      minWidth: 34,
+                      minWidth: 36,
                       padding: '3px 2px',
                       textAlign: 'center',
                     }}
                   >
                     <div style={{ lineHeight: 1.1 }}>{d.dayNum}</div>
-                    <div style={{ fontSize: 9, fontWeight: 400, opacity: 0.78 }}>{d.dowLabel}</div>
+                    <div style={{ fontSize: 10, fontWeight: 400, opacity: 0.9 }}>{d.dowLabel}</div>
                   </th>
                 );
               })}
@@ -904,12 +1018,12 @@ export default function Roster(p: {
           <tbody>
             {filteredOperators.length === 0 ? (
               <tr>
-                <td colSpan={days.length + 7} style={{ padding: 28, textAlign: 'center', color: '#64748b', background: '#fff' }}>
+                <td colSpan={days.length + 7} style={{ padding: 28, textAlign: 'center', color: '#475569', background: '#fff' }}>
                   No operators found{p.operators.length === 0 ? '. Import data or add operators under Operators & Setup.' : '.'}
                 </td>
               </tr>
             ) : (
-              filteredOperators.map((o, idx) => {
+              filteredOperators.map((o, rIdx) => {
                 let duty = 0;
                 let ocCount = 0;
                 let hrs = 0;
@@ -918,32 +1032,15 @@ export default function Roster(p: {
 
                 return (
                   <tr key={o.id} className="operator-row">
-                    <td
-                      className="sticky-col-idx"
-                      style={{
-                        background: '#f8fafc',
-                        color: '#64748b',
-                        textAlign: 'center',
-                        fontSize: 10,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {idx + 1}
+                    <td className="sticky-col-idx tabular-nums" style={{ background: '#f8fafc', color: '#475569', textAlign: 'center', fontSize: 10.5, fontWeight: 600 }}>
+                      {rIdx + 1}
                     </td>
-                    <td
-                      className="sticky-col-name"
-                      style={{
-                        background: '#ffffff',
-                        padding: '3px 8px',
-                        fontWeight: 600,
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
+                    <td className="sticky-col-name" style={{ background: '#ffffff', padding: '3px 8px', fontWeight: 600, whiteSpace: 'nowrap' }}>
                       <div style={{ color: '#0f172a' }}>{o.full_name}</div>
-                      {o.position && <div style={{ fontSize: 9.5, fontWeight: 400, color: '#64748b' }}>{o.position}</div>}
+                      {o.position && <div style={{ fontSize: 10.5, fontWeight: 400, color: '#475569' }}>{o.position}</div>}
                     </td>
 
-                    {days.map((d) => {
+                    {days.map((d, cIdx) => {
                       const k = cellKey(o.id, d.date);
                       const r = cell.get(k);
                       const s = r?.shift_type_id ? shiftBy.get(r.shift_type_id) : undefined;
@@ -964,16 +1061,49 @@ export default function Roster(p: {
                         a && a.background_color !== '#f1f5f9' && (s?.is_off || !s)
                           ? a.background_color
                           : s?.background_color ?? (sb ? '#f5f3ff' : d.isWeekend ? '#f8fafc' : '#ffffff');
-                      const fg =
-                        a && (s?.is_off || !s) ? a.text_color : s?.text_color ?? (sb ? '#6d28d9' : '#94a3b8');
-
+                      const fg = a && (s?.is_off || !s) ? a.text_color : s?.text_color ?? (sb ? '#5b21b6' : '#64748b');
+                      const cellText = a?.code ?? (s && !s.is_off ? 'PW' : '');
                       const classes = [isLeave ? 'cell-leave' : '', sb ? 'cell-oncall-active' : ''].filter(Boolean).join(' ');
+                      const isFocused = focused.r === rIdx && focused.c === cIdx;
 
                       return (
                         <td
                           key={d.date}
+                          data-rc={`${rIdx}-${cIdx}`}
+                          tabIndex={isFocused ? 0 : -1}
+                          role="gridcell"
+                          aria-label={`${o.full_name}, ${d.date}, ${s ? s.code : 'No shift'}, ${cellText || 'none'}${sb ? `, Standby ${sb.standby_type}` : ''}`}
                           className={classes || undefined}
-                          onClick={() => handleCellClick(o.id, d.date)}
+                          onFocus={() => setFocused({ r: rIdx, c: cIdx })}
+                          onKeyDown={(e) => handleCellKeyDown(e, rIdx, cIdx, o, d.date)}
+                          onPointerDown={(e) => {
+                            if (!p.canEdit || e.button !== 0) return;
+                            setFocused({ r: rIdx, c: cIdx });
+                            if (mode === 'standby') {
+                              void activateCell(o.id, d.date);
+                              return;
+                            }
+                            dragRef.current = { active: true, visited: new Set(), entries: [], upserts: [], deletes: [] };
+                            applyBrushLocal(o.id, d.date);
+                          }}
+                          onPointerEnter={() => {
+                            if (dragRef.current?.active && p.canEdit && mode !== 'standby') {
+                              applyBrushLocal(o.id, d.date);
+                            }
+                          }}
+                          onTouchStart={(e) => {
+                            if (!p.canEdit) return;
+                            const touch = e.touches[0];
+                            longPressRef.current = setTimeout(() => {
+                              setCtxMenu({ x: touch.clientX, y: touch.clientY, opId: o.id, opName: o.full_name, date: d.date });
+                            }, 500);
+                          }}
+                          onTouchEnd={() => {
+                            if (longPressRef.current) clearTimeout(longPressRef.current);
+                          }}
+                          onTouchMove={() => {
+                            if (longPressRef.current) clearTimeout(longPressRef.current);
+                          }}
                           onContextMenu={(e) => {
                             if (!p.canEdit) return;
                             e.preventDefault();
@@ -982,7 +1112,7 @@ export default function Roster(p: {
                           title={[
                             `${o.full_name} • ${d.date}`,
                             s ? `${s.code}${s.description ? ` (${s.description})` : ''}` : null,
-                            a ? `${a.code}${a.name ? ` (${a.name})` : ''}` : null,
+                            cellText ? `Area: ${a?.name ?? cellText}` : null,
                             sb ? `Standby: ${sb.standby_type}` : null,
                             pm ? `PM: ${pm.titles.join(', ')}` : null,
                           ]
@@ -992,15 +1122,15 @@ export default function Roster(p: {
                             position: 'relative',
                             textAlign: 'center',
                             cursor: p.canEdit ? 'pointer' : 'default',
-                            height: 27,
+                            height: 28,
                             background: bg,
                             color: fg,
                             fontWeight: 800,
-                            outline: d.date === p.today ? '1.5px solid #3b82f6' : undefined,
+                            outline: d.date === p.today ? '1.5px solid #0369a1' : undefined,
                             outlineOffset: -1.5,
                           }}
                         >
-                          {a?.code ?? ''}
+                          {cellText}
                           {sb && (
                             <>
                               <span className="oncall-corner-triangle" />
@@ -1012,35 +1142,19 @@ export default function Roster(p: {
                       );
                     })}
 
-                    <td className="sticky-col-duty" style={{ background: '#ffffff', textAlign: 'center', fontWeight: 700 }}>
+                    <td className="sticky-col-duty tabular-nums" style={{ background: '#ffffff', textAlign: 'center', fontWeight: 700 }}>
                       {duty}
                     </td>
-                    <td
-                      className="sticky-col-oc"
-                      style={{
-                        background: ocCount ? '#f5f3ff' : '#ffffff',
-                        color: ocCount ? '#6d28d9' : '#cbd5e1',
-                        textAlign: 'center',
-                        fontWeight: 700,
-                      }}
-                    >
+                    <td className="sticky-col-oc tabular-nums" style={{ background: ocCount ? '#f5f3ff' : '#ffffff', color: ocCount ? '#5b21b6' : '#64748b', textAlign: 'center', fontWeight: 700 }}>
                       {ocCount}
                     </td>
-                    <td className="sticky-col-hours" style={{ background: '#ffffff', textAlign: 'center', fontWeight: 600 }}>
+                    <td className="sticky-col-hours tabular-nums" style={{ background: '#ffffff', textAlign: 'center', fontWeight: 600 }}>
                       {hrs}
                     </td>
-                    <td className="sticky-col-off" style={{ background: '#ffffff', textAlign: 'center', color: '#64748b' }}>
+                    <td className="sticky-col-off tabular-nums" style={{ background: '#ffffff', textAlign: 'center', color: '#475569' }}>
                       {off}
                     </td>
-                    <td
-                      className="sticky-col-leaves"
-                      style={{
-                        background: leaves ? '#fefce8' : '#ffffff',
-                        color: leaves ? '#854d0e' : '#cbd5e1',
-                        textAlign: 'center',
-                        fontWeight: 700,
-                      }}
-                    >
+                    <td className="sticky-col-leaves tabular-nums" style={{ background: leaves ? '#fefce8' : '#ffffff', color: leaves ? '#854d0e' : '#64748b', textAlign: 'center', fontWeight: 700 }}>
                       {leaves}
                     </td>
                   </tr>
@@ -1052,24 +1166,13 @@ export default function Roster(p: {
           {filteredOperators.length > 0 && (
             <tfoot>
               <tr>
-                <td
-                  colSpan={2}
-                  className="sticky-col-idx"
-                  style={{
-                    position: 'sticky',
-                    bottom: 0,
-                    zIndex: 30,
-                    background: '#f8fafc',
-                    padding: '5px 8px',
-                    fontWeight: 700,
-                    borderTop: '2px solid #94a3b8',
-                  }}
-                >
+                <td colSpan={2} className="sticky-col-idx" style={{ position: 'sticky', bottom: 0, zIndex: 30, background: '#f8fafc', padding: '5px 8px', fontWeight: 700, borderTop: '2px solid #94a3b8' }}>
                   On Duty Count
                 </td>
                 {dailyWorkingCounts.map((cnt, idx) => (
                   <td
                     key={days[idx].date}
+                    className="tabular-nums"
                     style={{
                       position: 'sticky',
                       bottom: 0,
@@ -1077,7 +1180,7 @@ export default function Roster(p: {
                       background: '#f8fafc',
                       textAlign: 'center',
                       fontWeight: 700,
-                      color: cnt === 0 ? '#94a3b8' : '#0f172a',
+                      color: cnt === 0 ? '#64748b' : '#0f172a',
                       borderTop: '2px solid #94a3b8',
                       padding: '5px 2px',
                     }}
@@ -1093,56 +1196,27 @@ export default function Roster(p: {
       </div>
 
       {/* Legend Strip */}
-      <div
-        className="no-print"
-        style={{
-          marginTop: 8,
-          display: 'flex',
-          gap: 14,
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          fontSize: 11.5,
-          color: '#475569',
-        }}
-      >
+      <div className="no-print" style={{ marginTop: 8, display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', fontSize: 12, color: '#475569' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-          <span
-            style={{
-              width: 14,
-              height: 14,
-              borderRadius: 3,
-              background: '#f5f3ff',
-              boxShadow: 'inset 0 0 0 2px #7c3aed',
-              display: 'inline-block',
-            }}
-          />
-          Violet ring + corner = On-Call / Standby (OC/DWP/ERP)
+          <span style={{ width: 14, height: 14, borderRadius: 3, background: '#f5f3ff', boxShadow: 'inset 0 0 0 2px #7c3aed', display: 'inline-block' }} />
+          Violet ring + corner = Standby (OC/DWP/ERP)
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-          <span
-            className="cell-leave"
-            style={{
-              width: 14,
-              height: 14,
-              borderRadius: 3,
-              backgroundColor: '#fef3c7',
-              border: '1px solid #cbd5e1',
-              display: 'inline-block',
-            }}
-          />
+          <span className="cell-leave" style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: '#fef3c7', border: '1px solid #cbd5e1', display: 'inline-block' }} />
           Diagonal stripe = Leave day
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
           <span style={{ width: 8, height: 8, borderRadius: 2, background: '#0f766e', display: 'inline-block' }} />
-          Teal / Rose dot = PM task scheduled / overdue
+          Teal / Rose dot = PM scheduled / overdue
         </span>
-        {p.canEdit && <span style={{ color: '#64748b' }}>Tip: right-click any cell for standby &amp; fill-right actions.</span>}
+        {p.canEdit && <span>Tip: drag across cells to paint, arrow keys + Enter for keyboard, right-click or long-press for menu.</span>}
       </div>
 
-      {/* Right-Click Context Menu */}
+      {/* Cell Actions Context Menu */}
       {ctxMenu && (
         <div
           className="no-print"
+          role="menu"
           onClick={(e) => e.stopPropagation()}
           style={{
             position: 'fixed',
@@ -1151,48 +1225,39 @@ export default function Roster(p: {
             zIndex: 60,
             width: 230,
             background: '#ffffff',
-            border: '1px solid #e2e8f0',
+            border: '1px solid #cbd5e1',
             borderRadius: 8,
             boxShadow: '0 10px 25px rgba(15, 23, 42, 0.18)',
             padding: '4px 0',
-            fontSize: 12,
+            fontSize: 12.5,
           }}
         >
-          <div
-            style={{
-              padding: '5px 10px',
-              borderBottom: '1px solid #f1f5f9',
-              fontSize: 10.5,
-              fontWeight: 700,
-              color: '#64748b',
-              display: 'flex',
-              justifyContent: 'space-between',
-            }}
-          >
+          <div style={{ padding: '5px 10px', borderBottom: '1px solid #f1f5f9', fontSize: 11, fontWeight: 700, color: '#475569', display: 'flex', justifyContent: 'space-between' }}>
             <span>CELL ACTIONS</span>
-            <span style={{ color: '#2563eb' }}>
+            <span style={{ color: '#0369a1' }}>
               {ctxMenu.opName.split(' ')[0]} · {ctxMenu.date.slice(5)}
             </span>
           </div>
           {[
-            { label: '⚡ Set General On-Call (OC)', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, 'OC'), color: '#5b21b6' },
-            { label: '🔧 Deep Well Standby (DWP)', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, 'DWP'), color: '#5b21b6' },
-            { label: '⚙ Electro-Mech Repair (ERP)', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, 'ERP'), color: '#5b21b6' },
-            { label: '⊘ Remove Standby', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, null), color: '#475569' },
-            { label: '→ Fill Right to Month End', fn: () => fillRight(ctxMenu.opId, ctxMenu.date), color: '#0f172a' },
-            { label: '✕ Clear Shift (No Duty)', fn: () => clearCell(ctxMenu.opId, ctxMenu.date), color: '#b91c1c' },
+            { label: 'Set General On-Call (OC)', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, 'OC'), color: '#5b21b6' },
+            { label: 'Deep Well Standby (DWP)', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, 'DWP'), color: '#5b21b6' },
+            { label: 'Electro-Mech Repair (ERP)', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, 'ERP'), color: '#5b21b6' },
+            { label: 'Remove Standby', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, null), color: '#475569' },
+            { label: 'Fill Right to Month End', fn: () => fillRight(ctxMenu.opId, ctxMenu.date), color: '#0f172a' },
+            { label: 'Clear Shift (No Duty)', fn: () => clearCell(ctxMenu.opId, ctxMenu.date), color: '#b91c1c' },
           ].map((item) => (
             <button
               key={item.label}
+              role="menuitem"
               onClick={() => {
                 setCtxMenu(null);
-                item.fn();
+                void item.fn();
               }}
               style={{
                 display: 'block',
                 width: '100%',
                 textAlign: 'left',
-                padding: '6px 12px',
+                padding: '7px 12px',
                 border: 'none',
                 background: 'transparent',
                 color: item.color,
@@ -1212,6 +1277,10 @@ export default function Roster(p: {
       {importOpen && (
         <div
           className="no-print"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="import-dialog-title"
+          onClick={() => !importing && setImportOpen(false)}
           style={{
             position: 'fixed',
             inset: 0,
@@ -1223,29 +1292,19 @@ export default function Roster(p: {
           }}
         >
           <div
-            style={{
-              width: '100%',
-              maxWidth: 440,
-              background: '#ffffff',
-              borderRadius: 12,
-              padding: 22,
-              boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
-            }}
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: 440, background: '#ffffff', borderRadius: 12, padding: 22, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}
           >
-            <h2 style={{ margin: '0 0 6px', fontSize: 17 }}>Import Legacy JSON Backup</h2>
-            <p style={{ margin: '0 0 14px', fontSize: 13, color: '#64748b' }}>
+            <h2 id="import-dialog-title" style={{ margin: '0 0 6px', fontSize: 17 }}>
+              Import Legacy JSON Backup
+            </h2>
+            <p style={{ margin: '0 0 14px', fontSize: 13, color: '#475569' }}>
               Select a JSON backup exported from the standalone HTML app. Existing records are safely upserted.
             </p>
             <input type="file" accept=".json,application/json" onChange={handleImportFile} disabled={importing} />
-            {importing && <p style={{ fontSize: 13, color: '#2563eb', margin: '10px 0 0' }}>Importing…</p>}
+            {importing && <p style={{ fontSize: 13, color: '#0369a1', margin: '10px 0 0' }}>Importing…</p>}
             {importStatus && (
-              <p
-                style={{
-                  fontSize: 13,
-                  margin: '10px 0 0',
-                  color: importStatus.startsWith('Error:') ? '#b91c1c' : '#15803d',
-                }}
-              >
+              <p style={{ fontSize: 13, margin: '10px 0 0', color: importStatus.startsWith('Error:') ? '#b91c1c' : '#166534' }}>
                 {importStatus}
               </p>
             )}
