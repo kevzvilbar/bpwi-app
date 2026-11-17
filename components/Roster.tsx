@@ -358,6 +358,24 @@ export default function Roster(p: {
         </div>
       </header>
 
+      {!p.orgId && (
+        <div
+          className="no-print"
+          role="status"
+          style={{
+            marginBottom: 10,
+            padding: '10px 14px',
+            borderRadius: 8,
+            background: '#fffbeb',
+            border: '1px solid #fde68a',
+            color: '#92400e',
+            fontSize: 13,
+          }}
+        >
+          Your account is signed in, but not yet linked to an organization in <code>user_profiles</code>. Ask an admin to assign your account, or run the first-time bootstrap SQL in <code>supabase/migrations/001_init.sql</code>.
+        </div>
+      )}
+
       {p.canEdit && (
         <div
           className="no-print"
