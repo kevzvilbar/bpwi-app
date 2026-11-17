@@ -169,6 +169,12 @@ a:focus-visible {
   border: 1px solid var(--border-light);
   border-radius: var(--radius);
   container-type: inline-size;
+  contain: layout style;
+}
+
+.operator-row {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 28px;
 }
 
 /* Top App Bar & Bottom Nav */

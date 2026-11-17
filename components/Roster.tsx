@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import RosterMobileViews from '@/components/RosterMobileViews';
@@ -94,6 +94,8 @@ export default function Roster(p: {
   const [shiftId, setShiftId] = useState<string | null>(p.shifts[0]?.id ?? null);
   const [areaId, setAreaId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
+  const [isPending, startTransition] = useTransition();
   const [savingCount, setSavingCount] = useState(0);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [msg, setMsg] = useState(p.initialError ?? '');
@@ -243,16 +245,18 @@ export default function Roster(p: {
   }, [p.pmTasks, p.today]);
 
   const filteredOperators = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = deferredSearch.trim().toLowerCase();
     if (!q) return p.operators;
     return p.operators.filter(
       (o) => o.full_name.toLowerCase().includes(q) || (o.position ?? '').toLowerCase().includes(q),
     );
-  }, [p.operators, search]);
+  }, [deferredSearch, p.operators]);
 
   const go = (d: number) => {
     const t = new Date(y, mo - 1 + d, 1);
-    router.push(`/?m=${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`);
+    startTransition(() => {
+      router.push(`/?m=${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`);
+    });
   };
 
   function rollbackShiftKeys(keys: { opId: string; date: string; prev: Row | null }[]) {
@@ -737,15 +741,15 @@ export default function Roster(p: {
             type="month"
             aria-label="Select month"
             value={p.month}
-            onChange={(e) => e.target.value && router.push(`/?m=${e.target.value}`)}
+            onChange={(e) => e.target.value && startTransition(() => router.push(`/?m=${e.target.value}`))}
             className="input"
             style={{ width: 'auto', minHeight: 36, padding: '4px 8px', fontSize: 12.5, fontWeight: 600 }}
           />
           <button className="btn" onClick={() => go(1)} aria-label="Next month">
             ›
           </button>
-          <button className="btn" onClick={() => router.push(`/?m=${p.today.slice(0, 7)}`)}>
-            Today
+          <button className="btn" onClick={() => startTransition(() => router.push(`/?m=${p.today.slice(0, 7)}`))}>
+            {isPending ? 'Loading…' : 'Today'}
           </button>
         </div>
 

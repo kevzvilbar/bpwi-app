@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 
@@ -129,6 +129,7 @@ export default function PmPlanner(p: {
   const [areaFilter, setAreaFilter] = useState('');
   const [msg, setMsg] = useState(p.error);
   const [busy, setBusy] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [confirmDel, setConfirmDel] = useState<{
     scope: 'one' | 'series' | 'following';
@@ -233,11 +234,11 @@ export default function PmPlanner(p: {
     if (view === 'week') {
       const next = addDays(selectedDate, d * 7);
       setSelectedDate(next);
-      if (!next.startsWith(p.month)) router.push(`/pm?m=${next.slice(0, 7)}`);
+      if (!next.startsWith(p.month)) startTransition(() => router.push(`/pm?m=${next.slice(0, 7)}`));
       return;
     }
     const t = new Date(y, mo - 1 + d, 1);
-    router.push(`/pm?m=${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`);
+    startTransition(() => router.push(`/pm?m=${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`));
   };
 
   function hasConflict(t: Task) {
@@ -502,10 +503,10 @@ export default function PmPlanner(p: {
             className="btn"
             onClick={() => {
               setSelectedDate(p.today);
-              router.push(`/pm?m=${p.today.slice(0, 7)}`);
+              startTransition(() => router.push(`/pm?m=${p.today.slice(0, 7)}`));
             }}
           >
-            Today
+            {isPending ? 'Loading…' : 'Today'}
           </button>
           <button className="btn" onClick={() => go(-1)} title="Previous">
             ‹
