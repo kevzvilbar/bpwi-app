@@ -85,7 +85,7 @@ export default function RosterMobileViews(p: {
   const leadingBlanks = p.days[0]?.dow ?? 0;
 
   return (
-    <div className="mobile-only-schedule no-print" style={{ display: 'grid', gap: 10 }}>
+    <div className="mobile-only-schedule no-print">
       {/* Mobile View Mode Tabs */}
       <div
         role="tablist"

@@ -352,7 +352,8 @@ select {
   }
 
   .mobile-only-schedule {
-    display: block;
+    display: grid;
+    gap: 10px;
   }
 
   .pm-layout {
