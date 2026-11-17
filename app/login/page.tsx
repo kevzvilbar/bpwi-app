@@ -21,7 +21,7 @@ function LoginForm() {
 
   const configWarning =
     !isConfigured || urlError === 'missing_config'
-      ? 'Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY) in your environment variables.'
+      ? 'Sign-in service is currently unavailable. Please contact your administrator.'
       : urlError === 'auth_error'
         ? 'Unable to verify your session. Please sign in again.'
         : '';
@@ -83,7 +83,7 @@ function LoginForm() {
   }
 
   return (
-    <main
+    <div
       style={{
         minHeight: '100vh',
         display: 'grid',
@@ -159,23 +159,32 @@ function LoginForm() {
           </button>
         </div>
 
-        {configWarning && (
-          <div
-            role="alert"
-            style={{
-              padding: '10px 12px',
-              marginBottom: 14,
-              borderRadius: 8,
-              background: '#fef2f2',
-              border: '1px solid #fecaca',
-              color: '#991b1b',
-              fontSize: 12,
-              lineHeight: 1.45,
-            }}
-          >
-            {configWarning}
-          </div>
-        )}
+          {configWarning && (
+            <div
+              role="alert"
+              style={{
+                padding: '10px 12px',
+                marginBottom: 14,
+                borderRadius: 8,
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                color: '#991b1b',
+                fontSize: 12.5,
+                lineHeight: 1.45,
+              }}
+            >
+              <div>{configWarning}</div>
+              {(!isConfigured || urlError === 'missing_config') && (
+                <details style={{ marginTop: 6, fontSize: 11.5, color: '#7f1d1d' }}>
+                  <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Administrator setup details</summary>
+                  <div style={{ marginTop: 4 }}>
+                    Set <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY</code> (or{' '}
+                    <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>) in Vercel / <code>.env.local</code>, then redeploy.
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
 
         {info && (
           <div
@@ -269,7 +278,7 @@ function LoginForm() {
           )}
         </form>
       </div>
-    </main>
+    </div>
   );
 }
 

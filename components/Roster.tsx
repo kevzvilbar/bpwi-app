@@ -61,6 +61,16 @@ function csvEscape(v: string) {
   return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 }
 
+function friendlyError(raw: string) {
+  if (/permission denied|row-level security|42501/i.test(raw)) {
+    return 'You do not have permission to modify this schedule.';
+  }
+  if (/network|fetch|timeout/i.test(raw)) {
+    return 'Connection issue — your change was reverted. Please try again.';
+  }
+  return 'Could not save change — reverted to previous value.';
+}
+
 export default function Roster(p: {
   month: string;
   today: string;
@@ -85,7 +95,10 @@ export default function Roster(p: {
   const [areaId, setAreaId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [savingCount, setSavingCount] = useState(0);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [msg, setMsg] = useState(p.initialError ?? '');
+  const [showHint, setShowHint] = useState(false);
+  const [confirmFill, setConfirmFill] = useState<{ opId: string; opName: string; date: string; count: number } | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importStatus, setImportStatus] = useState('');
@@ -164,9 +177,26 @@ export default function Roster(p: {
   }, [ctxMenu]);
 
   useEffect(() => {
+    if (p.canEdit && localStorage.getItem('bpwi-roster-hint-dismissed') !== '1') {
+      setShowHint(true);
+    }
+  }, [p.canEdit]);
+
+  useEffect(() => {
+    if (savingCount > 0) {
+      setSaveState('saving');
+    } else if (saveState === 'saving') {
+      setSaveState('saved');
+      const t = setTimeout(() => setSaveState((s) => (s === 'saved' ? 'idle' : s)), 2000);
+      return () => clearTimeout(t);
+    }
+  }, [saveState, savingCount]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setCtxMenu(null);
+        setConfirmFill(null);
         if (!importing) setImportOpen(false);
       }
     };
@@ -302,7 +332,8 @@ export default function Roster(p: {
     if (errMsg) {
       if (shiftRollback.length > 0) rollbackShiftKeys(shiftRollback);
       if (sbRollback.length > 0) rollbackStandbyKeys(sbRollback);
-      setMsg(errMsg);
+      setSaveState('error');
+      setMsg(friendlyError(errMsg));
     }
   }
 
@@ -368,7 +399,8 @@ export default function Roster(p: {
     setSavingCount((c) => c - 1);
     if (error) {
       rollbackStandbyKeys([{ opId, date, prev: prevSb }]);
-      setMsg(error.message);
+      setSaveState('error');
+      setMsg(friendlyError(error.message));
     }
   }
 
@@ -386,7 +418,8 @@ export default function Roster(p: {
     setSavingCount((c) => c - 1);
     if (error) {
       rollbackShiftKeys([{ opId, date, prev: existing }]);
-      setMsg(error.message);
+      setSaveState('error');
+      setMsg(friendlyError(error.message));
     }
   }
 
@@ -431,7 +464,8 @@ export default function Roster(p: {
     setSavingCount((c) => c - 1);
     if (error) {
       rollbackShiftKeys(history.map((h) => ({ opId: h.opId, date: h.date, prev: (h as ShiftHistoryItem).prev })));
-      setMsg(error.message);
+      setSaveState('error');
+      setMsg(friendlyError(error.message));
     }
   }
 
@@ -483,7 +517,8 @@ export default function Roster(p: {
     setSavingCount((c) => c - 1);
     if (errMsg) {
       rollbackShiftKeys(batch.entries.map((e) => ({ opId: e.opId, date: e.date, prev: e.prev })));
-      setMsg(errMsg);
+      setSaveState('error');
+      setMsg(friendlyError(errMsg));
     }
   }
 
@@ -520,7 +555,8 @@ export default function Roster(p: {
     setSavingCount((c) => c - 1);
     if (error) {
       rollbackShiftKeys([{ opId, date, prev: prevCell }]);
-      setMsg(error.message);
+      setSaveState('error');
+      setMsg(friendlyError(error.message));
     }
   }
 
@@ -696,14 +732,14 @@ export default function Roster(p: {
         <span
           aria-live="polite"
           style={{
-            minWidth: 64,
+            minWidth: 96,
             fontSize: 12,
-            color: '#0369a1',
+            color: saveState === 'error' ? 'var(--danger)' : saveState === 'saved' ? '#15803d' : 'var(--accent)',
             fontWeight: 600,
-            visibility: savingCount > 0 ? 'visible' : 'hidden',
+            visibility: saveState === 'idle' ? 'hidden' : 'visible',
           }}
         >
-          Saving…
+          {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved ✓' : saveState === 'error' ? 'Reverted' : ''}
         </span>
 
         {msg && (
@@ -748,6 +784,41 @@ export default function Roster(p: {
           }}
         >
           Your account is signed in and pending administrator activation / organization assignment.
+        </div>
+      )}
+
+      {showHint && p.canEdit && (
+        <div
+          className="no-print"
+          role="note"
+          style={{
+            marginBottom: 8,
+            padding: '8px 12px',
+            borderRadius: 8,
+            background: '#eff6ff',
+            border: '1px solid #bfdbfe',
+            color: '#1e3a8a',
+            fontSize: 12.5,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 10,
+            flexWrap: 'wrap',
+          }}
+        >
+          <span>
+            <b>Quick tips:</b> Click or drag across cells to paint. Use arrow keys + Enter for keyboard editing, <code>Ctrl+Z</code> to undo, and right-click (or long-press on mobile) for standby &amp; bulk fill actions.
+          </span>
+          <button
+            className="btn"
+            style={{ padding: '3px 10px', minHeight: 30, fontSize: 12 }}
+            onClick={() => {
+              localStorage.setItem('bpwi-roster-hint-dismissed', '1');
+              setShowHint(false);
+            }}
+          >
+            Got it
+          </button>
         </div>
       )}
 
@@ -939,6 +1010,13 @@ export default function Roster(p: {
           <button className="btn" onClick={handleRedo} disabled={redoStack.length === 0} style={{ padding: '3px 8px', fontSize: 11.5 }} title="Redo (Ctrl+Y)">
             Redo
           </button>
+          <div style={{ width: '100%', fontSize: 11.5, color: 'var(--text-secondary)', paddingTop: 2 }}>
+            {mode === 'paint'
+              ? `Paint mode: click or drag across cells to apply ${brushLabel}.`
+              : mode === 'standby'
+                ? `Standby mode: click a cell to toggle ${standbyType} standby status.`
+                : 'Erase mode: click or drag across cells to clear shift assignments.'}
+          </div>
         </div>
       )}
 
@@ -1262,7 +1340,14 @@ export default function Roster(p: {
             { label: 'Deep Well Standby (DWP)', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, 'DWP'), color: '#5b21b6' },
             { label: 'Electro-Mech Repair (ERP)', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, 'ERP'), color: '#5b21b6' },
             { label: 'Remove Standby', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, null), color: '#475569' },
-            { label: 'Fill Right to Month End', fn: () => fillRight(ctxMenu.opId, ctxMenu.date), color: '#0f172a' },
+            {
+              label: 'Fill Right to Month End',
+              fn: () => {
+                const count = days.filter((d) => d.date >= ctxMenu.date).length;
+                setConfirmFill({ opId: ctxMenu.opId, opName: ctxMenu.opName, date: ctxMenu.date, count });
+              },
+              color: '#0f172a',
+            },
             { label: 'Clear Shift (No Duty)', fn: () => clearCell(ctxMenu.opId, ctxMenu.date), color: '#b91c1c' },
           ].map((item) => (
             <button
@@ -1289,6 +1374,42 @@ export default function Roster(p: {
               {item.label}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Fill Right Confirmation Dialog */}
+      {confirmFill && (
+        <div
+          className="no-print modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="fill-dialog-title"
+          onClick={() => setConfirmFill(null)}
+        >
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420, display: 'grid', gap: 12 }}>
+            <h2 id="fill-dialog-title" style={{ margin: 0, fontSize: 17 }}>
+              Fill schedule to month end?
+            </h2>
+            <p style={{ margin: 0, fontSize: 13.5, color: 'var(--text-secondary)' }}>
+              This will copy <b>{confirmFill.opName}</b>&apos;s assignment from <b>{confirmFill.date}</b> across{' '}
+              <b>{confirmFill.count}</b> days through the end of {monthLabel}. You can undo this with <code>Ctrl+Z</code>.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button className="btn" onClick={() => setConfirmFill(null)}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  const target = confirmFill;
+                  setConfirmFill(null);
+                  void fillRight(target.opId, target.date);
+                }}
+              >
+                Fill {confirmFill.count} days
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

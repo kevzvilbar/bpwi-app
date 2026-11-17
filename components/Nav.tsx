@@ -1,15 +1,97 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
+
+function Icon({ name }: { name: 'schedule' | 'tasks' | 'pm' | 'standby' | 'reports' | 'menu' | 'close' | 'sun' | 'moon' }) {
+  const common = {
+    width: 18,
+    height: 18,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  };
+  switch (name) {
+    case 'schedule':
+      return (
+        <svg {...common}>
+          <rect x="3" y="4" width="18" height="18" rx="2" />
+          <line x1="16" y1="2" x2="16" y2="6" />
+          <line x1="8" y1="2" x2="8" y2="6" />
+          <line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
+      );
+    case 'tasks':
+      return (
+        <svg {...common}>
+          <path d="M9 11l3 3L22 4" />
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+        </svg>
+      );
+    case 'pm':
+      return (
+        <svg {...common}>
+          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+        </svg>
+      );
+    case 'standby':
+      return (
+        <svg {...common}>
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+        </svg>
+      );
+    case 'reports':
+      return (
+        <svg {...common}>
+          <line x1="18" y1="20" x2="18" y2="10" />
+          <line x1="12" y1="20" x2="12" y2="4" />
+          <line x1="6" y1="20" x2="6" y2="14" />
+        </svg>
+      );
+    case 'menu':
+      return (
+        <svg {...common}>
+          <line x1="3" y1="6" x2="21" y2="6" />
+          <line x1="3" y1="12" x2="21" y2="12" />
+          <line x1="3" y1="18" x2="21" y2="18" />
+        </svg>
+      );
+    case 'close':
+      return (
+        <svg {...common}>
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      );
+    case 'sun':
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+        </svg>
+      );
+    case 'moon':
+      return (
+        <svg {...common}>
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+      );
+  }
+}
 
 export default function Nav(p: { role: string; userName: string; canEdit: boolean; isAdmin: boolean }) {
   const path = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [dark, setDark] = useState(false);
   const [highContrast, setHighContrast] = useState(false);
+  const menuBtnRef = useRef<HTMLButtonElement | null>(null);
+  const closeBtnRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('bpwi-theme');
@@ -25,6 +107,19 @@ export default function Nav(p: { role: string; userName: string; canEdit: boolea
   useEffect(() => {
     setDrawerOpen(false);
   }, [path]);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    closeBtnRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setDrawerOpen(false);
+        menuBtnRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawerOpen]);
 
   if (path.startsWith('/login')) return null;
 
@@ -42,22 +137,12 @@ export default function Nav(p: { role: string; userName: string; canEdit: boolea
     document.documentElement.dataset.contrast = next ? 'high' : 'normal';
   }
 
-  const desktopLinks = [
-    { href: '/', label: 'Schedule', show: true },
-    { href: '/mobile', label: 'Attendance & My Tasks', show: true },
-    { href: '/pm', label: 'PM Tasks', show: true },
-    { href: '/call-sheet', label: 'Standby', show: true },
-    { href: '/leave', label: 'Reports', show: true },
-    { href: '/generate', label: 'Generate', show: p.canEdit },
-    { href: '/operators', label: 'Setup', show: p.isAdmin },
-  ].filter((l) => l.show);
-
-  const bottomLinks = [
-    { href: '/', label: 'Schedule', icon: '📅' },
-    { href: '/mobile', label: 'Attendance', icon: '✓' },
-    { href: '/pm', label: 'PM Tasks', icon: '🔧' },
-    { href: '/call-sheet', label: 'Standby', icon: '⚡' },
-    { href: '/leave', label: 'Reports', icon: '📊' },
+  const primaryLinks = [
+    { href: '/', label: 'Schedule', icon: 'schedule' as const },
+    { href: '/mobile', label: 'Tasks', icon: 'tasks' as const },
+    { href: '/pm', label: 'PM Plan', icon: 'pm' as const },
+    { href: '/call-sheet', label: 'Standby', icon: 'standby' as const },
+    { href: '/leave', label: 'Reports', icon: 'reports' as const },
   ];
 
   return (
@@ -83,14 +168,12 @@ export default function Nav(p: { role: string; userName: string; canEdit: boolea
           </div>
           <div>
             <div style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.2 }}>Operations &amp; Plant Schedule</div>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.2 }}>
-              BP Waterworks, Inc.
-            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.2 }}>BP Waterworks, Inc.</div>
           </div>
         </div>
 
         <nav aria-label="Main navigation" className="desktop-nav">
-          {desktopLinks.map((l) => {
+          {primaryLinks.map((l) => {
             const on = l.href === '/' ? path === '/' : path.startsWith(l.href);
             return (
               <Link
@@ -98,17 +181,21 @@ export default function Nav(p: { role: string; userName: string; canEdit: boolea
                 href={l.href}
                 aria-current={on ? 'page' : undefined}
                 style={{
-                  padding: '5px 10px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 12px',
                   borderRadius: 6,
-                  fontSize: 12.5,
-                  fontWeight: 600,
+                  fontSize: 13,
+                  fontWeight: on ? 700 : 600,
                   textDecoration: 'none',
-                  background: on ? 'var(--surface)' : 'transparent',
-                  color: on ? 'var(--text)' : 'var(--text-secondary)',
-                  boxShadow: on ? '0 1px 2px rgba(15, 23, 42, 0.08)' : 'none',
+                  background: on ? 'var(--primary)' : 'transparent',
+                  color: on ? 'var(--primary-fg)' : 'var(--text-secondary)',
+                  transition: 'background-color 0.12s, color 0.12s',
                 }}
               >
-                {l.label}
+                <Icon name={l.icon} />
+                <span>{l.label}</span>
               </Link>
             );
           })}
@@ -135,37 +222,43 @@ export default function Nav(p: { role: string; userName: string; canEdit: boolea
             aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
             title={dark ? 'Light mode' : 'Dark mode'}
           >
-            {dark ? '☀' : '☾'}
+            <Icon name={dark ? 'sun' : 'moon'} />
           </button>
           <button
+            ref={menuBtnRef}
             className="btn"
             onClick={() => setDrawerOpen(true)}
             aria-label="Open menu"
             aria-expanded={drawerOpen}
           >
-            ☰ Menu
+            <Icon name="menu" />
+            <span>Menu</span>
           </button>
         </div>
       </header>
 
       {/* Bottom Navigation Bar (Mobile & Tablet <= 1024px) */}
       <nav aria-label="Bottom navigation" className="bottom-nav no-print">
-        {bottomLinks.map((l) => {
+        {primaryLinks.map((l) => {
           const on = l.href === '/' ? path === '/' : path.startsWith(l.href);
           return (
             <Link key={l.href} href={l.href} aria-current={on ? 'page' : undefined}>
-              <span aria-hidden="true" style={{ fontSize: 15, lineHeight: 1 }}>
-                {l.icon}
-              </span>
+              <Icon name={l.icon} />
               <span>{l.label}</span>
             </Link>
           );
         })}
       </nav>
 
-      {/* Slide-out Secondary Actions Drawer */}
+      {/* Slide-out Secondary & Admin Actions Drawer */}
       {drawerOpen && (
-        <div className="drawer-overlay no-print" onClick={() => setDrawerOpen(false)}>
+        <div
+          className="drawer-overlay no-print"
+          onClick={() => {
+            setDrawerOpen(false);
+            menuBtnRef.current?.focus();
+          }}
+        >
           <aside
             className="drawer-panel"
             role="dialog"
@@ -173,47 +266,67 @@ export default function Nav(p: { role: string; userName: string; canEdit: boolea
             aria-label="App menu"
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-light)', paddingBottom: 10 }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                borderBottom: '1px solid var(--border-light)',
+                paddingBottom: 10,
+              }}
+            >
               <div>
                 <div style={{ fontWeight: 700, fontSize: 15 }}>{p.userName || 'BPWI User'}</div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>
                   Role: {p.role}
                 </div>
               </div>
-              <button className="btn" onClick={() => setDrawerOpen(false)} aria-label="Close menu">
-                ✕
+              <button
+                ref={closeBtnRef}
+                className="btn"
+                onClick={() => {
+                  setDrawerOpen(false);
+                  menuBtnRef.current?.focus();
+                }}
+                aria-label="Close menu"
+              >
+                <Icon name="close" />
               </button>
             </div>
 
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              Navigation
+            </div>
             <div style={{ display: 'grid', gap: 6 }}>
-              <Link href="/" className="btn" style={{ justifyContent: 'flex-start', textDecoration: 'none' }}>
-                Schedule
-              </Link>
-              <Link href="/mobile" className="btn" style={{ justifyContent: 'flex-start', textDecoration: 'none' }}>
-                Attendance &amp; My Tasks
-              </Link>
-              <Link href="/pm" className="btn" style={{ justifyContent: 'flex-start', textDecoration: 'none' }}>
-                PM Tasks
-              </Link>
-              <Link href="/call-sheet" className="btn" style={{ justifyContent: 'flex-start', textDecoration: 'none' }}>
-                Emergency Standby
-              </Link>
-              <Link href="/leave" className="btn" style={{ justifyContent: 'flex-start', textDecoration: 'none' }}>
-                Leave Reports
-              </Link>
-              {p.canEdit && (
-                <Link href="/generate" className="btn" style={{ justifyContent: 'flex-start', textDecoration: 'none' }}>
-                  Generate Schedule
+              {primaryLinks.map((l) => (
+                <Link key={l.href} href={l.href} className="btn" style={{ justifyContent: 'flex-start', textDecoration: 'none' }}>
+                  <Icon name={l.icon} />
+                  <span>{l.label}</span>
                 </Link>
-              )}
-              {p.isAdmin && (
-                <Link href="/operators" className="btn" style={{ justifyContent: 'flex-start', textDecoration: 'none' }}>
-                  Operators, Users &amp; Setup
-                </Link>
-              )}
+              ))}
             </div>
 
-            <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: 10, display: 'grid', gap: 8 }}>
+            {(p.canEdit || p.isAdmin) && (
+              <>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginTop: 6 }}>
+                  Administration
+                </div>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {p.canEdit && (
+                    <Link href="/generate" className="btn" style={{ justifyContent: 'flex-start', textDecoration: 'none' }}>
+                      Generate Schedule
+                    </Link>
+                  )}
+                  {p.isAdmin && (
+                    <Link href="/operators" className="btn" style={{ justifyContent: 'flex-start', textDecoration: 'none' }}>
+                      Operators, Users &amp; Setup
+                    </Link>
+                  )}
+                </div>
+              </>
+            )}
+
+            <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: 10, display: 'grid', gap: 8, marginTop: 6 }}>
               <button className="btn" style={{ justifyContent: 'space-between' }} onClick={toggleDark}>
                 <span>Dark Mode</span>
                 <b>{dark ? 'ON' : 'OFF'}</b>
