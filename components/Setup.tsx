@@ -135,8 +135,8 @@ export default function Setup(p: {
       aria-current={tab === t ? 'page' : undefined}
       style={{
         fontWeight: 700,
-        background: tab === t ? '#0f172a' : '#ffffff',
-        color: tab === t ? '#ffffff' : '#0f172a',
+        background: tab === t ? 'var(--primary)' : 'var(--surface)',
+        color: tab === t ? 'var(--primary-fg)' : 'var(--text)',
       }}
     >
       {l}
@@ -163,13 +163,221 @@ export default function Setup(p: {
         )}
       </div>
 
-      <div className="card" style={{ overflow: 'auto' }}>
+      {/* Mobile Cards (<= 640px) */}
+      <div className="responsive-cards">
+        {tab === 'operators' && (
+          <>
+            {ops.map((o, i) => (
+              <div key={o.id ?? `mn${i}`} className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <label style={{ fontSize: 12, width: 68 }}>
+                    Order
+                    <input className="input" type="number" value={o.sort_order} onChange={(e) => upd(setOps, i, { sort_order: +e.target.value })} />
+                  </label>
+                  <label style={{ fontSize: 12, flex: 1 }}>
+                    Full name
+                    <input className="input" value={o.full_name} onChange={(e) => upd(setOps, i, { full_name: e.target.value })} />
+                  </label>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <label style={{ fontSize: 12 }}>
+                    Position
+                    <input className="input" value={o.position ?? ''} onChange={(e) => upd(setOps, i, { position: e.target.value })} />
+                  </label>
+                  <label style={{ fontSize: 12 }}>
+                    Default station
+                    <input className="input" value={o.default_station ?? ''} onChange={(e) => upd(setOps, i, { default_station: e.target.value })} />
+                  </label>
+                </div>
+                <label style={{ fontSize: 12 }}>
+                  Phone
+                  <input className="input" value={o.phone_number ?? ''} onChange={(e) => upd(setOps, i, { phone_number: e.target.value })} />
+                </label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 4 }}>
+                  <label style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <input type="checkbox" checked={o.is_active} onChange={(e) => upd(setOps, i, { is_active: e.target.checked })} />
+                    Active
+                  </label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button className="btn btn-primary" disabled={!o.full_name.trim() || busy === `o${i}`} onClick={() => saveRow('operators', o, i, `o${i}`, setOps)}>
+                      {savedKey === `o${i}` ? 'Saved ✓' : busy === `o${i}` ? '…' : 'Save'}
+                    </button>
+                    <button className="btn" style={{ color: 'var(--danger)' }} onClick={() => requestDelete('operators', o.id, i, o.full_name || 'this operator', setOps as any)}>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            <button
+              className="btn"
+              onClick={() => setOps((x) => [...x, { full_name: '', position: '', phone_number: '', default_station: '', sort_order: x.length, is_active: true }])}
+            >
+              + Add operator
+            </button>
+          </>
+        )}
+
+        {tab === 'shifts' && (
+          <>
+            {shifts.map((s, i) => (
+              <div key={s.id ?? `msn${i}`} className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'end' }}>
+                  <label style={{ fontSize: 12, width: 90 }}>
+                    Code
+                    <input className="input" value={s.code} onChange={(e) => upd(setShifts, i, { code: e.target.value })} />
+                  </label>
+                  <label style={{ fontSize: 12, flex: 1 }}>
+                    Description
+                    <input className="input" value={s.description ?? ''} onChange={(e) => upd(setShifts, i, { description: e.target.value })} />
+                  </label>
+                  <span style={{ background: s.background_color, color: s.text_color, padding: '8px 12px', borderRadius: 6, fontWeight: 800, border: '1px solid var(--border)' }}>
+                    {s.code || '?'}
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 76px', gap: 8 }}>
+                  <label style={{ fontSize: 12 }}>
+                    Start
+                    <input className="input" type="time" value={s.start_time?.slice(0, 5) ?? ''} onChange={(e) => upd(setShifts, i, { start_time: e.target.value || null })} />
+                  </label>
+                  <label style={{ fontSize: 12 }}>
+                    End
+                    <input className="input" type="time" value={s.end_time?.slice(0, 5) ?? ''} onChange={(e) => upd(setShifts, i, { end_time: e.target.value || null })} />
+                  </label>
+                  <label style={{ fontSize: 12 }}>
+                    Hrs
+                    <input className="input" type="number" step="0.5" value={s.duration_hours} onChange={(e) => upd(setShifts, i, { duration_hours: +e.target.value })} />
+                  </label>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      BG <Color v={s.background_color} on={(c) => upd(setShifts, i, { background_color: c })} />
+                    </label>
+                    <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      Text <Color v={s.text_color} on={(c) => upd(setShifts, i, { text_color: c })} />
+                    </label>
+                    <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <input type="checkbox" checked={s.is_off} onChange={(e) => upd(setShifts, i, { is_off: e.target.checked })} /> Off
+                    </label>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button className="btn btn-primary" disabled={!s.code.trim() || busy === `s${i}`} onClick={() => saveRow('shift_types', s, i, `s${i}`, setShifts)}>
+                      {savedKey === `s${i}` ? 'Saved ✓' : busy === `s${i}` ? '…' : 'Save'}
+                    </button>
+                    <button className="btn" style={{ color: 'var(--danger)' }} onClick={() => requestDelete('shift_types', s.id, i, s.code || 'this shift', setShifts as any)}>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            <button
+              className="btn"
+              onClick={() => setShifts((x) => [...x, { code: '', description: '', start_time: '06:00', end_time: '14:00', duration_hours: 8, is_off: false, background_color: '#ffffff', text_color: '#0f172a' }])}
+            >
+              + Add shift type
+            </button>
+          </>
+        )}
+
+        {tab === 'areas' && (
+          <>
+            {areas.map((a, i) => (
+              <div key={a.id ?? `man${i}`} className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'end' }}>
+                  <label style={{ fontSize: 12, width: 84 }}>
+                    Code
+                    <input className="input" value={a.code} onChange={(e) => upd(setAreas, i, { code: e.target.value })} />
+                  </label>
+                  <label style={{ fontSize: 12, flex: 1 }}>
+                    Name
+                    <input className="input" value={a.name ?? ''} onChange={(e) => upd(setAreas, i, { name: e.target.value })} />
+                  </label>
+                  <span style={{ background: a.background_color, color: a.text_color, padding: '8px 12px', borderRadius: 6, fontWeight: 800, border: '1px solid var(--border)' }}>
+                    {a.code || '?'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <select className="input" style={{ width: 'auto' }} value={a.category} onChange={(e) => upd(setAreas, i, { category: e.target.value })}>
+                      <option value="station">Station</option>
+                      <option value="leave">Leave</option>
+                      <option value="holiday">Holiday</option>
+                    </select>
+                    <Color v={a.background_color} on={(c) => upd(setAreas, i, { background_color: c })} />
+                    <Color v={a.text_color} on={(c) => upd(setAreas, i, { text_color: c })} />
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button className="btn btn-primary" disabled={!a.code.trim() || busy === `a${i}`} onClick={() => saveRow('area_codes', a, i, `a${i}`, setAreas)}>
+                      {savedKey === `a${i}` ? 'Saved ✓' : busy === `a${i}` ? '…' : 'Save'}
+                    </button>
+                    <button className="btn" style={{ color: 'var(--danger)' }} onClick={() => requestDelete('area_codes', a.id, i, a.code || 'this area code', setAreas as any)}>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            <button
+              className="btn"
+              onClick={() => setAreas((x) => [...x, { code: '', name: '', category: 'station', background_color: '#f1f5f9', text_color: '#1e293b' }])}
+            >
+              + Add area / leave code
+            </button>
+          </>
+        )}
+
+        {tab === 'users' &&
+          users.map((u, i) => (
+            <div key={u.id} className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
+              <label style={{ fontSize: 12 }}>
+                Full name
+                <input className="input" value={u.full_name ?? ''} placeholder="Full name" onChange={(e) => upd(setUsers, i, { full_name: e.target.value })} />
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <label style={{ fontSize: 12 }}>
+                  Role
+                  <select className="input" value={u.role} onChange={(e) => upd(setUsers, i, { role: e.target.value as UserProfile['role'] })}>
+                    <option value="admin">admin</option>
+                    <option value="scheduler">scheduler</option>
+                    <option value="operator">operator</option>
+                    <option value="viewer">viewer</option>
+                  </select>
+                </label>
+                <label style={{ fontSize: 12 }}>
+                  Linked Operator
+                  <select className="input" value={u.operator_id ?? ''} onChange={(e) => upd(setUsers, i, { operator_id: e.target.value || null })}>
+                    <option value="">(unlinked)</option>
+                    {ops.filter((o) => o.id).map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.full_name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <input type="checkbox" checked={u.is_active} onChange={(e) => upd(setUsers, i, { is_active: e.target.checked })} />
+                  Active (Approved)
+                </label>
+                <button className="btn btn-primary" disabled={busy === `u${i}`} onClick={() => saveRow('user_profiles', u, i, `u${i}`, setUsers)}>
+                  {savedKey === `u${i}` ? 'Saved ✓' : busy === `u${i}` ? '…' : 'Save'}
+                </button>
+              </div>
+            </div>
+          ))}
+      </div>
+
+      {/* Desktop Table (> 640px) */}
+      <div className="card responsive-table-wrap" style={{ overflow: 'auto' }}>
         {tab === 'operators' && (
           <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5 }}>
             <thead>
               <tr>
                 {['#', 'Full name', 'Position', 'Phone', 'Default station', 'Active', ''].map((h) => (
-                  <th key={h} style={{ ...cell, padding: '8px 6px', textAlign: 'left', background: '#f1f5f9', color: '#0f172a' }}>
+                  <th key={h} style={{ ...cell, padding: '8px 6px', textAlign: 'left', background: 'var(--surface-muted)', color: 'var(--text)' }}>
                     {h}
                   </th>
                 ))}
@@ -242,7 +450,7 @@ export default function Setup(p: {
             <thead>
               <tr>
                 {['Code', 'Description', 'Start', 'End', 'Hours', 'Off day', 'BG', 'Text', 'Preview', ''].map((h) => (
-                  <th key={h} style={{ ...cell, padding: '8px 6px', textAlign: 'left', background: '#f1f5f9', color: '#0f172a' }}>
+                  <th key={h} style={{ ...cell, padding: '8px 6px', textAlign: 'left', background: 'var(--surface-muted)', color: 'var(--text)' }}>
                     {h}
                   </th>
                 ))}
@@ -344,7 +552,7 @@ export default function Setup(p: {
             <thead>
               <tr>
                 {['Code', 'Name', 'Category', 'BG', 'Text', 'Preview', ''].map((h) => (
-                  <th key={h} style={{ ...cell, padding: '8px 6px', textAlign: 'left', background: '#f1f5f9', color: '#0f172a' }}>
+                  <th key={h} style={{ ...cell, padding: '8px 6px', textAlign: 'left', background: 'var(--surface-muted)', color: 'var(--text)' }}>
                     {h}
                   </th>
                 ))}
@@ -422,7 +630,7 @@ export default function Setup(p: {
             <thead>
               <tr>
                 {['Full name', 'Role', 'Linked Operator', 'Active (Approved)', 'User ID', ''].map((h) => (
-                  <th key={h} style={{ ...cell, padding: '8px 6px', textAlign: 'left', background: '#f1f5f9', color: '#0f172a' }}>
+                  <th key={h} style={{ ...cell, padding: '8px 6px', textAlign: 'left', background: 'var(--surface-muted)', color: 'var(--text)' }}>
                     {h}
                   </th>
                 ))}
@@ -437,7 +645,7 @@ export default function Setup(p: {
                 </tr>
               ) : (
                 users.map((u, i) => (
-                  <tr key={u.id} style={{ background: u.is_active ? '#ffffff' : '#fffbeb' }}>
+                  <tr key={u.id} style={{ background: u.is_active ? 'var(--surface)' : 'rgba(234, 179, 8, 0.12)' }}>
                     <td style={cell}>
                       <input
                         style={inp}
