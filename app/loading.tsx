@@ -4,20 +4,18 @@ export default function Loading() {
       <div
         style={{
           height: 44,
-          background: '#e2e8f0',
+          background: 'var(--surface-muted)',
           borderRadius: 10,
           animation: 'pulse 1.5s ease-in-out infinite',
         }}
       />
       <div
+        className="card"
         style={{
           height: 360,
-          background: '#ffffff',
-          border: '1px solid #cbd5e1',
-          borderRadius: 10,
           display: 'grid',
           placeItems: 'center',
-          color: '#475569',
+          color: 'var(--text-secondary)',
           fontSize: 13,
           fontWeight: 500,
         }}

@@ -22,14 +22,17 @@
   --bg: #0b1120;
   --surface: #111827;
   --surface-muted: #1e293b;
-  --border: #334155;
-  --border-light: #1e293b;
+  --border: #475569;
+  --border-light: #334155;
   --text: #f8fafc;
   --text-secondary: #cbd5e1;
   --text-muted: #94a3b8;
   --primary: #2563eb;
   --primary-fg: #ffffff;
   --accent: #38bdf8;
+  --teal: #2dd4bf;
+  --violet: #a78bfa;
+  --danger: #f87171;
   --header-bg: #020617;
   --header-fg: #f8fafc;
 }
@@ -126,6 +129,12 @@ select {
 .btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.btn:focus-visible,
+a:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
 }
 
 .btn-primary {

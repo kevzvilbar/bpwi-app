@@ -343,6 +343,11 @@ export default function Nav(p: { role: string; userName: string; canEdit: boolea
                 style={{ width: '100%', color: 'var(--danger)' }}
                 onClick={async () => {
                   await supabaseBrowser().auth.signOut();
+                  localStorage.removeItem('bpwi-last-sync');
+                  if ('caches' in window) {
+                    const keys = await caches.keys();
+                    await Promise.all(keys.map((k) => caches.delete(k)));
+                  }
                   window.location.href = '/login';
                 }}
               >

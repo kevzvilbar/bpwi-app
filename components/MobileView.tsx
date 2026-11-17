@@ -52,13 +52,33 @@ function toMinutes(t: string | null) {
   return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
 }
 
-function isShiftNow(s: Shift | undefined, nowMinutes: number) {
-  if (!s || s.is_off) return false;
-  const start = toMinutes(s.start_time);
-  const end = toMinutes(s.end_time);
-  if (start === null || end === null) return false;
-  if (end > start) return nowMinutes >= start && nowMinutes < end;
-  return nowMinutes >= start || nowMinutes < end;
+function isShiftNow(todayShift: Shift | undefined, prevShift: Shift | undefined, prevIsLeave: boolean, nowMinutes: number) {
+  if (todayShift && !todayShift.is_off) {
+    const start = toMinutes(todayShift.start_time);
+    const end = toMinutes(todayShift.end_time);
+    if (start !== null && end !== null) {
+      if (end > start && nowMinutes >= start && nowMinutes < end) return true;
+      if (end <= start && nowMinutes >= start) return true;
+    }
+  }
+  if (prevShift && !prevShift.is_off && !prevIsLeave) {
+    const start = toMinutes(prevShift.start_time);
+    const end = toMinutes(prevShift.end_time);
+    if (start !== null && end !== null && end <= start && nowMinutes < end) return true;
+  }
+  return false;
+}
+
+function manilaClockMinutes() {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Manila',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  const h = Number(parts.find((p) => p.type === 'hour')?.value ?? 0);
+  const m = Number(parts.find((p) => p.type === 'minute')?.value ?? 0);
+  return (h % 24) * 60 + m;
 }
 
 export default function MobileView(p: {
@@ -72,6 +92,7 @@ export default function MobileView(p: {
   shifts: Shift[];
   areas: Area[];
   assignments: Asg[];
+  yesterdayAssignments: Asg[];
   standby: Standby[];
   tasks: Task[];
   activityTypes: ActType[];
@@ -86,13 +107,20 @@ export default function MobileView(p: {
   const [remarksDraft, setRemarksDraft] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState('');
   const [msg, setMsg] = useState(p.error);
+  const [nowMinutes, setNowMinutes] = useState(p.nowMinutes);
 
   useEffect(() => setTasks(p.tasks), [p.tasks]);
+  useEffect(() => {
+    setNowMinutes(manilaClockMinutes());
+    const id = setInterval(() => setNowMinutes(manilaClockMinutes()), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   const opBy = useMemo(() => new Map(p.operators.map((o) => [o.id, o])), [p.operators]);
   const shiftBy = useMemo(() => new Map(p.shifts.map((s) => [s.id, s])), [p.shifts]);
   const areaBy = useMemo(() => new Map(p.areas.map((a) => [a.id, a])), [p.areas]);
   const asgBy = useMemo(() => new Map(p.assignments.map((a) => [a.operator_id, a])), [p.assignments]);
+  const prevAsgBy = useMemo(() => new Map(p.yesterdayAssignments.map((a) => [a.operator_id, a])), [p.yesterdayAssignments]);
   const sbBy = useMemo(() => new Map(p.standby.map((s) => [s.operator_id, s.standby_type])), [p.standby]);
   const actBy = useMemo(() => new Map(p.activityTypes.map((a) => [a.code, a])), [p.activityTypes]);
 
@@ -110,16 +138,19 @@ export default function MobileView(p: {
         const asg = asgBy.get(op.id);
         const shift = asg?.shift_type_id ? shiftBy.get(asg.shift_type_id) : undefined;
         const area = asg?.area_code_id ? areaBy.get(asg.area_code_id) : undefined;
+        const prevAsg = prevAsgBy.get(op.id);
+        const prevShift = prevAsg?.shift_type_id ? shiftBy.get(prevAsg.shift_type_id) : undefined;
+        const prevArea = prevAsg?.area_code_id ? areaBy.get(prevAsg.area_code_id) : undefined;
         const standbyType = sbBy.get(op.id);
         const isLeave = area?.category === 'leave';
         const isOnDuty = Boolean(shift && !shift.is_off && !isLeave);
-        const isNow = p.date === p.today && isOnDuty && isShiftNow(shift, p.nowMinutes);
+        const isNow = p.date === p.today && isShiftNow(isLeave ? undefined : shift, prevShift, prevArea?.category === 'leave', nowMinutes);
         const tier = standbyType ? 0 : isNow ? 1 : isOnDuty ? 2 : 3;
         return { op, idx, shift, area, standbyType, isLeave, isOnDuty, isNow, tier };
       });
     items.sort((a, b) => a.tier - b.tier || a.idx - b.idx);
     return items;
-  }, [areaBy, asgBy, p.date, p.nowMinutes, p.operators, p.today, sbBy, search, shiftBy]);
+  }, [areaBy, asgBy, nowMinutes, p.date, p.operators, p.today, prevAsgBy, sbBy, search, shiftBy]);
 
   const scopedTasks = useMemo(() => {
     const q = search.trim().toLowerCase();

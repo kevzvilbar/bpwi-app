@@ -15,11 +15,12 @@ export default async function MobilePage({ searchParams }: { searchParams: Promi
   const { sb, role, operatorId, canClosePm } = await getProfile();
   const today = manilaToday();
   const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.d ?? '') ? sp.d! : today;
+  const prevDate = addDays(date, -1);
   const nowMinutes = manilaNowMinutes();
   const pmFrom = addDays(date, -14);
   const pmTo = addDays(date, 30);
 
-  const [ops, shifts, areas, asg, standby, tasks, actTypes] = await Promise.all([
+  const [ops, shifts, areas, asg, prevAsg, standby, tasks, actTypes] = await Promise.all([
     sb
       .from('operators')
       .select('id, full_name, position, phone_number, default_station')
@@ -28,6 +29,7 @@ export default async function MobilePage({ searchParams }: { searchParams: Promi
     sb.from('shift_types').select('id, code, description, start_time, end_time, background_color, text_color, is_off').order('code'),
     sb.from('area_codes').select('id, code, name, category'),
     sb.from('schedule_assignments').select('operator_id, shift_type_id, area_code_id').eq('schedule_date', date),
+    sb.from('schedule_assignments').select('operator_id, shift_type_id, area_code_id').eq('schedule_date', prevDate),
     sb.from('standby_assignments').select('operator_id, standby_type').eq('schedule_date', date),
     sb.from('pm_tasks').select('*').gte('scheduled_date', pmFrom).lte('scheduled_date', pmTo).order('scheduled_date'),
     sb.from('pm_activity_types').select('code, label, short_label, color'),
@@ -38,6 +40,7 @@ export default async function MobilePage({ searchParams }: { searchParams: Promi
     shifts.error?.message ||
     areas.error?.message ||
     asg.error?.message ||
+    prevAsg.error?.message ||
     standby.error?.message ||
     tasks.error?.message ||
     '';
@@ -55,6 +58,7 @@ export default async function MobilePage({ searchParams }: { searchParams: Promi
       shifts={shifts.data ?? []}
       areas={areas.data ?? []}
       assignments={asg.data ?? []}
+      yesterdayAssignments={prevAsg.data ?? []}
       standby={standby.data ?? []}
       tasks={tasks.data ?? []}
       activityTypes={actTypes.error ? [] : (actTypes.data ?? [])}

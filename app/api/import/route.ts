@@ -20,7 +20,11 @@ export async function POST(req: Request) {
     } = await me.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { data: prof } = await me.from('user_profiles').select('role, organization_id').maybeSingle();
+    const { data: prof } = await me
+      .from('user_profiles')
+      .select('role, organization_id')
+      .eq('id', user.id)
+      .maybeSingle();
     if (prof?.role !== 'admin') return NextResponse.json({ error: 'Admins only' }, { status: 403 });
 
     const { url } = getSupabaseEnv();

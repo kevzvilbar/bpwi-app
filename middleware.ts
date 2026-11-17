@@ -37,11 +37,12 @@ export async function middleware(req: NextRequest) {
       },
     });
 
+    // Fast local session check in middleware; Server Components & API routes verify via getUser().
     const {
-      data: { user },
-    } = await sb.auth.getUser();
+      data: { session },
+    } = await sb.auth.getSession();
 
-    if (!user) {
+    if (!session) {
       if (isApiRoute) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }

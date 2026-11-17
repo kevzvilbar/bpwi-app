@@ -4,11 +4,32 @@ import { useEffect, useState } from 'react';
 
 export default function PwaRegister() {
   const [offline, setOffline] = useState(false);
+  const [cachedAt, setCachedAt] = useState('');
 
   useEffect(() => {
-    setOffline(!navigator.onLine);
-    const onOffline = () => setOffline(true);
-    const onOnline = () => setOffline(false);
+    const syncStamp = () => {
+      const now = new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(new Date());
+      localStorage.setItem('bpwi-last-sync', now);
+      setCachedAt(now);
+    };
+
+    const isOff = !navigator.onLine;
+    setOffline(isOff);
+    if (!isOff) syncStamp();
+    else setCachedAt(localStorage.getItem('bpwi-last-sync') ?? '');
+
+    const onOffline = () => {
+      setOffline(true);
+      setCachedAt(localStorage.getItem('bpwi-last-sync') ?? '');
+    };
+    const onOnline = () => {
+      setOffline(false);
+      syncStamp();
+    };
     window.addEventListener('offline', onOffline);
     window.addEventListener('online', onOnline);
 
@@ -37,7 +58,7 @@ export default function PwaRegister() {
         textAlign: 'center',
       }}
     >
-      Offline mode — showing cached schedule data. Changes will require a connection.
+      Offline mode — showing cached copy{cachedAt ? ` from ${cachedAt}` : ''}. Changes require a connection.
     </div>
   );
 }

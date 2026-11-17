@@ -1138,7 +1138,7 @@ export default function Roster(p: {
                     style={{
                       background: isToday ? '#0369a1' : d.isWeekend ? '#1e293b' : '#0f172a',
                       color: '#ffffff',
-                      minWidth: 36,
+                      minWidth: 46,
                       padding: '3px 2px',
                       textAlign: 'center',
                     }}
@@ -1198,7 +1198,10 @@ export default function Roster(p: {
                           ? a.background_color
                           : s?.background_color ?? (sb ? '#f5f3ff' : d.isWeekend ? '#f8fafc' : '#ffffff');
                       const fg = a && (s?.is_off || !s) ? a.text_color : s?.text_color ?? (sb ? '#5b21b6' : '#64748b');
-                      const cellText = a?.code ?? (s && !s.is_off ? 'PW' : '');
+                      const cellText =
+                        s && !s.is_off
+                          ? `${s.code}·${a?.code ?? 'PW'}`
+                          : a?.code ?? s?.code ?? '';
                       const classes = [isLeave ? 'cell-leave' : '', sb ? 'cell-oncall-active' : ''].filter(Boolean).join(' ');
                       const isFocused = focused.r === rIdx && focused.c === cIdx;
 

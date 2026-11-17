@@ -1,4 +1,4 @@
-import { supabaseServer } from '@/lib/supabase/server';
+import { getProfile } from '@/lib/profile';
 import { manilaToday } from '@/lib/date';
 import Roster from '@/components/Roster';
 
@@ -6,14 +6,14 @@ export const dynamic = 'force-dynamic';
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
   const sp = await searchParams;
-  const sb = await supabaseServer();
+  const { sb, role, orgId, name } = await getProfile();
   const today = manilaToday();
   const month = /^\d{4}-\d{2}$/.test(sp.m ?? '') ? sp.m! : today.slice(0, 7);
   const [y, mo] = month.split('-').map(Number);
   const first = `${month}-01`;
   const last = `${month}-${String(new Date(y, mo, 0).getDate()).padStart(2, '0')}`;
 
-  const [ops, shifts, areas, rows, standby, pmTasks, prof] = await Promise.all([
+  const [ops, shifts, areas, rows, standby, pmTasks] = await Promise.all([
     sb.from('operators').select('id, full_name, position').eq('is_active', true).order('sort_order'),
     sb.from('shift_types').select('id, code, description, duration_hours, background_color, text_color, is_off').order('code'),
     sb.from('area_codes').select('id, code, name, category, background_color, text_color').order('code'),
@@ -32,14 +32,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
       .select('scheduled_date, assigned_operator_ids, status, title')
       .gte('scheduled_date', first)
       .lte('scheduled_date', last),
-    sb.from('user_profiles').select('full_name, role, organization_id').maybeSingle(),
   ]);
 
-  const errors = [ops.error, shifts.error, areas.error, rows.error, standby.error, pmTasks.error, prof.error]
+  const errors = [ops.error, shifts.error, areas.error, rows.error, standby.error, pmTasks.error]
     .filter(Boolean)
     .map((e) => e!.message);
-
-  const role = prof.data?.role ?? 'viewer';
 
   return (
     <Roster
@@ -52,9 +49,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
       rows={rows.data ?? []}
       standby={standby.data ?? []}
       pmTasks={pmTasks.data ?? []}
-      orgId={prof.data?.organization_id ?? ''}
+      orgId={orgId}
       role={role}
-      userName={prof.data?.full_name ?? ''}
+      userName={name}
       canEdit={role === 'admin' || role === 'scheduler'}
       initialError={errors[0] ?? ''}
     />
