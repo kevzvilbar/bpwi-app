@@ -2,14 +2,25 @@ import { supabaseServer } from '@/lib/supabase/server';
 
 export async function getProfile() {
   const sb = await supabaseServer();
-  const { data: prof } = await sb.from('user_profiles').select('full_name, role, organization_id').maybeSingle();
+  let prof: { full_name?: string | null; role?: string | null; organization_id?: string | null; operator_id?: string | null } | null = null;
+  const res = await sb.from('user_profiles').select('full_name, role, organization_id, operator_id').maybeSingle();
+  if (res.error) {
+    // Fallback if 004_operator_pm_close.sql has not been run yet
+    const fallback = await sb.from('user_profiles').select('full_name, role, organization_id').maybeSingle();
+    prof = fallback.data;
+  } else {
+    prof = res.data;
+  }
+
   const role = (prof?.role ?? 'viewer') as string;
   return {
     sb,
     role,
     orgId: (prof?.organization_id ?? '') as string,
+    operatorId: (prof?.operator_id ?? null) as string | null,
     name: (prof?.full_name ?? '') as string,
     canEdit: role === 'admin' || role === 'scheduler',
+    canClosePm: role === 'admin' || role === 'scheduler' || role === 'operator',
     isAdmin: role === 'admin',
   };
 }

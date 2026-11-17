@@ -36,6 +36,7 @@ type UserProfile = {
   full_name: string | null;
   role: 'admin' | 'scheduler' | 'operator' | 'viewer';
   is_active: boolean;
+  operator_id?: string | null;
 };
 
 type Tab = 'operators' | 'shifts' | 'areas' | 'users';
@@ -412,7 +413,7 @@ export default function Setup(p: {
           <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5 }}>
             <thead>
               <tr>
-                {['Full name', 'Role', 'Active (Approved)', 'User ID', ''].map((h) => (
+                {['Full name', 'Role', 'Linked Operator', 'Active (Approved)', 'User ID', ''].map((h) => (
                   <th key={h} style={{ ...cell, padding: '8px 6px', textAlign: 'left', background: '#f1f5f9', color: '#0f172a' }}>
                     {h}
                   </th>
@@ -422,7 +423,7 @@ export default function Setup(p: {
             <tbody>
               {users.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ padding: 20, textAlign: 'center', color: '#475569' }}>
+                  <td colSpan={6} style={{ padding: 20, textAlign: 'center', color: '#475569' }}>
                     No user profiles found.
                   </td>
                 </tr>
@@ -437,7 +438,7 @@ export default function Setup(p: {
                         onChange={(e) => upd(setUsers, i, { full_name: e.target.value })}
                       />
                     </td>
-                    <td style={{ ...cell, width: 140 }}>
+                    <td style={{ ...cell, width: 130 }}>
                       <select
                         style={inp}
                         value={u.role}
@@ -447,6 +448,20 @@ export default function Setup(p: {
                         <option value="scheduler">scheduler</option>
                         <option value="operator">operator</option>
                         <option value="viewer">viewer</option>
+                      </select>
+                    </td>
+                    <td style={{ ...cell, width: 170 }}>
+                      <select
+                        style={inp}
+                        value={u.operator_id ?? ''}
+                        onChange={(e) => upd(setUsers, i, { operator_id: e.target.value || null })}
+                      >
+                        <option value="">(unlinked)</option>
+                        {ops.filter((o) => o.id).map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.full_name}
+                          </option>
+                        ))}
                       </select>
                     </td>
                     <td style={{ ...cell, textAlign: 'center', width: 130 }}>

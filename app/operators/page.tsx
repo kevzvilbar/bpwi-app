@@ -10,7 +10,7 @@ export default async function OperatorsPage() {
     sb.from('shift_types').select('id, code, description, start_time, end_time, duration_hours, is_off, background_color, text_color').order('code'),
     sb.from('area_codes').select('id, code, name, category, background_color, text_color').order('code'),
     isAdmin
-      ? sb.from('user_profiles').select('id, full_name, role, is_active').order('role').order('full_name')
+      ? sb.from('user_profiles').select('id, full_name, role, is_active, operator_id').order('role').order('full_name')
       : Promise.resolve({ data: [], error: null }),
   ]);
 

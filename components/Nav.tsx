@@ -10,6 +10,7 @@ export default function Nav(p: { role: string; userName: string; canEdit: boolea
 
   const links = [
     { href: '/', label: 'Attendance Roster', show: true },
+    { href: '/mobile', label: 'Mobile / My Tasks', show: true },
     { href: '/pm', label: 'PM Calendar', show: true },
     { href: '/leave', label: 'Leave Summary', show: true },
     { href: '/call-sheet', label: 'Call Sheet', show: true },
