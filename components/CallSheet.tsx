@@ -3,13 +3,39 @@
 import { useMemo, useState } from 'react';
 
 type Op = { id: string; full_name: string; position: string | null; phone_number: string | null; default_station: string | null };
-type Shift = { id: string; code: string; description: string | null; background_color: string; text_color: string; is_off: boolean };
+type Shift = {
+  id: string;
+  code: string;
+  description: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  background_color: string;
+  text_color: string;
+  is_off: boolean;
+};
 type Area = { id: string; code: string; name: string | null; category: string };
 type Asg = { operator_id: string; shift_type_id: string | null; area_code_id: string | null };
 type Standby = { operator_id: string; standby_type: string };
 
+function toMinutes(t: string | null) {
+  if (!t) return null;
+  const [h, m] = t.split(':').map(Number);
+  return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
+}
+
+function isShiftActiveNow(s: Shift | undefined, nowMinutes: number) {
+  if (!s || s.is_off) return false;
+  const start = toMinutes(s.start_time);
+  const end = toMinutes(s.end_time);
+  if (start === null || end === null) return false;
+  if (end > start) return nowMinutes >= start && nowMinutes < end;
+  // Crosses midnight (e.g. 22:00 - 06:00)
+  return nowMinutes >= start || nowMinutes < end;
+}
+
 export default function CallSheet(p: {
   today: string;
+  nowMinutes: number;
   operators: Op[];
   shifts: Shift[];
   areas: Area[];
@@ -45,9 +71,10 @@ export default function CallSheet(p: {
         const standbyType = sbBy.get(o.id);
         const isLeave = area?.category === 'leave';
         const isOnDuty = Boolean(shift && !shift.is_off && !isLeave);
-        // Priority: 0 = Standby, 1 = On Duty, 2 = Off / Leave / Unassigned
-        const tier = standbyType ? 0 : isOnDuty ? 1 : 2;
-        return { op: o, idx, shift, area, standbyType, isLeave, isOnDuty, tier };
+        const isNow = isOnDuty && isShiftActiveNow(shift, p.nowMinutes);
+        // Priority: 0 = Standby, 1 = On Duty Now, 2 = On Duty Today, 3 = Off / Leave / Unassigned
+        const tier = standbyType ? 0 : isNow ? 1 : isOnDuty ? 2 : 3;
+        return { op: o, idx, shift, area, standbyType, isLeave, isOnDuty, isNow, tier };
       });
 
     enriched.sort((a, b) => a.tier - b.tier || a.idx - b.idx);
@@ -114,7 +141,7 @@ export default function CallSheet(p: {
                 </td>
               </tr>
             ) : (
-              sortedAndFiltered.map(({ op, shift, area, standbyType, isLeave, isOnDuty }, i) => (
+              sortedAndFiltered.map(({ op, shift, area, standbyType, isLeave, isOnDuty, isNow }, i) => (
                 <tr key={op.id} style={{ background: standbyType ? '#faf5ff' : '#ffffff' }}>
                   <td className="tabular-nums" style={{ padding: '8px 10px', textAlign: 'center', color: '#475569' }}>
                     {i + 1}
@@ -164,7 +191,7 @@ export default function CallSheet(p: {
                             border: '1px solid #cbd5e1',
                           }}
                         >
-                          ON DUTY · {shift.code}
+                          {isNow ? 'ON DUTY NOW' : 'ON DUTY'} · {shift.code}
                         </span>
                       ) : shift?.is_off ? (
                         <span

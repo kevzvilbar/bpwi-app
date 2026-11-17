@@ -1,5 +1,5 @@
 import { getProfile } from '@/lib/profile';
-import { manilaToday } from '@/lib/date';
+import { manilaNowMinutes, manilaToday } from '@/lib/date';
 import CallSheet from '@/components/CallSheet';
 
 export const dynamic = 'force-dynamic';
@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 export default async function CallSheetPage() {
   const { sb } = await getProfile();
   const today = manilaToday();
+  const nowMinutes = manilaNowMinutes();
 
   const [ops, shifts, areas, asg, standby] = await Promise.all([
     sb
@@ -14,7 +15,7 @@ export default async function CallSheetPage() {
       .select('id, full_name, position, phone_number, default_station')
       .eq('is_active', true)
       .order('sort_order'),
-    sb.from('shift_types').select('id, code, description, background_color, text_color, is_off'),
+    sb.from('shift_types').select('id, code, description, start_time, end_time, background_color, text_color, is_off'),
     sb.from('area_codes').select('id, code, name, category'),
     sb.from('schedule_assignments').select('operator_id, shift_type_id, area_code_id').eq('schedule_date', today),
     sb.from('standby_assignments').select('operator_id, standby_type').eq('schedule_date', today),
@@ -25,6 +26,7 @@ export default async function CallSheetPage() {
   return (
     <CallSheet
       today={today}
+      nowMinutes={nowMinutes}
       operators={ops.data ?? []}
       shifts={shifts.data ?? []}
       areas={areas.data ?? []}
