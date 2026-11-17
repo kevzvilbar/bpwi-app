@@ -2,7 +2,7 @@
 
 ## Setup
 1. Create a Supabase project; run `supabase/migrations/001_init.sql` in the SQL editor.
-2. Sign up your first user (Auth → Users), then run the bootstrap SQL at the bottom of the migration (creates the organization and makes you `admin`).
+2. Also run `supabase/migrations/002_auto_profile.sql`. Then sign up on the app's login page: the **first** user automatically becomes `admin` (and the organization is created); later sign-ups join as read-only `viewer` and can be promoted by an admin (`update user_profiles set role='scheduler' where id=...`). The manual bootstrap SQL in 001 is no longer needed.
 3. `cp .env.example .env.local`, fill in the keys, `npm install`, `npm run dev`.
 4. Import your data: in the old HTML app use **Export JSON**, then (logged in as admin):
    `curl -X POST http://localhost:3000/api/import -H "Content-Type: application/json" -H "Cookie: <your session cookie>" --data @backup.json`
