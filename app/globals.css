@@ -8,7 +8,7 @@ body {
   margin: 0;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: #f1f5f9;
-  color: #0f172a;
+  color: #1e293b;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -18,17 +18,33 @@ select {
   font: inherit;
 }
 
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 5px 11px;
   border-radius: 6px;
   border: 1px solid #cbd5e1;
   background: #ffffff;
   color: #0f172a;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s;
@@ -57,12 +73,12 @@ select {
 
 .input {
   width: 100%;
-  padding: 8px 11px;
+  padding: 7px 10px;
   border-radius: 6px;
   border: 1px solid #cbd5e1;
   background: #ffffff;
   color: #0f172a;
-  font-size: 14px;
+  font-size: 13.5px;
 }
 
 .input:focus {
@@ -71,11 +87,170 @@ select {
   border-color: #2563eb;
 }
 
+/* Schedule Table & Sticky Headers (from legacy-standalone.html) */
+.schedule-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 11px;
+  width: 100%;
+}
+
+.schedule-table th,
+.schedule-table td {
+  border-right: 1px solid #cbd5e1;
+  border-bottom: 1px solid #cbd5e1;
+  user-select: none;
+}
+
+.sticky-col-idx {
+  position: sticky;
+  left: 0;
+  z-index: 25;
+}
+.sticky-col-name {
+  position: sticky;
+  left: 36px;
+  z-index: 25;
+}
+
+.sticky-header-month {
+  position: sticky;
+  top: 0;
+  z-index: 35;
+}
+.sticky-header-days {
+  position: sticky;
+  top: 26px;
+  z-index: 35;
+}
+
+.sticky-corner-idx {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 45;
+}
+.sticky-corner-name {
+  position: sticky;
+  top: 0;
+  left: 36px;
+  z-index: 45;
+}
+
+.sticky-col-duty {
+  position: sticky;
+  right: 168px;
+  z-index: 25;
+}
+.sticky-col-oc {
+  position: sticky;
+  right: 126px;
+  z-index: 25;
+}
+.sticky-col-hours {
+  position: sticky;
+  right: 84px;
+  z-index: 25;
+}
+.sticky-col-off {
+  position: sticky;
+  right: 42px;
+  z-index: 25;
+}
+.sticky-col-leaves {
+  position: sticky;
+  right: 0;
+  z-index: 25;
+}
+.sticky-corner-stat {
+  position: sticky;
+  top: 0;
+  z-index: 45;
+}
+
+/* Leave days: striped so they never look like plain rest days */
+.cell-leave {
+  background-image: repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.08) 0 4px, transparent 4px 8px) !important;
+}
+
+/* On-Call (Standby) overlay */
+.cell-oncall-active {
+  box-shadow: inset 0 0 0 1.5px #ffffff, inset 0 0 0 3.5px #7c3aed;
+}
+
+.oncall-corner-triangle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 14px 14px 0;
+  border-color: transparent #7c3aed transparent transparent;
+  z-index: 10;
+  pointer-events: none;
+  filter: drop-shadow(-0.5px 0.5px 0 #ffffff);
+}
+
+.oncall-icon-mark {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  font-size: 7px;
+  font-weight: 900;
+  color: #ffffff;
+  line-height: 1;
+  z-index: 11;
+  pointer-events: none;
+}
+
+/* Preventive maintenance cell indicator */
+.pm-mark {
+  position: absolute;
+  left: 2px;
+  bottom: 2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: #0f766e;
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 0 0 0.5px rgba(15, 23, 42, 0.45);
+  z-index: 9;
+  pointer-events: none;
+}
+
+.pm-mark.warn {
+  background: #e11d48;
+}
+
+.operator-row:hover td.sticky-col-idx,
+.operator-row:hover td.sticky-col-name {
+  background: #f8fafc !important;
+}
+
 @media print {
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
   .no-print {
     display: none !important;
   }
   body {
-    background: #ffffff;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .schedule-container {
+    overflow: visible !important;
+    max-height: none !important;
+    border: none !important;
+  }
+  .schedule-table th,
+  .schedule-table td {
+    border-color: #333333 !important;
+  }
+  @page {
+    size: landscape;
+    margin: 4mm;
   }
 }
