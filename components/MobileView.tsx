@@ -328,7 +328,7 @@ export default function MobileView(p: {
           </button>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', flex: 1, justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', flex: '1 1 260px', justifyContent: 'flex-end' }}>
           <input
             type="search"
             className="input"
@@ -336,7 +336,7 @@ export default function MobileView(p: {
             placeholder="Search site, activity, operator…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ maxWidth: 240 }}
+            style={{ flex: '1 1 180px', minWidth: 0 }}
           />
           {tab === 'tasks' && (
             <select
@@ -344,7 +344,7 @@ export default function MobileView(p: {
               aria-label="Filter by assigned employee"
               value={selectedOp}
               onChange={(e) => setSelectedOp(e.target.value)}
-              style={{ maxWidth: 210 }}
+              style={{ flex: '1 1 160px', minWidth: 0 }}
             >
               <option value="">All employees</option>
               {p.operators.map((o) => (

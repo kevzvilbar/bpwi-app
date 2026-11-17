@@ -487,11 +487,8 @@ export default function PmPlanner(p: {
     <div style={{ padding: '10px 14px 16px', maxWidth: '100%' }}>
       {/* Top Toolbar */}
       <div
-        className="no-print"
+        className="no-print card"
         style={{
-          background: '#ffffff',
-          border: '1px solid #e2e8f0',
-          borderRadius: 10,
           padding: '10px 14px',
           marginBottom: 8,
           display: 'grid',
@@ -514,19 +511,20 @@ export default function PmPlanner(p: {
           <button className="btn" onClick={() => go(1)} title="Next">
             ›
           </button>
-          <strong style={{ fontSize: 16, margin: '0 4px', color: '#0f172a' }}>{monthLabel}</strong>
+          <strong style={{ fontSize: 16, margin: '0 4px', color: 'var(--text)' }}>{monthLabel}</strong>
           <input
             type="month"
             value={p.month}
             onChange={(e) => e.target.value && router.push(`/pm?m=${e.target.value}`)}
-            style={{ padding: '4px 6px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12 }}
+            className="input"
+            style={{ width: 'auto', minHeight: 36, padding: '4px 6px', fontSize: 12 }}
           />
 
           <div
             style={{
               display: 'inline-flex',
               padding: 2,
-              background: '#f1f5f9',
+              background: 'var(--surface-muted)',
               borderRadius: 7,
               marginLeft: 4,
             }}
@@ -542,8 +540,8 @@ export default function PmPlanner(p: {
                   fontSize: 12,
                   fontWeight: 600,
                   cursor: 'pointer',
-                  background: view === v ? '#ffffff' : 'transparent',
-                  color: view === v ? '#0f172a' : '#64748b',
+                  background: view === v ? 'var(--surface)' : 'transparent',
+                  color: view === v ? 'var(--text)' : 'var(--text-secondary)',
                   boxShadow: view === v ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
                 }}
               >
@@ -630,7 +628,7 @@ export default function PmPlanner(p: {
         </div>
 
         {/* Summary Strip */}
-        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', fontSize: 12, color: '#475569' }}>
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
           <span>
             <strong style={{ color: '#0f766e' }}>●</strong> <b>{counts.total}</b> scheduled this month
           </span>
@@ -663,8 +661,8 @@ export default function PmPlanner(p: {
             display: 'grid',
             gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
             gap: 1,
-            background: '#e2e8f0',
-            border: '1px solid #cbd5e1',
+            background: 'var(--border)',
+            border: '1px solid var(--border)',
             borderRadius: 10,
             overflow: 'hidden',
           }}
@@ -673,8 +671,8 @@ export default function PmPlanner(p: {
             <div
               key={d}
               style={{
-                background: '#f8fafc',
-                color: '#64748b',
+                background: 'var(--surface-muted)',
+                color: 'var(--text-secondary)',
                 textAlign: 'center',
                 padding: '6px 4px',
                 fontSize: 11,
@@ -709,13 +707,13 @@ export default function PmPlanner(p: {
                   if (taskId) void rescheduleTask(taskId, d);
                 }}
                 style={{
-                  background: isToday ? '#f0fdfa' : isWeekend ? '#fffbf7' : inMonth ? '#ffffff' : '#f8fafc',
-                  minHeight: view === 'week' ? 320 : 106,
+                  background: isToday ? 'var(--surface-muted)' : inMonth ? 'var(--surface)' : 'var(--bg)',
+                  minHeight: view === 'week' ? 320 : 96,
                   padding: 4,
                   cursor: 'pointer',
                   outline: isSelected ? '2px solid #0f766e' : 'none',
                   outlineOffset: -2,
-                  opacity: inMonth ? 1 : 0.6,
+                  opacity: inMonth ? 1 : 0.65,
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 4 }}>
@@ -731,7 +729,7 @@ export default function PmPlanner(p: {
                       fontSize: 11,
                       fontWeight: 700,
                       background: isToday ? '#0369a1' : 'transparent',
-                      color: isToday ? '#ffffff' : inMonth ? '#334155' : '#64748b',
+                      color: isToday ? '#ffffff' : inMonth ? 'var(--text)' : 'var(--text-muted)',
                     }}
                   >
                     {dayNum === 1 ? `${MONTHS_FULL[+d.slice(5, 7) - 1].slice(0, 3)} 1` : dayNum}
@@ -840,11 +838,8 @@ export default function PmPlanner(p: {
 
         {/* Right-Hand Day Inspector Sidebar */}
         <aside
-          className="no-print"
+          className="no-print card"
           style={{
-            background: '#ffffff',
-            border: '1px solid #cbd5e1',
-            borderRadius: 10,
             padding: 14,
             position: 'sticky',
             top: 12,
@@ -853,8 +848,8 @@ export default function PmPlanner(p: {
           }}
         >
           <div>
-            <h3 style={{ margin: 0, fontSize: 15, color: '#0f172a' }}>{formatDayHeading(selectedDate)}</h3>
-            <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>
+            <h3 style={{ margin: 0, fontSize: 15, color: 'var(--text)' }}>{formatDayHeading(selectedDate)}</h3>
+            <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 2 }}>
               {dayTasks.length} PM {dayTasks.length === 1 ? 'task' : 'tasks'} · {dayRel}
             </div>
           </div>
@@ -921,16 +916,16 @@ export default function PmPlanner(p: {
                   <div
                     key={t.id}
                     style={{
-                      border: '1px solid #e2e8f0',
+                      border: '1px solid var(--border)',
                       borderRadius: 8,
                       padding: 10,
                       display: 'grid',
                       gap: 6,
-                      background: '#f8fafc',
+                      background: 'var(--surface-muted)',
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontWeight: 700, fontSize: 12.5 }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontWeight: 700, fontSize: 12.5, color: 'var(--text)' }}>
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block' }} />
                         {meta?.label ?? t.title}
                       </span>
@@ -949,7 +944,7 @@ export default function PmPlanner(p: {
                     </div>
 
                     {t.locations.length > 0 && (
-                      <div style={{ fontSize: 12, color: '#475569' }}>{t.locations.join(', ')}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t.locations.join(', ')}</div>
                     )}
 
                     {/* Crew Chips */}

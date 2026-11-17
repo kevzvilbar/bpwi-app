@@ -652,7 +652,7 @@ export default function Roster(p: {
     <div style={{ padding: '10px 14px 16px', maxWidth: '100%' }}>
       {/* Action & Filter Bar */}
       <div
-        className="no-print"
+        className="no-print card"
         style={{
           display: 'flex',
           gap: 8,
@@ -660,9 +660,6 @@ export default function Roster(p: {
           flexWrap: 'wrap',
           marginBottom: 8,
           padding: '8px 12px',
-          background: '#ffffff',
-          borderRadius: 10,
-          border: '1px solid #e2e8f0',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -674,7 +671,8 @@ export default function Roster(p: {
             aria-label="Select month"
             value={p.month}
             onChange={(e) => e.target.value && router.push(`/?m=${e.target.value}`)}
-            style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 12.5, fontWeight: 600 }}
+            className="input"
+            style={{ width: 'auto', minHeight: 36, padding: '4px 8px', fontSize: 12.5, fontWeight: 600 }}
           />
           <button className="btn" onClick={() => go(1)} aria-label="Next month">
             ›
@@ -691,7 +689,8 @@ export default function Roster(p: {
           placeholder="Filter operator…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 12.5, width: 170 }}
+          className="input"
+          style={{ width: 170, minHeight: 36, padding: '5px 10px', fontSize: 12.5 }}
         />
 
         <span
@@ -754,6 +753,7 @@ export default function Roster(p: {
 
       {/* Always-visible Shift Legend (for Viewers & Print) */}
       <div
+        className="card"
         style={{
           display: 'flex',
           gap: 10,
@@ -761,20 +761,17 @@ export default function Roster(p: {
           alignItems: 'center',
           marginBottom: 8,
           padding: '6px 12px',
-          background: '#ffffff',
-          borderRadius: 8,
-          border: '1px solid #e2e8f0',
           fontSize: 11.5,
         }}
       >
-        <strong style={{ color: '#475569', textTransform: 'uppercase', fontSize: 10.5 }}>Shift Legend:</strong>
+        <strong style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: 10.5 }}>Shift Legend:</strong>
         {p.shifts.map((s) => (
           <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <span
               style={{
                 background: s.background_color,
                 color: s.text_color,
-                border: '1px solid #cbd5e1',
+                border: '1px solid var(--border)',
                 borderRadius: 4,
                 padding: '1px 6px',
                 fontWeight: 700,
@@ -783,16 +780,16 @@ export default function Roster(p: {
             >
               {s.code}
             </span>
-            <span style={{ color: '#475569' }}>{s.description ?? (s.is_off ? 'Off' : 'Duty')}</span>
+            <span style={{ color: 'var(--text-secondary)' }}>{s.description ?? (s.is_off ? 'Off' : 'Duty')}</span>
           </span>
         ))}
-        <span style={{ color: '#475569' }}>· Duty cells without an area code show <b>PW</b></span>
+        <span style={{ color: 'var(--text-secondary)' }}>· Duty cells without an area code show <b>PW</b></span>
       </div>
 
       {/* Paint Palette Bar (Editors only) */}
       {p.canEdit && (
         <div
-          className="no-print"
+          className="no-print card"
           style={{
             display: 'flex',
             gap: 5,
@@ -800,9 +797,6 @@ export default function Roster(p: {
             alignItems: 'center',
             marginBottom: 8,
             padding: '7px 12px',
-            background: '#ffffff',
-            borderRadius: 10,
-            border: '1px solid #e2e8f0',
           }}
         >
           <span

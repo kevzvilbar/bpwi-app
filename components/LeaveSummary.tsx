@@ -6,8 +6,8 @@ type Op = { id: string; full_name: string; position: string | null };
 type Area = { id: string; code: string; name: string | null; category: string; background_color: string; text_color: string };
 type Row = { operator_id: string; schedule_date: string; area_code_id: string };
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const th = { background: '#0f172a', color: '#fff', padding: '5px 8px', position: 'sticky' as const, top: 0, fontSize: 12 };
-const td = { padding: '4px 8px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' as const, fontSize: 12 };
+const th = { background: 'var(--header-bg)', color: 'var(--header-fg)', padding: '5px 8px', position: 'sticky' as const, top: 0, fontSize: 12 };
+const td = { padding: '4px 8px', borderBottom: '1px solid var(--border-light)', textAlign: 'center' as const, fontSize: 12 };
 
 export default function LeaveSummary(p: { year: number; operators: Op[]; areas: Area[]; rows: Row[]; error: string }) {
   const router = useRouter();
@@ -40,7 +40,7 @@ export default function LeaveSummary(p: { year: number; operators: Op[]; areas: 
 
   return (
     <div style={{ padding: 14 }}>
-      <div className="no-print" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', marginBottom: 10 }}>
+      <div className="no-print card" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '10px 14px', marginBottom: 10 }}>
         <strong>Leave Summary</strong>
         <button className="btn" onClick={() => router.push(`/leave?y=${p.year - 1}`)}>‹</button>
         <b>{p.year}</b>
@@ -90,7 +90,7 @@ export default function LeaveSummary(p: { year: number; operators: Op[]; areas: 
           </div>
           <div className="responsive-table-wrap">
           <h3 style={{ margin: '4px 0' }}>Days by leave type</h3>
-          <div style={{ overflow: 'auto', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, marginBottom: 16, maxHeight: '45vh' }}>
+          <div className="card" style={{ overflow: 'auto', marginBottom: 16, maxHeight: '45vh' }}>
             <table style={{ borderCollapse: 'collapse', width: '100%' }}>
               <thead><tr><th style={{ ...th, textAlign: 'left' }}>Operator</th>
                 {areas.map((a) => <th key={a.id} style={th} title={a.name ?? ''}>{a.code}</th>)}<th style={th}>Total</th></tr></thead>
@@ -105,12 +105,12 @@ export default function LeaveSummary(p: { year: number; operators: Op[]; areas: 
             </table>
           </div>
           <h3 style={{ margin: '4px 0' }}>Days by month</h3>
-          <div style={{ overflow: 'auto', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10 }}>
+          <div className="card" style={{ overflow: 'auto' }}>
             <table style={{ borderCollapse: 'collapse', width: '100%' }}>
               <thead><tr><th style={{ ...th, textAlign: 'left' }}>Operator</th>{MONTHS.map((m) => <th key={m} style={th}>{m}</th>)}</tr></thead>
               <tbody>{p.operators.map((o) => (
                 <tr key={o.id}><td style={{ ...td, textAlign: 'left', fontWeight: 600 }}>{o.full_name}</td>
-                  {MONTHS.map((_, i) => { const n = byMonth.get(o.id + i) ?? 0; return <td key={i} className="tabular-nums" style={{ ...td, color: n ? '#0f172a' : '#64748b', fontWeight: n ? 700 : 400 }}>{n || '·'}</td>; })}</tr>))}
+                  {MONTHS.map((_, i) => { const n = byMonth.get(o.id + i) ?? 0; return <td key={i} className="tabular-nums" style={{ ...td, color: n ? 'var(--text)' : 'var(--text-muted)', fontWeight: n ? 700 : 400 }}>{n || '·'}</td>; })}</tr>))}
               </tbody>
             </table>
           </div>
