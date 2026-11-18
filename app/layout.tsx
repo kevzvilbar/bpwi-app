@@ -16,8 +16,11 @@ export const metadata = {
     title: 'BPWI Ops',
   },
   icons: {
-    icon: '/bpwi-logo.png',
-    apple: '/bpwi-logo.png',
+    icon: [
+      { url: '/bpwi-logo.svg', type: 'image/svg+xml' },
+      { url: '/bpwi-logo.png', type: 'image/png' },
+    ],
+    apple: '/icon-192.png',
   },
 };
 

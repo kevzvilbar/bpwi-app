@@ -194,15 +194,12 @@ export default function Nav(p: {
       <header className="app-topbar no-print">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <img
-            src="/bpwi-logo.png"
+            src="/bpwi-logo.svg"
             alt="BP Waterworks, Inc."
             style={{
-              width: 40,
+              width: 42,
               height: 32,
               objectFit: 'contain',
-              borderRadius: 6,
-              background: '#ffffff',
-              padding: 1,
               flexShrink: 0,
             }}
           />

@@ -151,9 +151,9 @@ function LoginForm() {
       >
         <div style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12 }}>
           <img
-            src="/bpwi-logo.png"
+            src="/bpwi-logo.svg"
             alt="BP Waterworks, Inc."
-            style={{ width: 52, height: 42, objectFit: 'contain', borderRadius: 8, background: '#ffffff', padding: 2 }}
+            style={{ width: 56, height: 42, objectFit: 'contain', flexShrink: 0 }}
           />
           <div>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
