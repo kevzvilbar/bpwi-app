@@ -197,6 +197,29 @@ a:focus-visible {
   contain-intrinsic-size: 0 28px;
 }
 
+/* Shimmer / Pulse Loading Skeletons */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@keyframes bpwi-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface-muted) 25%,
+    var(--border-light) 50%,
+    var(--surface-muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: bpwi-shimmer 1.4s ease-in-out infinite;
+  border-radius: 8px;
+}
+
 /* Top App Bar & Bottom Nav */
 .app-topbar {
   background: var(--surface);
