@@ -79,10 +79,12 @@ export default function AccomplishmentFormSheet({
           color: #0f172a;
         }
         .bpems-subhdr {
-          font-size: 7.5px !important;
-          letter-spacing: -0.01em;
-          word-break: break-word;
-          height: 26px;
+          font-size: 6.8px !important;
+          letter-spacing: -0.02em;
+          word-break: normal;
+          overflow-wrap: break-word;
+          height: 28px;
+          padding: 2px 2px !important;
         }
         .bpems-chk {
           text-align: center;
@@ -106,7 +108,7 @@ export default function AccomplishmentFormSheet({
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 8 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="BPWI Logo" style={{ width: 52, height: 36, objectFit: 'contain' }} />
+          <img src="/bpwi-logo.svg" alt="BPWI Logo" style={{ width: 52, height: 36, objectFit: 'contain' }} />
           <div>
             <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: '0.02em', color: '#0f172a' }}>
               {FORM_TITLE}
