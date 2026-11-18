@@ -10,8 +10,12 @@ export default async function OperatorsPage() {
     ? await sb.from('area_codes').select('id, code, name, category, background_color, text_color').order('code')
     : areasPrimary;
 
-  const [ops, shifts, users, logs, people, grants, holidaysRes] = await Promise.all([
-    sb.from('operators').select('id, full_name, position, phone_number, default_station, sort_order, is_active').order('sort_order'),
+  const opsPrimary = await sb.from('operators').select('id, full_name, position, phone_number, default_station, sort_order, is_active, department_head_id').order('sort_order');
+  const opsFallback = opsPrimary.error
+    ? await sb.from('operators').select('id, full_name, position, phone_number, default_station, sort_order, is_active').order('sort_order')
+    : opsPrimary;
+
+  const [shifts, users, logs, people, grants, holidaysRes] = await Promise.all([
     sb.from('shift_types').select('id, code, description, start_time, end_time, duration_hours, is_off, background_color, text_color').order('code'),
     isAdmin
       ? sb.from('user_profiles').select('id, full_name, role, is_active, operator_id').order('role').order('full_name')
@@ -27,6 +31,7 @@ export default async function OperatorsPage() {
       : Promise.resolve({ data: [], error: null }),
     sb.from('holidays').select('id, holiday_date, name, holiday_type').order('holiday_date'),
   ]);
+  const ops = opsFallback;
 
   return (
     <Setup

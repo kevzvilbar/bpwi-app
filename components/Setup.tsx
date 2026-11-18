@@ -13,6 +13,7 @@ type Op = {
   default_station: string | null;
   sort_order: number;
   is_active: boolean;
+  department_head_id?: string | null;
 };
 type Shift = {
   id?: string;
@@ -316,6 +317,8 @@ export default function Setup(p: {
   const shiftCodeMap = new Map(shifts.filter((s) => s.id).map((s) => [s.id as string, s.code]));
   const areaCodeMap = new Map(areas.filter((a) => a.id).map((a) => [a.id as string, a.code]));
 
+  const headOptions = (p.people ?? []).filter((x) => x.is_active && (x.role === 'manager' || x.role === 'admin'));
+
   return (
     <div style={{ padding: 14 }}>
       <div style={{ display: 'flex', gap: 6, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -373,10 +376,21 @@ export default function Setup(p: {
                     <input className="input" value={o.default_station ?? ''} onChange={(e) => upd(setOps, i, { default_station: e.target.value })} />
                   </label>
                 </div>
-                <label style={{ fontSize: 12 }}>
-                  Phone
-                  <input className="input" value={o.phone_number ?? ''} onChange={(e) => upd(setOps, i, { phone_number: e.target.value })} />
-                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <label style={{ fontSize: 12 }}>
+                    Phone
+                    <input className="input" value={o.phone_number ?? ''} onChange={(e) => upd(setOps, i, { phone_number: e.target.value })} />
+                  </label>
+                  <label style={{ fontSize: 12 }}>
+                    Assigned Head
+                    <select className="input" value={o.department_head_id ?? ''} onChange={(e) => upd(setOps, i, { department_head_id: e.target.value || null })}>
+                      <option value="">— Unassigned —</option>
+                      {headOptions.map((h) => (
+                        <option key={h.id} value={h.id}>{h.full_name ?? h.id}{h.job_title ? ` (${h.job_title})` : ''}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 4 }}>
                   <label style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <input type="checkbox" checked={o.is_active} onChange={(e) => upd(setOps, i, { is_active: e.target.checked })} />
@@ -541,7 +555,9 @@ export default function Setup(p: {
                 ...(!u.full_name?.trim() ? { full_name: suggested.full_name } : {}),
               });
             };
-            return (
+            const headOptions = (p.people ?? []).filter((x) => x.is_active && (x.role === 'manager' || x.role === 'admin'));
+
+  return (
               <div key={u.id} className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
                 <label style={{ fontSize: 12 }}>
                   Full name {isSelf && <span style={{ color: 'var(--accent)', fontWeight: 700 }}>(You)</span>}
@@ -570,7 +586,9 @@ export default function Setup(p: {
                       <option value="">(unlinked)</option>
                       {ops.filter((o) => o.id).map((o) => {
                         const takenByOther = users.some((x) => x.id !== u.id && x.operator_id === o.id);
-                        return (
+                        const headOptions = (p.people ?? []).filter((x) => x.is_active && (x.role === 'manager' || x.role === 'admin'));
+
+  return (
                           <option key={o.id} value={o.id}>
                             {o.full_name}
                             {takenByOther ? ' (linked)' : ''}
@@ -672,7 +690,7 @@ export default function Setup(p: {
           <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5 }}>
             <thead>
               <tr>
-                {['#', 'Full name', 'Position', 'Phone', 'Default station', 'Active', ''].map((h) => (
+                {['#', 'Full name', 'Position', 'Phone', 'Default station', 'Assigned Head', 'Active', ''].map((h) => (
                   <th key={h} style={{ ...cell, padding: '8px 6px', textAlign: 'left', background: 'var(--surface-muted)', color: 'var(--text)' }}>
                     {h}
                   </th>
@@ -696,6 +714,14 @@ export default function Setup(p: {
                   </td>
                   <td style={cell}>
                     <input style={inp} value={o.default_station ?? ''} onChange={(e) => upd(setOps, i, { default_station: e.target.value })} />
+                  </td>
+                  <td style={cell}>
+                    <select style={inp} value={o.department_head_id ?? ''} onChange={(e) => upd(setOps, i, { department_head_id: e.target.value || null })}>
+                      <option value="">— Unassigned —</option>
+                      {headOptions.map((h) => (
+                        <option key={h.id} value={h.id}>{h.full_name ?? h.id}{h.job_title ? ` (${h.job_title})` : ''}</option>
+                      ))}
+                    </select>
                   </td>
                   <td style={{ ...cell, textAlign: 'center' }}>
                     <input type="checkbox" checked={o.is_active} onChange={(e) => upd(setOps, i, { is_active: e.target.checked })} />
@@ -722,7 +748,7 @@ export default function Setup(p: {
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={7} style={{ ...cell, padding: 8 }}>
+                <td colSpan={8} style={{ ...cell, padding: 8 }}>
                   <button
                     className="btn"
                     onClick={() =>
@@ -969,7 +995,9 @@ export default function Setup(p: {
                       ...(!u.full_name?.trim() ? { full_name: suggested.full_name } : {}),
                     });
                   };
-                  return (
+                  const headOptions = (p.people ?? []).filter((x) => x.is_active && (x.role === 'manager' || x.role === 'admin'));
+
+  return (
                     <tr key={u.id} style={{ background: u.is_active ? 'var(--surface)' : 'rgba(234, 179, 8, 0.12)' }}>
                       <td style={cell}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1009,7 +1037,9 @@ export default function Setup(p: {
                             <option value="">(unlinked)</option>
                             {ops.filter((o) => o.id).map((o) => {
                               const takenByOther = users.some((x) => x.id !== u.id && x.operator_id === o.id);
-                              return (
+                              const headOptions = (p.people ?? []).filter((x) => x.is_active && (x.role === 'manager' || x.role === 'admin'));
+
+  return (
                                 <option key={o.id} value={o.id}>
                                   {o.full_name}
                                   {takenByOther ? ' (linked)' : ''}

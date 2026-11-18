@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --test lib/__tests__/activity-types.test.ts"
+    "test": "node --test lib/__tests__/activity-types.test.ts lib/__tests__/accomplishment-form.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
