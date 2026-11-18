@@ -55,9 +55,9 @@ export default function PwaRegister() {
       role="status"
       className="no-print"
       style={{
-        background: '#fef3c7',
-        color: '#92400e',
-        borderBottom: '1px solid #fde68a',
+        background: 'var(--warn-bg)',
+        color: 'var(--warn-fg)',
+        borderBottom: '1px solid var(--warn-border)',
         padding: '6px 14px',
         fontSize: 12.5,
         fontWeight: 600,

@@ -808,7 +808,7 @@ export default function Roster(p: {
             visibility: saveState === 'idle' ? 'hidden' : 'visible',
           }}
         >
-          {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved ✓' : saveState === 'error' ? 'Reverted' : ''}
+          {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved ✓' : saveState === 'error' ? 'Not saved' : ''}
         </span>
 
         {msg && (
