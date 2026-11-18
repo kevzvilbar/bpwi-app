@@ -44,6 +44,7 @@ export default function RosterMobileViews(p: {
   today: string;
   days: DayInfo[];
   operators: Op[];
+  operatorId?: string | null;
   cell: Map<string, Row>;
   standbyMap: Map<string, Standby>;
   shiftBy: Map<string, Shift>;
@@ -56,7 +57,11 @@ export default function RosterMobileViews(p: {
   const [selectedDate, setSelectedDate] = useState(() =>
     p.today.startsWith(p.month) ? p.today : `${p.month}-01`,
   );
-  const [selectedOpId, setSelectedOpId] = useState(() => p.operators[0]?.id ?? '');
+  const [selectedOpId, setSelectedOpId] = useState(() =>
+    p.operatorId && p.operators.some((o) => o.id === p.operatorId)
+      ? p.operatorId
+      : p.operators[0]?.id ?? '',
+  );
   const swipeStartX = useRef<number | null>(null);
 
   const selectedDayIdx = Math.max(
@@ -83,6 +88,7 @@ export default function RosterMobileViews(p: {
 
   // Monthly calendar leading blanks
   const leadingBlanks = p.days[0]?.dow ?? 0;
+  const activeOpId = p.operators.some((o) => o.id === selectedOpId) ? selectedOpId : p.operators[0]?.id ?? '';
 
   return (
     <div className="mobile-only-schedule no-print">
@@ -176,7 +182,12 @@ export default function RosterMobileViews(p: {
                 }}
               >
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{op.full_name}</div>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>
+                    {op.full_name}
+                    {op.id === p.operatorId && (
+                      <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: 'var(--accent)' }}>(Me)</span>
+                    )}
+                  </div>
                   {op.position && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{op.position}</div>}
                 </div>
 
@@ -396,25 +407,26 @@ export default function RosterMobileViews(p: {
           <select
             className="input"
             aria-label="Select operator for timeline"
-            value={selectedOpId}
+            value={activeOpId}
             onChange={(e) => setSelectedOpId(e.target.value)}
           >
             {p.operators.map((o) => (
               <option key={o.id} value={o.id}>
                 {o.full_name}
+                {o.id === p.operatorId ? ' (Me)' : ''}
               </option>
             ))}
           </select>
 
-          {selectedOpId && (
+          {activeOpId && (
             <div style={{ display: 'grid', gap: 6 }}>
               {p.days.map((d) => {
-                const k = cellKey(selectedOpId, d.date);
+                const k = cellKey(activeOpId, d.date);
                 const r = p.cell.get(k);
                 const s = r?.shift_type_id ? p.shiftBy.get(r.shift_type_id) : undefined;
                 const a = r?.area_code_id ? p.areaBy.get(r.area_code_id) : undefined;
                 const sb = p.standbyMap.get(k);
-                const op = p.operators.find((o) => o.id === selectedOpId)!;
+                const op = p.operators.find((o) => o.id === activeOpId)!;
 
                 return (
                   <div
@@ -442,7 +454,7 @@ export default function RosterMobileViews(p: {
                       )}
                       <button
                         className="btn"
-                        onClick={() => p.onCellTap(selectedOpId, d.date)}
+                        onClick={() => p.onCellTap(activeOpId, d.date)}
                         style={{
                           background: s?.background_color ?? 'var(--surface-muted)',
                           color: s?.text_color ?? 'var(--text-secondary)',

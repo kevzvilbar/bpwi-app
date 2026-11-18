@@ -39,7 +39,18 @@ type UserProfile = {
   operator_id?: string | null;
 };
 
-type Tab = 'operators' | 'shifts' | 'areas' | 'users';
+type AuditLog = {
+  id: number;
+  user_id: string | null;
+  action: string | null;
+  table_name: string | null;
+  record_id: string | null;
+  old_value: Record<string, any> | null;
+  new_value: Record<string, any> | null;
+  created_at: string;
+};
+
+type Tab = 'operators' | 'shifts' | 'areas' | 'users' | 'audit';
 
 const cell = { padding: 4, borderBottom: '1px solid var(--border-light)' };
 const inp = {
@@ -131,11 +142,54 @@ function findSuggestedOperator(
   return bestScore >= 70 ? bestOp : undefined;
 }
 
+function formatManilaTimestamp(iso: string) {
+  try {
+    return new Intl.DateTimeFormat('en-PH', {
+      timeZone: 'Asia/Manila',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
+
+function summarizeAudit(
+  log: AuditLog,
+  opName: Map<string, string>,
+  shiftCode: Map<string, string>,
+  areaCode: Map<string, string>,
+) {
+  const rec = log.new_value ?? log.old_value ?? {};
+  if (log.table_name === 'schedule_assignments') {
+    const who = opName.get(rec.operator_id) ?? 'Operator';
+    const shift = rec.shift_type_id ? shiftCode.get(rec.shift_type_id) ?? 'Shift' : '—';
+    const area = rec.area_code_id ? areaCode.get(rec.area_code_id) ?? 'Area' : '';
+    return `${who} · ${rec.schedule_date ?? ''} → ${shift}${area ? ` · ${area}` : ''}`;
+  }
+  if (log.table_name === 'standby_assignments') {
+    const who = opName.get(rec.operator_id) ?? 'Operator';
+    return `${who} · ${rec.schedule_date ?? ''} · Standby ${rec.standby_type ?? 'OC'}`;
+  }
+  if (log.table_name === 'pm_tasks') {
+    return `${rec.title ?? 'PM Task'} · ${rec.scheduled_date ?? ''} (${rec.status ?? 'planned'})`;
+  }
+  if (log.table_name === 'leave_records') {
+    const who = opName.get(rec.operator_id) ?? 'Operator';
+    return `${who} · ${rec.leave_code ?? 'Leave'} (${rec.start_date ?? ''}–${rec.end_date ?? ''})`;
+  }
+  return log.record_id ?? 'Record updated';
+}
+
 export default function Setup(p: {
   operators: Op[];
   shifts: Shift[];
   areas: Area[];
   users: UserProfile[];
+  auditLogs?: AuditLog[];
   orgId: string;
   currentUserId?: string;
   isAdmin: boolean;
@@ -247,6 +301,11 @@ export default function Setup(p: {
   );
 
   const pendingUsers = users.filter((u) => !u.is_active).length;
+  const auditLogs = p.auditLogs ?? [];
+  const userNameMap = new Map(users.map((u) => [u.id, u.full_name || u.id.slice(0, 8)]));
+  const opNameMap = new Map(ops.filter((o) => o.id).map((o) => [o.id as string, o.full_name]));
+  const shiftCodeMap = new Map(shifts.filter((s) => s.id).map((s) => [s.id as string, s.code]));
+  const areaCodeMap = new Map(areas.filter((a) => a.id).map((a) => [a.id as string, a.code]));
 
   return (
     <div style={{ padding: 14 }}>
@@ -255,6 +314,7 @@ export default function Setup(p: {
         {tabBtn('shifts', `Shift types (${shifts.length})`)}
         {tabBtn('areas', `Areas & leave (${areas.length})`)}
         {tabBtn('users', `Users & roles (${users.length}${pendingUsers ? ` · ${pendingUsers} pending` : ''})`)}
+        {tabBtn('audit', `Activity log (${auditLogs.length})`)}
         {dirty.size > 0 && (
           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--warn-fg)', background: 'var(--warn-bg)', border: '1px solid var(--warn-border)', padding: '3px 9px', borderRadius: 999 }}>
             {dirty.size} unsaved {dirty.size === 1 ? 'row' : 'rows'}
@@ -526,6 +586,48 @@ export default function Setup(p: {
               </div>
             );
           })}
+
+        {tab === 'audit' &&
+          (auditLogs.length === 0 ? (
+            <div className="card" style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>
+              No recent activity recorded yet.
+            </div>
+          ) : (
+            auditLogs.map((log) => (
+              <div key={log.id} className="card" style={{ padding: 12, display: 'grid', gap: 4, fontSize: 12.5 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontWeight: 700 }}>{log.user_id ? userNameMap.get(log.user_id) ?? 'System' : 'System'}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{formatManilaTimestamp(log.created_at)}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span
+                    style={{
+                      padding: '1px 7px',
+                      borderRadius: 999,
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      background:
+                        log.action === 'DELETE'
+                          ? 'var(--danger-bg)'
+                          : log.action === 'INSERT'
+                            ? 'var(--ok-bg)'
+                            : 'var(--info-bg)',
+                      color:
+                        log.action === 'DELETE'
+                          ? 'var(--danger-fg)'
+                          : log.action === 'INSERT'
+                            ? 'var(--ok-fg)'
+                            : 'var(--info-fg)',
+                    }}
+                  >
+                    {log.action}
+                  </span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{log.table_name}</span>
+                </div>
+                <div style={{ color: 'var(--text)' }}>{summarizeAudit(log, opNameMap, shiftCodeMap, areaCodeMap)}</div>
+              </div>
+            ))
+          ))}
       </div>
 
       {/* Desktop Table (> 640px) */}
@@ -923,6 +1025,68 @@ export default function Setup(p: {
                     </tr>
                   );
                 })
+              )}
+            </tbody>
+          </table>
+        )}
+
+        {tab === 'audit' && (
+          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5 }}>
+            <thead>
+              <tr>
+                {['Time (Manila)', 'User', 'Action', 'Area / Table', 'Details'].map((h) => (
+                  <th key={h} style={{ ...cell, padding: '8px 8px', textAlign: 'left', background: 'var(--surface-muted)', color: 'var(--text)' }}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {auditLogs.length === 0 ? (
+                <tr>
+                  <td colSpan={5} style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)' }}>
+                    No recent activity recorded yet.
+                  </td>
+                </tr>
+              ) : (
+                auditLogs.map((log) => (
+                  <tr key={log.id}>
+                    <td style={{ ...cell, padding: '6px 8px', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
+                      {formatManilaTimestamp(log.created_at)}
+                    </td>
+                    <td style={{ ...cell, padding: '6px 8px', fontWeight: 600 }}>
+                      {log.user_id ? userNameMap.get(log.user_id) ?? log.user_id.slice(0, 8) : 'System'}
+                    </td>
+                    <td style={{ ...cell, padding: '6px 8px' }}>
+                      <span
+                        style={{
+                          padding: '2px 8px',
+                          borderRadius: 999,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          background:
+                            log.action === 'DELETE'
+                              ? 'var(--danger-bg)'
+                              : log.action === 'INSERT'
+                                ? 'var(--ok-bg)'
+                                : 'var(--info-bg)',
+                          color:
+                            log.action === 'DELETE'
+                              ? 'var(--danger-fg)'
+                              : log.action === 'INSERT'
+                                ? 'var(--ok-fg)'
+                                : 'var(--info-fg)',
+                        }}
+                      >
+                        {log.action}
+                      </span>
+                    </td>
+                    <td style={{ ...cell, padding: '6px 8px', fontFamily: 'ui-monospace, monospace', fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                      {log.table_name}
+                    </td>
+                    <td style={{ ...cell, padding: '6px 8px' }}>{summarizeAudit(log, opNameMap, shiftCodeMap, areaCodeMap)}</td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>

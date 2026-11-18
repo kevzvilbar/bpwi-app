@@ -118,6 +118,41 @@ export default function MobileView(p: {
 
   useEffect(() => setTasks(p.tasks), [p.tasks]);
   useEffect(() => {
+    const sb = supabaseBrowser();
+    const channel = sb
+      .channel('pm-mobile-tasks')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pm_tasks' }, (payload) => {
+        const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as Partial<Task> & { id?: string };
+        if (!rec?.id) return;
+        if (payload.eventType === 'DELETE') {
+          setTasks((prev) => prev.filter((x) => x.id !== rec.id));
+          return;
+        }
+        const nextTask: Task = {
+          id: rec.id,
+          activity_type: rec.activity_type ?? 'FLUSH',
+          title: rec.title ?? '',
+          locations: rec.locations ?? [],
+          asset: rec.asset ?? null,
+          assigned_operator_ids: rec.assigned_operator_ids ?? [],
+          scheduled_date: rec.scheduled_date ?? '',
+          status: (rec.status as Task['status']) ?? 'planned',
+          completed_at: rec.completed_at ?? null,
+          remarks: rec.remarks ?? null,
+        };
+        setTasks((prev) => {
+          const exists = prev.some((x) => x.id === nextTask.id);
+          return exists
+            ? prev.map((x) => (x.id === nextTask.id ? nextTask : x))
+            : [...prev, nextTask].sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
+        });
+      })
+      .subscribe();
+    return () => {
+      sb.removeChannel(channel);
+    };
+  }, []);
+  useEffect(() => {
     setNowMinutes(manilaClockMinutes());
     const id = setInterval(() => setNowMinutes(manilaClockMinutes()), 60_000);
     return () => clearInterval(id);

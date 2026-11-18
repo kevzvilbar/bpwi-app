@@ -89,6 +89,7 @@ export default function Roster(p: {
   standby: Standby[];
   pmTasks: PmMarkTask[];
   orgId: string;
+  operatorId?: string | null;
   role: string;
   userName: string;
   canEdit: boolean;
@@ -97,6 +98,7 @@ export default function Roster(p: {
   const router = useRouter();
   const [rows, setRows] = useState<Row[]>(p.rows);
   const [standby, setStandby] = useState<Standby[]>(p.standby);
+  const [onlyMe, setOnlyMe] = useState(false);
   const [mode, setMode] = useState<ToolMode>('paint');
   const [standbyType, setStandbyType] = useState<'OC' | 'DWP' | 'ERP'>('OC');
   const [shiftId, setShiftId] = useState<string | null>(p.shifts[0]?.id ?? null);
@@ -252,13 +254,16 @@ export default function Roster(p: {
     return m;
   }, [p.pmTasks, p.today]);
 
+  const hasLinkedOp = Boolean(p.operatorId && p.operators.some((o) => o.id === p.operatorId));
+
   const filteredOperators = useMemo(() => {
     const q = deferredSearch.trim().toLowerCase();
-    if (!q) return p.operators;
-    return p.operators.filter(
-      (o) => o.full_name.toLowerCase().includes(q) || (o.position ?? '').toLowerCase().includes(q),
-    );
-  }, [deferredSearch, p.operators]);
+    return p.operators.filter((o) => {
+      if (onlyMe && p.operatorId && o.id !== p.operatorId) return false;
+      if (!q) return true;
+      return o.full_name.toLowerCase().includes(q) || (o.position ?? '').toLowerCase().includes(q);
+    });
+  }, [deferredSearch, onlyMe, p.operatorId, p.operators]);
 
   const go = (d: number) => {
     const t = new Date(y, mo - 1 + d, 1);
@@ -828,6 +833,18 @@ export default function Roster(p: {
           style={{ width: 170, minHeight: 36, padding: '5px 10px', fontSize: 12.5 }}
         />
 
+        {hasLinkedOp && (
+          <button
+            type="button"
+            className={`btn ${onlyMe ? 'btn-primary' : ''}`}
+            aria-pressed={onlyMe}
+            onClick={() => setOnlyMe((v) => !v)}
+            style={{ fontSize: 12.5, fontWeight: 700 }}
+          >
+            My Schedule
+          </button>
+        )}
+
         <div className="desktop-only" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', fontSize: 11.5 }}>
           <strong style={{ color: 'var(--text)' }}>Today ({p.today}):</strong>
           <span style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
@@ -1153,6 +1170,7 @@ export default function Roster(p: {
         today={p.today}
         days={days}
         operators={filteredOperators}
+        operatorId={p.operatorId}
         cell={cell}
         standbyMap={standbyMap}
         shiftBy={shiftBy}
@@ -1260,8 +1278,13 @@ export default function Roster(p: {
                     <td className="sticky-col-idx tabular-nums" style={{ background: 'var(--surface-muted)', color: 'var(--text-secondary)', textAlign: 'center', fontSize: 10.5, fontWeight: 600 }}>
                       {rIdx + 1}
                     </td>
-                    <td className="sticky-col-name" style={{ background: 'var(--surface)', padding: '3px 8px', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                      <div style={{ color: 'var(--text)' }}>{o.full_name}</div>
+                    <td className="sticky-col-name" style={{ background: o.id === p.operatorId ? 'rgba(3, 105, 161, 0.08)' : 'var(--surface)', padding: '3px 8px', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      <div style={{ color: 'var(--text)' }}>
+                        {o.full_name}
+                        {o.id === p.operatorId && (
+                          <span style={{ marginLeft: 5, fontSize: 10.5, fontWeight: 700, color: 'var(--accent)' }}>(Me)</span>
+                        )}
+                      </div>
                       {o.position && <div style={{ fontSize: 10.5, fontWeight: 400, color: 'var(--text-secondary)' }}>{o.position}</div>}
                     </td>
 

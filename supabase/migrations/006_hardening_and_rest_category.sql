@@ -1,8 +1,9 @@
 -- Hardening & rest category migration:
 -- 1. Support explicit 'rest' category on area_codes and reclassify RD (Rest Day).
--- 2. Tighten operator PM close RLS so only assigned linked operators may update,
+-- 2. Allow signed-in users to read their own profile even while pending approval (is_active = false).
+-- 3. Tighten operator PM close RLS so only assigned linked operators may update,
 --    and restrict operator updates via trigger to status, completed_at, and remarks.
--- 3. Prevent deleting, demoting, or deactivating the last active admin in an org.
+-- 4. Prevent deleting, demoting, or deactivating the last active admin in an org.
 
 alter table area_codes drop constraint if exists area_codes_category_check;
 alter table area_codes add constraint area_codes_category_check
@@ -11,6 +12,10 @@ alter table area_codes add constraint area_codes_category_check
 update area_codes
   set category = 'rest'
   where upper(code) = 'RD';
+
+drop policy if exists "profile read" on user_profiles;
+create policy "profile read" on user_profiles
+  for select using (id = auth.uid() or organization_id = current_org());
 
 drop policy if exists "pm_tasks operator close" on pm_tasks;
 create policy "pm_tasks operator close" on pm_tasks

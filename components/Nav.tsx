@@ -93,6 +93,7 @@ export default function Nav(p: {
   appTitle: string;
   canEdit: boolean;
   isAdmin: boolean;
+  pendingUsersCount?: number;
 }) {
   const path = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -295,11 +296,26 @@ export default function Nav(p: {
             ref={menuBtnRef}
             className="btn"
             onClick={() => setDrawerOpen(true)}
-            aria-label="Open menu"
+            aria-label={p.isAdmin && (p.pendingUsersCount ?? 0) > 0 ? `Open menu (${p.pendingUsersCount} pending approvals)` : 'Open menu'}
             aria-expanded={drawerOpen}
           >
             <Icon name="menu" />
             <span>Menu</span>
+            {p.isAdmin && (p.pendingUsersCount ?? 0) > 0 && (
+              <span
+                style={{
+                  background: '#dc2626',
+                  color: '#ffffff',
+                  borderRadius: 999,
+                  padding: '1px 6px',
+                  fontSize: 10.5,
+                  fontWeight: 800,
+                  lineHeight: 1.3,
+                }}
+              >
+                {p.pendingUsersCount}
+              </span>
+            )}
           </button>
         </div>
       </header>
@@ -373,8 +389,23 @@ export default function Nav(p: {
                     </Link>
                   )}
                   {p.isAdmin && (
-                    <Link href="/operators" className="btn" style={{ justifyContent: 'flex-start', textDecoration: 'none' }}>
-                      Operators, Users &amp; Setup
+                    <Link href="/operators" className="btn" style={{ justifyContent: 'space-between', textDecoration: 'none' }}>
+                      <span>Operators, Users &amp; Setup</span>
+                      {(p.pendingUsersCount ?? 0) > 0 && (
+                        <span
+                          style={{
+                            background: 'var(--warn-bg)',
+                            color: 'var(--warn-fg)',
+                            border: '1px solid var(--warn-border)',
+                            borderRadius: 999,
+                            padding: '1px 7px',
+                            fontSize: 11,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {p.pendingUsersCount} pending
+                        </span>
+                      )}
                     </Link>
                   )}
                 </div>

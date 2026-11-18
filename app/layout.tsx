@@ -3,6 +3,7 @@ import './globals.css';
 import Nav from '@/components/Nav';
 import PwaRegister from '@/components/PwaRegister';
 import DialogA11y from '@/components/DialogA11y';
+import PendingApproval from '@/components/PendingApproval';
 import { getProfile } from '@/lib/profile';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 
@@ -29,6 +30,10 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   let profile = {
+    hasUser: false,
+    userEmail: '',
+    isActive: true,
+    pendingUsersCount: 0,
     role: 'viewer',
     name: '',
     orgId: '',
@@ -41,6 +46,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     try {
       const p = await getProfile();
       profile = {
+        hasUser: Boolean(p.user),
+        userEmail: p.user?.email ?? '',
+        isActive: p.isActive,
+        pendingUsersCount: p.pendingUsersCount,
         role: p.role,
         name: p.name,
         orgId: p.orgId,
@@ -53,6 +62,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       /* static prerender or unauthenticated */
     }
   }
+  const pendingApproval = profile.hasUser && !profile.isActive;
   return (
     <html lang="en">
       <body>
@@ -66,8 +76,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           appTitle={profile.appTitle}
           canEdit={profile.canEdit}
           isAdmin={profile.isAdmin}
+          pendingUsersCount={profile.pendingUsersCount}
         />
-        <main className="app-main">{children}</main>
+        <main className="app-main">
+          <PendingApproval pending={pendingApproval} userName={profile.name} userEmail={profile.userEmail}>
+            {children}
+          </PendingApproval>
+        </main>
       </body>
     </html>
   );

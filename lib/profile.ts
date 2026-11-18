@@ -11,6 +11,7 @@ export const getProfile = cache(async () => {
   type ProfRow = {
     full_name?: string | null;
     role?: string | null;
+    is_active?: boolean | null;
     organization_id?: string | null;
     operator_id?: string | null;
     organizations?: OrgJoin;
@@ -23,7 +24,7 @@ export const getProfile = cache(async () => {
   if (user) {
     const res = await sb
       .from('user_profiles')
-      .select('full_name, role, organization_id, operator_id, organizations(name, app_title)')
+      .select('full_name, role, is_active, organization_id, operator_id, organizations(name, app_title)')
       .eq('id', user.id)
       .maybeSingle();
 
@@ -35,7 +36,7 @@ export const getProfile = cache(async () => {
     } else {
       const fb = await sb
         .from('user_profiles')
-        .select('full_name, role, organization_id')
+        .select('full_name, role, is_active, organization_id')
         .eq('id', user.id)
         .maybeSingle();
       prof = fb.data as ProfRow | null;
@@ -48,20 +49,33 @@ export const getProfile = cache(async () => {
   }
 
   const orgId = (prof?.organization_id ?? '') as string;
-
+  const isActive = Boolean(prof && prof.is_active !== false);
   const role = (prof?.role ?? 'viewer') as string;
+  const isAdmin = isActive && role === 'admin';
+
+  let pendingUsersCount = 0;
+  if (isAdmin && orgId) {
+    const { count } = await sb
+      .from('user_profiles')
+      .select('id', { count: 'exact', head: true })
+      .eq('is_active', false);
+    pendingUsersCount = count ?? 0;
+  }
+
   return {
     sb,
     user,
     role,
+    isActive,
+    pendingUsersCount,
     orgId,
     orgName,
     appTitle,
     operatorId: (prof?.operator_id ?? null) as string | null,
-    name: (prof?.full_name ?? '') as string,
-    canEdit: role === 'admin' || role === 'scheduler',
-    canClosePm: role === 'admin' || role === 'scheduler' || role === 'operator',
-    isAdmin: role === 'admin',
+    name: (prof?.full_name ?? (user?.user_metadata?.full_name as string | undefined) ?? '') as string,
+    canEdit: isActive && (role === 'admin' || role === 'scheduler'),
+    canClosePm: isActive && (role === 'admin' || role === 'scheduler' || role === 'operator'),
+    isAdmin,
   };
 });
 

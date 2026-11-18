@@ -10,7 +10,7 @@ function LoginForm() {
   const urlError = params.get('error');
   const { isConfigured } = getSupabaseEnv();
 
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot' | 'reset'>('signin');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,7 +24,19 @@ function LoginForm() {
     if ('caches' in window) {
       caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))).catch(() => {});
     }
-  }, []);
+    if (!isConfigured) return;
+    const sb = supabaseBrowser();
+    const {
+      data: { subscription },
+    } = sb.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setMode('reset');
+        setErr('');
+        setInfo('Enter a new password for your account.');
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [isConfigured]);
 
   const configWarning =
     !isConfigured || urlError === 'missing_config'
@@ -33,7 +45,7 @@ function LoginForm() {
         ? 'Unable to verify your session. Please sign in again.'
         : '';
 
-  function switchMode(next: 'signin' | 'signup') {
+  function switchMode(next: 'signin' | 'signup' | 'forgot' | 'reset') {
     setMode(next);
     setErr('');
     setInfo('');
@@ -44,7 +56,7 @@ function LoginForm() {
     setErr('');
     setInfo('');
 
-    if (mode === 'signup' && password !== confirmPassword) {
+    if ((mode === 'signup' || mode === 'reset') && password !== confirmPassword) {
       setErr('Passwords do not match.');
       return;
     }
@@ -59,6 +71,26 @@ function LoginForm() {
           setLoading(false);
           return;
         }
+        window.location.href = '/';
+      } else if (mode === 'forgot') {
+        const { error } = await sb.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/login`,
+        });
+        if (error) {
+          setErr(error.message);
+          setLoading(false);
+          return;
+        }
+        setInfo('Password reset link sent! Check your email inbox.');
+        setLoading(false);
+      } else if (mode === 'reset') {
+        const { error } = await sb.auth.updateUser({ password });
+        if (error) {
+          setErr(error.message);
+          setLoading(false);
+          return;
+        }
+        setInfo('Password updated! Redirecting…');
         window.location.href = '/';
       } else {
         const { data, error } = await sb.auth.signUp({
@@ -84,7 +116,16 @@ function LoginForm() {
         setLoading(false);
       }
     } catch (e: any) {
-      setErr(e?.message ?? (mode === 'signin' ? 'Sign in failed' : 'Sign up failed'));
+      setErr(
+        e?.message ??
+          (mode === 'signin'
+            ? 'Sign in failed'
+            : mode === 'forgot'
+              ? 'Could not send reset email'
+              : mode === 'reset'
+                ? 'Could not update password'
+                : 'Sign up failed'),
+      );
       setLoading(false);
     }
   }
@@ -122,55 +163,81 @@ function LoginForm() {
           </div>
         </div>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 14px' }}>
-          {mode === 'signin' ? 'Sign in to view or manage the monthly roster.' : 'Create an account to get started.'}
+          {mode === 'signin'
+            ? 'Sign in to view or manage the monthly roster.'
+            : mode === 'signup'
+              ? 'Create an account to get started.'
+              : mode === 'forgot'
+                ? 'Enter your email address to receive a password reset link.'
+                : 'Choose a new password for your account.'}
         </p>
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: 4,
-            padding: 4,
-            marginBottom: 16,
-            background: 'var(--surface-muted)',
-            borderRadius: 8,
-          }}
-        >
+        {(mode === 'signin' || mode === 'signup') ? (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 4,
+              padding: 4,
+              marginBottom: 16,
+              background: 'var(--surface-muted)',
+              borderRadius: 8,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => switchMode('signin')}
+              style={{
+                padding: '6px 10px',
+                borderRadius: 6,
+                border: 'none',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+                background: mode === 'signin' ? 'var(--surface)' : 'transparent',
+                color: mode === 'signin' ? 'var(--text)' : 'var(--text-secondary)',
+                boxShadow: mode === 'signin' ? '0 1px 3px rgba(15, 23, 42, 0.08)' : 'none',
+              }}
+            >
+              Sign in
+            </button>
+            <button
+              type="button"
+              onClick={() => switchMode('signup')}
+              style={{
+                padding: '6px 10px',
+                borderRadius: 6,
+                border: 'none',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+                background: mode === 'signup' ? 'var(--surface)' : 'transparent',
+                color: mode === 'signup' ? 'var(--text)' : 'var(--text-secondary)',
+                boxShadow: mode === 'signup' ? '0 1px 3px rgba(15, 23, 42, 0.08)' : 'none',
+              }}
+            >
+              Sign up
+            </button>
+          </div>
+        ) : (
           <button
             type="button"
             onClick={() => switchMode('signin')}
             style={{
-              padding: '6px 10px',
-              borderRadius: 6,
+              background: 'transparent',
               border: 'none',
-              fontSize: 13,
+              padding: 0,
+              marginBottom: 14,
+              fontSize: 12.5,
               fontWeight: 600,
+              color: 'var(--accent)',
               cursor: 'pointer',
-              background: mode === 'signin' ? 'var(--surface)' : 'transparent',
-              color: mode === 'signin' ? 'var(--text)' : 'var(--text-secondary)',
-              boxShadow: mode === 'signin' ? '0 1px 3px rgba(15, 23, 42, 0.08)' : 'none',
+              textAlign: 'left',
             }}
           >
-            Sign in
+            ← Back to Sign in
           </button>
-          <button
-            type="button"
-            onClick={() => switchMode('signup')}
-            style={{
-              padding: '6px 10px',
-              borderRadius: 6,
-              border: 'none',
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: 'pointer',
-              background: mode === 'signup' ? 'var(--surface)' : 'transparent',
-              color: mode === 'signup' ? 'var(--text)' : 'var(--text-secondary)',
-              boxShadow: mode === 'signup' ? '0 1px 3px rgba(15, 23, 42, 0.08)' : 'none',
-            }}
-          >
-            Sign up
-          </button>
-        </div>
+        )}
 
           {configWarning && (
             <div
@@ -233,34 +300,57 @@ function LoginForm() {
               />
             </label>
           )}
-          <label style={{ display: 'grid', gap: 4, fontSize: 13, fontWeight: 500 }}>
-            Email
-            <input
-              className="input"
-              type="email"
-              placeholder="operator@bpwaterworks.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              required
-              disabled={loading}
-            />
-          </label>
-          <label style={{ display: 'grid', gap: 4, fontSize: 13, fontWeight: 500 }}>
-            Password
-            <input
-              className="input"
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-              minLength={6}
-              required
-              disabled={loading}
-            />
-          </label>
-          {mode === 'signup' && (
+          {mode !== 'reset' && (
+            <label style={{ display: 'grid', gap: 4, fontSize: 13, fontWeight: 500 }}>
+              Email
+              <input
+                className="input"
+                type="email"
+                placeholder="operator@bpwaterworks.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                required
+                disabled={loading}
+              />
+            </label>
+          )}
+          {mode !== 'forgot' && (
+            <label style={{ display: 'grid', gap: 4, fontSize: 13, fontWeight: 500 }}>
+              <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>{mode === 'reset' ? 'New password' : 'Password'}</span>
+                {mode === 'signin' && (
+                  <button
+                    type="button"
+                    onClick={() => switchMode('forgot')}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      padding: 0,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: 'var(--accent)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Forgot password?
+                  </button>
+                )}
+              </span>
+              <input
+                className="input"
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+                minLength={6}
+                required
+                disabled={loading}
+              />
+            </label>
+          )}
+          {(mode === 'signup' || mode === 'reset') && (
             <label style={{ display: 'grid', gap: 4, fontSize: 13, fontWeight: 500 }}>
               Confirm password
               <input
@@ -282,7 +372,21 @@ function LoginForm() {
             disabled={loading || !isConfigured}
             style={{ padding: '9px 14px', marginTop: 4 }}
           >
-            {loading ? (mode === 'signin' ? 'Signing in…' : 'Creating account…') : mode === 'signin' ? 'Sign in' : 'Create account'}
+            {loading
+              ? mode === 'signin'
+                ? 'Signing in…'
+                : mode === 'forgot'
+                  ? 'Sending link…'
+                  : mode === 'reset'
+                    ? 'Updating password…'
+                    : 'Creating account…'
+              : mode === 'signin'
+                ? 'Sign in'
+                : mode === 'forgot'
+                  ? 'Send reset link'
+                  : mode === 'reset'
+                    ? 'Update password'
+                    : 'Create account'}
           </button>
           {err && (
             <p role="alert" style={{ color: '#b91c1c', fontSize: 13, margin: 0 }}>
