@@ -13,7 +13,7 @@ export default async function OrgChartPage() {
     redirect('/');
   }
 
-  const [posRes, usersRes, opsRes] = await Promise.all([
+  const [posRes, usersRes, opsRes, orgMetaRes] = await Promise.all([
     sb
       .from('org_positions')
       .select('*')
@@ -29,9 +29,15 @@ export default async function OrgChartPage() {
       .select('id, full_name, position, is_active')
       .eq('organization_id', orgId)
       .order('sort_order'),
+    sb
+      .from('organizations')
+      .select('org_chart_meta')
+      .eq('id', orgId)
+      .maybeSingle(),
   ]);
 
   const migrationMissing = Boolean(posRes.error && /org_positions/i.test(posRes.error.message));
+  const initialMeta = !orgMetaRes.error ? ((orgMetaRes.data as { org_chart_meta?: Record<string, string> | null } | null)?.org_chart_meta ?? null) : null;
 
   return (
     <OrgChart
@@ -42,6 +48,7 @@ export default async function OrgChartPage() {
       initialPositions={migrationMissing ? [] : ((posRes.data ?? []) as OrgPositionRow[])}
       users={usersRes.data ?? []}
       operators={opsRes.data ?? []}
+      initialMeta={initialMeta}
       migrationMissing={migrationMissing}
       error={!migrationMissing ? (posRes.error?.message ?? '') : ''}
     />
