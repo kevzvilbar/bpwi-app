@@ -69,9 +69,11 @@ function csvEscape(v: string) {
   return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 }
 
-function friendlyError(raw: string) {
+function friendlyError(raw: string, role?: string) {
   if (/permission denied|row-level security|42501/i.test(raw)) {
-    return 'You do not have permission to modify this schedule.';
+    return role === 'manager'
+      ? 'Not saved: your edit window has ended, or this date is outside the dates an admin allowed.'
+      : 'You do not have permission to modify this schedule.';
   }
   if (/network|fetch|timeout/i.test(raw)) {
     return 'Connection issue — your change was reverted. Please try again.';
@@ -375,7 +377,7 @@ export default function Roster(p: {
       if (shiftRollback.length > 0) rollbackShiftKeys(shiftRollback);
       if (sbRollback.length > 0) rollbackStandbyKeys(sbRollback);
       setSaveState('error');
-      setMsg(friendlyError(errMsg));
+      setMsg(friendlyError(errMsg, p.role));
     }
   }
 
@@ -458,7 +460,7 @@ export default function Roster(p: {
     if (error) {
       rollbackStandbyKeys([{ opId, date, prev: prevSb }]);
       setSaveState('error');
-      setMsg(friendlyError(error.message));
+      setMsg(friendlyError(error.message, p.role));
     }
   }
 
@@ -477,7 +479,7 @@ export default function Roster(p: {
     if (error) {
       rollbackShiftKeys([{ opId, date, prev: existing }]);
       setSaveState('error');
-      setMsg(friendlyError(error.message));
+      setMsg(friendlyError(error.message, p.role));
     }
   }
 
@@ -523,7 +525,7 @@ export default function Roster(p: {
     if (error) {
       rollbackShiftKeys(history.map((h) => ({ opId: h.opId, date: h.date, prev: (h as ShiftHistoryItem).prev })));
       setSaveState('error');
-      setMsg(friendlyError(error.message));
+      setMsg(friendlyError(error.message, p.role));
     }
   }
 
@@ -576,7 +578,7 @@ export default function Roster(p: {
     if (errMsg) {
       rollbackShiftKeys(batch.entries.map((e) => ({ opId: e.opId, date: e.date, prev: e.prev })));
       setSaveState('error');
-      setMsg(friendlyError(errMsg));
+      setMsg(friendlyError(errMsg, p.role));
     }
   }
 
@@ -614,7 +616,7 @@ export default function Roster(p: {
     if (error) {
       rollbackShiftKeys([{ opId, date, prev: prevCell }]);
       setSaveState('error');
-      setMsg(friendlyError(error.message));
+      setMsg(friendlyError(error.message, p.role));
     }
   }
 
@@ -660,7 +662,7 @@ export default function Roster(p: {
           if (error) {
             rollbackShiftKeys([{ opId: op.id, date, prev: prevCell }]);
             setSaveState('error');
-            setMsg(friendlyError(error.message));
+            setMsg(friendlyError(error.message, p.role));
           }
         });
       return;

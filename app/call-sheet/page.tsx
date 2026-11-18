@@ -16,7 +16,7 @@ export default async function CallSheetPage() {
   const yesterday = addDays(today, -1);
   const nowMinutes = manilaNowMinutes();
 
-  const [ops, shifts, areas, asg, prevAsg, standby] = await Promise.all([
+  const [ops, shifts, areas, asg, prevAsg, standby, heads] = await Promise.all([
     sb
       .from('operators')
       .select('id, full_name, position, phone_number, default_station')
@@ -27,6 +27,7 @@ export default async function CallSheetPage() {
     sb.from('schedule_assignments').select('operator_id, shift_type_id, area_code_id').eq('schedule_date', today),
     sb.from('schedule_assignments').select('operator_id, shift_type_id, area_code_id').eq('schedule_date', yesterday),
     sb.from('standby_assignments').select('operator_id, standby_type').eq('schedule_date', today),
+    sb.from('user_profiles').select('id, full_name, job_title, phone_number').eq('role', 'manager').eq('is_active', true).order('full_name'),
   ]);
 
   const error =
@@ -48,6 +49,7 @@ export default async function CallSheetPage() {
       assignments={asg.data ?? []}
       yesterdayAssignments={prevAsg.data ?? []}
       standby={standby.data ?? []}
+      heads={heads.data ?? []}
       error={error}
     />
   );

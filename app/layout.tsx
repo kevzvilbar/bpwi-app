@@ -4,7 +4,8 @@ import Nav from '@/components/Nav';
 import PwaRegister from '@/components/PwaRegister';
 import DialogA11y from '@/components/DialogA11y';
 import PendingApproval from '@/components/PendingApproval';
-import { getProfile } from '@/lib/profile';
+import EditAccessBanner from '@/components/EditAccessBanner';
+import { getProfile, type EditGrant } from '@/lib/profile';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 
 export const metadata = {
@@ -43,7 +44,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     orgName: 'BP Waterworks, Inc.',
     appTitle: 'Operations & Plant Schedule',
     canEdit: false,
+    canGenerate: false,
     isAdmin: false,
+    isManager: false,
+    editGrant: null as EditGrant | null,
+    nextGrant: null as EditGrant | null,
   };
   if (getSupabaseEnv().isConfigured) {
     try {
@@ -59,7 +64,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         orgName: p.orgName,
         appTitle: p.appTitle,
         canEdit: p.canEdit,
+        canGenerate: p.canGenerate,
         isAdmin: p.isAdmin,
+        isManager: p.isManager,
+        editGrant: p.editGrant,
+        nextGrant: p.nextGrant,
       };
     } catch {
       /* static prerender or unauthenticated */
@@ -78,9 +87,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           orgName={profile.orgName}
           appTitle={profile.appTitle}
           canEdit={profile.canEdit}
+          canGenerate={profile.canGenerate}
           isAdmin={profile.isAdmin}
           pendingUsersCount={profile.pendingUsersCount}
         />
+        {profile.isManager && <EditAccessBanner active={profile.editGrant} next={profile.nextGrant} />}
         <main className="app-main">
           <PendingApproval pending={pendingApproval} userName={profile.name} userEmail={profile.userEmail}>
             {children}

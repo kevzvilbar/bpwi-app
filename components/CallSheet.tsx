@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import EscalationContacts, { type EscalationContact } from '@/components/EscalationContacts';
 
 type Op = { id: string; full_name: string; position: string | null; phone_number: string | null; default_station: string | null };
 type Shift = {
@@ -61,6 +62,8 @@ export default function CallSheet(p: {
   assignments: Asg[];
   yesterdayAssignments: Asg[];
   standby: Standby[];
+  /** Department heads / managers shown as escalation contacts (not on the roster). */
+  heads?: EscalationContact[];
   error: string;
 }) {
   const [search, setSearch] = useState('');
@@ -187,6 +190,8 @@ export default function CallSheet(p: {
           <span><b>RD</b> = Rest Day</span>
         </div>
       </details>
+
+      <EscalationContacts contacts={p.heads ?? []} />
 
       {/* Desktop / Tablet 2-Column Side-by-Side Layout (> 640px) */}
       <div className="call-sheet-table-wrap call-sheet-split">

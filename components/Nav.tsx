@@ -92,10 +92,14 @@ export default function Nav(p: {
   orgName: string;
   appTitle: string;
   canEdit: boolean;
+  /** Bulk schedule generation (admins and schedulers only). Defaults to canEdit. */
+  canGenerate?: boolean;
   isAdmin: boolean;
   pendingUsersCount?: number;
 }) {
   const path = usePathname();
+  const canGenerate = p.canGenerate ?? p.canEdit;
+  const roleLabel = p.role === 'manager' ? 'dept head' : p.role;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [dark, setDark] = useState(false);
   const [highContrast, setHighContrast] = useState(false);
@@ -279,7 +283,7 @@ export default function Nav(p: {
               textTransform: 'uppercase',
             }}
           >
-            {p.role}
+            {roleLabel}
           </span>
           <button
             className="btn desktop-only"
@@ -358,7 +362,7 @@ export default function Nav(p: {
               <div>
                 <div style={{ fontWeight: 700, fontSize: 15 }}>{p.userName || 'BPWI User'}</div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>
-                  Role: {p.role}
+                  Role: {roleLabel}
                 </div>
               </div>
               <button
@@ -374,13 +378,13 @@ export default function Nav(p: {
               </button>
             </div>
 
-            {(p.canEdit || p.isAdmin) && (
+            {(canGenerate || p.isAdmin) && (
               <>
                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                   Administration
                 </div>
                 <div style={{ display: 'grid', gap: 6 }}>
-                  {p.canEdit && (
+                  {canGenerate && (
                     <Link href="/generate" className="btn" style={{ justifyContent: 'flex-start', textDecoration: 'none' }}>
                       Generate Schedule
                     </Link>

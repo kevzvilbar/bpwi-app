@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
   const sp = await searchParams;
-  const { sb, role, orgId, operatorId, name } = await getProfile();
+  const { sb, role, orgId, operatorId, name, canEdit } = await getProfile();
   const today = manilaToday();
   const month = /^\d{4}-\d{2}$/.test(sp.m ?? '') ? sp.m! : today.slice(0, 7);
   const [y, mo] = month.split('-').map(Number);
@@ -53,7 +53,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
       operatorId={operatorId}
       role={role}
       userName={name}
-      canEdit={role === 'admin' || role === 'scheduler'}
+      canEdit={canEdit}
       initialError={errors[0] ?? ''}
     />
   );

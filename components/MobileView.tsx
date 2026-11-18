@@ -495,7 +495,11 @@ export default function MobileView(p: {
 
           {!p.canClosePm && (
             <div className="card" style={{ padding: '8px 12px', marginBottom: 12, fontSize: 12.5, color: 'var(--text-secondary)' }}>
-              Your role is <b>{p.role}</b> (read-only). Ask an admin to set your role to <b>operator</b> or <b>scheduler</b> to close tasks.
+              {p.role === 'manager' ? (
+                <>Department heads can close tasks only while an admin has opened an edit window for them.</>
+              ) : (
+                <>Your role is <b>{p.role}</b> (read-only). Ask an admin to set your role to <b>operator</b> or <b>scheduler</b> to close tasks.</>
+              )}
             </div>
           )}
           {p.role === 'operator' && !p.operatorId && (

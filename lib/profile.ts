@@ -1,6 +1,15 @@
 import { cache } from 'react';
 import { supabaseServer } from '@/lib/supabase/server';
 
+/** An admin-granted edit window for a department head (see supabase/migrations/008). */
+export type EditGrant = {
+  starts_at: string;
+  ends_at: string;
+  date_from: string | null;
+  date_to: string | null;
+  note: string | null;
+};
+
 export const getProfile = cache(async () => {
   const sb = await supabaseServer();
   const {
@@ -14,6 +23,7 @@ export const getProfile = cache(async () => {
     is_active?: boolean | null;
     organization_id?: string | null;
     operator_id?: string | null;
+    can_approve?: boolean | null;
     organizations?: OrgJoin;
   };
 
@@ -24,7 +34,7 @@ export const getProfile = cache(async () => {
   if (user) {
     const res = await sb
       .from('user_profiles')
-      .select('full_name, role, is_active, organization_id, operator_id, organizations(name, app_title)')
+      .select('full_name, role, is_active, organization_id, operator_id, can_approve, organizations(name, app_title)')
       .eq('id', user.id)
       .maybeSingle();
 
@@ -52,6 +62,29 @@ export const getProfile = cache(async () => {
   const isActive = Boolean(prof && prof.is_active !== false);
   const role = (prof?.role ?? 'viewer') as string;
   const isAdmin = isActive && role === 'admin';
+  const isManager = isActive && role === 'manager';
+
+  // Department heads are read-only unless an admin has opened an edit window for them. The database
+  // enforces the window (and its date range) on every write; this only drives what the UI offers.
+  let editGrant: EditGrant | null = null;
+  let nextGrant: EditGrant | null = null;
+  if (user && isManager) {
+    const nowMs = Date.now();
+    const { data } = await sb
+      .from('edit_grants')
+      .select('starts_at, ends_at, date_from, date_to, note')
+      .eq('user_id', user.id)
+      .is('revoked_at', null)
+      .gt('ends_at', new Date(nowMs).toISOString())
+      .order('starts_at');
+    for (const g of (data ?? []) as EditGrant[]) {
+      if (new Date(g.starts_at).getTime() <= nowMs) {
+        if (!editGrant || new Date(g.ends_at) > new Date(editGrant.ends_at)) editGrant = g;
+      } else if (!nextGrant) {
+        nextGrant = g;
+      }
+    }
+  }
 
   let pendingUsersCount = 0;
   if (isAdmin && orgId) {
@@ -73,9 +106,16 @@ export const getProfile = cache(async () => {
     appTitle,
     operatorId: (prof?.operator_id ?? null) as string | null,
     name: (prof?.full_name ?? (user?.user_metadata?.full_name as string | undefined) ?? '') as string,
-    canEdit: isActive && (role === 'admin' || role === 'scheduler'),
-    canClosePm: isActive && (role === 'admin' || role === 'scheduler' || role === 'operator'),
+    canEdit: isActive && (role === 'admin' || role === 'scheduler' || (isManager && editGrant !== null)),
+    canClosePm: isActive && (role === 'admin' || role === 'scheduler' || role === 'operator' || (isManager && editGrant !== null)),
+    /** Bulk schedule generation stays with admins and schedulers. */
+    canGenerate: isActive && (role === 'admin' || role === 'scheduler'),
+    /** Admins, plus anyone an admin has delegated approval to (used by the upcoming change-request queue). */
+    canApprove: isActive && (role === 'admin' || prof?.can_approve === true),
     isAdmin,
+    isManager,
+    editGrant,
+    nextGrant,
   };
 });
 

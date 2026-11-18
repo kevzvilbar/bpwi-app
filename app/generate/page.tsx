@@ -5,7 +5,7 @@ import Generator from '@/components/Generator';
 export const dynamic = 'force-dynamic';
 
 export default async function GeneratePage() {
-  const { sb, orgId, canEdit } = await getProfile();
+  const { sb, orgId, canGenerate } = await getProfile();
   const today = manilaToday();
   const [ops, shifts, areas] = await Promise.all([
     sb.from('operators').select('id, full_name').eq('is_active', true).order('sort_order'),
@@ -19,7 +19,7 @@ export default async function GeneratePage() {
       shifts={shifts.data ?? []}
       areas={areas.data ?? []}
       orgId={orgId}
-      canEdit={canEdit}
+      canEdit={canGenerate}
     />
   );
 }

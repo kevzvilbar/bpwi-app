@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import DepartmentHeads, { type Grant, type Person } from '@/components/DepartmentHeads';
 
 type Op = {
   id?: string;
@@ -34,7 +35,7 @@ type Area = {
 type UserProfile = {
   id: string;
   full_name: string | null;
-  role: 'admin' | 'scheduler' | 'operator' | 'viewer';
+  role: 'admin' | 'scheduler' | 'manager' | 'operator' | 'viewer';
   is_active: boolean;
   operator_id?: string | null;
 };
@@ -50,7 +51,7 @@ type AuditLog = {
   created_at: string;
 };
 
-type Tab = 'operators' | 'shifts' | 'areas' | 'users' | 'audit';
+type Tab = 'operators' | 'shifts' | 'areas' | 'users' | 'heads' | 'audit';
 
 const cell = { padding: 4, borderBottom: '1px solid var(--border-light)' };
 const inp = {
@@ -190,6 +191,10 @@ export default function Setup(p: {
   areas: Area[];
   users: UserProfile[];
   auditLogs?: AuditLog[];
+  /** Department-head data is loaded separately from `users` so the Users tab never rewrites it. */
+  people?: Person[];
+  grants?: Grant[];
+  headsError?: string;
   orgId: string;
   currentUserId?: string;
   isAdmin: boolean;
@@ -314,6 +319,7 @@ export default function Setup(p: {
         {tabBtn('shifts', `Shift types (${shifts.length})`)}
         {tabBtn('areas', `Areas & leave (${areas.length})`)}
         {tabBtn('users', `Users & roles (${users.length}${pendingUsers ? ` · ${pendingUsers} pending` : ''})`)}
+        {tabBtn('heads', `Department heads (${(p.people ?? []).filter((x) => x.role === 'manager').length})`)}
         {tabBtn('audit', `Activity log (${auditLogs.length})`)}
         {dirty.size > 0 && (
           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--warn-fg)', background: 'var(--warn-bg)', border: '1px solid var(--warn-border)', padding: '3px 9px', borderRadius: 999 }}>
@@ -327,6 +333,11 @@ export default function Setup(p: {
         )}
       </div>
 
+      <div hidden={tab !== 'heads'}>
+        <DepartmentHeads people={p.people ?? []} grants={p.grants ?? []} orgId={p.orgId} error={p.headsError ?? ''} />
+      </div>
+
+      <div hidden={tab === 'heads'}>
       {/* Mobile Cards (<= 640px) */}
       <div className="responsive-cards">
         {tab === 'operators' && (
@@ -525,6 +536,7 @@ export default function Setup(p: {
                       <option value="admin">admin</option>
                       <option value="scheduler">scheduler</option>
                       <option value="operator">operator</option>
+                      <option value="manager">department head</option>
                       <option value="viewer">viewer</option>
                     </select>
                   </label>
@@ -943,6 +955,7 @@ export default function Setup(p: {
                           <option value="admin">admin</option>
                           <option value="scheduler">scheduler</option>
                           <option value="operator">operator</option>
+                          <option value="manager">department head</option>
                           <option value="viewer">viewer</option>
                         </select>
                       </td>
@@ -1091,6 +1104,7 @@ export default function Setup(p: {
             </tbody>
           </table>
         )}
+      </div>
       </div>
 
       {confirmDel && (
