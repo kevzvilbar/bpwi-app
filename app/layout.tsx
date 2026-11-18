@@ -2,7 +2,6 @@ import type { Viewport } from 'next';
 import './globals.css';
 import Nav from '@/components/Nav';
 import PwaRegister from '@/components/PwaRegister';
-import DialogA11y from '@/components/DialogA11y';
 import { getProfile } from '@/lib/profile';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 
@@ -15,8 +14,8 @@ export const metadata = {
     title: 'BPWI Ops',
   },
   icons: {
-    icon: '/icon-192.png',
-    apple: '/icon-192.png',
+    icon: '/bpwi-logo.png',
+    apple: '/bpwi-logo.png',
   },
 };
 
@@ -28,11 +27,27 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  let profile = { role: 'viewer', name: '', canEdit: false, isAdmin: false };
+  let profile = {
+    role: 'viewer',
+    name: '',
+    orgId: '',
+    orgName: 'BP Waterworks, Inc.',
+    appTitle: 'Operations & Plant Schedule',
+    canEdit: false,
+    isAdmin: false,
+  };
   if (getSupabaseEnv().isConfigured) {
     try {
       const p = await getProfile();
-      profile = { role: p.role, name: p.name, canEdit: p.canEdit, isAdmin: p.isAdmin };
+      profile = {
+        role: p.role,
+        name: p.name,
+        orgId: p.orgId,
+        orgName: p.orgName,
+        appTitle: p.appTitle,
+        canEdit: p.canEdit,
+        isAdmin: p.isAdmin,
+      };
     } catch {
       /* static prerender or unauthenticated */
     }
@@ -41,8 +56,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en">
       <body>
         <PwaRegister />
-        <DialogA11y />
-        <Nav role={profile.role} userName={profile.name} canEdit={profile.canEdit} isAdmin={profile.isAdmin} />
+        <Nav
+          role={profile.role}
+          userName={profile.name}
+          orgId={profile.orgId}
+          orgName={profile.orgName}
+          appTitle={profile.appTitle}
+          canEdit={profile.canEdit}
+          isAdmin={profile.isAdmin}
+        />
         <main className="app-main">{children}</main>
       </body>
     </html>

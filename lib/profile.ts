@@ -26,12 +26,28 @@ export const getProfile = cache(async () => {
     }
   }
 
+  let orgName = 'BP Waterworks, Inc.';
+  let appTitle = 'Operations & Plant Schedule';
+  const orgId = (prof?.organization_id ?? '') as string;
+  if (orgId) {
+    const orgRes = await sb.from('organizations').select('name, app_title').eq('id', orgId).maybeSingle();
+    if (orgRes.error) {
+      const orgFb = await sb.from('organizations').select('name').eq('id', orgId).maybeSingle();
+      if (orgFb.data?.name) orgName = orgFb.data.name;
+    } else if (orgRes.data) {
+      if (orgRes.data.name) orgName = orgRes.data.name;
+      if (orgRes.data.app_title) appTitle = orgRes.data.app_title;
+    }
+  }
+
   const role = (prof?.role ?? 'viewer') as string;
   return {
     sb,
     user,
     role,
-    orgId: (prof?.organization_id ?? '') as string,
+    orgId,
+    orgName,
+    appTitle,
     operatorId: (prof?.operator_id ?? null) as string | null,
     name: (prof?.full_name ?? '') as string,
     canEdit: role === 'admin' || role === 'scheduler',

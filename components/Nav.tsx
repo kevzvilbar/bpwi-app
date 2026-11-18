@@ -85,13 +85,35 @@ function Icon({ name }: { name: 'schedule' | 'tasks' | 'pm' | 'standby' | 'repor
   }
 }
 
-export default function Nav(p: { role: string; userName: string; canEdit: boolean; isAdmin: boolean }) {
+export default function Nav(p: {
+  role: string;
+  userName: string;
+  orgId: string;
+  orgName: string;
+  appTitle: string;
+  canEdit: boolean;
+  isAdmin: boolean;
+}) {
   const path = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [dark, setDark] = useState(false);
   const [highContrast, setHighContrast] = useState(false);
+  const [appTitle, setAppTitle] = useState(p.appTitle);
+  const [orgName, setOrgName] = useState(p.orgName);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [savingTitle, setSavingTitle] = useState(false);
+  const [titleErr, setTitleErr] = useState('');
   const menuBtnRef = useRef<HTMLButtonElement | null>(null);
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    setAppTitle(p.appTitle);
+    setOrgName(p.orgName);
+  }, [p.appTitle, p.orgName]);
+
+  useEffect(() => {
+    document.title = `${orgName} · ${appTitle}`;
+  }, [appTitle, orgName]);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('bpwi-theme');
@@ -145,30 +167,75 @@ export default function Nav(p: { role: string; userName: string; canEdit: boolea
     { href: '/leave', label: 'Reports', icon: 'reports' as const },
   ];
 
+  async function saveBranding(e: React.FormEvent) {
+    e.preventDefault();
+    if (!p.orgId) return;
+    setSavingTitle(true);
+    setTitleErr('');
+    const nextTitle = appTitle.trim() || 'Operations & Plant Schedule';
+    const nextOrg = orgName.trim() || 'BP Waterworks, Inc.';
+    const { error } = await supabaseBrowser()
+      .from('organizations')
+      .update({ app_title: nextTitle, name: nextOrg })
+      .eq('id', p.orgId);
+    setSavingTitle(false);
+    if (error) {
+      setTitleErr('Could not save title. Run 005_org_title.sql if not applied yet.');
+      return;
+    }
+    setAppTitle(nextTitle);
+    setOrgName(nextOrg);
+    setEditingTitle(false);
+  }
+
   return (
     <>
       <header className="app-topbar no-print">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div
-            aria-hidden="true"
+          <img
+            src="/bpwi-logo.png"
+            alt="BP Waterworks, Inc."
             style={{
-              width: 32,
+              width: 40,
               height: 32,
-              borderRadius: 8,
-              background: 'linear-gradient(135deg, #1d4ed8, #0f766e)',
-              color: '#ffffff',
-              display: 'grid',
-              placeItems: 'center',
-              fontWeight: 800,
-              fontSize: 12,
+              objectFit: 'contain',
+              borderRadius: 6,
+              background: '#ffffff',
+              padding: 1,
               flexShrink: 0,
             }}
-          >
-            BP
-          </div>
+          />
           <div>
-            <div style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.2 }}>Operations &amp; Plant Schedule</div>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.2 }}>BP Waterworks, Inc.</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.2 }}>{appTitle}</span>
+              {p.isAdmin && p.orgId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTitleErr('');
+                    setEditingTitle(true);
+                  }}
+                  aria-label="Edit app title and company name"
+                  title="Edit title"
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    padding: '2px 4px',
+                    borderRadius: 4,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.2 }}>{orgName}</div>
           </div>
         </div>
 
@@ -346,6 +413,37 @@ export default function Nav(p: { role: string; userName: string; canEdit: boolea
               </button>
             </div>
           </aside>
+        </div>
+      )}
+
+      {editingTitle && (
+        <div className="modal-overlay no-print" role="dialog" aria-modal="true" aria-labelledby="brand-dialog-title" onClick={() => !savingTitle && setEditingTitle(false)}>
+          <form className="modal-sheet" onClick={(e) => e.stopPropagation()} onSubmit={saveBranding} style={{ maxWidth: 420, display: 'grid', gap: 12 }}>
+            <h2 id="brand-dialog-title" style={{ margin: 0, fontSize: 17 }}>
+              Edit App Title &amp; Organization
+            </h2>
+            <label style={{ display: 'grid', gap: 4, fontSize: 13, fontWeight: 600 }}>
+              App Title
+              <input className="input" value={appTitle} onChange={(e) => setAppTitle(e.target.value)} required disabled={savingTitle} />
+            </label>
+            <label style={{ display: 'grid', gap: 4, fontSize: 13, fontWeight: 600 }}>
+              Organization Name
+              <input className="input" value={orgName} onChange={(e) => setOrgName(e.target.value)} required disabled={savingTitle} />
+            </label>
+            {titleErr && (
+              <p role="alert" style={{ margin: 0, fontSize: 12.5, color: 'var(--danger)' }}>
+                {titleErr}
+              </p>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" className="btn" onClick={() => setEditingTitle(false)} disabled={savingTitle}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={savingTitle}>
+                {savingTitle ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </>

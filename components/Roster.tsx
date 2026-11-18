@@ -953,8 +953,8 @@ export default function Roster(p: {
             style={{
               padding: '3px 9px',
               borderRadius: 999,
-              background: '#0f172a',
-              color: '#ffffff',
+              background: 'var(--primary)',
+              color: 'var(--primary-fg)',
               fontSize: 11.5,
               fontWeight: 700,
               marginRight: 4,
@@ -963,7 +963,7 @@ export default function Roster(p: {
             Brush: {brushLabel}
           </span>
 
-          <span style={{ fontSize: 10.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Shifts:</span>
+          <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Shifts:</span>
           {p.shifts.map((s) => (
             <button
               key={s.id}
@@ -980,27 +980,29 @@ export default function Roster(p: {
                 cursor: 'pointer',
                 background: s.background_color,
                 color: s.text_color,
-                border: mode === 'paint' && shiftId === s.id ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                border: mode === 'paint' && shiftId === s.id ? '2px solid #2563eb' : '1px solid var(--border)',
               }}
             >
               {s.code}
             </button>
           ))}
 
-          <span style={{ width: 1, height: 18, background: '#e2e8f0', margin: '0 3px' }} />
-          <span style={{ fontSize: 10.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Area / Leave:</span>
+          <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 3px' }} />
+          <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Area / Leave:</span>
           <button
             onClick={() => {
               setMode('paint');
               setAreaId(null);
             }}
             style={{
-              padding: '3px 7px',
+              padding: '3px 8px',
               borderRadius: 5,
               fontSize: 11.5,
+              fontWeight: 600,
               cursor: 'pointer',
-              background: '#ffffff',
-              border: mode === 'paint' && areaId === null ? '2px solid #2563eb' : '1px solid #cbd5e1',
+              background: 'var(--surface-muted)',
+              color: 'var(--text)',
+              border: mode === 'paint' && areaId === null ? '2px solid #2563eb' : '1px solid var(--border)',
             }}
           >
             PW (default)
@@ -1029,7 +1031,7 @@ export default function Roster(p: {
             </button>
           ))}
 
-          <span style={{ width: 1, height: 18, background: '#e2e8f0', margin: '0 3px' }} />
+          <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 3px' }} />
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <button
               className="btn"
@@ -1037,9 +1039,9 @@ export default function Roster(p: {
               style={{
                 padding: '3px 9px',
                 fontSize: 11.5,
-                border: mode === 'standby' ? '2px solid #7c3aed' : '1px solid #cbd5e1',
-                background: mode === 'standby' ? '#f5f3ff' : '#ffffff',
-                color: mode === 'standby' ? '#6d28d9' : '#0f172a',
+                border: mode === 'standby' ? '2px solid #7c3aed' : '1px solid var(--border)',
+                background: mode === 'standby' ? 'rgba(124, 58, 237, 0.16)' : 'var(--surface-muted)',
+                color: mode === 'standby' ? 'var(--violet)' : 'var(--text)',
                 fontWeight: 700,
               }}
             >
@@ -1053,11 +1055,11 @@ export default function Roster(p: {
                 style={{
                   padding: '3px 6px',
                   borderRadius: 5,
-                  border: '1px solid #c4b5fd',
+                  border: '1px solid var(--violet)',
                   fontSize: 11.5,
                   fontWeight: 600,
-                  color: '#6d28d9',
-                  background: '#f5f3ff',
+                  color: 'var(--violet)',
+                  background: 'var(--surface-muted)',
                 }}
               >
                 <option value="OC">OC · General</option>
@@ -1073,9 +1075,9 @@ export default function Roster(p: {
             style={{
               padding: '3px 9px',
               fontSize: 11.5,
-              border: mode === 'erase' ? '2px solid #dc2626' : '1px solid #cbd5e1',
-              background: mode === 'erase' ? '#fee2e2' : '#ffffff',
-              color: mode === 'erase' ? '#991b1b' : '#0f172a',
+              border: mode === 'erase' ? '2px solid #dc2626' : '1px solid var(--border)',
+              background: mode === 'erase' ? 'rgba(220, 38, 38, 0.16)' : 'var(--surface-muted)',
+              color: mode === 'erase' ? 'var(--danger)' : 'var(--text)',
               fontWeight: 600,
             }}
           >

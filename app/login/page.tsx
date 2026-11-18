@@ -108,15 +108,22 @@ function LoginForm() {
           boxShadow: '0 4px 20px rgba(15, 23, 42, 0.12)',
         }}
       >
-        <div style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            BP Waterworks, Inc.
+        <div style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <img
+            src="/bpwi-logo.png"
+            alt="BP Waterworks, Inc."
+            style={{ width: 52, height: 42, objectFit: 'contain', borderRadius: 8, background: '#ffffff', padding: 2 }}
+          />
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              BP Waterworks, Inc.
+            </div>
+            <h1 style={{ fontSize: 19, margin: '2px 0 0', color: 'var(--text)' }}>Plant Operations Schedule</h1>
           </div>
-          <h1 style={{ fontSize: 20, margin: '4px 0 0', color: 'var(--text)' }}>Plant Operations Schedule</h1>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '4px 0 0' }}>
-            {mode === 'signin' ? 'Sign in to view or manage the monthly roster.' : 'Create an account to get started.'}
-          </p>
         </div>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 14px' }}>
+          {mode === 'signin' ? 'Sign in to view or manage the monthly roster.' : 'Create an account to get started.'}
+        </p>
 
         <div
           style={{
