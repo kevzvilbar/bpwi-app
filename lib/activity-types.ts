@@ -180,7 +180,11 @@ export function computeMeterTestResult(
       ? ((totalRegistered - refVolCubicMeters * validCount) / (refVolCubicMeters * validCount)) * 100
       : null;
 
-  const round2 = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100);
+  const round2 = (v: number | null) => {
+    if (v === null) return null;
+    const r = Math.round(v * 100) / 100;
+    return r === 0 ? 0 : r;
+  };
   const verdict: MeterTestVerdict | null =
     avgErr === null
       ? null

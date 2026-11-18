@@ -21,7 +21,7 @@ import { enqueueOfflineActivity, flushOfflineQueue, getOfflineQueue, type Pendin
 
 type MonOp = { id: string; full_name: string; position: string | null; phone_number: string | null; default_station: string | null };
 type MonShift = { id: string; code: string; description: string | null; duration_hours: number; start_time: string | null; end_time: string | null; background_color: string; text_color: string; is_off: boolean };
-type MonArea = { id: string; code: string; name: string | null; category: string; background_color: string; text_color: string };
+type MonArea = { id: string; code: string; name: string | null; category: string; background_color: string; text_color: string; sub_sites?: string[] };
 type MonAsg = { operator_id: string; schedule_date: string; shift_type_id: string | null; area_code_id: string | null };
 type MonStandby = { operator_id: string; standby_type: string };
 type MonPm = { id: string; activity_type: string; title: string; scheduled_date: string; completed_at: string | null; status: string; assigned_operator_ids: string[] };
@@ -167,6 +167,7 @@ export default function ActivitiesMonitor(p: {
   const [loggerOpen, setLoggerOpen] = useState(false);
   const [loggerLeadOpId, setLoggerLeadOpId] = useState<string | null>(null);
   const [linkedJoForLog, setLinkedJoForLog] = useState<LinkedJobOrder | null>(null);
+  const [editingActivity, setEditingActivity] = useState<DailyActivityRow | null>(null);
 
   // Printable preview state
   const [printState, setPrintState] = useState<{
@@ -433,6 +434,18 @@ export default function ActivitiesMonitor(p: {
     setActivities((prev) => prev.map((x) => (x.id === act.id ? (data as DailyActivityRow) : x)));
     setFlaggingId(null);
     setFlagReason('');
+  }
+
+  async function handleDeleteActivity(act: DailyActivityRow) {
+    if (!window.confirm('Delete this activity log?')) return;
+    const sb = supabaseBrowser();
+    const { error } = await sb.from('daily_activities').delete().eq('id', act.id);
+    if (error) {
+      setBannerMsg(`Could not delete activity: ${error.message}`);
+      return;
+    }
+    setActivities((prev) => prev.filter((x) => x.id !== act.id));
+    setBannerMsg('✓ Activity deleted.');
   }
 
   async function handleCreateJobOrder(e: React.FormEvent) {
@@ -1007,6 +1020,30 @@ export default function ActivitiesMonitor(p: {
                           🖨 Meter Certificate
                         </button>
                       )}
+                      {(p.isAdmin || act.logged_by === p.userId) && act.status !== 'verified' && (
+                        <>
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => {
+                              setLinkedJoForLog(null);
+                              setEditingActivity(act);
+                              setLoggerOpen(true);
+                            }}
+                            style={{ fontSize: 11.5 }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => void handleDeleteActivity(act)}
+                            style={{ fontSize: 11.5, color: 'var(--danger)' }}
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
                     </div>
 
                     {flaggingId === act.id && (
@@ -1329,6 +1366,7 @@ export default function ActivitiesMonitor(p: {
           onClose={() => {
             setLoggerOpen(false);
             setLinkedJoForLog(null);
+            setEditingActivity(null);
           }}
           onQueuedOffline={async (payload) => {
             await enqueueOfflineActivity(payload);
@@ -1337,8 +1375,12 @@ export default function ActivitiesMonitor(p: {
           }}
           onSaved={(act, opts) => {
             if (!opts?.offline) {
-              setActivities((prev) => [act, ...prev.filter((x) => x.id !== act.id)]);
-              setBannerMsg('✓ Activity logged.');
+              setActivities((prev) =>
+                prev.some((x) => x.id === act.id)
+                  ? prev.map((x) => (x.id === act.id ? act : x))
+                  : [act, ...prev],
+              );
+              setBannerMsg(editingActivity ? '✓ Activity updated.' : '✓ Activity logged.');
             }
             if (linkedJoForLog) {
               setJobOrders((prev) =>
@@ -1358,6 +1400,7 @@ export default function ActivitiesMonitor(p: {
           assignments={dateAssignments}
           initialLeadOperatorId={loggerLeadOpId}
           linkedJobOrder={linkedJoForLog}
+          editingActivity={editingActivity}
         />
       )}
 

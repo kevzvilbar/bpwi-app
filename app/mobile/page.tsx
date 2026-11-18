@@ -20,14 +20,18 @@ export default async function MobilePage({ searchParams }: { searchParams: Promi
   const pmFrom = addDays(date, -14);
   const pmTo = addDays(date, 30);
 
-  const [ops, shifts, areas, asg, prevAsg, standby, tasks, actTypes, dailyActs] = await Promise.all([
+  const areasPrimary = await sb.from('area_codes').select('id, code, name, category, sub_sites');
+  const areas = areasPrimary.error
+    ? await sb.from('area_codes').select('id, code, name, category')
+    : areasPrimary;
+
+  const [ops, shifts, asg, prevAsg, standby, tasks, actTypes, dailyActs] = await Promise.all([
     sb
       .from('operators')
       .select('id, full_name, position, phone_number, default_station')
       .eq('is_active', true)
       .order('sort_order'),
     sb.from('shift_types').select('id, code, description, start_time, end_time, background_color, text_color, is_off').order('code'),
-    sb.from('area_codes').select('id, code, name, category'),
     sb.from('schedule_assignments').select('operator_id, shift_type_id, area_code_id').eq('schedule_date', date),
     sb.from('schedule_assignments').select('operator_id, shift_type_id, area_code_id').eq('schedule_date', prevDate),
     sb.from('standby_assignments').select('operator_id, standby_type').eq('schedule_date', date),

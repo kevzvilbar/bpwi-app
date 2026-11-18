@@ -32,6 +32,7 @@ type Area = {
   category: string;
   background_color: string;
   text_color: string;
+  sub_sites?: string[];
 };
 type UserProfile = {
   id: string;
@@ -501,6 +502,21 @@ export default function Setup(p: {
                     </button>
                   </div>
                 </div>
+                {a.category === 'station' && (
+                  <label style={{ fontSize: 12 }}>
+                    Sub-sites / Wells (comma-separated, optional)
+                    <input
+                      className="input"
+                      placeholder="e.g. Well 1, Well 2, Booster 1"
+                      value={(a.sub_sites ?? []).join(', ')}
+                      onChange={(e) =>
+                        upd(setAreas, i, {
+                          sub_sites: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
+                        })
+                      }
+                    />
+                  </label>
+                )}
               </div>
             ))}
             <button
@@ -831,7 +847,7 @@ export default function Setup(p: {
           <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5 }}>
             <thead>
               <tr>
-                {['Code', 'Name', 'Category', 'BG', 'Text', 'Preview', ''].map((h) => (
+                {['Code', 'Name', 'Category', 'Sub-sites / Wells', 'BG', 'Text', 'Preview', ''].map((h) => (
                   <th key={h} style={{ ...cell, padding: '8px 6px', textAlign: 'left', background: 'var(--surface-muted)', color: 'var(--text)' }}>
                     {h}
                   </th>
@@ -854,6 +870,22 @@ export default function Setup(p: {
                       <option value="rest">Rest</option>
                       <option value="holiday">Holiday</option>
                     </select>
+                  </td>
+                  <td style={cell}>
+                    {a.category === 'station' ? (
+                      <input
+                        style={inp}
+                        placeholder="Well 1, Well 2…"
+                        value={(a.sub_sites ?? []).join(', ')}
+                        onChange={(e) =>
+                          upd(setAreas, i, {
+                            sub_sites: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
+                          })
+                        }
+                      />
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>
+                    )}
                   </td>
                   <td style={cell}>
                     <Color v={a.background_color} on={(c) => upd(setAreas, i, { background_color: c })} />
@@ -888,7 +920,7 @@ export default function Setup(p: {
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={7} style={{ ...cell, padding: 8 }}>
+                <td colSpan={8} style={{ ...cell, padding: 8 }}>
                   <button
                     className="btn"
                     onClick={() =>

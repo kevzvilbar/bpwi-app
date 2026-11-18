@@ -981,6 +981,22 @@ export default function PmPlanner(p: {
             <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 2 }}>
               {dayTasks.length} PM {dayTasks.length === 1 ? 'task' : 'tasks'} · {dayRel}
             </div>
+            {holidayByDate.get(selectedDate) && (
+              <div
+                style={{
+                  marginTop: 6,
+                  display: 'inline-block',
+                  padding: '2px 8px',
+                  borderRadius: 6,
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  background: 'rgba(225, 29, 72, 0.12)',
+                  color: '#be123c',
+                }}
+              >
+                ★ Holiday: {holidayByDate.get(selectedDate)!.name} ({holidayByDate.get(selectedDate)!.holiday_type.replace(/_/g, ' ')})
+              </div>
+            )}
           </div>
 
           {/* Crew & Standby Summary */}

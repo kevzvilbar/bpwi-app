@@ -14,13 +14,22 @@ const addDays = (d: string, n: number) => {
 };
 const diffDays = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
 
-export default function Generator(p: { today: string; operators: Op[]; shifts: Shift[]; areas?: Area[]; orgId: string; canEdit: boolean }) {
+export default function Generator(p: {
+  today: string;
+  operators: Op[];
+  shifts: Shift[];
+  areas?: Area[];
+  holidays?: Array<{ holiday_date: string; name: string; holiday_type: string }>;
+  orgId: string;
+  canEdit: boolean;
+}) {
   const today = p.today;
   const [start, setStart] = useState(today);
   const [end, setEnd] = useState(addDays(today, 29));
   const [pattern, setPattern] = useState('');
   const [stagger, setStagger] = useState(0);
   const [mode, setMode] = useState<'fill' | 'overwrite'>('fill');
+  const [markHolidays, setMarkHolidays] = useState(false);
   const [sel, setSel] = useState<Set<string>>(new Set(p.operators.map((o) => o.id)));
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -30,6 +39,14 @@ export default function Generator(p: { today: string; operators: Op[]; shifts: S
   const byCode = useMemo(() => new Map(p.shifts.map((s) => [s.code.toUpperCase(), s])), [p.shifts]);
   const shiftIsOff = useMemo(() => new Map(p.shifts.map((s) => [s.id, s.is_off])), [p.shifts]);
   const areaBy = useMemo(() => new Map((p.areas ?? []).map((a) => [a.id, a])), [p.areas]);
+  const holidayArea = useMemo(
+    () => (p.areas ?? []).find((a) => a.category === 'holiday') ?? (p.areas ?? []).find((a) => a.code.toUpperCase() === 'H'),
+    [p.areas],
+  );
+  const holidayDateSet = useMemo(
+    () => new Set((p.holidays ?? []).filter((h) => h.holiday_date >= start && h.holiday_date <= end).map((h) => h.holiday_date)),
+    [p.holidays, start, end],
+  );
   const tokens = pattern.split(/[\s,]+/).filter(Boolean);
   const unknown = tokens.filter((t) => t !== '-' && !byCode.has(t.toUpperCase()));
   const days = diffDays(start, end) + 1;
@@ -109,7 +126,11 @@ export default function Generator(p: { today: string; operators: Op[]; shifts: S
       const isPrevRest = Boolean(prevArea && (prevArea.category === 'rest' || prevArea.code.toUpperCase() === 'RD'));
       const nextIsOff = Boolean(shiftIsOff.get(r.shift_type_id));
       const preservedArea = isPrevRest && !nextIsOff ? null : prevAreaId;
-      rows.push({ ...r, area_code_id: preservedArea });
+      const finalArea =
+        markHolidays && holidayArea && holidayDateSet.has(r.schedule_date) && !preservedArea
+          ? holidayArea.id
+          : preservedArea;
+      rows.push({ ...r, area_code_id: finalArea });
     }
 
     for (let i = 0; i < rows.length; i += 500) {
@@ -237,6 +258,19 @@ export default function Generator(p: { today: string; operators: Op[]; shifts: S
         </fieldset>
 
         {/* Live 7-Day Preview */}
+        {holidayDateSet.size > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, padding: '8px 10px', borderRadius: 8, background: 'var(--surface-muted)', border: '1px solid var(--border-light)', fontSize: 12.5 }}>
+            <span>
+              <b>{holidayDateSet.size}</b> organization holiday{holidayDateSet.size === 1 ? '' : 's'} fall within {start} – {end}.
+            </span>
+            {holidayArea && (
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
+                <input type="checkbox" checked={markHolidays} onChange={(e) => setMarkHolidays(e.target.checked)} />
+                Mark holidays as {holidayArea.code} (off/admin)
+              </label>
+            )}
+          </div>
+        )}
         {valid && previewDays.length > 0 && (
           <div style={{ overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
             <div style={{ padding: '6px 10px', fontSize: 12, fontWeight: 700, background: 'var(--surface-muted)', borderBottom: '1px solid var(--border)' }}>

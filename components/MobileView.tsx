@@ -18,7 +18,7 @@ type Shift = {
   text_color: string;
   is_off: boolean;
 };
-type Area = { id: string; code: string; name: string | null; category: string };
+type Area = { id: string; code: string; name: string | null; category: string; sub_sites?: string[] };
 type Asg = { operator_id: string; shift_type_id: string | null; area_code_id: string | null };
 type Standby = { operator_id: string; standby_type: string };
 type Task = {
@@ -113,6 +113,7 @@ export default function MobileView(p: {
   const [offlineQueue, setOfflineQueue] = useState<PendingOfflineActivity[]>([]);
   const [loggerOpen, setLoggerOpen] = useState(false);
   const [linkedPmForLog, setLinkedPmForLog] = useState<LinkedPmTask | null>(null);
+  const [editingActivity, setEditingActivity] = useState<DailyActivityRow | null>(null);
   const [taskFilter, setTaskFilter] = useState<'open' | 'done' | 'all'>('open');
   const [selectedOp, setSelectedOp] = useState<string>(p.operatorId ?? '');
   const [search, setSearch] = useState('');
@@ -840,6 +841,38 @@ export default function MobileView(p: {
                         ))}
                       </div>
                     )}
+                    {(p.role === 'admin' || (p.userId && act.logged_by === p.userId)) && act.status !== 'verified' && (
+                      <div style={{ display: 'flex', gap: 6, marginTop: 4, borderTop: '1px solid var(--border-light)', paddingTop: 6 }}>
+                        <button
+                          type="button"
+                          className="btn"
+                          style={{ minHeight: 32, padding: '2px 10px', fontSize: 12 }}
+                          onClick={() => {
+                            setLinkedPmForLog(null);
+                            setEditingActivity(act);
+                            setLoggerOpen(true);
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          style={{ minHeight: 32, padding: '2px 10px', fontSize: 12, color: 'var(--danger)' }}
+                          onClick={async () => {
+                            if (!window.confirm('Delete this activity log?')) return;
+                            const { error } = await supabaseBrowser().from('daily_activities').delete().eq('id', act.id);
+                            if (error) {
+                              setMsg(error.message);
+                              return;
+                            }
+                            setActivities((prev) => prev.filter((x) => x.id !== act.id));
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -1020,6 +1053,7 @@ export default function MobileView(p: {
           onClose={() => {
             setLoggerOpen(false);
             setLinkedPmForLog(null);
+            setEditingActivity(null);
           }}
           onQueuedOffline={async (payload) => {
             await enqueueOfflineActivity(payload);
@@ -1027,7 +1061,11 @@ export default function MobileView(p: {
           }}
           onSaved={(act, opts) => {
             if (!opts?.offline) {
-              setActivities((prev) => [act, ...prev.filter((x) => x.id !== act.id)]);
+              setActivities((prev) =>
+                prev.some((x) => x.id === act.id)
+                  ? prev.map((x) => (x.id === act.id ? act : x))
+                  : [act, ...prev],
+              );
             }
             if (linkedPmForLog) {
               setTasks((prev) =>
@@ -1049,6 +1087,7 @@ export default function MobileView(p: {
           assignments={p.assignments}
           linkedPmTask={linkedPmForLog}
           pmActivityTypes={p.activityTypes}
+          editingActivity={editingActivity}
         />
       )}
     </div>

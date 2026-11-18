@@ -26,6 +26,7 @@ export type LoggerArea = {
   code: string;
   name: string | null;
   category: string;
+  sub_sites?: string[];
 };
 
 export type LoggerShift = {
@@ -103,6 +104,7 @@ export default function ActivityLoggerModal(p: {
   linkedPmTask?: LinkedPmTask | null;
   pmActivityTypes?: Array<{ code: string; label: string; short_label?: string }>;
   linkedJobOrder?: LinkedJobOrder | null;
+  editingActivity?: DailyActivityRow | null;
   onQueuedOffline?: (payload: Record<string, any>) => Promise<void> | void;
 }) {
   const stationAreas = useMemo(() => {
@@ -286,6 +288,90 @@ export default function ActivityLoggerModal(p: {
     setHotspotFound('No');
     setSwlMeters('');
     setPwlMeters('');
+
+    if (p.editingActivity) {
+      const ea = p.editingActivity;
+      const d = (ea.details ?? {}) as Record<string, any>;
+      setActivityType(ea.activity_type);
+      setLeadOpId(ea.lead_operator_id ?? '');
+      setCrewOpIds(ea.crew_operator_ids ?? []);
+      setShiftTypeId(ea.shift_type_id ?? '');
+      setAreaCodeId(ea.area_code_id ?? '');
+      setAreaTouched(true);
+      setSiteOrWell(ea.site_or_well ?? '');
+      setBlockLot(ea.block_lot ?? '');
+      setNotes(ea.notes ?? '');
+      setGpsLat(ea.gps_lat);
+      setGpsLng(ea.gps_lng);
+      setPhotos(
+        (ea.photo_urls ?? []).map((u, idx) => ({
+          url: u,
+          storagePath: ea.photo_storage_paths?.[idx] ?? null,
+          preview: u,
+        })),
+      );
+      const toHHMM = (iso: string | null) => {
+        if (!iso) return '';
+        const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(iso));
+        const hh = parts.find((x) => x.type === 'hour')?.value ?? '';
+        const mm = parts.find((x) => x.type === 'minute')?.value ?? '';
+        return hh && mm ? `${hh === '24' ? '00' : hh}:${mm}` : '';
+      };
+      setStartedHHMM(toHHMM(ea.started_at));
+      setCompletedHHMM(toHHMM(ea.completed_at) || currentManilaHHMM());
+
+      if (d.gensetInitialFuel != null) setGensetInitialFuel(String(d.gensetInitialFuel));
+      if (d.gensetFinalFuel != null) setGensetFinalFuel(String(d.gensetFinalFuel));
+      if (d.runningHours != null) setRunningHours(String(d.runningHours));
+      if (d.gensetCause) setGensetCause(d.gensetCause);
+      if (d.pressurePsi != null) setPressurePsi(String(d.pressurePsi));
+      if (d.flowLps != null) setFlowLps(String(d.flowLps));
+      if (d.totalizerReading != null) setTotalizerReading(String(d.totalizerReading));
+      if (d.chlorineResidual != null) setChlorineResidual(String(d.chlorineResidual));
+      if (d.flushingInitialRead != null) setFlushingInitialRead(String(d.flushingInitialRead));
+      if (d.flushingFinalRead != null) setFlushingFinalRead(String(d.flushingFinalRead));
+      if (Array.isArray(d.blowOffs) && d.blowOffs.length > 0) {
+        setBlowOffs(d.blowOffs.map((b: any) => ({ name: b.name ?? '', initialRead: b.initialRead != null ? String(b.initialRead) : '', finalRead: b.finalRead != null ? String(b.finalRead) : '' })));
+      }
+      if (d.accountNumber) setAccountNumber(String(d.accountNumber));
+      if (d.accountName) setAccountName(String(d.accountName));
+      if (d.meterBrand) setMeterBrand(String(d.meterBrand));
+      if (d.meterSerialNumber) setMeterSerialNumber(String(d.meterSerialNumber));
+      if (d.meterSize) setMeterSize(String(d.meterSize));
+      if (d.meterNature) setMeterNature(d.meterNature);
+      if (d.testNature) setTestNature(d.testNature);
+      if (d.refVolumeM3 != null) setRefVolumeM3(String(d.refVolumeM3));
+      if (d.initialReading != null) setInitialReading(String(d.initialReading));
+      if (d.reading1 != null) setReading1(String(d.reading1));
+      if (d.reading2 != null) setReading2(String(d.reading2));
+      if (d.reading3 != null) setReading3(String(d.reading3));
+      if (d.witnessedBy) setWitnessedBy(String(d.witnessedBy));
+      if (d.oldMeterSerial) setOldMeterSerial(String(d.oldMeterSerial));
+      if (d.oldMeterReading != null) setOldMeterReading(String(d.oldMeterReading));
+      if (d.newMeterSerial) setNewMeterSerial(String(d.newMeterSerial));
+      if (d.newMeterReading != null) setNewMeterReading(String(d.newMeterReading));
+      if (d.isMeterRunning) setIsMeterRunning(d.isMeterRunning);
+      if (d.needsDeclogging) setNeedsDeclogging(d.needsDeclogging);
+      if (d.pipeSize) setPipeSize(String(d.pipeSize));
+      if (d.leakType) setLeakType(String(d.leakType));
+      if (Array.isArray(d.usedMaterials)) setUsedMaterials(d.usedMaterials.map((m: any) => ({ item: String(m.item ?? ''), qty: String(m.qty ?? '1') })));
+      if (d.vehicleType) setVehicleType(String(d.vehicleType));
+      if (d.plateNumber) setPlateNumber(String(d.plateNumber));
+      if (d.driverName) setDriverName(String(d.driverName));
+      if (Array.isArray(d.haulingCycles) && d.haulingCycles.length > 0) setHaulingCycles(d.haulingCycles);
+      if (d.turbidityNtu != null) setTurbidityNtu(String(d.turbidityNtu));
+      if (d.phLevel != null) setPhLevel(String(d.phLevel));
+      if (d.samplePoint) setSamplePoint(String(d.samplePoint));
+      if (d.filterUnit) setFilterUnit(String(d.filterUnit));
+      if (d.backwashDurationMin != null) setBackwashDurationMin(String(d.backwashDurationMin));
+      if (d.waterClarity) setWaterClarity(d.waterClarity);
+      if (d.scannedEquipment) setScannedEquipment(String(d.scannedEquipment));
+      if (d.maxTempC != null) setMaxTempC(String(d.maxTempC));
+      if (d.hotspotFound) setHotspotFound(d.hotspotFound);
+      if (d.swlMeters != null) setSwlMeters(String(d.swlMeters));
+      if (d.pwlMeters != null) setPwlMeters(String(d.pwlMeters));
+      return;
+    }
 
     // Determine initial activity type (reconciles preset codes, custom PM types, and title keywords)
     const pmMapped = p.linkedPmTask
@@ -671,6 +757,40 @@ export default function ActivityLoggerModal(p: {
 
     try {
       const sb = supabaseBrowser();
+      if (p.editingActivity?.id) {
+        const updatePayload: Record<string, any> = {
+          lead_operator_id: payload.lead_operator_id,
+          crew_operator_ids: payload.crew_operator_ids,
+          shift_type_id: payload.shift_type_id,
+          area_code_id: payload.area_code_id,
+          site_or_well: payload.site_or_well,
+          block_lot: payload.block_lot,
+          activity_type: payload.activity_type,
+          started_at: payload.started_at,
+          completed_at: payload.completed_at,
+          gps_lat: payload.gps_lat,
+          gps_lng: payload.gps_lng,
+          notes: payload.notes,
+          details: payload.details,
+          photo_urls: payload.photo_urls,
+          photo_storage_paths: payload.photo_storage_paths,
+          photos_expires_at: payload.photos_expires_at,
+          signature_data: sigData ?? p.editingActivity.signature_data ?? null,
+          status: p.editingActivity.status === 'flagged' ? 'submitted' : p.editingActivity.status,
+        };
+        const { data, error } = await sb
+          .from('daily_activities')
+          .update(updatePayload)
+          .eq('id', p.editingActivity.id)
+          .select('*')
+          .single();
+        if (error) throw error;
+        setSubmitting(false);
+        p.onSaved(data as DailyActivityRow);
+        p.onClose();
+        return;
+      }
+
       const { data, error } = await sb.from('daily_activities').insert(payload).select('*').single();
       if (error) throw error;
 
@@ -750,11 +870,13 @@ export default function ActivityLoggerModal(p: {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
           <div>
             <h2 id="activity-logger-title" style={{ margin: 0, fontSize: 17 }}>
-              {p.linkedPmTask
-                ? `Log & Complete PM: ${p.linkedPmTask.title}`
-                : p.linkedJobOrder
-                  ? `Fulfill Job Order: ${p.linkedJobOrder.jo_number}`
-                  : 'Log Daily Field Activity'}
+              {p.editingActivity
+                ? 'Edit Field Activity'
+                : p.linkedPmTask
+                  ? `Log & Complete PM: ${p.linkedPmTask.title}`
+                  : p.linkedJobOrder
+                    ? `Fulfill Job Order: ${p.linkedJobOrder.jo_number}`
+                    : 'Log Daily Field Activity'}
             </h2>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
               Date: <b>{p.date}</b> (Manila) · Auto-linked to Roster Shift &amp; Area
@@ -818,10 +940,46 @@ export default function ActivityLoggerModal(p: {
             Well / Pump / Site (optional)
             <input
               className="input"
+              list="station-sub-sites-list"
               placeholder="e.g. Well 2, Booster 1, Mainline"
               value={siteOrWell}
               onChange={(e) => setSiteOrWell(e.target.value)}
             />
+            {(() => {
+              const selArea = stationAreas.find((a) => a.id === areaCodeId);
+              const subs = selArea?.sub_sites ?? [];
+              if (subs.length === 0) return null;
+              return (
+                <>
+                  <datalist id="station-sub-sites-list">
+                    {subs.map((s) => (
+                      <option key={s} value={s} />
+                    ))}
+                  </datalist>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 }}>
+                    {subs.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setSiteOrWell(s)}
+                        style={{
+                          padding: '2px 7px',
+                          borderRadius: 999,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          border: siteOrWell === s ? '1.5px solid var(--primary)' : '1px solid var(--border)',
+                          background: siteOrWell === s ? 'var(--primary)' : 'var(--surface-muted)',
+                          color: siteOrWell === s ? 'var(--primary-fg)' : 'var(--text-secondary)',
+                        }}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
           </label>
           <label style={{ display: 'grid', gap: 4, fontSize: 12.5, fontWeight: 600 }}>
             Block &amp; Lot / Location Detail
@@ -1563,7 +1721,7 @@ export default function ActivityLoggerModal(p: {
             Cancel
           </button>
           <button type="submit" className="btn btn-primary" disabled={submitting || uploadingPhoto}>
-            {submitting ? 'Saving Activity…' : p.linkedPmTask ? 'Log Activity & Complete PM' : p.linkedJobOrder ? 'Log Activity & Close JO' : 'Submit Activity Log'}
+            {submitting ? 'Saving Activity…' : p.editingActivity ? 'Save Changes' : p.linkedPmTask ? 'Log Activity & Complete PM' : p.linkedJobOrder ? 'Log Activity & Close JO' : 'Submit Activity Log'}
           </button>
         </div>
       </form>

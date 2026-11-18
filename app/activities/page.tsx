@@ -20,7 +20,18 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
   const hoFrom = addDays(date, -14);
   const pmTo = addDays(date, 7);
 
-  const [opsRes, shiftsRes, areasRes, asgRes, standbyRes, pmRes, actRes, joRes, hoRes] = await Promise.all([
+  const areasPrimary = await p.sb
+    .from('area_codes')
+    .select('id, code, name, category, background_color, text_color, sub_sites')
+    .order('code');
+  const areasRes = areasPrimary.error
+    ? await p.sb
+        .from('area_codes')
+        .select('id, code, name, category, background_color, text_color')
+        .order('code')
+    : areasPrimary;
+
+  const [opsRes, shiftsRes, asgRes, standbyRes, pmRes, actRes, joRes, hoRes] = await Promise.all([
     p.sb
       .from('operators')
       .select('id, full_name, position, phone_number, default_station')
@@ -29,10 +40,6 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
     p.sb
       .from('shift_types')
       .select('id, code, description, duration_hours, start_time, end_time, background_color, text_color, is_off')
-      .order('code'),
-    p.sb
-      .from('area_codes')
-      .select('id, code, name, category, background_color, text_color')
       .order('code'),
     fetchAll<{ operator_id: string; schedule_date: string; shift_type_id: string | null; area_code_id: string | null }>((from, to) =>
       p.sb
