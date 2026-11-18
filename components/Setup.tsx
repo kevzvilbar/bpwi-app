@@ -52,6 +52,85 @@ const inp = {
   color: 'var(--text)',
 } as const;
 
+const SUFFIXES = new Set(['jr', 'sr', 'ii', 'iii', 'iv']);
+
+function normalizeName(s: string) {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function findSuggestedOperator(
+  userName: string | null,
+  ops: Op[],
+  users: UserProfile[],
+  rowUserId: string,
+): Op | undefined {
+  const normUser = normalizeName(userName ?? '');
+  if (!normUser) return undefined;
+
+  const userAll = normUser.split(' ').filter(Boolean);
+  const userCore = userAll.filter((t) => !SUFFIXES.has(t));
+  const claimedIds = new Set(
+    users.filter((x) => x.id !== rowUserId && x.operator_id).map((x) => x.operator_id as string),
+  );
+
+  let bestOp: Op | undefined;
+  let bestScore = 0;
+
+  for (const op of ops) {
+    if (!op.id || claimedIds.has(op.id)) continue;
+    const normOp = normalizeName(op.full_name);
+    if (!normOp) continue;
+
+    let score = 0;
+    if (normUser === normOp) {
+      score = 100;
+    } else {
+      const opAll = normOp.split(' ').filter(Boolean);
+      const opCore = opAll.filter((t) => !SUFFIXES.has(t));
+      const aTokens = userCore.length ? userCore : userAll;
+      const bTokens = opCore.length ? opCore : opAll;
+
+      const shared = aTokens.filter((t) => t.length >= 2 && bTokens.includes(t));
+      const aLast = aTokens[aTokens.length - 1];
+      const bLast = bTokens[bTokens.length - 1];
+      const aFirst = aTokens[0];
+      const bFirst = bTokens[0];
+
+      const firstInitialMatch =
+        aLast === bLast &&
+        aLast.length >= 2 &&
+        ((aFirst.length === 1 && bFirst.startsWith(aFirst)) ||
+          (bFirst.length === 1 && aFirst.startsWith(bFirst)));
+
+      const allShortMatchLong =
+        (aTokens.length >= 2 && aTokens.every((t) => bTokens.includes(t))) ||
+        (bTokens.length >= 2 && bTokens.every((t) => aTokens.includes(t)));
+
+      if (allShortMatchLong || firstInitialMatch) {
+        score = 85;
+      } else if (
+        shared.length >= 2 ||
+        (aLast === bLast && aLast.length >= 2 && aFirst.length >= 3 && bFirst.length >= 3 && aFirst.slice(0, 3) === bFirst.slice(0, 3))
+      ) {
+        score = 70;
+      }
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestOp = op;
+    }
+  }
+
+  return bestScore >= 70 ? bestOp : undefined;
+}
+
 export default function Setup(p: {
   operators: Op[];
   shifts: Shift[];
@@ -357,6 +436,16 @@ export default function Setup(p: {
         {tab === 'users' &&
           users.map((u, i) => {
             const isSelf = Boolean(p.currentUserId && u.id === p.currentUserId);
+            const suggested = !u.operator_id ? findSuggestedOperator(u.full_name, ops, users, u.id) : undefined;
+            const applySuggested = () => {
+              if (!suggested?.id) return;
+              upd(setUsers, i, {
+                operator_id: suggested.id,
+                ...(u.role === 'viewer' ? { role: 'operator' } : {}),
+                is_active: true,
+                ...(!u.full_name?.trim() ? { full_name: suggested.full_name } : {}),
+              });
+            };
             return (
               <div key={u.id} className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
                 <label style={{ fontSize: 12 }}>
@@ -383,14 +472,40 @@ export default function Setup(p: {
                     Linked Operator
                     <select className="input" value={u.operator_id ?? ''} onChange={(e) => upd(setUsers, i, { operator_id: e.target.value || null })}>
                       <option value="">(unlinked)</option>
-                      {ops.filter((o) => o.id).map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.full_name}
-                        </option>
-                      ))}
+                      {ops.filter((o) => o.id).map((o) => {
+                        const takenByOther = users.some((x) => x.id !== u.id && x.operator_id === o.id);
+                        return (
+                          <option key={o.id} value={o.id}>
+                            {o.full_name}
+                            {takenByOther ? ' (linked)' : ''}
+                          </option>
+                        );
+                      })}
                     </select>
                   </label>
                 </div>
+                {suggested && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                      padding: '6px 10px',
+                      borderRadius: 8,
+                      background: 'var(--info-bg)',
+                      color: 'var(--info-fg)',
+                      fontSize: 12,
+                    }}
+                  >
+                    <span>
+                      Suggested match: <b>{suggested.full_name}</b>
+                    </span>
+                    <button type="button" className="btn" style={{ minHeight: 30, padding: '3px 9px', fontSize: 12, fontWeight: 700 }} onClick={applySuggested}>
+                      {!u.is_active ? 'Link & approve' : 'Link match'}
+                    </button>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <label
                     style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6, opacity: isSelf ? 0.65 : 1 }}
@@ -690,6 +805,16 @@ export default function Setup(p: {
               ) : (
                 users.map((u, i) => {
                   const isSelf = Boolean(p.currentUserId && u.id === p.currentUserId);
+                  const suggested = !u.operator_id ? findSuggestedOperator(u.full_name, ops, users, u.id) : undefined;
+                  const applySuggested = () => {
+                    if (!suggested?.id) return;
+                    upd(setUsers, i, {
+                      operator_id: suggested.id,
+                      ...(u.role === 'viewer' ? { role: 'operator' } : {}),
+                      is_active: true,
+                      ...(!u.full_name?.trim() ? { full_name: suggested.full_name } : {}),
+                    });
+                  };
                   return (
                     <tr key={u.id} style={{ background: u.is_active ? 'var(--surface)' : 'rgba(234, 179, 8, 0.12)' }}>
                       <td style={cell}>
@@ -719,19 +844,61 @@ export default function Setup(p: {
                           <option value="viewer">viewer</option>
                         </select>
                       </td>
-                      <td style={{ ...cell, width: 170 }}>
-                        <select
-                          style={inp}
-                          value={u.operator_id ?? ''}
-                          onChange={(e) => upd(setUsers, i, { operator_id: e.target.value || null })}
-                        >
-                          <option value="">(unlinked)</option>
-                          {ops.filter((o) => o.id).map((o) => (
-                            <option key={o.id} value={o.id}>
-                              {o.full_name}
-                            </option>
-                          ))}
-                        </select>
+                      <td style={{ ...cell, width: 220 }}>
+                        <div style={{ display: 'grid', gap: 4 }}>
+                          <select
+                            style={inp}
+                            value={u.operator_id ?? ''}
+                            onChange={(e) => upd(setUsers, i, { operator_id: e.target.value || null })}
+                          >
+                            <option value="">(unlinked)</option>
+                            {ops.filter((o) => o.id).map((o) => {
+                              const takenByOther = users.some((x) => x.id !== u.id && x.operator_id === o.id);
+                              return (
+                                <option key={o.id} value={o.id}>
+                                  {o.full_name}
+                                  {takenByOther ? ' (linked)' : ''}
+                                </option>
+                              );
+                            })}
+                          </select>
+                          {suggested && (
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 6,
+                                padding: '3px 6px',
+                                borderRadius: 5,
+                                background: 'var(--info-bg)',
+                                color: 'var(--info-fg)',
+                                fontSize: 11,
+                              }}
+                            >
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={suggested.full_name}>
+                                Match: <b>{suggested.full_name}</b>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={applySuggested}
+                                style={{
+                                  border: '1px solid currentColor',
+                                  background: 'transparent',
+                                  color: 'inherit',
+                                  borderRadius: 4,
+                                  padding: '1px 6px',
+                                  fontSize: 10.5,
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {!u.is_active ? 'Link & approve' : 'Link'}
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </td>
                       <td style={{ ...cell, textAlign: 'center', width: 130 }}>
                         <input
