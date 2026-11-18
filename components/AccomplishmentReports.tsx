@@ -98,9 +98,20 @@ export default function AccomplishmentReports(p: Props) {
   }, [p.initialActivities, reportDate, areaById]);
 
   const [editingId, setEditingId] = useState<string | null>(existingForDate?.id ?? null);
-  const [entries, setEntries] = useState<AccomplishmentEntry[]>(
-    existingForDate?.entries?.length ? existingForDate.entries : initialAutoEntries,
-  );
+  const [entries, setEntries] = useState<AccomplishmentEntry[]>(() => {
+    const dayActs = p.initialActivities.filter((a) => a.activity_date === reportDate);
+    if (!existingForDate) return initialAutoEntries;
+    if (existingForDate.status === 'draft' || existingForDate.status === 'returned') {
+      const mapped = dayActs.map((a) =>
+        activityToAccomplishmentEntry(a, a.area_code_id ? areaById.get(a.area_code_id)?.code : undefined),
+      );
+      const base = existingForDate.entries.length ? existingForDate.entries : [];
+      const seen = new Set(base.map((e) => e.source_activity_id).filter(Boolean));
+      const merged = [...base, ...mapped.filter((m) => m.source_activity_id && !seen.has(m.source_activity_id))];
+      return merged.length ? merged : [emptyEntry(0)];
+    }
+    return existingForDate.entries.length ? existingForDate.entries : [emptyEntry(0)];
+  });
   const [assignedHeadId, setAssignedHeadId] = useState<string>(
     existingForDate?.assigned_head_id ?? defaultHeadId,
   );
@@ -120,34 +131,74 @@ export default function AccomplishmentReports(p: Props) {
     p.error ? { kind: 'err', text: p.error } : null,
   );
 
-  function loadDateIntoEditor(nextDate: string) {
+  function mergeActivitiesIntoEntries(existing: AccomplishmentEntry[], acts: DailyActivityRow[]): AccomplishmentEntry[] {
+    const mapped = acts.map((a) =>
+      activityToAccomplishmentEntry(a, a.area_code_id ? areaById.get(a.area_code_id)?.code : undefined),
+    );
+    if (!mapped.length) return existing.length ? existing : [emptyEntry(0)];
+
+    // Keep non-empty manual rows or previously edited activity rows, and auto-append any newly logged activities
+    const isStarterBlank = (e: AccomplishmentEntry) =>
+      !e.source_activity_id && !e.location_project.trim() && !e.remarks.trim() && !e.time_started.trim();
+    const meaningfulExisting = existing.filter((e) => !isStarterBlank(e));
+    const seenActivityIds = new Set(meaningfulExisting.map((e) => e.source_activity_id).filter(Boolean));
+    const newOnes = mapped.filter((m) => m.source_activity_id && !seenActivityIds.has(m.source_activity_id));
+    const merged = [...meaningfulExisting, ...newOnes];
+    return merged.length ? merged : [emptyEntry(0)];
+  }
+
+  async function fetchAndSyncActivitiesForDate(targetDate: string, baseEntries: AccomplishmentEntry[], isEditable: boolean) {
+    if (!isEditable) return;
+    const { data, error } = await sb
+      .from('daily_activities')
+      .select('*')
+      .eq('organization_id', p.orgId)
+      .eq('activity_date', targetDate)
+      .order('started_at', { ascending: true });
+    if (error || !data) return;
+    const mine = (data as DailyActivityRow[]).filter(
+      (a) =>
+        a.logged_by === p.userId ||
+        (p.operatorId && (a.lead_operator_id === p.operatorId || a.crew_operator_ids?.includes(p.operatorId))),
+    );
+    if (mine.length) {
+      setEntries(mergeActivitiesIntoEntries(baseEntries, mine));
+    }
+  }
+
+  async function loadDateIntoEditor(nextDate: string) {
     setReportDate(nextDate);
+    setMsg(null);
     const found = reports.find(
       (r) =>
         r.report_date === nextDate &&
         (r.submitted_by === p.userId || (p.operatorId && r.operator_id === p.operatorId)),
     );
     if (found) {
+      const base = found.entries.length ? found.entries : [emptyEntry(0)];
       setEditingId(found.id);
-      setEntries(found.entries.length ? found.entries : [emptyEntry(0)]);
+      setEntries(base);
       setAssignedHeadId(found.assigned_head_id ?? defaultHeadId);
       setShiftTypeId(found.shift_type_id ?? '');
       setPreparedName(found.prepared_by_name || myOp?.full_name || p.userName);
       setPreparedTitle(found.prepared_by_title || myOp?.position || p.userJobTitle || 'Project & Maintenance Staff');
       setSummaryNotes(found.summary_notes ?? '');
+      if (found.status === 'draft' || found.status === 'returned') {
+        await fetchAndSyncActivitiesForDate(nextDate, base, true);
+      }
     } else {
       setEditingId(null);
       const dayActs = p.initialActivities.filter((a) => a.activity_date === nextDate);
-      setEntries(
-        dayActs.length
-          ? dayActs.map((a) => activityToAccomplishmentEntry(a, a.area_code_id ? areaById.get(a.area_code_id)?.code : undefined))
-          : [emptyEntry(0)],
-      );
+      const base = dayActs.length
+        ? dayActs.map((a) => activityToAccomplishmentEntry(a, a.area_code_id ? areaById.get(a.area_code_id)?.code : undefined))
+        : [emptyEntry(0)];
+      setEntries(base);
       setAssignedHeadId(defaultHeadId);
       setShiftTypeId('');
       setPreparedName(myOp?.full_name || p.userName);
       setPreparedTitle(myOp?.position || p.userJobTitle || 'Project & Maintenance Staff');
       setSummaryNotes('');
+      await fetchAndSyncActivitiesForDate(nextDate, base, true);
     }
   }
 
