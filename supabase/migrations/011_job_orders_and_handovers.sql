@@ -29,7 +29,7 @@ create table if not exists job_orders (
 create index if not exists job_orders_org_status_idx
   on job_orders (organization_id, status, deadline);
 
-create index if not exists job_orders_org_number_idx
+create unique index if not exists job_orders_org_number_uidx
   on job_orders (organization_id, jo_number);
 
 -- Link field activities to job orders
@@ -40,9 +40,44 @@ create index if not exists daily_activities_job_order_idx
   on daily_activities (job_order_id)
   where job_order_id is not null;
 
-create or replace function touch_job_orders_updated_at() returns trigger
-language plpgsql as $$
+-- Collision-free JO-YYYYMM-NNN sequence generator when jo_number is blank or 'AUTO'
+create or replace function assign_job_order_number() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  ym text;
+  next_seq int;
 begin
+  if new.jo_number is null or btrim(new.jo_number) = '' or upper(btrim(new.jo_number)) = 'AUTO' then
+    ym := to_char(now() at time zone 'Asia/Manila', 'YYYYMM');
+    perform pg_advisory_xact_lock(hashtext(new.organization_id::text || '-' || ym));
+    select coalesce(max((regexp_match(jo_number, '^JO-' || ym || '-([0-9]+)$'))[1]::int), 0) + 1
+      into next_seq
+      from job_orders
+      where organization_id = new.organization_id
+        and jo_number like ('JO-' || ym || '-%');
+    new.jo_number := 'JO-' || ym || '-' || lpad(next_seq::text, 3, '0');
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_job_orders_number on job_orders;
+create trigger trg_job_orders_number
+  before insert on job_orders
+  for each row execute function assign_job_order_number();
+
+create or replace function touch_job_orders_updated_at() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is not null and current_role_name() = 'operator' then
+    if new.jo_number is distinct from old.jo_number
+       or new.title is distinct from old.title
+       or new.priority is distinct from old.priority
+       or new.assigned_operator_ids is distinct from old.assigned_operator_ids
+       or new.deadline is distinct from old.deadline
+       or new.area_code_id is distinct from old.area_code_id then
+      raise exception 'Operators can only update job order status, completion timestamp, or turnaround justification';
+    end if;
+  end if;
   new.updated_at := now();
   return new;
 end $$;

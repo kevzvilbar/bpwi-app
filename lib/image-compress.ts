@@ -121,3 +121,44 @@ export async function uploadActivityPhoto(
     savedBytes: Math.max(compressed.savedBytes, fallback.savedBytes),
   };
 }
+
+/**
+ * Converts a base64 data URL (e.g. from offline IndexedDB queue) and uploads it to
+ * Supabase Storage 'activity-media' when connectivity returns.
+ */
+export async function uploadDataUrlPhoto(
+  sb: SupabaseClient,
+  orgId: string,
+  dataUrl: string,
+): Promise<{ url: string; storagePath: string | null }> {
+  if (!dataUrl.startsWith('data:image/')) {
+    return { url: dataUrl, storagePath: null };
+  }
+  try {
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    const mimeType = blob.type || 'image/jpeg';
+    const ext = mimeType.includes('webp') ? 'webp' : mimeType.includes('png') ? 'png' : 'jpg';
+    const rand = Math.random().toString(36).slice(2, 8);
+    const dateFolder = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
+    const storagePath = `${orgId}/${dateFolder}/${Date.now()}-${rand}.${ext}`;
+
+    const { error } = await sb.storage
+      .from('activity-media')
+      .upload(storagePath, blob, {
+        contentType: mimeType,
+        cacheControl: '3600',
+        upsert: false,
+      });
+
+    if (!error) {
+      const { data: pub } = sb.storage.from('activity-media').getPublicUrl(storagePath);
+      if (pub?.publicUrl) {
+        return { url: pub.publicUrl, storagePath };
+      }
+    }
+  } catch {
+    /* keep dataUrl fallback if storage is still unreachable */
+  }
+  return { url: dataUrl, storagePath: null };
+}

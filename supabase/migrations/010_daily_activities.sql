@@ -48,10 +48,20 @@ create index if not exists daily_activities_photos_expiry_idx
   on daily_activities (organization_id, photos_expires_at)
   where photos_purged_at is null;
 
--- Keep updated_at fresh on row edits
+-- Keep updated_at fresh on row edits and prevent operators from self-verifying
 create or replace function touch_daily_activities_updated_at() returns trigger
-language plpgsql as $$
+language plpgsql security definer set search_path = public as $$
 begin
+  if auth.uid() is not null and current_role_name() not in ('admin', 'scheduler', 'manager') then
+    if new.status in ('verified', 'flagged') and new.status is distinct from old.status then
+      raise exception 'Only admins, schedulers, or department heads can verify or flag activities';
+    end if;
+    if new.verified_by is distinct from old.verified_by
+       or new.verified_at is distinct from old.verified_at
+       or new.review_note is distinct from old.review_note then
+      raise exception 'Only supervisors can modify verification fields';
+    end if;
+  end if;
   new.updated_at := now();
   return new;
 end $$;

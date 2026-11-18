@@ -411,9 +411,6 @@ export default function ActivitiesMonitor(p: {
     e.preventDefault();
     if (!joTitle.trim()) return;
     setSavingJo(true);
-    const ym = p.date.slice(0, 7).replace('-', '');
-    const seq = String(jobOrders.length + 1).padStart(3, '0');
-    const joNumber = `JO-${ym}-${seq}`;
     const parsedAcct = parse12DigitAccount(joAccountNo);
 
     const sb = supabaseBrowser();
@@ -421,7 +418,7 @@ export default function ActivitiesMonitor(p: {
       .from('job_orders')
       .insert({
         organization_id: p.orgId,
-        jo_number: joNumber,
+        jo_number: 'AUTO',
         title: joTitle.trim(),
         activity_type: joActivityType || null,
         priority: joPriority,
@@ -456,7 +453,7 @@ export default function ActivitiesMonitor(p: {
     setJoSite('');
     setJoDesc('');
     setJoAssignedOps([]);
-    setBannerMsg(`✓ Dispatched ${joNumber}.`);
+    setBannerMsg(`✓ Dispatched ${(data as JobOrderRow).jo_number}.`);
   }
 
   async function updateJobOrderStatus(jo: JobOrderRow, nextStatus: JobOrderRow['status']) {
@@ -562,7 +559,7 @@ export default function ActivitiesMonitor(p: {
             30d Photo Retention ({photoRetention.activeWithPhotos} active)
           </span>
 
-          {(p.canVerifyActivity || photoRetention.expiredCount > 0) && (
+          {p.canVerifyActivity && (
             <button
               type="button"
               className="btn"

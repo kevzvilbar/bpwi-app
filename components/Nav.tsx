@@ -173,12 +173,12 @@ export default function Nav(p: {
   }
 
   const primaryLinks = [
-    { href: '/', label: 'Schedule', icon: 'schedule' as const },
-    { href: '/mobile', label: 'Tasks', icon: 'tasks' as const },
-    { href: '/activities', label: 'Activities', icon: 'activity' as const },
-    { href: '/pm', label: 'PM Plan', icon: 'pm' as const },
-    { href: '/call-sheet', label: 'Standby', icon: 'standby' as const },
-    { href: '/leave', label: 'Reports', icon: 'reports' as const },
+    { href: '/', label: 'Schedule', mobileLabel: 'Schedule', icon: 'schedule' as const },
+    { href: '/mobile', label: 'Tasks', mobileLabel: 'Tasks', icon: 'tasks' as const },
+    { href: '/activities', label: 'Activities', mobileLabel: 'Logs', icon: 'activity' as const },
+    { href: '/pm', label: 'PM Plan', mobileLabel: 'PM Plan', icon: 'pm' as const },
+    { href: '/call-sheet', label: 'Standby', mobileLabel: 'Standby', icon: 'standby' as const },
+    { href: '/leave', label: 'Reports', mobileLabel: 'Reports', icon: 'reports' as const },
   ];
 
   async function saveBranding(e: React.FormEvent) {
@@ -373,7 +373,7 @@ export default function Nav(p: {
           return (
             <Link key={l.href} href={l.href} aria-current={on ? 'page' : undefined}>
               <Icon name={l.icon} />
-              <span>{l.label}</span>
+              <span>{l.mobileLabel}</span>
             </Link>
           );
         })}

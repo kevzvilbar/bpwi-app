@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { DailyActivityRow } from './activity-types';
+import { uploadDataUrlPhoto } from './image-compress';
 
 const DB_NAME = 'bpwi-field-sync-db';
 const DB_VERSION = 1;
@@ -87,9 +88,32 @@ export async function flushOfflineQueue(sb: SupabaseClient): Promise<{
 
   for (const item of items) {
     try {
+      const payloadToInsert = { ...item.payload };
+      if (
+        Array.isArray(payloadToInsert.photo_urls) &&
+        payloadToInsert.photo_urls.length > 0 &&
+        payloadToInsert.organization_id
+      ) {
+        const uploadedUrls: string[] = [];
+        const uploadedPaths: string[] = Array.isArray(payloadToInsert.photo_storage_paths)
+          ? [...payloadToInsert.photo_storage_paths]
+          : [];
+        for (const rawUrl of payloadToInsert.photo_urls) {
+          if (typeof rawUrl === 'string' && rawUrl.startsWith('data:image/')) {
+            const up = await uploadDataUrlPhoto(sb, payloadToInsert.organization_id, rawUrl);
+            uploadedUrls.push(up.url);
+            if (up.storagePath) uploadedPaths.push(up.storagePath);
+          } else if (typeof rawUrl === 'string') {
+            uploadedUrls.push(rawUrl);
+          }
+        }
+        payloadToInsert.photo_urls = uploadedUrls;
+        payloadToInsert.photo_storage_paths = uploadedPaths;
+      }
+
       const { data, error } = await sb
         .from('daily_activities')
-        .insert(item.payload)
+        .insert(payloadToInsert)
         .select('*')
         .single();
       if (error || !data) {

@@ -221,6 +221,8 @@ export default function ActivityLoggerModal(p: {
   useEffect(() => {
     if (!p.open) return;
     setErrMsg('');
+    setGpsLat(null);
+    setGpsLng(null);
     setGpsStatus('');
     setPhotos([]);
     setSavedBytesTotal(0);
@@ -230,6 +232,48 @@ export default function ActivityLoggerModal(p: {
     setCompletedHHMM(currentManilaHHMM());
     setNotes('');
     lastParsedRef.current = '';
+
+    // Reset all activity-specific telemetry fields so previous submissions never bleed over
+    setGensetInitialFuel('');
+    setGensetFinalFuel('');
+    setRunningHours('');
+    setGensetCause('Routine');
+    setPressurePsi('');
+    setFlowLps('');
+    setTotalizerReading('');
+    setChlorineResidual('');
+    setFlushingInitialRead('');
+    setFlushingFinalRead('');
+    setBlowOffs([{ name: 'Blow-off 1', initialRead: '', finalRead: '' }]);
+    setMeterBrand('');
+    setMeterSerialNumber('');
+    setMeterSize('1/2"');
+    setMeterNature('Old');
+    setTestNature('Re-testing');
+    setRefVolumeM3('0.01');
+    setInitialReading('');
+    setReading1('');
+    setReading2('');
+    setReading3('');
+    setWitnessedBy('');
+    setOldMeterBrand('');
+    setOldMeterSerial('');
+    setOldMeterReading('');
+    setNewMeterBrand('');
+    setNewMeterSerial('');
+    setNewMeterReading('');
+    setIsMeterRunning('Yes');
+    setNeedsDeclogging('No');
+    setPipeSize('');
+    setLeakType('');
+    setUsedMaterials([]);
+    setVehicleType('');
+    setPlateNumber('');
+    setDriverName('');
+    setHaulingCycles([{ sourceLocation: '', deliveryLocation: '', volumeM3: '', loadingTime: '', injectionTime: '' }]);
+    setTurbidityNtu('');
+    setPhLevel('');
+    setSamplePoint('');
 
     // Determine initial activity type
     const pmMapped = p.linkedPmTask?.activity_type ? PM_TO_ACTIVITY[p.linkedPmTask.activity_type] : undefined;
