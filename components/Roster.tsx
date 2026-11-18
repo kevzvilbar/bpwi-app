@@ -90,6 +90,7 @@ export default function Roster(p: {
   rows: Row[];
   standby: Standby[];
   pmTasks: PmMarkTask[];
+  holidays?: Array<{ holiday_date: string; name: string; holiday_type: string }>;
   orgId: string;
   operatorId?: string | null;
   role: string;
@@ -117,6 +118,10 @@ export default function Roster(p: {
   const router = useRouter();
   const canOperate = p.canEdit || Boolean(p.canPropose);
   const isPropose = Boolean(p.canPropose) && !p.canEdit;
+  const holidayByDate = useMemo(
+    () => new Map((p.holidays ?? []).map((h) => [h.holiday_date, h])),
+    [p.holidays],
+  );
 
   const [draftReqId, setDraftReqId] = useState<string | null>(p.initialDraftRequestId ?? null);
   const [draftItems, setDraftItems] = useState<any[]>(p.initialDraftItems ?? []);
@@ -1585,12 +1590,22 @@ export default function Roster(p: {
             <tr>
               {days.map((d) => {
                 const isToday = d.date === p.today;
+                const hol = holidayByDate.get(d.date);
                 return (
                   <th
                     key={d.date}
                     className="sticky-header-days"
+                    title={hol ? `${hol.name} (${hol.holiday_type.replace(/_/g, ' ')})` : undefined}
                     style={{
-                      background: isToday ? '#0369a1' : d.isWeekend ? '#1e293b' : '#0f172a',
+                      background: isToday
+                        ? '#0369a1'
+                        : hol
+                          ? hol.holiday_type === 'regular'
+                            ? '#9f1239'
+                            : '#92400e'
+                          : d.isWeekend
+                            ? '#1e293b'
+                            : '#0f172a',
                       color: '#ffffff',
                       minWidth: 58,
                       padding: '3px 4px',
@@ -1598,7 +1613,10 @@ export default function Roster(p: {
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    <div style={{ lineHeight: 1.1 }}>{d.dayNum}</div>
+                    <div style={{ lineHeight: 1.1 }}>
+                      {d.dayNum}
+                      {hol && <span style={{ marginLeft: 2, color: '#fde68a' }} aria-label="Holiday">★</span>}
+                    </div>
                     <div style={{ fontSize: 10, fontWeight: 400, opacity: 0.9 }}>{d.dowLabel}</div>
                   </th>
                 );

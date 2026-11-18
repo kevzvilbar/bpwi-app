@@ -1,0 +1,246 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import { supabaseBrowser } from '@/lib/supabase/client';
+import { formatDateOnly } from '@/lib/date';
+
+export type HolidayRow = {
+  id: string;
+  holiday_date: string;
+  name: string;
+  holiday_type: 'regular' | 'special_non_working' | 'company';
+};
+
+const TYPE_META: Record<HolidayRow['holiday_type'], { label: string; bg: string; fg: string }> = {
+  regular: { label: 'Regular Holiday', bg: '#fee2e2', fg: '#991b1b' },
+  special_non_working: { label: 'Special Non-Working', bg: '#fef3c7', fg: '#92400e' },
+  company: { label: 'Company / Local', bg: '#e0f2fe', fg: '#0369a1' },
+};
+
+function lastMondayOfAugust(year: number) {
+  const d = new Date(Date.UTC(year, 7, 31));
+  while (d.getUTCDay() !== 1) d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function buildPhHolidays(year: number): Array<{ holiday_date: string; name: string; holiday_type: HolidayRow['holiday_type'] }> {
+  return [
+    { holiday_date: `${year}-01-01`, name: "New Year's Day", holiday_type: 'regular' },
+    { holiday_date: `${year}-04-09`, name: 'Araw ng Kagitingan', holiday_type: 'regular' },
+    { holiday_date: `${year}-05-01`, name: 'Labor Day', holiday_type: 'regular' },
+    { holiday_date: `${year}-06-12`, name: 'Independence Day', holiday_type: 'regular' },
+    { holiday_date: `${year}-08-21`, name: 'Ninoy Aquino Day', holiday_type: 'special_non_working' },
+    { holiday_date: lastMondayOfAugust(year), name: 'National Heroes Day', holiday_type: 'regular' },
+    { holiday_date: `${year}-11-01`, name: "All Saints' Day", holiday_type: 'special_non_working' },
+    { holiday_date: `${year}-11-30`, name: 'Bonifacio Day', holiday_type: 'regular' },
+    { holiday_date: `${year}-12-08`, name: 'Feast of the Immaculate Conception', holiday_type: 'special_non_working' },
+    { holiday_date: `${year}-12-25`, name: 'Christmas Day', holiday_type: 'regular' },
+    { holiday_date: `${year}-12-30`, name: 'Rizal Day', holiday_type: 'regular' },
+    { holiday_date: `${year}-12-31`, name: 'Last Day of the Year', holiday_type: 'special_non_working' },
+  ];
+}
+
+export default function HolidaysManager(p: {
+  initialHolidays: HolidayRow[];
+  orgId: string;
+  isAdmin: boolean;
+  error?: string;
+}) {
+  const currentYear = new Date().getFullYear();
+  const [holidays, setHolidays] = useState<HolidayRow[]>(p.initialHolidays);
+  const [yearFilter, setYearFilter] = useState<string>(String(currentYear));
+  const [newDate, setNewDate] = useState(`${currentYear}-01-01`);
+  const [newName, setNewName] = useState('');
+  const [newType, setNewType] = useState<HolidayRow['holiday_type']>('regular');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(p.error ?? '');
+
+  const visible = useMemo(() => {
+    const list = yearFilter === 'all' ? holidays : holidays.filter((h) => h.holiday_date.startsWith(yearFilter));
+    return [...list].sort((a, b) => a.holiday_date.localeCompare(b.holiday_date));
+  }, [holidays, yearFilter]);
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newDate || !newName.trim()) return;
+    setBusy(true);
+    setMsg('');
+    const sb = supabaseBrowser();
+    const { data, error } = await sb
+      .from('holidays')
+      .upsert(
+        {
+          organization_id: p.orgId,
+          holiday_date: newDate,
+          name: newName.trim(),
+          holiday_type: newType,
+        },
+        { onConflict: 'organization_id,holiday_date' },
+      )
+      .select('id, holiday_date, name, holiday_type')
+      .single();
+
+    setBusy(false);
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
+    const row = data as HolidayRow;
+    setHolidays((prev) => [...prev.filter((x) => x.holiday_date !== row.holiday_date), row]);
+    setNewName('');
+    setMsg(`✓ Saved holiday: ${row.name} (${row.holiday_date})`);
+  }
+
+  async function handleLoadPreset() {
+    const y = Number(yearFilter) || currentYear;
+    setBusy(true);
+    setMsg('');
+    const sb = supabaseBrowser();
+    const rows = buildPhHolidays(y).map((h) => ({ ...h, organization_id: p.orgId }));
+    const { data, error } = await sb
+      .from('holidays')
+      .upsert(rows, { onConflict: 'organization_id,holiday_date' })
+      .select('id, holiday_date, name, holiday_type');
+
+    setBusy(false);
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
+    const inserted = (data ?? []) as HolidayRow[];
+    setHolidays((prev) => {
+      const byDate = new Map(prev.map((h) => [h.holiday_date, h]));
+      inserted.forEach((h) => byDate.set(h.holiday_date, h));
+      return Array.from(byDate.values());
+    });
+    setMsg(`✓ Loaded ${inserted.length} Philippine fixed holidays for ${y}. Add movable holidays (Holy Week, Eid) manually.`);
+  }
+
+  async function handleDelete(id: string) {
+    setBusy(true);
+    setMsg('');
+    const { error } = await supabaseBrowser().from('holidays').delete().eq('id', id);
+    setBusy(false);
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
+    setHolidays((prev) => prev.filter((x) => x.id !== id));
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div className="card" style={{ padding: 14, display: 'grid', gap: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <strong style={{ fontSize: 15 }}>Organization Holiday Calendar</strong>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              Holidays highlight on the Roster &amp; PM Planner and automatically track Holiday Shifts Worked in Reports without overwriting 24/7 plant shifts.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <select
+              className="input"
+              aria-label="Filter holidays by year"
+              value={yearFilter}
+              onChange={(e) => setYearFilter(e.target.value)}
+              style={{ width: 'auto' }}
+            >
+              <option value={String(currentYear - 1)}>{currentYear - 1}</option>
+              <option value={String(currentYear)}>{currentYear}</option>
+              <option value={String(currentYear + 1)}>{currentYear + 1}</option>
+              <option value="all">All Years</option>
+            </select>
+            {p.isAdmin && yearFilter !== 'all' && (
+              <button type="button" className="btn" disabled={busy} onClick={handleLoadPreset}>
+                Load PH Holidays ({yearFilter})
+              </button>
+            )}
+          </div>
+        </div>
+
+        {p.isAdmin && (
+          <form onSubmit={handleAdd} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end', borderTop: '1px solid var(--border-light)', paddingTop: 10 }}>
+            <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
+              Date
+              <input className="input" type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} required style={{ width: 155 }} />
+            </label>
+            <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600, flex: '1 1 200px' }}>
+              Holiday Name
+              <input className="input" placeholder="e.g. Maundy Thursday, Iloilo Charter Day" value={newName} onChange={(e) => setNewName(e.target.value)} required />
+            </label>
+            <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
+              Type
+              <select className="input" value={newType} onChange={(e) => setNewType(e.target.value as HolidayRow['holiday_type'])} style={{ width: 175 }}>
+                <option value="regular">Regular Holiday</option>
+                <option value="special_non_working">Special Non-Working</option>
+                <option value="company">Company / Local</option>
+              </select>
+            </label>
+            <button type="submit" className="btn btn-primary" disabled={busy}>
+              {busy ? 'Saving…' : '+ Add / Update Holiday'}
+            </button>
+          </form>
+        )}
+
+        {msg && (
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: msg.startsWith('✓') ? '#166534' : '#b91c1c' }}>
+            {msg}
+          </div>
+        )}
+      </div>
+
+      <div className="card" style={{ overflow: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: 'var(--header-bg)', color: 'var(--header-fg)', textAlign: 'left', fontSize: 12 }}>
+              <th style={{ padding: '7px 12px' }}>Date</th>
+              <th style={{ padding: '7px 10px' }}>Holiday Name</th>
+              <th style={{ padding: '7px 10px' }}>Classification</th>
+              {p.isAdmin && <th style={{ padding: '7px 12px', textAlign: 'right' }}>Actions</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {visible.length === 0 ? (
+              <tr>
+                <td colSpan={p.isAdmin ? 4 : 3} style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  No holidays configured for this selection.
+                </td>
+              </tr>
+            ) : (
+              visible.map((h) => {
+                const tm = TYPE_META[h.holiday_type] ?? TYPE_META.regular;
+                return (
+                  <tr key={h.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                    <td className="tabular-nums" style={{ padding: '7px 12px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                      {h.holiday_date} <span style={{ fontWeight: 400, color: 'var(--text-secondary)', fontSize: 11.5 }}>({formatDateOnly(h.holiday_date)})</span>
+                    </td>
+                    <td style={{ padding: '7px 10px', fontWeight: 600 }}>{h.name}</td>
+                    <td style={{ padding: '7px 10px' }}>
+                      <span style={{ background: tm.bg, color: tm.fg, padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700 }}>
+                        {tm.label}
+                      </span>
+                    </td>
+                    {p.isAdmin && (
+                      <td style={{ padding: '7px 12px', textAlign: 'right' }}>
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={busy}
+                          onClick={() => void handleDelete(h.id)}
+                          style={{ minHeight: 28, padding: '2px 8px', fontSize: 11.5, color: 'var(--danger)' }}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

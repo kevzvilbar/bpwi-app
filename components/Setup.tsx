@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import DepartmentHeads, { type Grant, type Person } from '@/components/DepartmentHeads';
+import HolidaysManager, { type HolidayRow } from '@/components/HolidaysManager';
 
 type Op = {
   id?: string;
@@ -51,7 +52,7 @@ type AuditLog = {
   created_at: string;
 };
 
-type Tab = 'operators' | 'shifts' | 'areas' | 'users' | 'heads' | 'audit';
+type Tab = 'operators' | 'shifts' | 'areas' | 'holidays' | 'users' | 'heads' | 'audit';
 
 const cell = { padding: 4, borderBottom: '1px solid var(--border-light)' };
 const inp = {
@@ -194,6 +195,8 @@ export default function Setup(p: {
   /** Department-head data is loaded separately from `users` so the Users tab never rewrites it. */
   people?: Person[];
   grants?: Grant[];
+  holidays?: HolidayRow[];
+  holidaysError?: string;
   headsError?: string;
   orgId: string;
   currentUserId?: string;
@@ -318,6 +321,7 @@ export default function Setup(p: {
         {tabBtn('operators', `Operators (${ops.length})`)}
         {tabBtn('shifts', `Shift types (${shifts.length})`)}
         {tabBtn('areas', `Areas & leave (${areas.length})`)}
+        {tabBtn('holidays', `Holidays (${(p.holidays ?? []).length})`)}
         {tabBtn('users', `Users & roles (${users.length}${pendingUsers ? ` · ${pendingUsers} pending` : ''})`)}
         {tabBtn('heads', `Department heads (${(p.people ?? []).filter((x) => x.role === 'manager').length})`)}
         {tabBtn('audit', `Activity log (${auditLogs.length})`)}
@@ -337,7 +341,11 @@ export default function Setup(p: {
         <DepartmentHeads people={p.people ?? []} grants={p.grants ?? []} orgId={p.orgId} error={p.headsError ?? ''} />
       </div>
 
-      <div hidden={tab === 'heads'}>
+      <div hidden={tab !== 'holidays'}>
+        <HolidaysManager initialHolidays={p.holidays ?? []} orgId={p.orgId} isAdmin={p.isAdmin} error={p.holidaysError} />
+      </div>
+
+      <div hidden={tab === 'heads' || tab === 'holidays'}>
       {/* Mobile Cards (<= 640px) */}
       <div className="responsive-cards">
         {tab === 'operators' && (

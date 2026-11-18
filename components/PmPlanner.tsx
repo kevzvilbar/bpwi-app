@@ -109,11 +109,16 @@ export default function PmPlanner(p: {
   areas: Area[];
   assignments: Asg[];
   standby: Standby[];
+  holidays?: Array<{ holiday_date: string; name: string; holiday_type: string }>;
   orgId: string;
   canEdit: boolean;
   error: string;
 }) {
   const router = useRouter();
+  const holidayByDate = useMemo(
+    () => new Map((p.holidays ?? []).map((h) => [h.holiday_date, h])),
+    [p.holidays],
+  );
   const [tasks, setTasks] = useState(p.tasks);
   const [actTypes, setActTypes] = useState<ActivityType[]>(p.activityTypes);
   const [editActsOpen, setEditActsOpen] = useState(false);
@@ -749,6 +754,7 @@ export default function PmPlanner(p: {
             const isWeekend = dow === 0 || dow === 6;
             const dayNum = +d.slice(8);
             const list = byDate.get(d) ?? [];
+            const hol = holidayByDate.get(d);
 
             return (
               <div
@@ -756,7 +762,7 @@ export default function PmPlanner(p: {
                 className="pm-day-cell"
                 role="button"
                 tabIndex={0}
-                aria-label={`${d}, ${list.length} PM ${list.length === 1 ? 'task' : 'tasks'}${isToday ? ', Today' : ''}`}
+                aria-label={`${d}${hol ? `, Holiday: ${hol.name}` : ''}, ${list.length} PM ${list.length === 1 ? 'task' : 'tasks'}${isToday ? ', Today' : ''}`}
                 aria-pressed={isSelected}
                 onClick={() => setSelectedDate(d)}
                 onDoubleClick={() => p.canEdit && setDraft(blank(d))}
@@ -778,7 +784,13 @@ export default function PmPlanner(p: {
                   if (taskId) void rescheduleTask(taskId, d);
                 }}
                 style={{
-                  background: isToday ? 'var(--surface-muted)' : inMonth ? 'var(--surface)' : 'var(--bg)',
+                  background: isToday
+                    ? 'var(--surface-muted)'
+                    : hol
+                      ? 'rgba(225, 29, 72, 0.06)'
+                      : inMonth
+                        ? 'var(--surface)'
+                        : 'var(--bg)',
                   minHeight: view === 'week' ? 320 : undefined,
                   padding: 4,
                   cursor: 'pointer',
@@ -799,13 +811,36 @@ export default function PmPlanner(p: {
                       borderRadius: 999,
                       fontSize: 11,
                       fontWeight: 700,
-                      background: isToday ? '#0369a1' : 'transparent',
-                      color: isToday ? '#ffffff' : inMonth ? 'var(--text)' : 'var(--text-muted)',
+                      background: isToday ? '#0369a1' : hol ? '#be123c' : 'transparent',
+                      color: isToday || hol ? '#ffffff' : inMonth ? 'var(--text)' : 'var(--text-muted)',
                     }}
+                    title={hol ? hol.name : undefined}
                   >
                     {dayNum === 1 ? `${MONTHS_FULL[+d.slice(5, 7) - 1].slice(0, 3)} 1` : dayNum}
                   </span>
                 </div>
+
+                {hol && (
+                  <div
+                    className="pm-desktop-pill"
+                    title={`${hol.name} (${hol.holiday_type.replace(/_/g, ' ')})`}
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: '#be123c',
+                      background: 'rgba(225, 29, 72, 0.12)',
+                      borderRadius: 4,
+                      padding: '1px 5px',
+                      marginBottom: 3,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      textAlign: 'center',
+                    }}
+                  >
+                    ★ {hol.name}
+                  </div>
+                )}
 
                 {/* Mobile compact dots (<= 640px) */}
                 {list.length > 0 && (
@@ -1219,6 +1254,11 @@ export default function PmPlanner(p: {
                 </select>
               </label>
             </div>
+            {holidayByDate.get(draft.date) && (
+              <div style={{ fontSize: 12, padding: '6px 10px', borderRadius: 6, background: 'var(--warn-bg)', color: 'var(--warn-fg)', border: '1px solid var(--warn-border)', fontWeight: 600 }}>
+                ★ Note: {holidayByDate.get(draft.date)!.name} ({holidayByDate.get(draft.date)!.holiday_type.replace(/_/g, ' ')}) falls on this date.
+              </div>
+            )}
             <fieldset style={{ border: '1px solid #e2e8f0', borderRadius: 8, maxHeight: 120, overflow: 'auto', fontSize: 12 }}>
               <legend>Assignees</legend>
               {p.operators.map((o) => (

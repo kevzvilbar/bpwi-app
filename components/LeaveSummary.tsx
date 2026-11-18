@@ -9,7 +9,15 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const th = { background: 'var(--header-bg)', color: 'var(--header-fg)', padding: '5px 8px', position: 'sticky' as const, top: 0, fontSize: 12 };
 const td = { padding: '4px 8px', borderBottom: '1px solid var(--border-light)', textAlign: 'center' as const, fontSize: 12 };
 
-export default function LeaveSummary(p: { year: number; operators: Op[]; areas: Area[]; rows: Row[]; error: string }) {
+export default function LeaveSummary(p: {
+  year: number;
+  operators: Op[];
+  areas: Area[];
+  rows: Row[];
+  holidays?: Array<{ holiday_date: string; name: string; holiday_type: string }>;
+  holidayWorked?: Array<{ operator_id: string; schedule_date: string }>;
+  error: string;
+}) {
   const router = useRouter();
   const [showHoliday, setShowHoliday] = useState(false);
   const [showRd, setShowRd] = useState(false);
@@ -18,6 +26,20 @@ export default function LeaveSummary(p: { year: number; operators: Op[]; areas: 
     isRd(a) ? showRd : a.category === 'holiday' ? showHoliday : a.category === 'leave',
   );
   const areaIds = new Set(areas.map((a) => a.id));
+
+  const holidayWorkedMap = useMemo(() => {
+    const holByDate = new Map((p.holidays ?? []).map((h) => [h.holiday_date, h]));
+    const counts = new Map<string, { reg: number; spec: number }>();
+    for (const r of (p.holidayWorked ?? [])) {
+      const h = holByDate.get(r.schedule_date);
+      if (!h) continue;
+      const cur = counts.get(r.operator_id) ?? { reg: 0, spec: 0 };
+      if (h.holiday_type === 'regular') cur.reg += 1;
+      else cur.spec += 1;
+      counts.set(r.operator_id, cur);
+    }
+    return counts;
+  }, [p.holidays, p.holidayWorked]);
 
   const byCode = useMemo(() => {
     const m = new Map<string, number>();
@@ -34,9 +56,12 @@ export default function LeaveSummary(p: { year: number; operators: Op[]; areas: 
 
   function exportCsv() {
     const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
-    const head = ['Operator', ...areas.map((a) => a.code), 'Total', ...MONTHS];
+    const head = ['Operator', ...areas.map((a) => a.code), 'Total', ...MONTHS, 'Reg Hol Worked', 'Spec Hol Worked'];
     const lines = [head.map(esc).join(',')];
-    p.operators.forEach((o) => lines.push([o.full_name, ...areas.map((a) => byCode.get(o.id + a.id) ?? 0), opTotal(o.id), ...MONTHS.map((_, i) => byMonth.get(o.id + i) ?? 0)].map(esc).join(',')));
+    p.operators.forEach((o) => {
+      const hw = holidayWorkedMap.get(o.id) ?? { reg: 0, spec: 0 };
+      lines.push([o.full_name, ...areas.map((a) => byCode.get(o.id + a.id) ?? 0), opTotal(o.id), ...MONTHS.map((_, i) => byMonth.get(o.id + i) ?? 0), hw.reg, hw.spec].map(esc).join(','));
+    });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
     a.download = `leave-summary-${p.year}.csv`; a.click();
@@ -129,6 +154,38 @@ export default function LeaveSummary(p: { year: number; operators: Op[]; areas: 
               </tfoot>
             </table>
           </div>
+
+          {(p.holidays ?? []).length > 0 && (
+            <>
+              <h3 style={{ margin: '16px 0 4px' }}>Holidays Worked ({p.year} Payroll Summary)</h3>
+              <div className="card" style={{ overflow: 'auto' }}>
+                <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...th, textAlign: 'left' }}>Operator</th>
+                      <th style={th}>Regular Holidays Worked</th>
+                      <th style={th}>Special / Company Holidays Worked</th>
+                      <th style={th}>Total Holiday Shifts</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {p.operators.map((o) => {
+                      const hw = holidayWorkedMap.get(o.id) ?? { reg: 0, spec: 0 };
+                      const tot = hw.reg + hw.spec;
+                      return (
+                        <tr key={o.id}>
+                          <td style={{ ...td, textAlign: 'left', fontWeight: 600 }}>{o.full_name}</td>
+                          <td className="tabular-nums" style={{ ...td, fontWeight: hw.reg ? 700 : 400, color: hw.reg ? '#be123c' : 'var(--text-muted)' }}>{hw.reg || '·'}</td>
+                          <td className="tabular-nums" style={{ ...td, fontWeight: hw.spec ? 700 : 400, color: hw.spec ? '#b45309' : 'var(--text-muted)' }}>{hw.spec || '·'}</td>
+                          <td className="tabular-nums" style={{ ...td, fontWeight: 700 }}>{tot}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
           </div>
         </>)}
     </div>

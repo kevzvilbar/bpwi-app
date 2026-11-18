@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function OperatorsPage() {
   const { sb, user, orgId, isAdmin } = await getProfile();
-  const [ops, shifts, areas, users, logs, people, grants] = await Promise.all([
+  const [ops, shifts, areas, users, logs, people, grants, holidaysRes] = await Promise.all([
     sb.from('operators').select('id, full_name, position, phone_number, default_station, sort_order, is_active').order('sort_order'),
     sb.from('shift_types').select('id, code, description, start_time, end_time, duration_hours, is_off, background_color, text_color').order('code'),
     sb.from('area_codes').select('id, code, name, category, background_color, text_color').order('code'),
@@ -21,6 +21,7 @@ export default async function OperatorsPage() {
     isAdmin
       ? sb.from('edit_grants').select('id, user_id, starts_at, ends_at, date_from, date_to, note, revoked_at, created_at').order('starts_at', { ascending: false }).limit(200)
       : Promise.resolve({ data: [], error: null }),
+    sb.from('holidays').select('id, holiday_date, name, holiday_type').order('holiday_date'),
   ]);
 
   return (
@@ -32,6 +33,8 @@ export default async function OperatorsPage() {
       auditLogs={logs.data ?? []}
       people={people.data ?? []}
       grants={grants.data ?? []}
+      holidays={holidaysRes.error ? [] : (holidaysRes.data ?? [])}
+      holidaysError={holidaysRes.error?.message ?? ''}
       headsError={people.error?.message ?? grants.error?.message ?? ''}
       orgId={orgId}
       currentUserId={user?.id ?? ''}

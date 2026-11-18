@@ -13,7 +13,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
   const first = `${month}-01`;
   const last = `${month}-${String(new Date(y, mo, 0).getDate()).padStart(2, '0')}`;
 
-  const [ops, shifts, areas, rows, standby, pmTasks, pendingReqItems] = await Promise.all([
+  const [ops, shifts, areas, rows, standby, pmTasks, pendingReqItems, holidaysRes] = await Promise.all([
     sb.from('operators').select('id, full_name, position').eq('is_active', true).order('sort_order'),
     sb.from('shift_types').select('id, code, description, duration_hours, background_color, text_color, is_off').order('code'),
     sb.from('area_codes').select('id, code, name, category, background_color, text_color').order('code'),
@@ -38,6 +38,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
       .gte('schedule_date', first)
       .lte('schedule_date', last)
       .in('status', ['pending', 'conflict']),
+    sb
+      .from('holidays')
+      .select('holiday_date, name, holiday_type')
+      .gte('holiday_date', first)
+      .lte('holiday_date', last),
   ]);
 
   // Load draft items if this user is a department head in propose mode
@@ -76,6 +81,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
       rows={rows.data ?? []}
       standby={standby.data ?? []}
       pmTasks={pmTasks.data ?? []}
+      holidays={holidaysRes.error ? [] : (holidaysRes.data ?? [])}
       orgId={orgId}
       operatorId={operatorId}
       role={role}
