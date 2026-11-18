@@ -8,6 +8,7 @@ import {
   ACTIVITY_TYPES,
   computeMeterTestResult,
   parse12DigitAccount,
+  resolveActivityTypeFromPm,
   type ActivityCategory,
   type DailyActivityRow,
 } from '@/lib/activity-types';
@@ -64,14 +65,6 @@ export type LinkedJobOrder = {
   assigned_operator_ids?: string[];
 };
 
-const PM_TO_ACTIVITY: Record<string, string> = {
-  FLUSH: 'flushing',
-  TANK: 'tank_cleaning',
-  PULL: 'well_pull_out',
-  THERM: 'pump_monitoring',
-  LEVEL: 'pump_monitoring',
-};
-
 function currentManilaHHMM() {
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Asia/Manila',
@@ -108,6 +101,7 @@ export default function ActivityLoggerModal(p: {
   initialActivityType?: string;
   initialLeadOperatorId?: string | null;
   linkedPmTask?: LinkedPmTask | null;
+  pmActivityTypes?: Array<{ code: string; label: string; short_label?: string }>;
   linkedJobOrder?: LinkedJobOrder | null;
   onQueuedOffline?: (payload: Record<string, any>) => Promise<void> | void;
 }) {
@@ -208,6 +202,16 @@ export default function ActivityLoggerModal(p: {
   const [phLevel, setPhLevel] = useState('');
   const [samplePoint, setSamplePoint] = useState('');
 
+  // 8. Backwash / Thermal Scanning / Water Level Monitoring
+  const [filterUnit, setFilterUnit] = useState('');
+  const [backwashDurationMin, setBackwashDurationMin] = useState('');
+  const [waterClarity, setWaterClarity] = useState<'Clear' | 'Slightly Turbid' | 'Turbid'>('Clear');
+  const [scannedEquipment, setScannedEquipment] = useState('');
+  const [maxTempC, setMaxTempC] = useState('');
+  const [hotspotFound, setHotspotFound] = useState<'No' | 'Yes'>('No');
+  const [swlMeters, setSwlMeters] = useState('');
+  const [pwlMeters, setPwlMeters] = useState('');
+
   // Signature pad ref for meter_test
   const sigCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const sigDrawingRef = useRef(false);
@@ -274,9 +278,19 @@ export default function ActivityLoggerModal(p: {
     setTurbidityNtu('');
     setPhLevel('');
     setSamplePoint('');
+    setFilterUnit('');
+    setBackwashDurationMin('');
+    setWaterClarity('Clear');
+    setScannedEquipment('');
+    setMaxTempC('');
+    setHotspotFound('No');
+    setSwlMeters('');
+    setPwlMeters('');
 
-    // Determine initial activity type
-    const pmMapped = p.linkedPmTask?.activity_type ? PM_TO_ACTIVITY[p.linkedPmTask.activity_type] : undefined;
+    // Determine initial activity type (reconciles preset codes, custom PM types, and title keywords)
+    const pmMapped = p.linkedPmTask
+      ? resolveActivityTypeFromPm(p.linkedPmTask, p.pmActivityTypes)
+      : undefined;
     const initAct =
       p.linkedJobOrder?.activity_type ||
       pmMapped ||
@@ -300,11 +314,23 @@ export default function ActivityLoggerModal(p: {
       [];
     setCrewOpIds(linkedCrew.filter((id) => id && id !== defaultLead));
 
-    // Area & Shift from linked JO or Roster assignment
+    // Area & Shift from linked JO, PM location match, or Roster assignment
     const asg = defaultLead ? asgByOp.get(defaultLead) : undefined;
     setShiftTypeId(asg?.shift_type_id ?? '');
+    const pmLocText = (p.linkedPmTask?.locations ?? []).join(' ').toLowerCase();
+    const pmMatchedArea = pmLocText
+      ? stationAreas.find(
+          (a) =>
+            pmLocText.includes(a.code.toLowerCase()) ||
+            (a.name && pmLocText.includes(a.name.toLowerCase())),
+        )
+      : undefined;
+
     if (p.linkedJobOrder?.area_code_id) {
       setAreaCodeId(p.linkedJobOrder.area_code_id);
+      setAreaTouched(true);
+    } else if (pmMatchedArea) {
+      setAreaCodeId(pmMatchedArea.id);
       setAreaTouched(true);
     } else if (asg?.area_code_id && stationIdSet.has(asg.area_code_id)) {
       setAreaCodeId(asg.area_code_id);
@@ -552,6 +578,30 @@ export default function ActivityLoggerModal(p: {
         samplePoint: samplePoint.trim() || null,
       };
     }
+    if (activityType === 'backwash') {
+      return {
+        filterUnit: filterUnit.trim() || null,
+        backwashDurationMin: backwashDurationMin !== '' ? Number(backwashDurationMin) : null,
+        pressurePsi: pressurePsi !== '' ? Number(pressurePsi) : null,
+        waterClarity,
+      };
+    }
+    if (activityType === 'thermal_scanning') {
+      return {
+        scannedEquipment: scannedEquipment.trim() || null,
+        maxTempC: maxTempC !== '' ? Number(maxTempC) : null,
+        hotspotFound,
+      };
+    }
+    if (activityType === 'water_level_monitoring') {
+      const swl = swlMeters !== '' ? Number(swlMeters) : null;
+      const pwl = pwlMeters !== '' ? Number(pwlMeters) : null;
+      return {
+        swlMeters: swl,
+        pwlMeters: pwl,
+        drawdownMeters: swl !== null && pwl !== null ? Math.round((pwl - swl) * 100) / 100 : null,
+      };
+    }
     return {};
   }
 
@@ -735,6 +785,11 @@ export default function ActivityLoggerModal(p: {
                 </optgroup>
               ))}
             </select>
+            {p.linkedPmTask && (
+              <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--accent)' }}>
+                Auto-matched from PM: &ldquo;{p.linkedPmTask.title}&rdquo;
+              </span>
+            )}
           </label>
 
           <label style={{ display: 'grid', gap: 4, fontSize: 12.5, fontWeight: 600 }}>
@@ -1334,6 +1389,73 @@ export default function ActivityLoggerModal(p: {
               <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
                 Sample Point
                 <input className="input" value={samplePoint} onChange={(e) => setSamplePoint(e.target.value)} />
+              </label>
+            </div>
+          </div>
+        )}
+
+        {activityType === 'backwash' && (
+          <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: '#7c3aed' }}>
+            <strong style={{ fontSize: 12.5, color: '#6d28d9' }}>MMF / Filter Backwash Telemetry</strong>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
+              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
+                Filter / MMF Unit
+                <input className="input" placeholder="e.g. MMF-1, Vessel A" value={filterUnit} onChange={(e) => setFilterUnit(e.target.value)} />
+              </label>
+              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
+                Duration (mins)
+                <input className="input" type="number" step="1" value={backwashDurationMin} onChange={(e) => setBackwashDurationMin(e.target.value)} />
+              </label>
+              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
+                Pressure (PSI)
+                <input className="input" type="number" step="0.1" value={pressurePsi} onChange={(e) => setPressurePsi(e.target.value)} />
+              </label>
+              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
+                Discharge Clarity
+                <select className="input" value={waterClarity} onChange={(e) => setWaterClarity(e.target.value as any)}>
+                  <option value="Clear">Clear</option>
+                  <option value="Slightly Turbid">Slightly Turbid</option>
+                  <option value="Turbid">Turbid</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        )}
+
+        {activityType === 'thermal_scanning' && (
+          <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: '#ea580c' }}>
+            <strong style={{ fontSize: 12.5, color: '#c2410c' }}>Thermal Scanning Readings</strong>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
+              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
+                Panel / Motor Scanned
+                <input className="input" placeholder="e.g. MCC Panel, Pump 1" value={scannedEquipment} onChange={(e) => setScannedEquipment(e.target.value)} />
+              </label>
+              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
+                Max Temp (°C)
+                <input className="input" type="number" step="0.1" value={maxTempC} onChange={(e) => setMaxTempC(e.target.value)} />
+              </label>
+              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
+                Hotspot Detected?
+                <select className="input" value={hotspotFound} onChange={(e) => setHotspotFound(e.target.value as any)}>
+                  <option value="No">No (Normal)</option>
+                  <option value="Yes">Yes (Needs Attention)</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        )}
+
+        {activityType === 'water_level_monitoring' && (
+          <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: '#ca8a04' }}>
+            <strong style={{ fontSize: 12.5, color: '#a16207' }}>Well Water Level (SWL &amp; PWL)</strong>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
+                Static Water Level — SWL (m)
+                <input className="input" type="number" step="0.01" value={swlMeters} onChange={(e) => setSwlMeters(e.target.value)} />
+              </label>
+              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
+                Pumping Water Level — PWL (m)
+                <input className="input" type="number" step="0.01" value={pwlMeters} onChange={(e) => setPwlMeters(e.target.value)} />
               </label>
             </div>
           </div>

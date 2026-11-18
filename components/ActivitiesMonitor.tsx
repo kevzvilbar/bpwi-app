@@ -109,6 +109,22 @@ function formatTelemetrySummary(act: DailyActivityRow): string[] {
     if (d.turbidityNtu !== undefined && d.turbidityNtu !== null) parts.push(`Turb: ${d.turbidityNtu} NTU`);
     if (d.phLevel !== undefined && d.phLevel !== null) parts.push(`pH: ${d.phLevel}`);
   }
+  if (act.activity_type === 'backwash') {
+    if (d.filterUnit) parts.push(`Unit: ${d.filterUnit}`);
+    if (d.backwashDurationMin !== undefined && d.backwashDurationMin !== null) parts.push(`${d.backwashDurationMin} mins`);
+    if (d.pressurePsi !== undefined && d.pressurePsi !== null) parts.push(`${d.pressurePsi} PSI`);
+    if (d.waterClarity) parts.push(`Clarity: ${d.waterClarity}`);
+  }
+  if (act.activity_type === 'thermal_scanning') {
+    if (d.scannedEquipment) parts.push(`Equip: ${d.scannedEquipment}`);
+    if (d.maxTempC !== undefined && d.maxTempC !== null) parts.push(`Max: ${d.maxTempC}°C`);
+    if (d.hotspotFound) parts.push(`Hotspot: ${d.hotspotFound}`);
+  }
+  if (act.activity_type === 'water_level_monitoring') {
+    if (d.swlMeters !== undefined && d.swlMeters !== null) parts.push(`SWL: ${d.swlMeters}m`);
+    if (d.pwlMeters !== undefined && d.pwlMeters !== null) parts.push(`PWL: ${d.pwlMeters}m`);
+    if (d.drawdownMeters !== undefined && d.drawdownMeters !== null) parts.push(`Drawdown: ${d.drawdownMeters}m`);
+  }
   return parts;
 }
 
@@ -281,10 +297,15 @@ export default function ActivitiesMonitor(p: {
   );
   const dateAsgByOp = useMemo(() => new Map(dateAssignments.map((a) => [a.operator_id, a])), [dateAssignments]);
 
-  const dateActivities = useMemo(
-    () => activities.filter((a) => a.activity_date === p.date),
-    [activities, p.date],
-  );
+  const dateActivities = useMemo(() => {
+    const onDate = activities.filter((a) => a.activity_date === p.date);
+    if (p.canVerifyActivity) return onDate;
+    return onDate.filter(
+      (a) =>
+        (p.userId && a.logged_by === p.userId) ||
+        (p.operatorId && (a.lead_operator_id === p.operatorId || (a.crew_operator_ids ?? []).includes(p.operatorId))),
+    );
+  }, [activities, p.date, p.canVerifyActivity, p.userId, p.operatorId]);
 
   // Daily Duty-vs-Activity Matrix
   const dutyMatrix = useMemo(() => {
@@ -356,12 +377,19 @@ export default function ActivitiesMonitor(p: {
     return { activeWithPhotos, expiredCount };
   }, [activities]);
 
-  // Filtered Job Orders
+  // Filtered Job Orders (non-supervisors only see JOs assigned to them or unassigned)
   const filteredJobOrders = useMemo(() => {
-    if (joFilter === 'open') return jobOrders.filter((j) => j.status === 'pending' || j.status === 'in_progress');
-    if (joFilter === 'completed') return jobOrders.filter((j) => j.status === 'completed' || j.status === 'cancelled');
-    return jobOrders;
-  }, [jobOrders, joFilter]);
+    const scoped = p.canVerifyActivity
+      ? jobOrders
+      : jobOrders.filter(
+          (j) =>
+            (j.assigned_operator_ids ?? []).length === 0 ||
+            (p.operatorId && (j.assigned_operator_ids ?? []).includes(p.operatorId)),
+        );
+    if (joFilter === 'open') return scoped.filter((j) => j.status === 'pending' || j.status === 'in_progress');
+    if (joFilter === 'completed') return scoped.filter((j) => j.status === 'completed' || j.status === 'cancelled');
+    return scoped;
+  }, [jobOrders, joFilter, p.canVerifyActivity, p.operatorId]);
 
   async function handlePurgeExpiredPhotos() {
     setPurging(true);
@@ -642,10 +670,10 @@ export default function ActivitiesMonitor(p: {
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {(
           [
-            { id: 'monitor', label: `Duty & Activity Feed (${dateActivities.length})` },
-            { id: 'job-orders', label: `Job Orders (${jobOrders.filter((j) => j.status === 'pending' || j.status === 'in_progress').length} open)` },
+            { id: 'monitor', label: `${p.canVerifyActivity ? 'Duty & Activity Feed' : 'My Activity Logs'} (${dateActivities.length})` },
+            { id: 'job-orders', label: `Job Orders (${filteredJobOrders.filter((j) => j.status === 'pending' || j.status === 'in_progress').length} open)` },
             { id: 'handovers', label: `Shift Handover & Huddle (${handovers.filter((h) => h.handover_date === p.date).length})` },
-            { id: 'kpis', label: 'Employee KPIs & Fuel' },
+            ...(p.canVerifyActivity ? [{ id: 'kpis' as const, label: 'Employee KPIs & Fuel' }] : []),
           ] as const
         ).map((t) => (
           <button
@@ -669,7 +697,8 @@ export default function ActivitiesMonitor(p: {
             </div>
           )}
 
-          {/* On-Duty Operator Activity Matrix */}
+          {/* On-Duty Operator Activity Matrix (Supervisors / Admins / Dept Heads only) */}
+          {p.canVerifyActivity && (
           <div className="card" style={{ padding: 14, display: 'grid', gap: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
               <div>
@@ -766,6 +795,7 @@ export default function ActivitiesMonitor(p: {
               </div>
             )}
           </div>
+          )}
 
           {/* Filter Bar for Feed */}
           <div className="card" style={{ padding: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -784,12 +814,14 @@ export default function ActivitiesMonitor(p: {
                 <option key={t.id} value={t.id}>{t.label}</option>
               ))}
             </select>
-            <select className="input" value={filterOpId} onChange={(e) => setFilterOpId(e.target.value)} style={{ width: 'auto', minWidth: 160 }}>
-              <option value="">All Operators</option>
-              {p.operators.map((o) => (
-                <option key={o.id} value={o.id}>{o.full_name}</option>
-              ))}
-            </select>
+            {p.canVerifyActivity && (
+              <select className="input" value={filterOpId} onChange={(e) => setFilterOpId(e.target.value)} style={{ width: 'auto', minWidth: 160 }}>
+                <option value="">All Operators</option>
+                {p.operators.map((o) => (
+                  <option key={o.id} value={o.id}>{o.full_name}</option>
+                ))}
+              </select>
+            )}
             <select className="input" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as any)} style={{ width: 'auto', minWidth: 130 }}>
               <option value="all">All Statuses</option>
               <option value="submitted">Submitted</option>
@@ -1276,8 +1308,8 @@ export default function ActivitiesMonitor(p: {
         </div>
       )}
 
-      {/* TAB 4: EMPLOYEE KPIs & FUEL TELEMETRY */}
-      {tab === 'kpis' && (
+      {/* TAB 4: EMPLOYEE KPIs & FUEL TELEMETRY (Supervisors only) */}
+      {tab === 'kpis' && p.canVerifyActivity && (
         <ActivitiesKpiTab
           anchorDate={p.date}
           operators={p.operators}

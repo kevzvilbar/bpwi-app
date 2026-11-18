@@ -94,6 +94,7 @@ export default function MobileView(p: {
   operatorId: string | null;
   canClosePm: boolean;
   canLogActivity?: boolean;
+  canVerifyActivity?: boolean;
   operators: Op[];
   shifts: Shift[];
   areas: Area[];
@@ -292,7 +293,12 @@ export default function MobileView(p: {
   const scopedActivities = useMemo(() => {
     const q = search.trim().toLowerCase();
     return activities.filter((a) => {
-      if (selectedOp) {
+      if (!p.canVerifyActivity) {
+        const isMine =
+          (p.userId && a.logged_by === p.userId) ||
+          (p.operatorId && (a.lead_operator_id === p.operatorId || (a.crew_operator_ids ?? []).includes(p.operatorId)));
+        if (!isMine) return false;
+      } else if (selectedOp) {
         const involved = a.lead_operator_id === selectedOp || (a.crew_operator_ids ?? []).includes(selectedOp);
         if (!involved) return false;
       }
@@ -307,7 +313,7 @@ export default function MobileView(p: {
         (a.notes ?? '').toLowerCase().includes(q)
       );
     });
-  }, [activities, areaBy, search, selectedOp]);
+  }, [activities, areaBy, search, selectedOp, p.canVerifyActivity, p.userId, p.operatorId]);
 
   async function toggleTaskStatus(
     t: Task,
@@ -551,7 +557,7 @@ export default function MobileView(p: {
             onChange={(e) => setSearch(e.target.value)}
             style={{ flex: '1 1 160px', minWidth: 0 }}
           />
-          {(tab === 'tasks' || tab === 'activities') && (
+          {(tab === 'tasks' || (tab === 'activities' && p.canVerifyActivity)) && (
             <select
               className="input"
               aria-label="Filter by assigned employee"
@@ -1042,6 +1048,7 @@ export default function MobileView(p: {
           shifts={p.shifts}
           assignments={p.assignments}
           linkedPmTask={linkedPmForLog}
+          pmActivityTypes={p.activityTypes}
         />
       )}
     </div>

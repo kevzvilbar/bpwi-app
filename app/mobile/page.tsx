@@ -12,7 +12,7 @@ function addDays(d: string, n: number) {
 
 export default async function MobilePage({ searchParams }: { searchParams: Promise<{ d?: string }> }) {
   const sp = await searchParams;
-  const { sb, user, orgId, role, operatorId, canClosePm, canLogActivity } = await getProfile();
+  const { sb, user, orgId, role, operatorId, canClosePm, canLogActivity, canVerifyActivity } = await getProfile();
   const today = manilaToday();
   const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.d ?? '') ? sp.d! : today;
   const prevDate = addDays(date, -1);
@@ -58,6 +58,7 @@ export default async function MobilePage({ searchParams }: { searchParams: Promi
       operatorId={operatorId}
       canClosePm={canClosePm}
       canLogActivity={canLogActivity}
+      canVerifyActivity={canVerifyActivity}
       operators={ops.data ?? []}
       shifts={shifts.data ?? []}
       areas={areas.data ?? []}

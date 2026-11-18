@@ -77,12 +77,27 @@ create trigger audit_daily_activities
   after insert or update or delete on daily_activities
   for each row execute function log_audit();
 
--- Row Level Security: everyone in org reads; ONLY operator and admin can insert
+-- Row Level Security: supervisors (admin/scheduler/manager) read all in org;
+-- operators/viewers only read activities they logged, led, or were tagged in as crew.
+-- ONLY operator and admin can insert.
 alter table daily_activities enable row level security;
 
 drop policy if exists "daily_activities read" on daily_activities;
 create policy "daily_activities read" on daily_activities
-  for select using (organization_id = current_org());
+  for select using (
+    organization_id = current_org()
+    and (
+      current_role_name() in ('admin', 'scheduler', 'manager')
+      or logged_by = auth.uid()
+      or (
+        current_operator_id() is not null
+        and (
+          lead_operator_id = current_operator_id()
+          or current_operator_id() = any(crew_operator_ids)
+        )
+      )
+    )
+  );
 
 drop policy if exists "daily_activities insert" on daily_activities;
 create policy "daily_activities insert" on daily_activities

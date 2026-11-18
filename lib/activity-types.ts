@@ -21,16 +21,18 @@ export const ACTIVITY_TYPES: ActivityTypeDef[] = [
   // Plant & Pump Ops
   { id: 'pump_monitoring', label: 'Pump House Monitoring', shortLabel: 'Pump Mon', category: 'plant', color: '#0369a1' },
   { id: 'genset_monitoring', label: 'Genset Monitoring', shortLabel: 'Genset', category: 'plant', color: '#b45309' },
-  { id: 'backwash', label: 'Backwash', shortLabel: 'Backwash', category: 'plant', color: '#0284c7' },
+  { id: 'backwash', label: 'Backwash / MMF Backwashing', shortLabel: 'Backwash', category: 'plant', color: '#7c3aed' },
+  { id: 'thermal_scanning', label: 'Thermal Scanning', shortLabel: 'Thermal Scan', category: 'plant', color: '#ea580c' },
+  { id: 'water_level_monitoring', label: 'Water Level Monitoring (SWL/PWL)', shortLabel: 'SWL & PWL', category: 'plant', color: '#ca8a04' },
   { id: 'tank_cleaning', label: 'Tank Cleaning', shortLabel: 'Tank Clean', category: 'plant', color: '#0d9488' },
   { id: 'tank_opening', label: 'Tank Opening & Closing', shortLabel: 'Tank Valve', category: 'plant', color: '#0f766e' },
   { id: 'water_sampling', label: 'Water Sampling / Chlorination', shortLabel: 'Sampling', category: 'plant', color: '#0891b2' },
-  { id: 'well_pull_out', label: 'Well Pull-Out', shortLabel: 'Pull-Out', category: 'plant', color: '#db2777' },
+  { id: 'well_pull_out', label: 'Deep Well Pump & Motor Pull-Out', shortLabel: 'Pull-Out', category: 'plant', color: '#db2777' },
 
   // Network & Distribution
   { id: 'leak_repair', label: 'Leak Repair', shortLabel: 'Leak Repair', category: 'network', color: '#dc2626' },
   { id: 'leak_detection', label: 'Leak Detection', shortLabel: 'Leak Detect', category: 'network', color: '#ea580c' },
-  { id: 'flushing', label: 'Flushing', shortLabel: 'Flushing', category: 'network', color: '#2563eb' },
+  { id: 'flushing', label: 'Line Flushing', shortLabel: 'Flushing', category: 'network', color: '#0284c7' },
   { id: 'hydro_testing', label: 'Hydro Testing', shortLabel: 'Hydro Test', category: 'network', color: '#4f46e5' },
   { id: 'tankering', label: 'Water Hauling', shortLabel: 'Hauling', category: 'network', color: '#7c3aed' },
 
@@ -54,6 +56,64 @@ export const ACTIVITY_BY_ID: Record<string, ActivityTypeDef> = Object.fromEntrie
 export const ACTIVITY_TYPE_MAP: Record<string, string> = Object.fromEntries(
   ACTIVITY_TYPES.map((a) => [a.id, a.label]),
 );
+
+const PM_CODE_TO_ACTIVITY: Record<string, string> = {
+  FLUSH: 'flushing',
+  TANK: 'tank_cleaning',
+  PULL: 'well_pull_out',
+  THERM: 'thermal_scanning',
+  LEVEL: 'water_level_monitoring',
+  BACKWASH: 'backwash',
+  MMF: 'backwash',
+  GENSET: 'genset_monitoring',
+  PUMP: 'pump_monitoring',
+  CHLOR: 'water_sampling',
+  SAMPLING: 'water_sampling',
+  LEAK: 'leak_repair',
+  HYDRO: 'hydro_testing',
+};
+
+/**
+ * Reconciles a PM task (its preset/custom `activity_type`, `title`, and optional `pm_activity_types` label)
+ * to the canonical `ACTIVITY_TYPES` id for daily field logging.
+ */
+export function resolveActivityTypeFromPm(
+  pm: { activity_type?: string | null; title?: string | null },
+  pmActivityTypes?: Array<{ code: string; label: string; short_label?: string }>,
+): string {
+  const rawCode = (pm.activity_type ?? '').trim();
+  const upperCode = rawCode.toUpperCase();
+
+  if (rawCode && ACTIVITY_BY_ID[rawCode]) return rawCode;
+  if (upperCode && PM_CODE_TO_ACTIVITY[upperCode]) return PM_CODE_TO_ACTIVITY[upperCode];
+
+  const customMeta = pmActivityTypes?.find((a) => a.code === rawCode || a.code.toUpperCase() === upperCode);
+  const combined = `${pm.title ?? ''} ${customMeta?.label ?? ''} ${customMeta?.short_label ?? ''} ${rawCode}`.toLowerCase();
+
+  if (/mmf|backwash/.test(combined)) return 'backwash';
+  if (/flush/.test(combined)) return 'flushing';
+  if (/tank.*clean|clean.*tank/.test(combined)) return 'tank_cleaning';
+  if (/tank.*(open|clos|valve)/.test(combined)) return 'tank_opening';
+  if (/pull[-_\s]?out|well\s*pull/.test(combined)) return 'well_pull_out';
+  if (/thermal|thermograph/.test(combined)) return 'thermal_scanning';
+  if (/water\s*level|swl|pwl/.test(combined)) return 'water_level_monitoring';
+  if (/genset|generator/.test(combined)) return 'genset_monitoring';
+  if (/chlorin|sampl|water\s*qual/.test(combined)) return 'water_sampling';
+  if (/hydro/.test(combined)) return 'hydro_testing';
+  if (/leak.*detect/.test(combined)) return 'leak_detection';
+  if (/leak/.test(combined)) return 'leak_repair';
+  if (/haul|tanker/.test(combined)) return 'tankering';
+  if (/meter.*test/.test(combined)) return 'meter_test';
+  if (/meter.*repl/.test(combined)) return 'meter_replacement';
+  if (/meter.*inst/.test(combined)) return 'meter_inst';
+  if (/meter.*bulk/.test(combined)) return 'meter_check_bulk';
+  if (/meter/.test(combined)) return 'meter_check_indiv';
+  if (/reconnect/.test(combined)) return 'reconnection';
+  if (/garbage/.test(combined)) return 'garbage_collection';
+  if (/plant\s*water|ground/.test(combined)) return 'plant_watering';
+
+  return 'pump_monitoring';
+}
 
 export type MeterTestVerdict = 'Passed' | 'Fast Moving' | 'Slow Moving';
 export type MeterTestRecommendation = 'Retain' | 'Replace';
