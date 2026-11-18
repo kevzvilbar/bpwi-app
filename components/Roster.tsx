@@ -95,9 +95,125 @@ export default function Roster(p: {
   role: string;
   userName: string;
   canEdit: boolean;
+  canPropose?: boolean;
+  userId?: string;
+  pendingItems?: Array<{
+    id: string;
+    request_id?: string;
+    target_table: string;
+    action?: string;
+    operator_id?: string | null;
+    schedule_date?: string | null;
+    shift_type_id?: string | null;
+    area_code_id?: string | null;
+    standby_type?: string | null;
+    status: string;
+    original_state?: any;
+  }>;
+  initialDraftRequestId?: string | null;
+  initialDraftItems?: any[];
   initialError?: string;
 }) {
   const router = useRouter();
+  const canOperate = p.canEdit || Boolean(p.canPropose);
+  const isPropose = Boolean(p.canPropose) && !p.canEdit;
+
+  const [draftReqId, setDraftReqId] = useState<string | null>(p.initialDraftRequestId ?? null);
+  const [draftItems, setDraftItems] = useState<any[]>(p.initialDraftItems ?? []);
+  const [submitModalOpen, setSubmitModalOpen] = useState(false);
+  const [submitNote, setSubmitNote] = useState('');
+  const [isSubmittingDraft, setIsSubmittingDraft] = useState(false);
+
+  const pendingMap = useMemo(() => {
+    const map = new Map<string, { shift_type_id?: string | null; area_code_id?: string | null; standby_type?: string | null; status: string; isDraft?: boolean; action?: string }>();
+    for (const item of (p.pendingItems ?? [])) {
+      if (item.operator_id && item.schedule_date) {
+        map.set(cellKey(item.operator_id, item.schedule_date), {
+          shift_type_id: item.shift_type_id,
+          area_code_id: item.area_code_id,
+          standby_type: item.standby_type,
+          status: item.status,
+          action: item.action,
+          isDraft: false,
+        });
+      }
+    }
+    for (const item of draftItems) {
+      if (item.operator_id && item.schedule_date) {
+        map.set(cellKey(item.operator_id, item.schedule_date), {
+          shift_type_id: item.shift_type_id,
+          area_code_id: item.area_code_id,
+          standby_type: item.standby_type,
+          status: 'draft',
+          action: item.action,
+          isDraft: true,
+        });
+      }
+    }
+    return map;
+  }, [p.pendingItems, draftItems]);
+
+  async function ensureDraftRequestId(): Promise<string> {
+    if (draftReqId) return draftReqId;
+    const sb = supabaseBrowser();
+    const { data, error } = await sb
+      .from('change_requests')
+      .insert({
+        organization_id: p.orgId,
+        requester_id: p.userId,
+        status: 'draft',
+        title: `Schedule Proposal for ${p.month}`,
+      })
+      .select('id')
+      .single();
+    if (error || !data) throw new Error(error?.message ?? 'Could not create draft request');
+    setDraftReqId(data.id);
+    return data.id;
+  }
+
+  async function submitDraftBatch() {
+    if (!draftReqId || draftItems.length === 0) return;
+    setIsSubmittingDraft(true);
+    setMsg('');
+    const sb = supabaseBrowser();
+
+    try {
+      const { data, error } = await sb.rpc('submit_change_request', {
+        p_request_id: draftReqId,
+        p_note: submitNote.trim() || null,
+      });
+
+      if (error) {
+        setMsg('Could not submit changes: ' + error.message);
+      } else {
+        const count = draftItems.length;
+        setDraftReqId(null);
+        setDraftItems([]);
+        setSubmitModalOpen(false);
+        setSubmitNote('');
+        setMsg(`✓ Successfully submitted ${count} change(s) for admin approval.`);
+        startTransition(() => router.refresh());
+      }
+    } catch (e: any) {
+      setMsg(e?.message ?? 'Network error while submitting changes');
+    } finally {
+      setIsSubmittingDraft(false);
+    }
+  }
+
+  async function discardDraftBatch() {
+    if (!draftReqId) {
+      setDraftItems([]);
+      return;
+    }
+    const sb = supabaseBrowser();
+    await sb.from('change_requests').delete().eq('id', draftReqId);
+    setDraftReqId(null);
+    setDraftItems([]);
+    setMsg('Draft proposal discarded.');
+    startTransition(() => router.refresh());
+  }
+
   const [rows, setRows] = useState<Row[]>(p.rows);
   const [standby, setStandby] = useState<Standby[]>(p.standby);
   const [onlyMe, setOnlyMe] = useState(false);
@@ -382,7 +498,7 @@ export default function Roster(p: {
   }
 
   function handleUndo() {
-    if (!p.canEdit || undoStack.length === 0) return;
+    if (!canOperate || undoStack.length === 0) return;
     const last = undoStack[undoStack.length - 1];
     setUndoStack((s) => s.slice(0, -1));
     setRedoStack((s) => [...s, last]);
@@ -390,7 +506,7 @@ export default function Roster(p: {
   }
 
   function handleRedo() {
-    if (!p.canEdit || redoStack.length === 0) return;
+    if (!canOperate || redoStack.length === 0) return;
     const last = redoStack[redoStack.length - 1];
     setRedoStack((s) => s.slice(0, -1));
     setUndoStack((s) => [...s, last]);
@@ -398,7 +514,7 @@ export default function Roster(p: {
   }
 
   useEffect(() => {
-    if (!p.canEdit) return;
+    if (!canOperate) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (importOpen || confirmFill || ctxMenu || document.querySelector('[role="dialog"]')) return;
       const tag = (e.target as HTMLElement)?.tagName;
@@ -431,7 +547,7 @@ export default function Roster(p: {
   });
 
   async function setStandbyValue(opId: string, date: string, nextType: string | null) {
-    if (!p.canEdit) return;
+    if (!canOperate) return;
     setMsg('');
     const k = cellKey(opId, date);
     const prevSb = standbyMap.get(k) ?? null;
@@ -445,6 +561,36 @@ export default function Roster(p: {
     setUndoStack((s) => [...s.slice(-29), [{ kind: 'standby', opId, date, prev: prevSb, next: nextSb }]]);
     setRedoStack([]);
     setSavingCount((c) => c + 1);
+
+    if (isPropose) {
+      try {
+        const reqId = await ensureDraftRequestId();
+        const sb = supabaseBrowser();
+        await sb.from('change_request_items').delete().eq('request_id', reqId).eq('operator_id', opId).eq('schedule_date', date);
+        const { data, error } = await sb.from('change_request_items').insert({
+          request_id: reqId,
+          organization_id: p.orgId,
+          target_table: 'standby_assignments',
+          action: nextType === null ? 'delete' : 'upsert',
+          operator_id: opId,
+          schedule_date: date,
+          standby_type: nextType,
+          original_state: prevSb ? { standby_type: prevSb.standby_type } : null,
+          status: 'pending',
+        }).select();
+        if (error) throw error;
+        if (data) {
+          setDraftItems((prevItems) => [...prevItems.filter((x) => !(x.operator_id === opId && x.schedule_date === date)), data[0]]);
+        }
+      } catch (err: any) {
+        rollbackStandbyKeys([{ opId, date, prev: prevSb }]);
+        setSaveState('error');
+        setMsg(friendlyError(err.message, p.role));
+      } finally {
+        setSavingCount((c) => c - 1);
+      }
+      return;
+    }
 
     const query =
       nextType === null
@@ -465,7 +611,7 @@ export default function Roster(p: {
   }
 
   async function clearCell(opId: string, date: string) {
-    if (!p.canEdit) return;
+    if (!canOperate) return;
     setMsg('');
     const k = cellKey(opId, date);
     const existing = cell.get(k) ?? null;
@@ -474,6 +620,36 @@ export default function Roster(p: {
     setUndoStack((s) => [...s.slice(-29), [{ kind: 'shift', opId, date, prev: existing, next: null }]]);
     setRedoStack([]);
     setSavingCount((c) => c + 1);
+
+    if (isPropose) {
+      try {
+        const reqId = await ensureDraftRequestId();
+        const sb = supabaseBrowser();
+        await sb.from('change_request_items').delete().eq('request_id', reqId).eq('operator_id', opId).eq('schedule_date', date);
+        const { data, error } = await sb.from('change_request_items').insert({
+          request_id: reqId,
+          organization_id: p.orgId,
+          target_table: 'schedule_assignments',
+          action: 'delete',
+          operator_id: opId,
+          schedule_date: date,
+          original_state: existing ? { shift_type_id: existing.shift_type_id, area_code_id: existing.area_code_id } : null,
+          status: 'pending',
+        }).select();
+        if (error) throw error;
+        if (data) {
+          setDraftItems((prevItems) => [...prevItems.filter((x) => !(x.operator_id === opId && x.schedule_date === date)), data[0]]);
+        }
+      } catch (err: any) {
+        rollbackShiftKeys([{ opId, date, prev: existing }]);
+        setSaveState('error');
+        setMsg(friendlyError(err.message, p.role));
+      } finally {
+        setSavingCount((c) => c - 1);
+      }
+      return;
+    }
+
     const { error } = await supabaseBrowser().from('schedule_assignments').delete().eq('operator_id', opId).eq('schedule_date', date);
     setSavingCount((c) => c - 1);
     if (error) {
@@ -484,7 +660,7 @@ export default function Roster(p: {
   }
 
   async function fillRight(opId: string, fromDate: string) {
-    if (!p.canEdit) return;
+    if (!canOperate) return;
     const source = cell.get(cellKey(opId, fromDate));
     if (!source) {
       setMsg('Select a cell with an assignment before filling right.');
@@ -518,6 +694,42 @@ export default function Roster(p: {
     setUndoStack((s) => [...s.slice(-29), history]);
     setRedoStack([]);
     setSavingCount((c) => c + 1);
+
+    if (isPropose) {
+      try {
+        const reqId = await ensureDraftRequestId();
+        const sb = supabaseBrowser();
+        const newDraftList = [...draftItems];
+        for (const item of history) {
+          const h = item as ShiftHistoryItem;
+          await sb.from('change_request_items').delete().eq('request_id', reqId).eq('operator_id', h.opId).eq('schedule_date', h.date);
+          const { data } = await sb.from('change_request_items').insert({
+            request_id: reqId,
+            organization_id: p.orgId,
+            target_table: 'schedule_assignments',
+            action: 'upsert',
+            operator_id: h.opId,
+            schedule_date: h.date,
+            shift_type_id: source.shift_type_id,
+            area_code_id: source.area_code_id,
+            original_state: h.prev ? { shift_type_id: h.prev.shift_type_id, area_code_id: h.prev.area_code_id } : null,
+            status: 'pending',
+          }).select();
+          if (data) {
+            newDraftList.push(data[0]);
+          }
+        }
+        setDraftItems(newDraftList);
+      } catch (err: any) {
+        rollbackShiftKeys(history.map((h) => ({ opId: h.opId, date: h.date, prev: (h as ShiftHistoryItem).prev })));
+        setSaveState('error');
+        setMsg(friendlyError(err.message, p.role));
+      } finally {
+        setSavingCount((c) => c - 1);
+      }
+      return;
+    }
+
     const { error } = await supabaseBrowser()
       .from('schedule_assignments')
       .upsert(payload, { onConflict: 'operator_id,schedule_date' });
@@ -561,6 +773,58 @@ export default function Roster(p: {
     setRedoStack([]);
     setSavingCount((c) => c + 1);
 
+    if (isPropose) {
+      try {
+        const reqId = await ensureDraftRequestId();
+        const sb = supabaseBrowser();
+        const newDraftList = [...draftItems];
+        for (const u of batch.upserts) {
+          const prevEntry = batch.entries.find((e) => e.opId === u.operator_id && e.date === u.schedule_date);
+          await sb.from('change_request_items').delete().eq('request_id', reqId).eq('operator_id', u.operator_id).eq('schedule_date', u.schedule_date);
+          const { data } = await sb.from('change_request_items').insert({
+            request_id: reqId,
+            organization_id: p.orgId,
+            target_table: 'schedule_assignments',
+            action: 'upsert',
+            operator_id: u.operator_id,
+            schedule_date: u.schedule_date,
+            shift_type_id: u.shift_type_id,
+            area_code_id: u.area_code_id,
+            original_state: prevEntry?.prev ? { shift_type_id: prevEntry.prev.shift_type_id, area_code_id: prevEntry.prev.area_code_id } : null,
+            status: 'pending',
+          }).select();
+          if (data) {
+            newDraftList.push(data[0]);
+          }
+        }
+        for (const d of batch.deletes) {
+          const prevEntry = batch.entries.find((e) => e.opId === d.opId && e.date === d.date);
+          await sb.from('change_request_items').delete().eq('request_id', reqId).eq('operator_id', d.opId).eq('schedule_date', d.date);
+          const { data } = await sb.from('change_request_items').insert({
+            request_id: reqId,
+            organization_id: p.orgId,
+            target_table: 'schedule_assignments',
+            action: 'delete',
+            operator_id: d.opId,
+            schedule_date: d.date,
+            original_state: prevEntry?.prev ? { shift_type_id: prevEntry.prev.shift_type_id, area_code_id: prevEntry.prev.area_code_id } : null,
+            status: 'pending',
+          }).select();
+          if (data) {
+            newDraftList.push(data[0]);
+          }
+        }
+        setDraftItems(newDraftList);
+      } catch (err: any) {
+        rollbackShiftKeys(batch.entries.map((e) => ({ opId: e.opId, date: e.date, prev: e.prev })));
+        setSaveState('error');
+        setMsg(friendlyError(err.message, p.role));
+      } finally {
+        setSavingCount((c) => c - 1);
+      }
+      return;
+    }
+
     const sb = supabaseBrowser();
     let errMsg = '';
     if (batch.upserts.length > 0) {
@@ -591,7 +855,7 @@ export default function Roster(p: {
   });
 
   async function activateCell(opId: string, date: string) {
-    if (!p.canEdit) return;
+    if (!canOperate) return;
     setMsg('');
     if (mode === 'standby') {
       const existing = standbyMap.get(cellKey(opId, date));
@@ -609,6 +873,38 @@ export default function Roster(p: {
     setUndoStack((s) => [...s.slice(-29), [{ kind: 'shift', opId, date, prev: prevCell, next: row }]]);
     setRedoStack([]);
     setSavingCount((c) => c + 1);
+
+    if (isPropose) {
+      try {
+        const reqId = await ensureDraftRequestId();
+        const sb = supabaseBrowser();
+        await sb.from('change_request_items').delete().eq('request_id', reqId).eq('operator_id', opId).eq('schedule_date', date);
+        const { data, error } = await sb.from('change_request_items').insert({
+          request_id: reqId,
+          organization_id: p.orgId,
+          target_table: 'schedule_assignments',
+          action: 'upsert',
+          operator_id: opId,
+          schedule_date: date,
+          shift_type_id: shiftId,
+          area_code_id: areaId,
+          original_state: prevCell ? { shift_type_id: prevCell.shift_type_id, area_code_id: prevCell.area_code_id } : null,
+          status: 'pending',
+        }).select();
+        if (error) throw error;
+        if (data) {
+          setDraftItems((prevItems) => [...prevItems.filter((x) => !(x.operator_id === opId && x.schedule_date === date)), data[0]]);
+        }
+      } catch (err: any) {
+        rollbackShiftKeys([{ opId, date, prev: prevCell }]);
+        setSaveState('error');
+        setMsg(friendlyError(err.message, p.role));
+      } finally {
+        setSavingCount((c) => c - 1);
+      }
+      return;
+    }
+
     const { error } = await supabaseBrowser()
       .from('schedule_assignments')
       .upsert({ ...row, organization_id: p.orgId }, { onConflict: 'operator_id,schedule_date' });
@@ -643,7 +939,7 @@ export default function Roster(p: {
       return;
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
       e.preventDefault();
-      if (!clipboard || !p.canEdit) return;
+      if (!clipboard || !canOperate) return;
       if (!clipboard.shift_type_id && !clipboard.area_code_id) {
         void clearCell(op.id, date);
         return;
@@ -654,6 +950,40 @@ export default function Roster(p: {
       setUndoStack((s) => [...s.slice(-29), [{ kind: 'shift', opId: op.id, date, prev: prevCell, next: nextRow }]]);
       setRedoStack([]);
       setSavingCount((c) => c + 1);
+
+      if (isPropose) {
+        void (async () => {
+          try {
+            const reqId = await ensureDraftRequestId();
+            const sb = supabaseBrowser();
+            await sb.from('change_request_items').delete().eq('request_id', reqId).eq('operator_id', op.id).eq('schedule_date', date);
+            const { data, error } = await sb.from('change_request_items').insert({
+              request_id: reqId,
+              organization_id: p.orgId,
+              target_table: 'schedule_assignments',
+              action: 'upsert',
+              operator_id: op.id,
+              schedule_date: date,
+              shift_type_id: clipboard.shift_type_id,
+              area_code_id: clipboard.area_code_id,
+              original_state: prevCell ? { shift_type_id: prevCell.shift_type_id, area_code_id: prevCell.area_code_id } : null,
+              status: 'pending',
+            }).select();
+            if (error) throw error;
+            if (data) {
+              setDraftItems((prevItems) => [...prevItems.filter((x) => !(x.operator_id === op.id && x.schedule_date === date)), data[0]]);
+            }
+          } catch (err: any) {
+            rollbackShiftKeys([{ opId: op.id, date, prev: prevCell }]);
+            setSaveState('error');
+            setMsg(friendlyError(err.message, p.role));
+          } finally {
+            setSavingCount((c) => c - 1);
+          }
+        })();
+        return;
+      }
+
       void supabaseBrowser()
         .from('schedule_assignments')
         .upsert({ ...nextRow, organization_id: p.orgId }, { onConflict: 'operator_id,schedule_date' })
@@ -929,7 +1259,7 @@ export default function Roster(p: {
         </div>
       )}
 
-      {showHint && p.canEdit && (
+      {showHint && canOperate && (
         <div
           className="no-print"
           role="note"
@@ -965,7 +1295,7 @@ export default function Roster(p: {
       )}
 
       {/* Shift Legend (for viewers, print, or mobile drawer toggle) */}
-      {(!p.canEdit || mobileToolsOpen) && (
+      {(!canOperate || mobileToolsOpen) && (
         <div
           className="card"
           style={{
@@ -1001,8 +1331,8 @@ export default function Roster(p: {
         </div>
       )}
 
-      {/* Paint Palette Bar (Editors only; collapsible on mobile) */}
-      {p.canEdit && (
+      {/* Paint Palette Bar (Editors and Proposers; collapsible on mobile) */}
+      {canOperate && (
         <div
           className={`no-print card ${mobileToolsOpen ? '' : 'desktop-only'}`}
           style={{
@@ -1014,6 +1344,22 @@ export default function Roster(p: {
             padding: '7px 12px',
           }}
         >
+          {isPropose && (
+            <span
+              style={{
+                padding: '3px 8px',
+                borderRadius: 4,
+                background: '#fef3c7',
+                color: '#92400e',
+                fontSize: 11,
+                fontWeight: 700,
+                border: '1px solid #fde68a',
+                marginRight: 2,
+              }}
+            >
+              Propose Mode
+            </span>
+          )}
           <span
             style={{
               padding: '3px 9px',
@@ -1177,7 +1523,7 @@ export default function Roster(p: {
         standbyMap={standbyMap}
         shiftBy={shiftBy}
         areaBy={areaBy}
-        canEdit={p.canEdit}
+        canEdit={canOperate}
         onCellTap={(opId, date) => void activateCell(opId, date)}
         onCellMenu={(op, date, coords) =>
           setCtxMenu({
@@ -1293,9 +1639,19 @@ export default function Roster(p: {
                     {days.map((d, cIdx) => {
                       const k = cellKey(o.id, d.date);
                       const r = cell.get(k);
-                      const s = r?.shift_type_id ? shiftBy.get(r.shift_type_id) : undefined;
-                      const a = r?.area_code_id ? areaBy.get(r.area_code_id) : undefined;
-                      const sb = standbyMap.get(k);
+                      const pending = pendingMap.get(k);
+
+                      // If there is a pending proposal, override display shift and area
+                      const effShiftId = pending ? (pending.action === 'delete' ? null : (pending.shift_type_id ?? r?.shift_type_id)) : r?.shift_type_id;
+                      const effAreaId = pending ? (pending.action === 'delete' ? null : (pending.area_code_id ?? r?.area_code_id)) : r?.area_code_id;
+                      const s = effShiftId ? shiftBy.get(effShiftId) : undefined;
+                      const a = effAreaId ? areaBy.get(effAreaId) : undefined;
+
+                      const liveSb = standbyMap.get(k);
+                      const sb = pending && pending.standby_type !== undefined
+                        ? (pending.standby_type ? { standby_type: pending.standby_type } : undefined)
+                        : liveSb;
+
                       const pm = pmByCell.get(k);
 
                       const isLeave = isLeaveArea(a);
@@ -1315,7 +1671,11 @@ export default function Roster(p: {
                         s && !s.is_off
                           ? `${s.code}·${a?.code ?? 'PW'}`
                           : a?.code ?? s?.code ?? '';
-                      const classes = [isLeave || isRest ? 'cell-leave' : '', sb ? 'cell-oncall-active' : ''].filter(Boolean).join(' ');
+                      const classes = [
+                        isLeave || isRest ? 'cell-leave' : '',
+                        sb ? 'cell-oncall-active' : '',
+                        pending ? 'cell-pending' : '',
+                      ].filter(Boolean).join(' ');
                       const isFocused = focused.r === rIdx && focused.c === cIdx;
 
                       return (
@@ -1324,12 +1684,12 @@ export default function Roster(p: {
                           data-rc={`${rIdx}-${cIdx}`}
                           tabIndex={isFocused ? 0 : -1}
                           role="gridcell"
-                          aria-label={`${o.full_name}, ${d.date}, ${s ? s.code : 'No shift'}, ${cellText || 'none'}${sb ? `, Standby ${sb.standby_type}` : ''}`}
+                          aria-label={`${o.full_name}, ${d.date}, ${s ? s.code : 'No shift'}, ${cellText || 'none'}${sb ? `, Standby ${sb.standby_type}` : ''}${pending ? ' (Pending proposal)' : ''}`}
                           className={classes || undefined}
                           onFocus={() => setFocused({ r: rIdx, c: cIdx })}
                           onKeyDown={(e) => handleCellKeyDown(e, rIdx, cIdx, o, d.date)}
                           onPointerDown={(e) => {
-                            if (!p.canEdit || e.button !== 0) return;
+                            if (!canOperate || e.button !== 0) return;
                             setFocused({ r: rIdx, c: cIdx });
                             if (mode === 'standby') {
                               void activateCell(o.id, d.date);
@@ -1339,12 +1699,12 @@ export default function Roster(p: {
                             applyBrushLocal(o.id, d.date);
                           }}
                           onPointerEnter={() => {
-                            if (dragRef.current?.active && p.canEdit && mode !== 'standby') {
+                            if (dragRef.current?.active && canOperate && mode !== 'standby') {
                               applyBrushLocal(o.id, d.date);
                             }
                           }}
                           onTouchStart={(e) => {
-                            if (!p.canEdit) return;
+                            if (!canOperate) return;
                             const touch = e.touches[0];
                             longPressRef.current = setTimeout(() => {
                               setCtxMenu({ x: touch.clientX, y: touch.clientY, opId: o.id, opName: o.full_name, date: d.date });
@@ -1357,12 +1717,13 @@ export default function Roster(p: {
                             if (longPressRef.current) clearTimeout(longPressRef.current);
                           }}
                           onContextMenu={(e) => {
-                            if (!p.canEdit) return;
+                            if (!canOperate) return;
                             e.preventDefault();
                             setCtxMenu({ x: e.clientX, y: e.clientY, opId: o.id, opName: o.full_name, date: d.date });
                           }}
                           title={[
                             `${o.full_name} • ${d.date}`,
+                            pending ? `[Proposed: ${pending.isDraft ? 'Draft' : 'Pending Review'}]` : null,
                             s ? `${s.code}${s.description ? ` (${s.description})` : ''}` : null,
                             cellText ? `Area: ${a?.name ?? cellText}` : null,
                             sb ? `Standby: ${sb.standby_type}` : null,
@@ -1373,7 +1734,7 @@ export default function Roster(p: {
                           style={{
                             position: 'relative',
                             textAlign: 'center',
-                            cursor: p.canEdit ? 'pointer' : 'default',
+                            cursor: canOperate ? 'pointer' : 'default',
                             height: 28,
                             padding: '0 4px',
                             whiteSpace: 'nowrap',
@@ -1385,6 +1746,7 @@ export default function Roster(p: {
                             outlineOffset: -1.5,
                           }}
                         >
+                          {pending && <span className="pending-corner-mark" title="Pending proposed change" />}
                           {cellText}
                           {sb && (
                             <>
@@ -1619,6 +1981,108 @@ export default function Roster(p: {
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
               <button className="btn" onClick={() => setImportOpen(false)} disabled={importing}>
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Propose Mode Action Bar */}
+      {isPropose && draftItems.length > 0 && (
+        <aside
+          className="no-print"
+          aria-label="Pending proposal submission bar"
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 40,
+            background: 'var(--surface)',
+            border: '2px solid #f59e0b',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2)',
+            borderRadius: 12,
+            padding: '10px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#d97706', display: 'inline-block' }} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+              Propose Mode: {draftItems.length} change{draftItems.length === 1 ? '' : 's'} queued
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setSubmitModalOpen(true)}
+              style={{ padding: '6px 14px', fontSize: 12.5 }}
+            >
+              Submit for Approval
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => void discardDraftBatch()}
+              style={{ padding: '6px 12px', fontSize: 12.5, color: '#dc2626' }}
+            >
+              Discard
+            </button>
+          </div>
+        </aside>
+      )}
+
+      {/* Submit Proposal Dialog Modal */}
+      {submitModalOpen && (
+        <div
+          className="no-print modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="submit-proposal-title"
+          onClick={() => !isSubmittingDraft && setSubmitModalOpen(false)}
+        >
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440, display: 'grid', gap: 12 }}>
+            <h2 id="submit-proposal-title" style={{ margin: 0, fontSize: 17 }}>
+              Submit Schedule Proposal
+            </h2>
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
+              You have queued <strong>{draftItems.length}</strong> change{draftItems.length === 1 ? '' : 's'}. Admins and delegated approvers will review and approve them before they take effect on the live schedule.
+            </p>
+            <div>
+              <label htmlFor="submit-note-input" style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4, color: 'var(--text)' }}>
+                Optional Note / Reason:
+              </label>
+              <textarea
+                id="submit-note-input"
+                className="input"
+                rows={3}
+                placeholder="e.g. Schedule adjustments for pump maintenance coverage"
+                value={submitNote}
+                onChange={(e) => setSubmitNote(e.target.value)}
+                style={{ width: '100%', fontSize: 12.5 }}
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                disabled={isSubmittingDraft}
+                onClick={() => setSubmitModalOpen(false)}
+                style={{ padding: '6px 14px', fontSize: 12.5 }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={isSubmittingDraft}
+                onClick={() => void submitDraftBatch()}
+                style={{ padding: '6px 16px', fontSize: 12.5 }}
+              >
+                {isSubmittingDraft ? 'Submitting...' : `Submit ${draftItems.length} Change${draftItems.length === 1 ? '' : 's'}`}
               </button>
             </div>
           </div>

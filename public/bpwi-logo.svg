@@ -1,61 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 380" width="100%" height="100%">
-  <style>
-    @media (max-width: 140px) {
-      .logo-text { display: none; }
-    }
-  </style>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">
   <defs>
-    <clipPath id="inner-badge">
-      <rect x="16" y="14" width="468" height="352" rx="22" ry="22" />
+    <clipPath id="badge-shape">
+      <rect width="400" height="300" rx="36" ry="36" />
     </clipPath>
   </defs>
 
-  <!-- Outer White Rounded Badge Frame -->
-  <rect width="500" height="380" rx="36" ry="36" fill="#ffffff" stroke="rgba(0,0,0,0.06)" stroke-width="1.5" />
-
-  <!-- Inner Artwork clipped to rounded inner rectangle -->
-  <g clip-path="url(#inner-badge)">
+  <g clip-path="url(#badge-shape)">
     <!-- Top White Sky Area -->
-    <rect x="16" y="14" width="468" height="352" fill="#ffffff" />
+    <rect width="400" height="300" fill="#ffffff" />
 
-    <!-- Wave 1: Cyan / Cerulean (#03b2e1) -->
-    <path d="M 16,96
-             A 59.65 59.65 0 0 0 74.5,48
-             A 59.65 59.65 0 0 0 191.5,48
-             A 59.65 59.65 0 0 0 308.5,48
-             A 59.65 59.65 0 0 0 425.5,48
-             A 59.65 59.65 0 0 0 484,96
-             L 484,366 L 16,366 Z"
-          fill="#03b2e1" />
+    <!-- Wave 1: Sky Cyan (#00B3E3) -->
+    <path d="M 0,75 C 15,75 44,42 50,30 C 56,42 85,75 100,75 C 115,75 144,42 150,30 C 156,42 185,75 200,75 C 215,75 244,42 250,30 C 256,42 285,75 300,75 C 315,75 344,42 350,30 C 356,42 385,75 400,75 L 400,300 L 0,300 Z" fill="#00B3E3" />
 
-    <!-- Wave 2: Ocean Blue (#2474bb) -->
-    <path d="M 16,186
-             A 59.65 59.65 0 0 0 74.5,138
-             A 59.65 59.65 0 0 0 191.5,138
-             A 59.65 59.65 0 0 0 308.5,138
-             A 59.65 59.65 0 0 0 425.5,138
-             A 59.65 59.65 0 0 0 484,186
-             L 484,366 L 16,366 Z"
-          fill="#2474bb" />
+    <!-- Wave 2: Ocean Blue (#0074C8) -->
+    <path d="M 0,140 C 15,140 44,107 50,95 C 56,107 85,140 100,140 C 115,140 144,107 150,95 C 156,107 185,140 200,140 C 215,140 244,107 250,95 C 256,107 285,140 300,140 C 315,140 344,107 350,95 C 356,107 385,140 400,140 L 400,300 L 0,300 Z" fill="#0074C8" />
 
-    <!-- Wave 3: Deep Maritime Navy (#1c3c6d) -->
-    <path d="M 16,276
-             A 59.65 59.65 0 0 0 74.5,228
-             A 59.65 59.65 0 0 0 191.5,228
-             A 59.65 59.65 0 0 0 308.5,228
-             A 59.65 59.65 0 0 0 425.5,228
-             A 59.65 59.65 0 0 0 484,276
-             L 484,366 L 16,366 Z"
-          fill="#1c3c6d" />
-
-    <!-- Authentic Brand Typography in Navy Base -->
-    <text class="logo-text"
-          x="446" y="328"
-          text-anchor="end"
-          fill="#ffffff"
-          font-family="Georgia, 'Times New Roman', serif"
-          font-size="28"
-          font-weight="600"
-          letter-spacing="0.4">BP Waterworks, Inc.</text>
+    <!-- Wave 3: Deep Maritime Navy (#103A71) -->
+    <path d="M 0,205 C 15,205 44,172 50,160 C 56,172 85,205 100,205 C 115,205 144,172 150,160 C 156,172 185,205 200,205 C 215,205 244,172 250,160 C 256,172 285,205 300,205 C 315,205 344,172 350,160 C 356,172 385,205 400,205 L 400,300 L 0,300 Z" fill="#103A71" />
   </g>
+
+  <!-- Clean Subtle Perimeter Border -->
+  <rect width="400" height="300" rx="36" ry="36" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="2" />
 </svg>

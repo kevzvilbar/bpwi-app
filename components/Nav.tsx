@@ -94,8 +94,10 @@ export default function Nav(p: {
   canEdit: boolean;
   /** Bulk schedule generation (admins and schedulers only). Defaults to canEdit. */
   canGenerate?: boolean;
+  canApprove?: boolean;
   isAdmin: boolean;
   pendingUsersCount?: number;
+  pendingRequestsCount?: number;
 }) {
   const path = usePathname();
   const canGenerate = p.canGenerate ?? p.canEdit;
@@ -271,6 +273,42 @@ export default function Nav(p: {
         </nav>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {(p.canApprove || p.role === 'manager') && (
+            <Link
+              href="/requests"
+              className="desktop-only"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '3px 8px',
+                borderRadius: 6,
+                fontSize: 12,
+                fontWeight: 700,
+                textDecoration: 'none',
+                background: path.startsWith('/requests') ? 'var(--primary)' : 'var(--surface-muted)',
+                color: path.startsWith('/requests') ? 'var(--primary-fg)' : 'var(--text)',
+                border: '1px solid var(--border)',
+              }}
+            >
+              <span>Requests</span>
+              {(p.pendingRequestsCount ?? 0) > 0 && (
+                <span
+                  style={{
+                    background: '#f59e0b',
+                    color: '#ffffff',
+                    borderRadius: 999,
+                    padding: '1px 5px',
+                    fontSize: 10,
+                    fontWeight: 800,
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {p.pendingRequestsCount}
+                </span>
+              )}
+            </Link>
+          )}
           <span
             className="desktop-only"
             style={{
@@ -297,15 +335,15 @@ export default function Nav(p: {
             ref={menuBtnRef}
             className="btn"
             onClick={() => setDrawerOpen(true)}
-            aria-label={p.isAdmin && (p.pendingUsersCount ?? 0) > 0 ? `Open menu (${p.pendingUsersCount} pending approvals)` : 'Open menu'}
+            aria-label="Open menu"
             aria-expanded={drawerOpen}
           >
             <Icon name="menu" />
             <span>Menu</span>
-            {p.isAdmin && (p.pendingUsersCount ?? 0) > 0 && (
+            {(((p.canApprove || p.role === 'manager') && (p.pendingRequestsCount ?? 0) > 0) || (p.isAdmin && (p.pendingUsersCount ?? 0) > 0)) && (
               <span
                 style={{
-                  background: '#dc2626',
+                  background: (p.isAdmin && (p.pendingUsersCount ?? 0) > 0) ? '#dc2626' : '#f59e0b',
                   color: '#ffffff',
                   borderRadius: 999,
                   padding: '1px 6px',
@@ -314,7 +352,7 @@ export default function Nav(p: {
                   lineHeight: 1.3,
                 }}
               >
-                {p.pendingUsersCount}
+                {(p.isAdmin && (p.pendingUsersCount ?? 0) > 0 ? (p.pendingUsersCount ?? 0) : 0) + (p.pendingRequestsCount ?? 0)}
               </span>
             )}
           </button>
@@ -378,15 +416,35 @@ export default function Nav(p: {
               </button>
             </div>
 
-            {(canGenerate || p.isAdmin) && (
+            {(canGenerate || p.isAdmin || p.canApprove || p.role === 'manager') && (
               <>
                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                  Administration
+                  {p.isAdmin || p.canApprove ? 'Administration' : 'Management'}
                 </div>
                 <div style={{ display: 'grid', gap: 6 }}>
                   {canGenerate && (
                     <Link href="/generate" className="btn" style={{ justifyContent: 'flex-start', textDecoration: 'none' }}>
                       Generate Schedule
+                    </Link>
+                  )}
+                  {(p.canApprove || p.role === 'manager') && (
+                    <Link href="/requests" className="btn" style={{ justifyContent: 'space-between', textDecoration: 'none' }}>
+                      <span>Change Requests</span>
+                      {(p.pendingRequestsCount ?? 0) > 0 && (
+                        <span
+                          style={{
+                            background: '#fef3c7',
+                            color: '#b45309',
+                            border: '1px solid #fde68a',
+                            borderRadius: 999,
+                            padding: '1px 7px',
+                            fontSize: 11,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {p.pendingRequestsCount} pending
+                        </span>
+                      )}
                     </Link>
                   )}
                   {p.isAdmin && (

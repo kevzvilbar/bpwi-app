@@ -38,6 +38,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     userEmail: '',
     isActive: true,
     pendingUsersCount: 0,
+    pendingRequestsCount: 0,
     role: 'viewer',
     name: '',
     orgId: '',
@@ -45,6 +46,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     appTitle: 'Operations & Plant Schedule',
     canEdit: false,
     canGenerate: false,
+    canApprove: false,
     isAdmin: false,
     isManager: false,
     editGrant: null as EditGrant | null,
@@ -58,6 +60,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         userEmail: p.user?.email ?? '',
         isActive: p.isActive,
         pendingUsersCount: p.pendingUsersCount,
+        pendingRequestsCount: p.pendingRequestsCount,
         role: p.role,
         name: p.name,
         orgId: p.orgId,
@@ -65,6 +68,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         appTitle: p.appTitle,
         canEdit: p.canEdit,
         canGenerate: p.canGenerate,
+        canApprove: p.canApprove,
         isAdmin: p.isAdmin,
         isManager: p.isManager,
         editGrant: p.editGrant,
@@ -88,8 +92,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           appTitle={profile.appTitle}
           canEdit={profile.canEdit}
           canGenerate={profile.canGenerate}
+          canApprove={profile.canApprove}
           isAdmin={profile.isAdmin}
           pendingUsersCount={profile.pendingUsersCount}
+          pendingRequestsCount={profile.pendingRequestsCount}
         />
         {profile.isManager && <EditAccessBanner active={profile.editGrant} next={profile.nextGrant} />}
         <main className="app-main">

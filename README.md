@@ -9,13 +9,18 @@
    (or call it from a small admin page). Re-running is safe.
 5. Deploy: import the repo in Vercel, add the three env vars (`SUPABASE_SECRET_KEY` server-only).
 
-## Department heads (migrations 007 + 008)
-Run `007_manager_role.sql` **on its own first** (PostgreSQL cannot use a new enum value in the transaction that adds it), then `008_department_heads.sql`.
+## Department heads (migrations 007, 008 & 009)
+Run `007_manager_role.sql` **on its own first** (PostgreSQL cannot use a new enum value in the transaction that adds it), then `008_department_heads.sql`, followed by `009_change_requests.sql`.
 
-- Give a user the **department head** role under Operators & Setup → Users & roles. They are not added to the roster.
-- Department heads are **read-only by default**. Under Setup → **Department heads**, an admin opens an *edit window* (start/end time in Manila time, optionally limited to a date range, max 14 days). Inside it they can change schedule, standby, leave and PM tasks directly; outside it they are read-only again. Windows are enforced by the database (row-level security, using the server clock), can be revoked at any time, and every change is recorded in the Activity log under their name.
-- Department heads with an active account appear on the **Call Sheet** as escalation contacts (set their job title and phone in the same tab).
-- *Delegated approvers*: admins can mark other users as approvers (`user_profiles.can_approve`). This is groundwork for the approval queue and has no effect yet.
+- Give a user the **department head** role (`manager`) under Operators & Setup → Users & roles. They are login-only and do not appear on the roster.
+- **Two Operating Modes:**
+  1. **Direct Edit Mode (Active Edit Window):** Under Setup → **Department heads**, an admin can grant a time-limited edit window (e.g. 24–72 hours, max 14 days, with optional schedule date range limits). During an active window, edits save directly to schedule tables like a scheduler.
+  2. **Propose Mode (Default outside windows):** Edits made outside a window queue into a draft change request. On the monthly roster, proposed edits appear as dashed cells (`.cell-pending`) with amber corner markers. Department heads see a floating bar showing queued changes and click **Submit for Approval** with an optional note.
+- **Review & Approval Queue (`/requests`):**
+  - Admins and delegated approvers (`can_approve = true`) review proposals before-and-after diffs with conflict detection.
+  - If a cell changed after a proposal was drafted, it is flagged with a warning (`⚠️ Live conflict`) instead of being silently overwritten.
+  - Approvers can **Approve All**, **Approve Selected**, or **Reject** with a recorded reason. Approval applies atomically in a single Postgres transaction (`approve_change_request`).
+- **Escalation Contacts:** Department heads appear on the **Call Sheet** under *Management escalation* with direct call and SMS buttons.
 
 ## Included (v1 core)
 Login, role-aware monthly roster with click-to-paint (admin/scheduler), RLS, audit triggers, realtime-ready tables, JSON importer.

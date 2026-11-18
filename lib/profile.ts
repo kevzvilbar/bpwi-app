@@ -10,6 +10,59 @@ export type EditGrant = {
   note: string | null;
 };
 
+/** A change request submitted by a department head in Propose mode (see supabase/migrations/009). */
+export type ChangeRequest = {
+  id: string;
+  organization_id: string;
+  requester_id: string;
+  requester_name?: string;
+  requester_role?: string;
+  title?: string | null;
+  note?: string | null;
+  status: 'draft' | 'pending' | 'approved' | 'partially_approved' | 'rejected' | 'cancelled';
+  submitted_at?: string | null;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
+  reviewed_by_name?: string | null;
+  review_notes?: string | null;
+  created_at: string;
+  updated_at: string;
+  items?: ChangeRequestItem[];
+  items_count?: number;
+};
+
+/** Individual change item within a change request. */
+export type ChangeRequestItem = {
+  id: string;
+  request_id: string;
+  organization_id: string;
+  target_table: 'schedule_assignments' | 'standby_assignments' | 'pm_tasks' | 'leave_records';
+  target_id?: string | null;
+  action: 'upsert' | 'delete';
+  operator_id?: string | null;
+  operator_name?: string | null;
+  schedule_date?: string | null;
+  shift_type_id?: string | null;
+  shift_code?: string | null;
+  area_code_id?: string | null;
+  area_code?: string | null;
+  standby_type?: string | null;
+  pm_task_id?: string | null;
+  pm_title?: string | null;
+  pm_status?: string | null;
+  pm_assigned_operator_ids?: string[] | null;
+  leave_code?: string | null;
+  leave_start_date?: string | null;
+  leave_end_date?: string | null;
+  notes?: string | null;
+  original_state?: any;
+  payload?: any;
+  status: 'pending' | 'approved' | 'rejected' | 'conflict';
+  rejection_reason?: string | null;
+  applied_at?: string | null;
+  created_at: string;
+};
+
 export const getProfile = cache(async () => {
   const sb = await supabaseServer();
   const {
@@ -86,6 +139,9 @@ export const getProfile = cache(async () => {
     }
   }
 
+  const canApprove = isActive && (role === 'admin' || prof?.can_approve === true);
+  const canPropose = isActive && isManager && editGrant === null;
+
   let pendingUsersCount = 0;
   if (isAdmin && orgId) {
     const { count } = await sb
@@ -95,23 +151,43 @@ export const getProfile = cache(async () => {
     pendingUsersCount = count ?? 0;
   }
 
+  let pendingRequestsCount = 0;
+  if (user && orgId) {
+    if (canApprove) {
+      const { count } = await sb
+        .from('change_requests')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'pending');
+      pendingRequestsCount = count ?? 0;
+    } else if (isManager) {
+      const { count } = await sb
+        .from('change_requests')
+        .select('id', { count: 'exact', head: true })
+        .eq('requester_id', user.id)
+        .in('status', ['draft', 'pending']);
+      pendingRequestsCount = count ?? 0;
+    }
+  }
+
   return {
     sb,
     user,
     role,
     isActive,
     pendingUsersCount,
+    pendingRequestsCount,
     orgId,
     orgName,
     appTitle,
     operatorId: (prof?.operator_id ?? null) as string | null,
     name: (prof?.full_name ?? (user?.user_metadata?.full_name as string | undefined) ?? '') as string,
     canEdit: isActive && (role === 'admin' || role === 'scheduler' || (isManager && editGrant !== null)),
+    canPropose,
     canClosePm: isActive && (role === 'admin' || role === 'scheduler' || role === 'operator' || (isManager && editGrant !== null)),
     /** Bulk schedule generation stays with admins and schedulers. */
     canGenerate: isActive && (role === 'admin' || role === 'scheduler'),
-    /** Admins, plus anyone an admin has delegated approval to (used by the upcoming change-request queue). */
-    canApprove: isActive && (role === 'admin' || prof?.can_approve === true),
+    /** Admins, plus anyone an admin has delegated approval to. */
+    canApprove,
     isAdmin,
     isManager,
     editGrant,
