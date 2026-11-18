@@ -583,28 +583,28 @@ export default function OrgChart(p: Props) {
         </div>
 
         {/* Horizontal Bus Bar connecting Managing Head down to Department Heads */}
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${totalTeamCols}, minmax(205px, 1fr))`, gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${totalTeamCols}, minmax(205px, 1fr))`, columnGap: 12 }}>
           {headColumns.map((col, idx) => (
-            <div key={`stem-${col.head.id}`} style={{ gridColumn: `span ${col.span}`, position: 'relative', height: 18 }}>
-              {/* Horizontal line across heads */}
+            <div key={`stem-${col.head.id}`} style={{ gridColumn: `span ${col.span}`, position: 'relative', height: 20 }}>
+              {/* Continuous horizontal line bridging column gaps */}
               <div
                 style={{
                   position: 'absolute',
                   top: 0,
-                  left: idx === 0 ? '50%' : 0,
-                  right: idx === headColumns.length - 1 ? '50%' : 0,
+                  left: idx === 0 ? '50%' : -6,
+                  right: idx === headColumns.length - 1 ? '50%' : -6,
                   height: 2,
                   background: '#94a3b8',
                 }}
               />
-              {/* Vertical drop to Head card */}
+              {/* Vertical drop touching Head card */}
               <div
                 style={{
                   position: 'absolute',
                   top: 0,
                   left: '50%',
                   width: 2,
-                  height: 18,
+                  height: 20,
                   background: '#94a3b8',
                   transform: 'translateX(-50%)',
                 }}
@@ -613,76 +613,113 @@ export default function OrgChart(p: Props) {
           ))}
         </div>
 
-        {/* Tier 2: Department Heads (each spans 1 or more team columns) */}
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${totalTeamCols}, minmax(205px, 1fr))`, gap: 12, alignItems: 'start' }}>
-          {headColumns.map(({ head, span }) => (
-            <div key={head.id} style={{ gridColumn: `span ${span}` }}>
-              {renderPersonCard(head, false, true)}
-            </div>
-          ))}
-        </div>
+        {/* Tier 2 & 3: Department Heads + Optional Leadman + Side-by-Side Team Columns */}
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${totalTeamCols}, minmax(205px, 1fr))`, columnGap: 12, alignItems: 'start' }}>
+          {headColumns.map(({ head, groups, span }) => {
+            const headLeadmen = leadmen.filter((l) => l.parent_position_id === head.id);
+            const teamCols = groups.length ? groups : [];
+            return (
+              <div key={head.id} style={{ gridColumn: `span ${span}`, display: 'flex', flexDirection: 'column' }}>
+                {renderPersonCard(head, false, true)}
 
-        {/* Tier 2.5: Leadman Bridge Row (centered under Technical / Plant Ops) */}
-        {leadmen.length > 0 && (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, padding: '10px 0 4px', position: 'relative' }}>
-            {leadmen.map((lm) => (
-              <div key={lm.id} style={{ minWidth: 250, borderRadius: 8, boxShadow: '0 2px 6px rgba(2,132,199,0.12)' }}>
-                {renderPersonCard(lm, true)}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Vertical drops from Heads into each Team Column */}
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${totalTeamCols}, minmax(205px, 1fr))`, gap: 12 }}>
-          {headColumns.flatMap(({ head, groups }) =>
-            (groups.length ? groups : [[head.department_group || 'TEAM', []] as [string, OrgPositionRow[]]]).map(([gName]) => (
-              <div key={`drop-${head.id}-${gName}`} style={{ display: 'flex', justifyContent: 'center', height: 14 }}>
-                <div style={{ width: 2, height: '100%', background: '#94a3b8' }} />
-              </div>
-            )),
-          )}
-        </div>
-
-        {/* Tier 3: Side-by-Side Team Columns (5 columns matching Master Chart) */}
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${totalTeamCols}, minmax(205px, 1fr))`, gap: 12, alignItems: 'start' }}>
-          {headColumns.flatMap(({ head, groups }) =>
-            groups.length
-              ? groups.map(([groupName, members]) => (
-                  <div
-                    key={`${head.id}-${groupName}`}
-                    style={{
-                      background: '#ffffff',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: 8,
-                      padding: 10,
-                      display: 'grid',
-                      gap: 7,
-                    }}
-                  >
-                    <div style={{ fontSize: 10.5, fontWeight: 800, color: '#0369a1', letterSpacing: '0.03em' }}>
-                      {groupName}
+                {headLeadmen.length > 0 && (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'center', height: 14 }}>
+                      <div style={{ width: 2, height: '100%', background: '#94a3b8' }} />
                     </div>
-                    {members.map((m) => renderPersonCard(m, true))}
-                  </div>
-                ))
-              : [
-                  <div
-                    key={`${head.id}-empty`}
-                    style={{
-                      background: '#ffffff',
-                      border: '1px dashed #cbd5e1',
-                      borderRadius: 8,
-                      padding: 10,
-                      fontSize: 11.5,
-                      color: '#64748b',
-                      textAlign: 'center',
-                    }}
-                  >
-                    No staff assigned yet
-                  </div>,
-                ],
-          )}
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
+                      {headLeadmen.map((lm) => (
+                        <div key={lm.id} style={{ minWidth: 230, maxWidth: 290, width: '100%' }}>
+                          {renderPersonCard(lm, true)}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {teamCols.length > 0 ? (
+                  <>
+                    {/* Stem down from Head / Leadman */}
+                    <div style={{ display: 'flex', justifyContent: 'center', height: 14 }}>
+                      <div style={{ width: 2, height: '100%', background: '#94a3b8' }} />
+                    </div>
+
+                    {/* Branching horizontal line when Head has 2+ team columns */}
+                    {teamCols.length > 1 && (
+                      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${teamCols.length}, 1fr)`, columnGap: 12 }}>
+                        {teamCols.map(([gName], gIdx) => (
+                          <div key={`substem-${head.id}-${gName}`} style={{ position: 'relative', height: 14 }}>
+                            <div
+                              style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: gIdx === 0 ? '50%' : -6,
+                                right: gIdx === teamCols.length - 1 ? '50%' : -6,
+                                height: 2,
+                                background: '#94a3b8',
+                              }}
+                            />
+                            <div
+                              style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: '50%',
+                                width: 2,
+                                height: 14,
+                                background: '#94a3b8',
+                                transform: 'translateX(-50%)',
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Team Boxes */}
+                    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${teamCols.length}, 1fr)`, columnGap: 12, alignItems: 'start' }}>
+                      {teamCols.map(([groupName, members]) => (
+                        <div
+                          key={`${head.id}-${groupName}`}
+                          style={{
+                            background: '#ffffff',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: 8,
+                            padding: 10,
+                            display: 'grid',
+                            gap: 7,
+                          }}
+                        >
+                          <div style={{ fontSize: 10.5, fontWeight: 800, color: '#0369a1', letterSpacing: '0.03em' }}>
+                            {groupName}
+                          </div>
+                          {members.map((m) => renderPersonCard(m, true))}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'center', height: 14 }}>
+                      <div style={{ width: 2, height: '100%', background: '#94a3b8' }} />
+                    </div>
+                    <div
+                      style={{
+                        background: '#ffffff',
+                        border: '1px dashed #cbd5e1',
+                        borderRadius: 8,
+                        padding: 10,
+                        fontSize: 11.5,
+                        color: '#64748b',
+                        textAlign: 'center',
+                      }}
+                    >
+                      No staff assigned yet
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {orphanStaff.length > 0 && (
