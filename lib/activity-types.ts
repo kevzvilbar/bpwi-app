@@ -1,0 +1,245 @@
+export type ActivityCategory = 'plant' | 'network' | 'metering' | 'grounds';
+
+export const ACTIVITY_CATEGORIES: ActivityCategory[] = ['plant', 'network', 'metering', 'grounds'];
+
+export interface ActivityTypeDef {
+  id: string;
+  label: string;
+  shortLabel: string;
+  category: ActivityCategory;
+  color: string;
+}
+
+export const ACTIVITY_CATEGORY_LABELS: Record<ActivityCategory, string> = {
+  plant: 'Plant & Pump Ops',
+  network: 'Network & Distribution',
+  metering: 'Customer & Metering',
+  grounds: 'Grounds & General',
+};
+
+export const ACTIVITY_TYPES: ActivityTypeDef[] = [
+  // Plant & Pump Ops
+  { id: 'pump_monitoring', label: 'Pump House Monitoring', shortLabel: 'Pump Mon', category: 'plant', color: '#0369a1' },
+  { id: 'genset_monitoring', label: 'Genset Monitoring', shortLabel: 'Genset', category: 'plant', color: '#b45309' },
+  { id: 'backwash', label: 'Backwash', shortLabel: 'Backwash', category: 'plant', color: '#0284c7' },
+  { id: 'tank_cleaning', label: 'Tank Cleaning', shortLabel: 'Tank Clean', category: 'plant', color: '#0d9488' },
+  { id: 'tank_opening', label: 'Tank Opening & Closing', shortLabel: 'Tank Valve', category: 'plant', color: '#0f766e' },
+  { id: 'water_sampling', label: 'Water Sampling / Chlorination', shortLabel: 'Sampling', category: 'plant', color: '#0891b2' },
+  { id: 'well_pull_out', label: 'Well Pull-Out', shortLabel: 'Pull-Out', category: 'plant', color: '#db2777' },
+
+  // Network & Distribution
+  { id: 'leak_repair', label: 'Leak Repair', shortLabel: 'Leak Repair', category: 'network', color: '#dc2626' },
+  { id: 'leak_detection', label: 'Leak Detection', shortLabel: 'Leak Detect', category: 'network', color: '#ea580c' },
+  { id: 'flushing', label: 'Flushing', shortLabel: 'Flushing', category: 'network', color: '#2563eb' },
+  { id: 'hydro_testing', label: 'Hydro Testing', shortLabel: 'Hydro Test', category: 'network', color: '#4f46e5' },
+  { id: 'tankering', label: 'Water Hauling', shortLabel: 'Hauling', category: 'network', color: '#7c3aed' },
+
+  // Customer & Metering
+  { id: 'meter_inst', label: 'Meter Installation', shortLabel: 'Meter Inst', category: 'metering', color: '#16a34a' },
+  { id: 'meter_replacement', label: 'Meter Replacement', shortLabel: 'Meter Repl', category: 'metering', color: '#15803d' },
+  { id: 'meter_test', label: 'Meter Test', shortLabel: 'Meter Test', category: 'metering', color: '#9333ea' },
+  { id: 'meter_check_bulk', label: 'Meter Checking (Bulk)', shortLabel: 'Bulk Meter', category: 'metering', color: '#6d28d9' },
+  { id: 'meter_check_indiv', label: 'Meter Checking (Individual)', shortLabel: 'Indiv Meter', category: 'metering', color: '#7e22ce' },
+  { id: 'reconnection', label: 'Reconnection', shortLabel: 'Reconnect', category: 'metering', color: '#059669' },
+
+  // Grounds & General
+  { id: 'garbage_collection', label: 'Garbage Collection', shortLabel: 'Garbage', category: 'grounds', color: '#475569' },
+  { id: 'plant_watering', label: 'Plant Watering', shortLabel: 'Grounds', category: 'grounds', color: '#65a30d' },
+];
+
+export const ACTIVITY_BY_ID: Record<string, ActivityTypeDef> = Object.fromEntries(
+  ACTIVITY_TYPES.map((a) => [a.id, a]),
+);
+
+export const ACTIVITY_TYPE_MAP: Record<string, string> = Object.fromEntries(
+  ACTIVITY_TYPES.map((a) => [a.id, a.label]),
+);
+
+export type MeterTestVerdict = 'Passed' | 'Fast Moving' | 'Slow Moving';
+export type MeterTestRecommendation = 'Retain' | 'Replace';
+
+export interface MeterTestCalculation {
+  err1: number | null;
+  err2: number | null;
+  err3: number | null;
+  avgErr: number | null;
+  verdict: MeterTestVerdict | null;
+  recommendation: MeterTestRecommendation | null;
+}
+
+/**
+ * Computes 3-trial volumetric meter test errors (default reference volume 10 L = 0.01 m³).
+ * Threshold: within ±5% is Passed/Retain; > +5% is Fast Moving/Replace; < -5% is Slow Moving/Replace.
+ */
+export function computeMeterTestResult(
+  initial: number | null | undefined,
+  r1: number | null | undefined,
+  r2: number | null | undefined,
+  r3: number | null | undefined,
+  refVolCubicMeters = 0.01,
+): MeterTestCalculation {
+  const validNum = (n: number | null | undefined): n is number =>
+    typeof n === 'number' && Number.isFinite(n);
+
+  if (refVolCubicMeters <= 0) {
+    return { err1: null, err2: null, err3: null, avgErr: null, verdict: null, recommendation: null };
+  }
+
+  let validCount = 0;
+  let totalRegistered = 0;
+
+  const err1 =
+    validNum(initial) && validNum(r1)
+      ? (((r1 - initial) / refVolCubicMeters) - 1) * 100
+      : null;
+  if (err1 !== null && validNum(initial) && validNum(r1)) {
+    validCount += 1;
+    totalRegistered += r1 - initial;
+  }
+
+  const err2 =
+    validNum(r1) && validNum(r2)
+      ? (((r2 - r1) / refVolCubicMeters) - 1) * 100
+      : null;
+  if (err2 !== null && validNum(r1) && validNum(r2)) {
+    validCount += 1;
+    totalRegistered += r2 - r1;
+  }
+
+  const err3 =
+    validNum(r2) && validNum(r3)
+      ? (((r3 - r2) / refVolCubicMeters) - 1) * 100
+      : null;
+  if (err3 !== null && validNum(r2) && validNum(r3)) {
+    validCount += 1;
+    totalRegistered += r3 - r2;
+  }
+
+  const avgErr =
+    validCount > 0
+      ? ((totalRegistered - refVolCubicMeters * validCount) / (refVolCubicMeters * validCount)) * 100
+      : null;
+
+  const round2 = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100);
+  const verdict: MeterTestVerdict | null =
+    avgErr === null
+      ? null
+      : Math.abs(avgErr) > 5
+        ? avgErr > 5
+          ? 'Fast Moving'
+          : 'Slow Moving'
+        : 'Passed';
+  const recommendation: MeterTestRecommendation | null =
+    avgErr === null ? null : Math.abs(avgErr) > 5 ? 'Replace' : 'Retain';
+
+  return {
+    err1: round2(err1),
+    err2: round2(err2),
+    err3: round2(err3),
+    avgErr: round2(avgErr),
+    verdict,
+    recommendation,
+  };
+}
+
+export interface ParsedAccountNumber {
+  projectCode: string;
+  phaseCode: string;
+  block: string;
+  lot: string;
+  blockLotFormatted: string;
+}
+
+/**
+ * Parses a 12-character utility account number (PPP-PPP-BBB-LLL or 12 contiguous chars)
+ * into project, phase, block, and lot components.
+ */
+export function parse12DigitAccount(acct: string): ParsedAccountNumber | null {
+  const clean = acct.replace(/[\s-]+/g, '').trim();
+  if (clean.length !== 12) return null;
+  const projectCode = clean.slice(0, 3);
+  const phaseCode = clean.slice(3, 6);
+  const block = clean.slice(6, 9);
+  const lot = clean.slice(9, 12);
+  return {
+    projectCode,
+    phaseCode,
+    block,
+    lot,
+    blockLotFormatted: `Block ${block} Lot ${lot}`,
+  };
+}
+
+export type DailyActivityRow = {
+  id: string;
+  organization_id: string;
+  activity_date: string;
+  logged_by: string | null;
+  lead_operator_id: string | null;
+  crew_operator_ids: string[];
+  shift_type_id: string | null;
+  area_code_id: string | null;
+  site_or_well: string | null;
+  block_lot: string | null;
+  activity_type: string;
+  pm_task_id: string | null;
+  job_order_id?: string | null;
+  status: 'draft' | 'submitted' | 'verified' | 'flagged';
+  started_at: string | null;
+  completed_at: string | null;
+  gps_lat: number | null;
+  gps_lng: number | null;
+  notes: string | null;
+  details: Record<string, any>;
+  photo_urls: string[];
+  photo_storage_paths: string[];
+  photos_expires_at: string | null;
+  photos_purged_at: string | null;
+  signature_data: string | null;
+  verified_by: string | null;
+  verified_at: string | null;
+  review_note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type JobOrderRow = {
+  id: string;
+  organization_id: string;
+  jo_number: string;
+  title: string;
+  activity_type: string | null;
+  priority: 'low' | 'medium' | 'high';
+  area_code_id: string | null;
+  site_or_well: string | null;
+  block_lot: string | null;
+  account_number: string | null;
+  account_name: string | null;
+  contact_number: string | null;
+  description: string | null;
+  assigned_operator_ids: string[];
+  deadline: string | null;
+  estimated_hours: number | null;
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  tat_justification: string | null;
+  created_by: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ShiftHandoverRow = {
+  id: string;
+  organization_id: string;
+  handover_date: string;
+  shift_type_id: string | null;
+  area_code_id: string | null;
+  outgoing_operator_id: string | null;
+  incoming_operator_id: string | null;
+  plant_status: 'normal' | 'watch' | 'critical';
+  summary: string;
+  pending_items: string | null;
+  chemical_fuel_notes: string | null;
+  created_by: string | null;
+  created_at: string;
+};

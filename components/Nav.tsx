@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 
-function Icon({ name }: { name: 'schedule' | 'tasks' | 'pm' | 'standby' | 'reports' | 'menu' | 'close' | 'sun' | 'moon' }) {
+function Icon({ name }: { name: 'schedule' | 'tasks' | 'activity' | 'pm' | 'standby' | 'reports' | 'menu' | 'close' | 'sun' | 'moon' }) {
   const common = {
     width: 18,
     height: 18,
@@ -32,6 +32,12 @@ function Icon({ name }: { name: 'schedule' | 'tasks' | 'pm' | 'standby' | 'repor
         <svg {...common}>
           <path d="M9 11l3 3L22 4" />
           <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+        </svg>
+      );
+    case 'activity':
+      return (
+        <svg {...common}>
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
         </svg>
       );
     case 'pm':
@@ -169,6 +175,7 @@ export default function Nav(p: {
   const primaryLinks = [
     { href: '/', label: 'Schedule', icon: 'schedule' as const },
     { href: '/mobile', label: 'Tasks', icon: 'tasks' as const },
+    { href: '/activities', label: 'Activities', icon: 'activity' as const },
     { href: '/pm', label: 'PM Plan', icon: 'pm' as const },
     { href: '/call-sheet', label: 'Standby', icon: 'standby' as const },
     { href: '/leave', label: 'Reports', icon: 'reports' as const },

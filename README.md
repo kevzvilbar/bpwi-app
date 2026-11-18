@@ -22,6 +22,18 @@ Run `007_manager_role.sql` **on its own first** (PostgreSQL cannot use a new enu
   - Approvers can **Approve All**, **Approve Selected**, or **Reject** with a recorded reason. Approval applies atomically in a single Postgres transaction (`approve_change_request`).
 - **Escalation Contacts:** Department heads appear on the **Call Sheet** under *Management escalation* with direct call and SMS buttons.
 
+## Daily Employee Activity Monitoring (migrations 010 & 011)
+Run `supabase/migrations/010_daily_activities.sql` and `supabase/migrations/011_job_orders_and_handovers.sql` in the SQL editor.
+
+- **Who can log (`operator` + `admin` only):** Only active `operator` and `admin` roles can submit daily field activity logs (enforced via Postgres RLS on `daily_activities` and UI gating). Operators can tag co-operators (`crew_operator_ids`) so all crew members receive activity credit.
+- **Schedule & Setup Integration:** Stations/areas link directly to `area_codes` configured in Operators & Setup (no hardcoded legacy facilities). Opening the activity logger on `/mobile` or `/activities` auto-fills the operator's roster shift, assigned area, and same-shift co-operators.
+- **Mobile Field Logger (`/mobile`):** Supports 20 water utility activity types with dynamic telemetry forms (Genset fuel, Pump pressure/flow, Flushing blow-offs, 3-trial volumetric Meter Test ±5% calculator + witness signature, Leak Repair materials, Water Hauling trips, and Water Sampling), GPS capture, and IndexedDB offline queue auto-sync.
+- **30-Day Photo Retention (`activity-media`):** Uploaded photos are compressed client-side before upload to Supabase Storage and carry a 30-day expiration (`photos_expires_at`). Calling `POST /api/activities/purge-photos` (or clicking **Purge Expired Photos (>30d)** in `/activities`) removes expired photo objects while preserving the text and telemetry logs.
+- **Monitoring Hub (`/activities`):**
+  - **Duty & Activity Feed:** Reconciles today's on-duty schedule against logged activities and PMs, highlights idle on-duty operators (`0 logs`), and provides supervisor verification (`verify` / `flag`) plus printable Field Activity Reports & Meter Test Certificates.
+  - **Job Orders & Shift Handovers:** Dispatches job orders with 12-digit utility account auto-parsing, Turnaround Time (TAT) / SLA tracking, end-of-shift handovers, and a Daily Operations Huddle Brief.
+  - **Employee KPIs & Fuel:** 7/30/90-day scorecards combining roster duty hours, field activities, PM compliance %, Job Order TAT, and genset fuel telemetry.
+
 ## Included (v1 core)
 Login, role-aware monthly roster with click-to-paint (admin/scheduler), RLS, audit triggers, realtime-ready tables, JSON importer.
-Also: PM Planner (`/pm`: monthly/week calendar, recurring series, editable activity names/colors, `.ics` export), Leave Summary (`/leave`), Call Sheet (`/call-sheet`), Mobile/Tasks (`/mobile`), Generate Schedule (`/generate`: repeating shift cycles), Operators & Setup (`/operators`, admin only: operators, shift types, area/leave codes, users & roles), OC standby painting, drag-to-paint, Ctrl+Z/Ctrl+Y undo/redo, Ctrl+C/Ctrl+V copy/paste, realtime sync, CSV/print exports, PWA offline support.
+Also: Daily Activity Monitor (`/activities`), PM Planner (`/pm`: monthly/week calendar, recurring series, editable activity names/colors, `.ics` export), Leave Summary (`/leave`), Call Sheet (`/call-sheet`), Mobile/Tasks (`/mobile`), Generate Schedule (`/generate`: repeating shift cycles), Operators & Setup (`/operators`, admin only: operators, shift types, area/leave codes, users & roles), OC standby painting, drag-to-paint, Ctrl+Z/Ctrl+Y undo/redo, Ctrl+C/Ctrl+V copy/paste, realtime sync, CSV/print exports, PWA offline support.

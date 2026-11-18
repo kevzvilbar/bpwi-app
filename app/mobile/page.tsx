@@ -12,7 +12,7 @@ function addDays(d: string, n: number) {
 
 export default async function MobilePage({ searchParams }: { searchParams: Promise<{ d?: string }> }) {
   const sp = await searchParams;
-  const { sb, role, operatorId, canClosePm } = await getProfile();
+  const { sb, user, orgId, role, operatorId, canClosePm, canLogActivity } = await getProfile();
   const today = manilaToday();
   const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.d ?? '') ? sp.d! : today;
   const prevDate = addDays(date, -1);
@@ -20,7 +20,7 @@ export default async function MobilePage({ searchParams }: { searchParams: Promi
   const pmFrom = addDays(date, -14);
   const pmTo = addDays(date, 30);
 
-  const [ops, shifts, areas, asg, prevAsg, standby, tasks, actTypes] = await Promise.all([
+  const [ops, shifts, areas, asg, prevAsg, standby, tasks, actTypes, dailyActs] = await Promise.all([
     sb
       .from('operators')
       .select('id, full_name, position, phone_number, default_station')
@@ -33,6 +33,7 @@ export default async function MobilePage({ searchParams }: { searchParams: Promi
     sb.from('standby_assignments').select('operator_id, standby_type').eq('schedule_date', date),
     sb.from('pm_tasks').select('*').gte('scheduled_date', pmFrom).lte('scheduled_date', pmTo).order('scheduled_date'),
     sb.from('pm_activity_types').select('code, label, short_label, color'),
+    sb.from('daily_activities').select('*').eq('activity_date', date).order('created_at', { ascending: false }),
   ]);
 
   const error =
@@ -51,9 +52,12 @@ export default async function MobilePage({ searchParams }: { searchParams: Promi
       date={date}
       today={today}
       nowMinutes={nowMinutes}
+      orgId={orgId}
+      userId={user?.id ?? ''}
       role={role}
       operatorId={operatorId}
       canClosePm={canClosePm}
+      canLogActivity={canLogActivity}
       operators={ops.data ?? []}
       shifts={shifts.data ?? []}
       areas={areas.data ?? []}
@@ -62,6 +66,7 @@ export default async function MobilePage({ searchParams }: { searchParams: Promi
       standby={standby.data ?? []}
       tasks={tasks.data ?? []}
       activityTypes={actTypes.error ? [] : (actTypes.data ?? [])}
+      initialActivities={dailyActs.error ? [] : (dailyActs.data ?? [])}
       error={error}
     />
   );

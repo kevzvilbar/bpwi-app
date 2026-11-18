@@ -184,6 +184,10 @@ export const getProfile = cache(async () => {
     canEdit: isActive && (role === 'admin' || role === 'scheduler' || (isManager && editGrant !== null)),
     canPropose,
     canClosePm: isActive && (role === 'admin' || role === 'scheduler' || role === 'operator' || (isManager && editGrant !== null)),
+    /** Only operators and admins can submit daily field activity logs. */
+    canLogActivity: isActive && (role === 'operator' || role === 'admin'),
+    /** Admins, schedulers, and department heads can verify or flag logged activities. */
+    canVerifyActivity: isActive && (role === 'admin' || role === 'scheduler' || role === 'manager'),
     /** Bulk schedule generation stays with admins and schedulers. */
     canGenerate: isActive && (role === 'admin' || role === 'scheduler'),
     /** Admins, plus anyone an admin has delegated approval to. */

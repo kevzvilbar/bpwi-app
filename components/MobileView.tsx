@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import ActivityLoggerModal, { type LinkedPmTask } from '@/components/ActivityLoggerModal';
+import { ACTIVITY_BY_ID, type DailyActivityRow } from '@/lib/activity-types';
+import { enqueueOfflineActivity, flushOfflineQueue, getOfflineQueue, type PendingOfflineActivity } from '@/lib/offline-queue';
 
 type Op = { id: string; full_name: string; position: string | null; phone_number: string | null; default_station: string | null };
 type Shift = {
@@ -85,9 +88,12 @@ export default function MobileView(p: {
   date: string;
   today: string;
   nowMinutes: number;
+  orgId?: string;
+  userId?: string;
   role: string;
   operatorId: string | null;
   canClosePm: boolean;
+  canLogActivity?: boolean;
   operators: Op[];
   shifts: Shift[];
   areas: Area[];
@@ -96,11 +102,16 @@ export default function MobileView(p: {
   standby: Standby[];
   tasks: Task[];
   activityTypes: ActType[];
+  initialActivities?: DailyActivityRow[];
   error: string;
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<'tasks' | 'schedule'>('tasks');
+  const [tab, setTab] = useState<'tasks' | 'activities' | 'schedule'>('tasks');
   const [tasks, setTasks] = useState<Task[]>(p.tasks);
+  const [activities, setActivities] = useState<DailyActivityRow[]>(p.initialActivities ?? []);
+  const [offlineQueue, setOfflineQueue] = useState<PendingOfflineActivity[]>([]);
+  const [loggerOpen, setLoggerOpen] = useState(false);
+  const [linkedPmForLog, setLinkedPmForLog] = useState<LinkedPmTask | null>(null);
   const [taskFilter, setTaskFilter] = useState<'open' | 'done' | 'all'>('open');
   const [selectedOp, setSelectedOp] = useState<string>(p.operatorId ?? '');
   const [search, setSearch] = useState('');
@@ -117,6 +128,7 @@ export default function MobileView(p: {
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => setTasks(p.tasks), [p.tasks]);
+  useEffect(() => setActivities(p.initialActivities ?? []), [p.initialActivities]);
   useEffect(() => {
     const sb = supabaseBrowser();
     const channel = sb
@@ -147,11 +159,24 @@ export default function MobileView(p: {
             : [...prev, nextTask].sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
         });
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_activities' }, (payload) => {
+        const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as DailyActivityRow;
+        if (!rec?.id) return;
+        if (payload.eventType === 'DELETE') {
+          setActivities((prev) => prev.filter((x) => x.id !== rec.id));
+          return;
+        }
+        if (rec.activity_date !== p.date) return;
+        setActivities((prev) => {
+          const exists = prev.some((x) => x.id === rec.id);
+          return exists ? prev.map((x) => (x.id === rec.id ? rec : x)) : [rec, ...prev];
+        });
+      })
       .subscribe();
     return () => {
       sb.removeChannel(channel);
     };
-  }, []);
+  }, [p.date]);
   useEffect(() => {
     setNowMinutes(manilaClockMinutes());
     const id = setInterval(() => setNowMinutes(manilaClockMinutes()), 60_000);
@@ -160,6 +185,32 @@ export default function MobileView(p: {
   useEffect(() => () => {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    const syncPending = async () => {
+      const q = await getOfflineQueue();
+      if (!active) return;
+      setOfflineQueue(q);
+      if (q.length > 0 && navigator.onLine) {
+        const res = await flushOfflineQueue(supabaseBrowser());
+        if (!active) return;
+        if (res.synced.length > 0) {
+          const todaySynced = res.synced.filter((a) => a.activity_date === p.date);
+          if (todaySynced.length > 0) {
+            setActivities((prev) => [...todaySynced, ...prev]);
+          }
+        }
+        setOfflineQueue(await getOfflineQueue());
+      }
+    };
+    void syncPending();
+    window.addEventListener('online', syncPending);
+    return () => {
+      active = false;
+      window.removeEventListener('online', syncPending);
+    };
+  }, [p.date]);
 
   const opBy = useMemo(() => new Map(p.operators.map((o) => [o.id, o])), [p.operators]);
   const shiftBy = useMemo(() => new Map(p.shifts.map((s) => [s.id, s])), [p.shifts]);
@@ -237,6 +288,26 @@ export default function MobileView(p: {
     if (taskFilter === 'done') return completedTasks;
     return scopedTasks;
   }, [completedTasks, delayedTasks, scopedTasks, taskFilter, upcomingTasks]);
+
+  const scopedActivities = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return activities.filter((a) => {
+      if (selectedOp) {
+        const involved = a.lead_operator_id === selectedOp || (a.crew_operator_ids ?? []).includes(selectedOp);
+        if (!involved) return false;
+      }
+      if (!q) return true;
+      const metaLabel = (ACTIVITY_BY_ID[a.activity_type]?.label ?? a.activity_type).toLowerCase();
+      const areaLabel = (a.area_code_id ? areaBy.get(a.area_code_id)?.code ?? '' : '').toLowerCase();
+      return (
+        metaLabel.includes(q) ||
+        areaLabel.includes(q) ||
+        (a.site_or_well ?? '').toLowerCase().includes(q) ||
+        (a.block_lot ?? '').toLowerCase().includes(q) ||
+        (a.notes ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [activities, areaBy, search, selectedOp]);
 
   async function toggleTaskStatus(
     t: Task,
@@ -343,21 +414,46 @@ export default function MobileView(p: {
               onChange={(e) => setRemarksDraft((r) => ({ ...r, [t.id]: e.target.value }))}
               disabled={busyId === t.id}
             />
-            <button
-              className="btn"
-              disabled={busyId === t.id}
-              onClick={() => toggleTaskStatus(t, isDone ? 'planned' : 'done')}
-              style={{
-                minHeight: 42,
-                fontSize: 13.5,
-                fontWeight: 700,
-                background: isDone ? 'var(--surface-muted)' : '#0f766e',
-                borderColor: isDone ? 'var(--border)' : '#0f766e',
-                color: isDone ? 'var(--text)' : '#ffffff',
-              }}
-            >
-              {busyId === t.id ? 'Updating…' : isDone ? 'Reopen Task' : '✓ Mark Task Done'}
-            </button>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {p.canLogActivity && !isDone && (
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={busyId === t.id}
+                  onClick={() => {
+                    setLinkedPmForLog(t);
+                    setLoggerOpen(true);
+                  }}
+                  style={{
+                    flex: 1,
+                    minHeight: 42,
+                    fontSize: 13,
+                    fontWeight: 700,
+                    background: 'var(--primary)',
+                    borderColor: 'var(--primary)',
+                    color: 'var(--primary-fg)',
+                  }}
+                >
+                  📋 Log &amp; Complete
+                </button>
+              )}
+              <button
+                className="btn"
+                disabled={busyId === t.id}
+                onClick={() => toggleTaskStatus(t, isDone ? 'planned' : 'done')}
+                style={{
+                  flex: 1,
+                  minHeight: 42,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  background: isDone ? 'var(--surface-muted)' : '#0f766e',
+                  borderColor: isDone ? 'var(--border)' : '#0f766e',
+                  color: isDone ? 'var(--text)' : '#ffffff',
+                }}
+              >
+                {busyId === t.id ? 'Updating…' : isDone ? 'Reopen Task' : '✓ Quick Done'}
+              </button>
+            </div>
           </>
         ) : (
           t.remarks && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Notes: {t.remarks}</div>
@@ -384,47 +480,64 @@ export default function MobileView(p: {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
+            gridTemplateColumns: '1fr 1fr 1fr',
             gap: 4,
             padding: 4,
             background: 'var(--surface-muted)',
             borderRadius: 10,
-            minWidth: 260,
+            minWidth: 280,
           }}
         >
           <button
             onClick={() => setTab('tasks')}
             style={{
               minHeight: 40,
-              padding: '0 14px',
+              padding: '0 10px',
               borderRadius: 8,
               border: 'none',
               fontWeight: 700,
-              fontSize: 13.5,
+              fontSize: 12.5,
               cursor: 'pointer',
               background: tab === 'tasks' ? 'var(--surface)' : 'transparent',
               color: tab === 'tasks' ? 'var(--text)' : 'var(--text-secondary)',
               boxShadow: tab === 'tasks' ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
             }}
           >
-            PM Tasks ({delayedTasks.length + upcomingTasks.length})
+            PM ({delayedTasks.length + upcomingTasks.length})
+          </button>
+          <button
+            onClick={() => setTab('activities')}
+            style={{
+              minHeight: 40,
+              padding: '0 10px',
+              borderRadius: 8,
+              border: 'none',
+              fontWeight: 700,
+              fontSize: 12.5,
+              cursor: 'pointer',
+              background: tab === 'activities' ? 'var(--surface)' : 'transparent',
+              color: tab === 'activities' ? 'var(--text)' : 'var(--text-secondary)',
+              boxShadow: tab === 'activities' ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
+            }}
+          >
+            Logs ({scopedActivities.length})
           </button>
           <button
             onClick={() => setTab('schedule')}
             style={{
               minHeight: 40,
-              padding: '0 14px',
+              padding: '0 10px',
               borderRadius: 8,
               border: 'none',
               fontWeight: 700,
-              fontSize: 13.5,
+              fontSize: 12.5,
               cursor: 'pointer',
               background: tab === 'schedule' ? 'var(--surface)' : 'transparent',
               color: tab === 'schedule' ? 'var(--text)' : 'var(--text-secondary)',
               boxShadow: tab === 'schedule' ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
             }}
           >
-            Daily Schedule
+            Schedule
           </button>
         </div>
 
@@ -432,19 +545,19 @@ export default function MobileView(p: {
           <input
             type="search"
             className="input"
-            aria-label="Search tasks or operators"
+            aria-label="Search tasks, logs, or operators"
             placeholder="Search site, activity, operator…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ flex: '1 1 180px', minWidth: 0 }}
+            style={{ flex: '1 1 160px', minWidth: 0 }}
           />
-          {tab === 'tasks' && (
+          {(tab === 'tasks' || tab === 'activities') && (
             <select
               className="input"
               aria-label="Filter by assigned employee"
               value={selectedOp}
               onChange={(e) => setSelectedOp(e.target.value)}
-              style={{ flex: '1 1 160px', minWidth: 0 }}
+              style={{ flex: '1 1 140px', minWidth: 0 }}
             >
               <option value="">All employees</option>
               {p.operators.map((o) => (
@@ -454,6 +567,19 @@ export default function MobileView(p: {
                 </option>
               ))}
             </select>
+          )}
+          {p.canLogActivity && p.orgId && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                setLinkedPmForLog(null);
+                setLoggerOpen(true);
+              }}
+              style={{ whiteSpace: 'nowrap', fontWeight: 700 }}
+            >
+              + Log Activity
+            </button>
           )}
         </div>
       </div>
@@ -472,6 +598,43 @@ export default function MobileView(p: {
           }}
         >
           {msg}
+        </div>
+      )}
+
+      {offlineQueue.length > 0 && (
+        <div
+          className="card"
+          style={{
+            marginBottom: 10,
+            padding: '8px 12px',
+            background: '#fffbeb',
+            border: '1px solid #fde68a',
+            color: '#92400e',
+            fontSize: 12.5,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <span>
+            <b>{offlineQueue.length}</b> activity log{offlineQueue.length === 1 ? '' : 's'} queued offline.
+          </span>
+          <button
+            type="button"
+            className="btn"
+            style={{ minHeight: 32, padding: '4px 10px', fontSize: 12 }}
+            onClick={async () => {
+              const res = await flushOfflineQueue(supabaseBrowser());
+              setOfflineQueue(await getOfflineQueue());
+              if (res.synced.length > 0) {
+                const todaySynced = res.synced.filter((a) => a.activity_date === p.date);
+                setActivities((prev) => [...todaySynced, ...prev]);
+              }
+            }}
+          >
+            Sync Now
+          </button>
         </div>
       )}
 
@@ -588,6 +751,95 @@ export default function MobileView(p: {
             )}
           </div>
         </>
+      )}
+
+      {tab === 'activities' && (
+        <div style={{ display: 'grid', gap: 10 }}>
+          {!p.canLogActivity && (
+            <div className="card" style={{ padding: '8px 12px', fontSize: 12.5, color: 'var(--text-secondary)' }}>
+              Only active <b>operator</b> and <b>admin</b> accounts can submit daily activity logs.
+            </div>
+          )}
+
+          {scopedActivities.length === 0 ? (
+            <div className="card" style={{ padding: 24, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13.5 }}>
+              No field activities logged yet for <b>{p.date}</b>.
+            </div>
+          ) : (
+            <div className="schedule-cards-grid">
+              {scopedActivities.map((act) => {
+                const def = ACTIVITY_BY_ID[act.activity_type];
+                const area = act.area_code_id ? areaBy.get(act.area_code_id) : undefined;
+                const lead = act.lead_operator_id ? opBy.get(act.lead_operator_id) : undefined;
+                const crewNames = (act.crew_operator_ids ?? []).map((id) => opBy.get(id)?.full_name).filter(Boolean);
+                const statusColors: Record<string, { bg: string; fg: string }> = {
+                  verified: { bg: '#dcfce7', fg: '#166534' },
+                  flagged: { bg: '#fee2e2', fg: '#991b1b' },
+                  submitted: { bg: '#dbeafe', fg: '#1e40af' },
+                  draft: { bg: 'var(--surface-muted)', fg: 'var(--text-secondary)' },
+                };
+                const sc = statusColors[act.status] ?? statusColors.submitted;
+                return (
+                  <div
+                    key={act.id}
+                    className="card"
+                    style={{
+                      padding: 12,
+                      display: 'grid',
+                      gap: 6,
+                      borderLeft: `4px solid ${def?.color ?? 'var(--accent)'}`,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                      <span
+                        style={{
+                          background: def?.color ?? 'var(--primary)',
+                          color: '#ffffff',
+                          padding: '2px 9px',
+                          borderRadius: 999,
+                          fontSize: 11.5,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {def?.label ?? act.activity_type}
+                      </span>
+                      <span style={{ background: sc.bg, color: sc.fg, padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>
+                        {act.status}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700 }}>
+                      {area ? `${area.code}${area.name ? ` · ${area.name}` : ''}` : 'Unassigned Station'}
+                      {act.site_or_well ? ` — ${act.site_or_well}` : ''}
+                    </div>
+                    {act.block_lot && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Location: {act.block_lot}</div>}
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                      Lead: <b>{lead?.full_name ?? 'Unspecified'}</b>
+                      {crewNames.length > 0 && <> · Crew: {crewNames.join(', ')}</>}
+                    </div>
+                    {act.details && act.details.avgErr !== undefined && act.details.avgErr !== null && (
+                      <div style={{ fontSize: 12, fontWeight: 600, color: act.details.verdict === 'Passed' ? '#166534' : '#b91c1c' }}>
+                        Meter Test: {act.details.avgErr}% ({act.details.verdict} · {act.details.recommendation})
+                      </div>
+                    )}
+                    {act.notes && <div style={{ fontSize: 12.5, color: 'var(--text)' }}>{act.notes}</div>}
+                    {Array.isArray(act.photo_urls) && act.photo_urls.length > 0 && !act.photos_purged_at && (
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+                        {act.photo_urls.map((u, i) => (
+                          <img
+                            key={i}
+                            src={u}
+                            alt={`Activity photo ${i + 1}`}
+                            style={{ width: 52, height: 52, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
 
       {tab === 'schedule' && (
@@ -755,6 +1007,42 @@ export default function MobileView(p: {
             ✕
           </button>
         </div>
+      )}
+      {p.canLogActivity && p.orgId && (
+        <ActivityLoggerModal
+          open={loggerOpen}
+          onClose={() => {
+            setLoggerOpen(false);
+            setLinkedPmForLog(null);
+          }}
+          onQueuedOffline={async (payload) => {
+            await enqueueOfflineActivity(payload);
+            setOfflineQueue(await getOfflineQueue());
+          }}
+          onSaved={(act, opts) => {
+            if (!opts?.offline) {
+              setActivities((prev) => [act, ...prev.filter((x) => x.id !== act.id)]);
+            }
+            if (linkedPmForLog) {
+              setTasks((prev) =>
+                prev.map((x) =>
+                  x.id === linkedPmForLog.id
+                    ? { ...x, status: 'done', completed_at: p.date, remarks: act.notes || x.remarks }
+                    : x,
+                ),
+              );
+            }
+          }}
+          orgId={p.orgId}
+          userId={p.userId ?? ''}
+          operatorId={p.operatorId}
+          date={p.date}
+          operators={p.operators}
+          areas={p.areas}
+          shifts={p.shifts}
+          assignments={p.assignments}
+          linkedPmTask={linkedPmForLog}
+        />
       )}
     </div>
   );
