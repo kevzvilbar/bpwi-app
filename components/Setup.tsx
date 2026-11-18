@@ -58,6 +58,7 @@ export default function Setup(p: {
   areas: Area[];
   users: UserProfile[];
   orgId: string;
+  currentUserId?: string;
   isAdmin: boolean;
   error: string;
 }) {
@@ -68,6 +69,7 @@ export default function Setup(p: {
   const [users, setUsers] = useState<UserProfile[]>(p.users);
   const [msg, setMsg] = useState(p.error);
   const [savedKey, setSavedKey] = useState('');
+  const [dirty, setDirty] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState('');
   const [confirmDel, setConfirmDel] = useState<{ table: string; id: string; idx: number; label: string } | null>(null);
 
@@ -95,6 +97,11 @@ export default function Setup(p: {
     if (res.data) {
       setter((list) => list.map((item, j) => (j === idx ? (res.data as T) : item)));
     }
+    setDirty((d) => {
+      const n = new Set(d);
+      n.delete(key);
+      return n;
+    });
     setSavedKey(key);
     setTimeout(() => setSavedKey((cur) => (cur === key ? '' : cur)), 2000);
   }
@@ -121,8 +128,21 @@ export default function Setup(p: {
     setConfirmDel({ table, id, idx, label });
   }
 
-  const upd = <T,>(setter: React.Dispatch<React.SetStateAction<T[]>>, i: number, patch: Partial<T>) =>
+  const upd = <T,>(setter: React.Dispatch<React.SetStateAction<T[]>>, i: number, patch: Partial<T>) => {
     setter((x) => x.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+    const prefix =
+      (setter as unknown) === setOps
+        ? 'o'
+        : (setter as unknown) === setShifts
+          ? 's'
+          : (setter as unknown) === setAreas
+            ? 'a'
+            : 'u';
+    setDirty((d) => new Set(d).add(`${prefix}${i}`));
+  };
+
+  const saveLabel = (key: string) =>
+    savedKey === key ? 'Saved ✓' : busy === key ? '…' : dirty.has(key) ? 'Save *' : 'Save';
 
   if (!p.isAdmin) {
     return <p style={{ padding: 20, color: '#475569' }}>Only admins can manage operators and setup.</p>;
@@ -156,6 +176,11 @@ export default function Setup(p: {
         {tabBtn('shifts', `Shift types (${shifts.length})`)}
         {tabBtn('areas', `Areas & leave (${areas.length})`)}
         {tabBtn('users', `Users & roles (${users.length}${pendingUsers ? ` · ${pendingUsers} pending` : ''})`)}
+        {dirty.size > 0 && (
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--warn-fg)', background: 'var(--warn-bg)', border: '1px solid var(--warn-border)', padding: '3px 9px', borderRadius: 999 }}>
+            {dirty.size} unsaved {dirty.size === 1 ? 'row' : 'rows'}
+          </span>
+        )}
         {msg && (
           <span role="alert" style={{ color: '#b91c1c', fontSize: 12.5, fontWeight: 500 }}>
             {msg}
@@ -200,7 +225,7 @@ export default function Setup(p: {
                   </label>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button className="btn btn-primary" disabled={!o.full_name.trim() || busy === `o${i}`} onClick={() => saveRow('operators', o, i, `o${i}`, setOps)}>
-                      {savedKey === `o${i}` ? 'Saved ✓' : busy === `o${i}` ? '…' : 'Save'}
+                      {saveLabel(`o${i}`)}
                     </button>
                     <button className="btn" style={{ color: 'var(--danger)' }} onClick={() => requestDelete('operators', o.id, i, o.full_name || 'this operator', setOps as any)}>
                       Delete
@@ -263,7 +288,7 @@ export default function Setup(p: {
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button className="btn btn-primary" disabled={!s.code.trim() || busy === `s${i}`} onClick={() => saveRow('shift_types', s, i, `s${i}`, setShifts)}>
-                      {savedKey === `s${i}` ? 'Saved ✓' : busy === `s${i}` ? '…' : 'Save'}
+                      {saveLabel(`s${i}`)}
                     </button>
                     <button className="btn" style={{ color: 'var(--danger)' }} onClick={() => requestDelete('shift_types', s.id, i, s.code || 'this shift', setShifts as any)}>
                       Delete
@@ -303,6 +328,7 @@ export default function Setup(p: {
                     <select className="input" style={{ width: 'auto' }} value={a.category} onChange={(e) => upd(setAreas, i, { category: e.target.value })}>
                       <option value="station">Station</option>
                       <option value="leave">Leave</option>
+                      <option value="rest">Rest</option>
                       <option value="holiday">Holiday</option>
                     </select>
                     <Color v={a.background_color} on={(c) => upd(setAreas, i, { background_color: c })} />
@@ -310,7 +336,7 @@ export default function Setup(p: {
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button className="btn btn-primary" disabled={!a.code.trim() || busy === `a${i}`} onClick={() => saveRow('area_codes', a, i, `a${i}`, setAreas)}>
-                      {savedKey === `a${i}` ? 'Saved ✓' : busy === `a${i}` ? '…' : 'Save'}
+                      {saveLabel(`a${i}`)}
                     </button>
                     <button className="btn" style={{ color: 'var(--danger)' }} onClick={() => requestDelete('area_codes', a.id, i, a.code || 'this area code', setAreas as any)}>
                       Delete
@@ -329,45 +355,62 @@ export default function Setup(p: {
         )}
 
         {tab === 'users' &&
-          users.map((u, i) => (
-            <div key={u.id} className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
-              <label style={{ fontSize: 12 }}>
-                Full name
-                <input className="input" value={u.full_name ?? ''} placeholder="Full name" onChange={(e) => upd(setUsers, i, { full_name: e.target.value })} />
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          users.map((u, i) => {
+            const isSelf = Boolean(p.currentUserId && u.id === p.currentUserId);
+            return (
+              <div key={u.id} className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
                 <label style={{ fontSize: 12 }}>
-                  Role
-                  <select className="input" value={u.role} onChange={(e) => upd(setUsers, i, { role: e.target.value as UserProfile['role'] })}>
-                    <option value="admin">admin</option>
-                    <option value="scheduler">scheduler</option>
-                    <option value="operator">operator</option>
-                    <option value="viewer">viewer</option>
-                  </select>
+                  Full name {isSelf && <span style={{ color: 'var(--accent)', fontWeight: 700 }}>(You)</span>}
+                  <input className="input" value={u.full_name ?? ''} placeholder="Full name" onChange={(e) => upd(setUsers, i, { full_name: e.target.value })} />
                 </label>
-                <label style={{ fontSize: 12 }}>
-                  Linked Operator
-                  <select className="input" value={u.operator_id ?? ''} onChange={(e) => upd(setUsers, i, { operator_id: e.target.value || null })}>
-                    <option value="">(unlinked)</option>
-                    {ops.filter((o) => o.id).map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.full_name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <label style={{ fontSize: 12 }}>
+                    Role
+                    <select
+                      className="input"
+                      value={u.role}
+                      disabled={isSelf}
+                      title={isSelf ? 'You cannot demote or deactivate your own admin account' : undefined}
+                      onChange={(e) => upd(setUsers, i, { role: e.target.value as UserProfile['role'] })}
+                    >
+                      <option value="admin">admin</option>
+                      <option value="scheduler">scheduler</option>
+                      <option value="operator">operator</option>
+                      <option value="viewer">viewer</option>
+                    </select>
+                  </label>
+                  <label style={{ fontSize: 12 }}>
+                    Linked Operator
+                    <select className="input" value={u.operator_id ?? ''} onChange={(e) => upd(setUsers, i, { operator_id: e.target.value || null })}>
+                      <option value="">(unlinked)</option>
+                      {ops.filter((o) => o.id).map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.full_name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label
+                    style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6, opacity: isSelf ? 0.65 : 1 }}
+                    title={isSelf ? 'You cannot demote or deactivate your own admin account' : undefined}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={u.is_active}
+                      disabled={isSelf}
+                      onChange={(e) => upd(setUsers, i, { is_active: e.target.checked })}
+                    />
+                    Active (Approved)
+                  </label>
+                  <button className="btn btn-primary" disabled={busy === `u${i}`} onClick={() => saveRow('user_profiles', u, i, `u${i}`, setUsers)}>
+                    {saveLabel(`u${i}`)}
+                  </button>
+                </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <label style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <input type="checkbox" checked={u.is_active} onChange={(e) => upd(setUsers, i, { is_active: e.target.checked })} />
-                  Active (Approved)
-                </label>
-                <button className="btn btn-primary" disabled={busy === `u${i}`} onClick={() => saveRow('user_profiles', u, i, `u${i}`, setUsers)}>
-                  {savedKey === `u${i}` ? 'Saved ✓' : busy === `u${i}` ? '…' : 'Save'}
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
       </div>
 
       {/* Desktop Table (> 640px) */}
@@ -406,12 +449,12 @@ export default function Setup(p: {
                   </td>
                   <td style={{ ...cell, whiteSpace: 'nowrap' }}>
                     <button
-                      className="btn"
+                      className={`btn ${dirty.has(`o${i}`) ? 'btn-primary' : ''}`}
                       style={{ padding: '4px 9px' }}
                       disabled={!o.full_name.trim() || busy === `o${i}`}
                       onClick={() => saveRow('operators', o, i, `o${i}`, setOps)}
                     >
-                      {savedKey === `o${i}` ? 'Saved ✓' : busy === `o${i}` ? '…' : 'Save'}
+                      {saveLabel(`o${i}`)}
                     </button>{' '}
                     <button
                       className="btn"
@@ -500,12 +543,12 @@ export default function Setup(p: {
                   </td>
                   <td style={{ ...cell, whiteSpace: 'nowrap' }}>
                     <button
-                      className="btn"
+                      className={`btn ${dirty.has(`s${i}`) ? 'btn-primary' : ''}`}
                       style={{ padding: '4px 9px' }}
                       disabled={!s.code.trim() || busy === `s${i}`}
                       onClick={() => saveRow('shift_types', s, i, `s${i}`, setShifts)}
                     >
-                      {savedKey === `s${i}` ? 'Saved ✓' : busy === `s${i}` ? '…' : 'Save'}
+                      {saveLabel(`s${i}`)}
                     </button>{' '}
                     <button
                       className="btn"
@@ -571,6 +614,7 @@ export default function Setup(p: {
                     <select style={inp} value={a.category} onChange={(e) => upd(setAreas, i, { category: e.target.value })}>
                       <option value="station">Station</option>
                       <option value="leave">Leave</option>
+                      <option value="rest">Rest</option>
                       <option value="holiday">Holiday</option>
                     </select>
                   </td>
@@ -587,12 +631,12 @@ export default function Setup(p: {
                   </td>
                   <td style={{ ...cell, whiteSpace: 'nowrap' }}>
                     <button
-                      className="btn"
+                      className={`btn ${dirty.has(`a${i}`) ? 'btn-primary' : ''}`}
                       style={{ padding: '4px 9px' }}
                       disabled={!a.code.trim() || busy === `a${i}`}
                       onClick={() => saveRow('area_codes', a, i, `a${i}`, setAreas)}
                     >
-                      {savedKey === `a${i}` ? 'Saved ✓' : busy === `a${i}` ? '…' : 'Save'}
+                      {saveLabel(`a${i}`)}
                     </button>{' '}
                     <button
                       className="btn"
@@ -644,62 +688,74 @@ export default function Setup(p: {
                   </td>
                 </tr>
               ) : (
-                users.map((u, i) => (
-                  <tr key={u.id} style={{ background: u.is_active ? 'var(--surface)' : 'rgba(234, 179, 8, 0.12)' }}>
-                    <td style={cell}>
-                      <input
-                        style={inp}
-                        value={u.full_name ?? ''}
-                        placeholder="Full name"
-                        onChange={(e) => upd(setUsers, i, { full_name: e.target.value })}
-                      />
-                    </td>
-                    <td style={{ ...cell, width: 130 }}>
-                      <select
-                        style={inp}
-                        value={u.role}
-                        onChange={(e) => upd(setUsers, i, { role: e.target.value as UserProfile['role'] })}
-                      >
-                        <option value="admin">admin</option>
-                        <option value="scheduler">scheduler</option>
-                        <option value="operator">operator</option>
-                        <option value="viewer">viewer</option>
-                      </select>
-                    </td>
-                    <td style={{ ...cell, width: 170 }}>
-                      <select
-                        style={inp}
-                        value={u.operator_id ?? ''}
-                        onChange={(e) => upd(setUsers, i, { operator_id: e.target.value || null })}
-                      >
-                        <option value="">(unlinked)</option>
-                        {ops.filter((o) => o.id).map((o) => (
-                          <option key={o.id} value={o.id}>
-                            {o.full_name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td style={{ ...cell, textAlign: 'center', width: 130 }}>
-                      <input
-                        type="checkbox"
-                        checked={u.is_active}
-                        onChange={(e) => upd(setUsers, i, { is_active: e.target.checked })}
-                      />
-                    </td>
-                    <td style={{ ...cell, fontFamily: 'ui-monospace, monospace', fontSize: 11, color: '#475569' }}>{u.id}</td>
-                    <td style={{ ...cell, whiteSpace: 'nowrap' }}>
-                      <button
-                        className="btn"
-                        style={{ padding: '4px 9px' }}
-                        disabled={busy === `u${i}`}
-                        onClick={() => saveRow('user_profiles', u, i, `u${i}`, setUsers)}
-                      >
-                        {savedKey === `u${i}` ? 'Saved ✓' : busy === `u${i}` ? '…' : 'Save'}
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                users.map((u, i) => {
+                  const isSelf = Boolean(p.currentUserId && u.id === p.currentUserId);
+                  return (
+                    <tr key={u.id} style={{ background: u.is_active ? 'var(--surface)' : 'rgba(234, 179, 8, 0.12)' }}>
+                      <td style={cell}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <input
+                            style={inp}
+                            value={u.full_name ?? ''}
+                            placeholder="Full name"
+                            onChange={(e) => upd(setUsers, i, { full_name: e.target.value })}
+                          />
+                          {isSelf && (
+                            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', whiteSpace: 'nowrap' }}>(You)</span>
+                          )}
+                        </div>
+                      </td>
+                      <td style={{ ...cell, width: 130 }}>
+                        <select
+                          style={{ ...inp, opacity: isSelf ? 0.65 : 1 }}
+                          value={u.role}
+                          disabled={isSelf}
+                          title={isSelf ? 'You cannot demote or deactivate your own admin account' : undefined}
+                          onChange={(e) => upd(setUsers, i, { role: e.target.value as UserProfile['role'] })}
+                        >
+                          <option value="admin">admin</option>
+                          <option value="scheduler">scheduler</option>
+                          <option value="operator">operator</option>
+                          <option value="viewer">viewer</option>
+                        </select>
+                      </td>
+                      <td style={{ ...cell, width: 170 }}>
+                        <select
+                          style={inp}
+                          value={u.operator_id ?? ''}
+                          onChange={(e) => upd(setUsers, i, { operator_id: e.target.value || null })}
+                        >
+                          <option value="">(unlinked)</option>
+                          {ops.filter((o) => o.id).map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.full_name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td style={{ ...cell, textAlign: 'center', width: 130 }}>
+                        <input
+                          type="checkbox"
+                          checked={u.is_active}
+                          disabled={isSelf}
+                          title={isSelf ? 'You cannot demote or deactivate your own admin account' : undefined}
+                          onChange={(e) => upd(setUsers, i, { is_active: e.target.checked })}
+                        />
+                      </td>
+                      <td style={{ ...cell, fontFamily: 'ui-monospace, monospace', fontSize: 11, color: '#475569' }}>{u.id}</td>
+                      <td style={{ ...cell, whiteSpace: 'nowrap' }}>
+                        <button
+                          className={`btn ${dirty.has(`u${i}`) ? 'btn-primary' : ''}`}
+                          style={{ padding: '4px 9px' }}
+                          disabled={busy === `u${i}`}
+                          onClick={() => saveRow('user_profiles', u, i, `u${i}`, setUsers)}
+                        >
+                          {saveLabel(`u${i}`)}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

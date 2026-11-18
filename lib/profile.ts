@@ -7,38 +7,47 @@ export const getProfile = cache(async () => {
     data: { user },
   } = await sb.auth.getUser();
 
-  let prof: { full_name?: string | null; role?: string | null; organization_id?: string | null; operator_id?: string | null } | null = null;
+  type OrgJoin = { name?: string | null; app_title?: string | null } | { name?: string | null; app_title?: string | null }[] | null;
+  type ProfRow = {
+    full_name?: string | null;
+    role?: string | null;
+    organization_id?: string | null;
+    operator_id?: string | null;
+    organizations?: OrgJoin;
+  };
+
+  let prof: ProfRow | null = null;
+  let orgName = 'BP Waterworks, Inc.';
+  let appTitle = 'Operations & Plant Schedule';
+
   if (user) {
     const res = await sb
       .from('user_profiles')
-      .select('full_name, role, organization_id, operator_id')
+      .select('full_name, role, organization_id, operator_id, organizations(name, app_title)')
       .eq('id', user.id)
       .maybeSingle();
-    if (res.error) {
-      const fallback = await sb
+
+    if (!res.error) {
+      prof = res.data as ProfRow | null;
+      const orgData = Array.isArray(prof?.organizations) ? prof?.organizations[0] : prof?.organizations;
+      if (orgData?.name) orgName = orgData.name;
+      if (orgData?.app_title) appTitle = orgData.app_title;
+    } else {
+      const fb = await sb
         .from('user_profiles')
         .select('full_name, role, organization_id')
         .eq('id', user.id)
         .maybeSingle();
-      prof = fallback.data;
-    } else {
-      prof = res.data;
+      prof = fb.data as ProfRow | null;
+      const fbOrgId = (prof?.organization_id ?? '') as string;
+      if (fbOrgId) {
+        const orgRes = await sb.from('organizations').select('name').eq('id', fbOrgId).maybeSingle();
+        if (orgRes.data?.name) orgName = orgRes.data.name;
+      }
     }
   }
 
-  let orgName = 'BP Waterworks, Inc.';
-  let appTitle = 'Operations & Plant Schedule';
   const orgId = (prof?.organization_id ?? '') as string;
-  if (orgId) {
-    const orgRes = await sb.from('organizations').select('name, app_title').eq('id', orgId).maybeSingle();
-    if (orgRes.error) {
-      const orgFb = await sb.from('organizations').select('name').eq('id', orgId).maybeSingle();
-      if (orgFb.data?.name) orgName = orgFb.data.name;
-    } else if (orgRes.data) {
-      if (orgRes.data.name) orgName = orgRes.data.name;
-      if (orgRes.data.app_title) appTitle = orgRes.data.app_title;
-    }
-  }
 
   const role = (prof?.role ?? 'viewer') as string;
   return {

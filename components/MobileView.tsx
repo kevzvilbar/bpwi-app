@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 
@@ -108,12 +108,22 @@ export default function MobileView(p: {
   const [busyId, setBusyId] = useState('');
   const [msg, setMsg] = useState(p.error);
   const [nowMinutes, setNowMinutes] = useState(p.nowMinutes);
+  const [undoToast, setUndoToast] = useState<{
+    task: Task;
+    prevStatus: Task['status'];
+    prevCompletedAt: string | null;
+    prevRemarks: string | null;
+  } | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => setTasks(p.tasks), [p.tasks]);
   useEffect(() => {
     setNowMinutes(manilaClockMinutes());
     const id = setInterval(() => setNowMinutes(manilaClockMinutes()), 60_000);
     return () => clearInterval(id);
+  }, []);
+  useEffect(() => () => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
   }, []);
 
   const opBy = useMemo(() => new Map(p.operators.map((o) => [o.id, o])), [p.operators]);
@@ -142,11 +152,15 @@ export default function MobileView(p: {
         const prevShift = prevAsg?.shift_type_id ? shiftBy.get(prevAsg.shift_type_id) : undefined;
         const prevArea = prevAsg?.area_code_id ? areaBy.get(prevAsg.area_code_id) : undefined;
         const standbyType = sbBy.get(op.id);
-        const isLeave = area?.category === 'leave';
-        const isOnDuty = Boolean(shift && !shift.is_off && !isLeave);
-        const isNow = p.date === p.today && isShiftNow(isLeave ? undefined : shift, prevShift, prevArea?.category === 'leave', nowMinutes);
+        const isRestDay = Boolean(area && (area.category === 'rest' || area.code.toUpperCase() === 'RD'));
+        const isLeave = Boolean(area && area.category === 'leave' && area.code.toUpperCase() !== 'RD');
+        const prevRestOrLeave = Boolean(
+          prevArea && (prevArea.category === 'leave' || prevArea.category === 'rest' || prevArea.code.toUpperCase() === 'RD'),
+        );
+        const isOnDuty = Boolean(shift && !shift.is_off && !isLeave && !isRestDay);
+        const isNow = p.date === p.today && isShiftNow(isLeave || isRestDay ? undefined : shift, prevShift, prevRestOrLeave, nowMinutes);
         const tier = standbyType ? 0 : isNow ? 1 : isOnDuty ? 2 : 3;
-        return { op, idx, shift, area, standbyType, isLeave, isOnDuty, isNow, tier };
+        return { op, idx, shift, area, standbyType, isLeave, isRestDay, isOnDuty, isNow, tier };
       });
     items.sort((a, b) => a.tier - b.tier || a.idx - b.idx);
     return items;
@@ -189,12 +203,24 @@ export default function MobileView(p: {
     return scopedTasks;
   }, [completedTasks, delayedTasks, scopedTasks, taskFilter, upcomingTasks]);
 
-  async function toggleTaskStatus(t: Task, nextStatus: 'done' | 'planned') {
+  async function toggleTaskStatus(
+    t: Task,
+    nextStatus: Task['status'],
+    opts?: { completedAt?: string | null; remarks?: string | null; showUndo?: boolean },
+  ) {
     if (!p.canClosePm) return;
     setBusyId(t.id);
     setMsg('');
-    const nextRemarks = remarksDraft[t.id] !== undefined ? remarksDraft[t.id].trim() || null : t.remarks;
-    const completedAt = nextStatus === 'done' ? p.today : null;
+    const prevStatus = t.status;
+    const prevCompletedAt = t.completed_at;
+    const prevRemarks = t.remarks;
+    const nextRemarks =
+      opts?.remarks !== undefined
+        ? opts.remarks
+        : remarksDraft[t.id] !== undefined
+          ? remarksDraft[t.id].trim() || null
+          : t.remarks;
+    const completedAt = opts?.completedAt !== undefined ? opts.completedAt : nextStatus === 'done' ? p.today : null;
 
     const { error } = await supabaseBrowser()
       .from('pm_tasks')
@@ -206,9 +232,17 @@ export default function MobileView(p: {
       setMsg(error.message);
       return;
     }
-    setTasks((list) =>
-      list.map((x) => (x.id === t.id ? { ...x, status: nextStatus, completed_at: completedAt, remarks: nextRemarks } : x)),
-    );
+    const updatedTask: Task = { ...t, status: nextStatus, completed_at: completedAt, remarks: nextRemarks };
+    setTasks((list) => list.map((x) => (x.id === t.id ? updatedTask : x)));
+
+    if (nextStatus === 'done' && opts?.showUndo !== false) {
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+      setUndoToast({ task: updatedTask, prevStatus, prevCompletedAt, prevRemarks });
+      undoTimerRef.current = setTimeout(() => setUndoToast(null), 6000);
+    } else if (opts?.showUndo === false) {
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+      setUndoToast(null);
+    }
   }
 
   function renderTaskCard(t: Task) {
@@ -219,7 +253,7 @@ export default function MobileView(p: {
     const isToday = t.scheduled_date === p.today;
     const crew = t.assigned_operator_ids.map((id) => opBy.get(id)?.full_name).filter(Boolean);
     const canCloseThis =
-      p.canClosePm && (p.role !== 'operator' || !p.operatorId || t.assigned_operator_ids.includes(p.operatorId));
+      p.canClosePm && (p.role !== 'operator' || Boolean(p.operatorId && t.assigned_operator_ids.includes(p.operatorId)));
 
     return (
       <div
@@ -429,6 +463,11 @@ export default function MobileView(p: {
               Your role is <b>{p.role}</b> (read-only). Ask an admin to set your role to <b>operator</b> or <b>scheduler</b> to close tasks.
             </div>
           )}
+          {p.role === 'operator' && !p.operatorId && (
+            <div className="card" style={{ padding: '8px 12px', marginBottom: 12, fontSize: 12.5, color: 'var(--warn-fg)', background: 'var(--warn-bg)', borderColor: 'var(--warn-border)' }}>
+              Your user account is not linked to an operator profile yet. Ask an admin to link your account under Operators &amp; Setup to close assigned PM tasks.
+            </div>
+          )}
 
           {/* Desktop 3-Column Kanban Board (> 1024px) */}
           <div className="kanban-board desktop-only-kanban">
@@ -536,7 +575,7 @@ export default function MobileView(p: {
           </div>
 
           <div className="schedule-cards-grid">
-            {scheduleList.map(({ op, shift, area, standbyType, isLeave, isOnDuty, isNow }) => (
+            {scheduleList.map(({ op, shift, area, standbyType, isLeave, isRestDay, isOnDuty, isNow }) => (
               <div
                 key={op.id}
                 className="card"
@@ -561,6 +600,10 @@ export default function MobileView(p: {
                     {isLeave ? (
                       <span style={{ background: '#ffe4e6', color: '#9f1239', padding: '3px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700 }}>
                         LEAVE · {area?.code}
+                      </span>
+                    ) : isRestDay ? (
+                      <span style={{ background: 'var(--surface-muted)', color: 'var(--text-secondary)', border: '1px solid var(--border)', padding: '3px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600 }}>
+                        REST · {area?.code}
                       </span>
                     ) : isOnDuty && shift ? (
                       <span
@@ -613,6 +656,65 @@ export default function MobileView(p: {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {undoToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            bottom: 'max(72px, calc(16px + env(safe-area-inset-bottom)))',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 60,
+            background: 'var(--header-bg)',
+            color: 'var(--header-fg)',
+            border: '1px solid var(--border)',
+            borderRadius: 10,
+            padding: '10px 14px',
+            boxShadow: '0 10px 28px rgba(0, 0, 0, 0.28)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            maxWidth: 'calc(100vw - 24px)',
+            fontSize: 13,
+          }}
+        >
+          <span>
+            <b>{undoToast.task.title}</b> marked done
+          </span>
+          <button
+            type="button"
+            className="btn"
+            style={{ minHeight: 32, padding: '4px 10px', fontSize: 12.5, fontWeight: 700 }}
+            onClick={() =>
+              void toggleTaskStatus(undoToast.task, undoToast.prevStatus, {
+                completedAt: undoToast.prevCompletedAt,
+                remarks: undoToast.prevRemarks,
+                showUndo: false,
+              })
+            }
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => setUndoToast(null)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'inherit',
+              cursor: 'pointer',
+              fontSize: 15,
+              lineHeight: 1,
+              padding: '2px 4px',
+            }}
+          >
+            ✕
+          </button>
         </div>
       )}
     </div>

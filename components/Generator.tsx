@@ -5,6 +5,7 @@ import { supabaseBrowser } from '@/lib/supabase/client';
 
 type Op = { id: string; full_name: string };
 type Shift = { id: string; code: string; description: string | null; is_off: boolean; background_color: string; text_color: string };
+type Area = { id: string; code: string; category: string };
 
 const addDays = (d: string, n: number) => {
   const t = new Date(d + 'T00:00:00Z');
@@ -13,7 +14,7 @@ const addDays = (d: string, n: number) => {
 };
 const diffDays = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
 
-export default function Generator(p: { today: string; operators: Op[]; shifts: Shift[]; orgId: string; canEdit: boolean }) {
+export default function Generator(p: { today: string; operators: Op[]; shifts: Shift[]; areas?: Area[]; orgId: string; canEdit: boolean }) {
   const today = p.today;
   const [start, setStart] = useState(today);
   const [end, setEnd] = useState(addDays(today, 29));
@@ -27,6 +28,8 @@ export default function Generator(p: { today: string; operators: Op[]; shifts: S
   const [ok, setOk] = useState(false);
 
   const byCode = useMemo(() => new Map(p.shifts.map((s) => [s.code.toUpperCase(), s])), [p.shifts]);
+  const shiftIsOff = useMemo(() => new Map(p.shifts.map((s) => [s.id, s.is_off])), [p.shifts]);
+  const areaBy = useMemo(() => new Map((p.areas ?? []).map((a) => [a.id, a])), [p.areas]);
   const tokens = pattern.split(/[\s,]+/).filter(Boolean);
   const unknown = tokens.filter((t) => t !== '-' && !byCode.has(t.toUpperCase()));
   const days = diffDays(start, end) + 1;
@@ -58,35 +61,62 @@ export default function Generator(p: { today: string; operators: Op[]; shifts: S
     setMsg('');
     setOk(false);
     const sb = supabaseBrowser();
-    let rows = build();
-    if (mode === 'fill') {
-      const taken = new Set<string>();
-      for (let from = 0; ; from += 1000) {
-        const { data, error } = await sb
-          .from('schedule_assignments')
-          .select('operator_id, schedule_date, shift_type_id')
-          .in('operator_id', Array.from(sel))
-          .gte('schedule_date', start)
-          .lte('schedule_date', end)
-          .order('id')
-          .range(from, from + 999);
-        if (error) {
-          setBusy(false);
-          setMsg(error.message);
-          return;
-        }
-        (data ?? []).forEach((r) => {
-          if (r.shift_type_id) taken.add(r.operator_id + r.schedule_date);
-        });
-        if (!data || data.length < 1000) break;
+    const rawRows = build();
+
+    const taken = new Set<string>();
+    const existingArea = new Map<string, string | null>();
+    const protectedLeaveDates = new Set<string>();
+
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await sb
+        .from('schedule_assignments')
+        .select('operator_id, schedule_date, shift_type_id, area_code_id')
+        .in('operator_id', Array.from(sel))
+        .gte('schedule_date', start)
+        .lte('schedule_date', end)
+        .order('id')
+        .range(from, from + 999);
+      if (error) {
+        setBusy(false);
+        setMsg(error.message);
+        return;
       }
-      rows = rows.filter((r) => !taken.has(r.operator_id + r.schedule_date));
+      (data ?? []).forEach((r) => {
+        const k = `${r.operator_id}:${r.schedule_date}`;
+        if (r.shift_type_id || r.area_code_id) taken.add(k);
+        if (r.area_code_id) {
+          existingArea.set(k, r.area_code_id);
+          const a = areaBy.get(r.area_code_id);
+          if (a && ((a.category === 'leave' && a.code.toUpperCase() !== 'RD') || a.category === 'holiday')) {
+            protectedLeaveDates.add(k);
+          }
+        }
+      });
+      if (!data || data.length < 1000) break;
     }
+
+    let skippedProtected = 0;
+    const rows: { operator_id: string; schedule_date: string; shift_type_id: string; area_code_id: string | null }[] = [];
+    for (const r of rawRows) {
+      const k = `${r.operator_id}:${r.schedule_date}`;
+      if (mode === 'fill' && taken.has(k)) continue;
+      if (mode === 'overwrite' && protectedLeaveDates.has(k)) {
+        skippedProtected += 1;
+        continue;
+      }
+      const prevAreaId = existingArea.get(k) ?? null;
+      const prevArea = prevAreaId ? areaBy.get(prevAreaId) : undefined;
+      const isPrevRest = Boolean(prevArea && (prevArea.category === 'rest' || prevArea.code.toUpperCase() === 'RD'));
+      const nextIsOff = Boolean(shiftIsOff.get(r.shift_type_id));
+      const preservedArea = isPrevRest && !nextIsOff ? null : prevAreaId;
+      rows.push({ ...r, area_code_id: preservedArea });
+    }
+
     for (let i = 0; i < rows.length; i += 500) {
       const { error } = await sb
         .from('schedule_assignments')
         .upsert(
-          rows.slice(i, i + 500).map((r) => ({ ...r, organization_id: p.orgId, area_code_id: null })),
+          rows.slice(i, i + 500).map((r) => ({ ...r, organization_id: p.orgId })),
           { onConflict: 'operator_id,schedule_date' },
         );
       if (error) {
@@ -97,7 +127,9 @@ export default function Generator(p: { today: string; operators: Op[]; shifts: S
     }
     setBusy(false);
     setOk(true);
-    setMsg(`Done: ${rows.length} assignments written.`);
+    setMsg(
+      `Done: ${rows.length} assignments written${skippedProtected > 0 ? ` (${skippedProtected} leave/holiday day(s) preserved)` : ''}.`,
+    );
   }
 
   if (!p.canEdit) {

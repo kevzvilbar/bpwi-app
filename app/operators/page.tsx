@@ -4,7 +4,7 @@ import Setup from '@/components/Setup';
 export const dynamic = 'force-dynamic';
 
 export default async function OperatorsPage() {
-  const { sb, orgId, isAdmin } = await getProfile();
+  const { sb, user, orgId, isAdmin } = await getProfile();
   const [ops, shifts, areas, users] = await Promise.all([
     sb.from('operators').select('id, full_name, position, phone_number, default_station, sort_order, is_active').order('sort_order'),
     sb.from('shift_types').select('id, code, description, start_time, end_time, duration_hours, is_off, background_color, text_color').order('code'),
@@ -21,6 +21,7 @@ export default async function OperatorsPage() {
       areas={areas.data ?? []}
       users={users.data ?? []}
       orgId={orgId}
+      currentUserId={user?.id ?? ''}
       isAdmin={isAdmin}
       error={ops.error?.message ?? shifts.error?.message ?? areas.error?.message ?? users.error?.message ?? ''}
     />

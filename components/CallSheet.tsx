@@ -102,12 +102,16 @@ export default function CallSheet(p: {
         const prevShift = prevAsg?.shift_type_id ? shiftBy.get(prevAsg.shift_type_id) : undefined;
         const prevArea = prevAsg?.area_code_id ? areaBy.get(prevAsg.area_code_id) : undefined;
         const standbyType = sbBy.get(o.id);
-        const isLeave = area?.category === 'leave';
-        const isOnDuty = Boolean(shift && !shift.is_off && !isLeave);
-        const isNow = isShiftActiveNow(isLeave ? undefined : shift, prevShift, prevArea?.category === 'leave', nowMinutes);
+        const isRestDay = Boolean(area && (area.category === 'rest' || area.code.toUpperCase() === 'RD'));
+        const isLeave = Boolean(area && area.category === 'leave' && area.code.toUpperCase() !== 'RD');
+        const prevRestOrLeave = Boolean(
+          prevArea && (prevArea.category === 'leave' || prevArea.category === 'rest' || prevArea.code.toUpperCase() === 'RD'),
+        );
+        const isOnDuty = Boolean(shift && !shift.is_off && !isLeave && !isRestDay);
+        const isNow = isShiftActiveNow(isLeave || isRestDay ? undefined : shift, prevShift, prevRestOrLeave, nowMinutes);
         // Priority: 0 = Standby, 1 = On Duty Now, 2 = On Duty Today, 3 = Off / Leave / Unassigned
         const tier = standbyType ? 0 : isNow ? 1 : isOnDuty ? 2 : 3;
-        return { op: o, idx, shift, area, standbyType, isLeave, isOnDuty, isNow, tier };
+        return { op: o, idx, shift, area, standbyType, isLeave, isRestDay, isOnDuty, isNow, tier };
       });
 
     enriched.sort((a, b) => a.tier - b.tier || a.idx - b.idx);
@@ -196,10 +200,10 @@ export default function CallSheet(p: {
               <span style={{ background: 'rgba(124, 58, 237, 0.14)', color: 'var(--violet)', padding: '2px 8px', borderRadius: 999 }}>
                 {coverageCounts.standby} Standby
               </span>
-              <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: 999 }}>
+              <span style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)', padding: '2px 8px', borderRadius: 999 }}>
                 {coverageCounts.onDutyNow} On Duty Now
               </span>
-              <span style={{ background: '#dbeafe', color: '#1e40af', padding: '2px 8px', borderRadius: 999 }}>
+              <span style={{ background: 'var(--info-bg)', color: 'var(--info-fg)', padding: '2px 8px', borderRadius: 999 }}>
                 {coverageCounts.onDutyToday} Duty Today
               </span>
               <span style={{ background: 'var(--surface)', color: 'var(--text-secondary)', border: '1px solid var(--border)', padding: '2px 8px', borderRadius: 999 }}>
@@ -303,7 +307,7 @@ export default function CallSheet(p: {
                 </td>
               </tr>
             ) : (
-              sortedAndFiltered.map(({ op, shift, area, standbyType, isLeave, isOnDuty, isNow }, i) => (
+              sortedAndFiltered.map(({ op, shift, area, standbyType, isLeave, isRestDay, isOnDuty, isNow }, i) => (
                 <tr key={op.id} style={{ background: standbyType ? 'rgba(124, 58, 237, 0.1)' : 'var(--surface)' }}>
                   <td className="tabular-nums" style={{ padding: '8px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                     {i + 1}
@@ -340,6 +344,20 @@ export default function CallSheet(p: {
                           }}
                         >
                           LEAVE · {area?.code}
+                        </span>
+                      ) : isRestDay ? (
+                        <span
+                          style={{
+                            background: 'var(--surface-muted)',
+                            color: 'var(--text-secondary)',
+                            border: '1px solid var(--border)',
+                            padding: '3px 9px',
+                            borderRadius: 999,
+                            fontWeight: 600,
+                            fontSize: 11.5,
+                          }}
+                        >
+                          REST DAY · {area?.code}
                         </span>
                       ) : isOnDuty && shift ? (
                         <span
@@ -420,7 +438,7 @@ export default function CallSheet(p: {
 
       {/* Mobile Card List (<= 640px) */}
       <div className="call-sheet-cards">
-        {sortedAndFiltered.map(({ op, shift, area, standbyType, isLeave, isOnDuty }) => (
+        {sortedAndFiltered.map(({ op, shift, area, standbyType, isLeave, isRestDay, isOnDuty }) => (
           <div
             key={op.id}
             className="card"
@@ -459,11 +477,13 @@ export default function CallSheet(p: {
                 <b>
                   {isLeave
                     ? `LEAVE (${area?.code})`
-                    : isOnDuty && shift
-                      ? `ON DUTY (${shift.code})`
-                      : shift?.is_off
-                        ? `OFF (${shift.code})`
-                        : 'Unassigned'}
+                    : isRestDay
+                      ? `REST DAY (${area?.code})`
+                      : isOnDuty && shift
+                        ? `ON DUTY (${shift.code})`
+                        : shift?.is_off
+                          ? `OFF (${shift.code})`
+                          : 'Unassigned'}
                 </b>
               </span>
               <span>·</span>

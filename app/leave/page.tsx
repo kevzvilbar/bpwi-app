@@ -11,7 +11,7 @@ export default async function LeavePage({ searchParams }: { searchParams: Promis
   const year = /^\d{4}$/.test(sp.y ?? '') ? Number(sp.y) : thisYear;
   const [ops, areas] = await Promise.all([
     sb.from('operators').select('id, full_name, position').eq('is_active', true).order('sort_order'),
-    sb.from('area_codes').select('id, code, name, category, background_color, text_color').in('category', ['leave', 'holiday']).order('code'),
+    sb.from('area_codes').select('id, code, name, category, background_color, text_color').in('category', ['leave', 'holiday', 'rest']).order('code'),
   ]);
   const ids = (areas.data ?? []).map((a) => a.id);
   const asg = ids.length

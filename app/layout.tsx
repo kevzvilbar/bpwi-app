@@ -2,6 +2,7 @@ import type { Viewport } from 'next';
 import './globals.css';
 import Nav from '@/components/Nav';
 import PwaRegister from '@/components/PwaRegister';
+import DialogA11y from '@/components/DialogA11y';
 import { getProfile } from '@/lib/profile';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 
@@ -56,6 +57,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en">
       <body>
         <PwaRegister />
+        <DialogA11y />
         <Nav
           role={profile.role}
           userName={profile.name}

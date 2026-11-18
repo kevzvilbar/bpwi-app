@@ -81,22 +81,27 @@ export async function POST(req: Request) {
         )
         .select('id, legacy_key'),
     );
-    const areas = await must(
-      db
-        .from('area_codes')
-        .upsert(
-          (st.areaLeaves ?? []).map((a: any) => ({
-            organization_id: org,
-            code: a.code,
-            name: a.name,
-            category: a.isLeave ? 'leave' : /holiday/i.test(a.name ?? '') || a.code === 'H' ? 'holiday' : 'station',
-            background_color: a.bg,
-            text_color: a.text,
-          })),
-          { onConflict: 'organization_id,code' },
-        )
-        .select('id, code'),
-    );
+    const mapAreaCategory = (a: any, allowRest: boolean) => {
+      const code = String(a.code ?? '').trim().toUpperCase();
+      if (code === 'RD' || /rest\s*day/i.test(a.name ?? '')) return allowRest ? 'rest' : 'leave';
+      if (/holiday/i.test(a.name ?? '') || code === 'H') return 'holiday';
+      return a.isLeave ? 'leave' : 'station';
+    };
+    const areaPayload = (allowRest: boolean) =>
+      (st.areaLeaves ?? []).map((a: any) => ({
+        organization_id: org,
+        code: a.code,
+        name: a.name,
+        category: mapAreaCategory(a, allowRest),
+        background_color: a.bg,
+        text_color: a.text,
+      }));
+    let areaRes = await db.from('area_codes').upsert(areaPayload(true), { onConflict: 'organization_id,code' }).select('id, code');
+    if (areaRes.error && /area_codes_category_check/i.test(areaRes.error.message)) {
+      areaRes = await db.from('area_codes').upsert(areaPayload(false), { onConflict: 'organization_id,code' }).select('id, code');
+    }
+    if (areaRes.error) throw new Error(areaRes.error.message);
+    const areas = areaRes.data ?? [];
     const opId = new Map(ops.map((o: any) => [o.legacy_key, o.id]));
     const shiftId = new Map(shifts.map((s: any) => [s.legacy_key, s.id]));
     const areaId = new Map(areas.map((a: any) => [a.code, a.id]));

@@ -57,6 +57,14 @@ function cellKey(opId: string, date: string) {
   return `${opId}:${date}`;
 }
 
+function isRestArea(a?: Area) {
+  return Boolean(a && (a.category === 'rest' || a.code.toUpperCase() === 'RD'));
+}
+
+function isLeaveArea(a?: Area) {
+  return Boolean(a && a.category === 'leave' && a.code.toUpperCase() !== 'RD');
+}
+
 function csvEscape(v: string) {
   return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 }
@@ -281,10 +289,21 @@ export default function Roster(p: {
     const sbDeletes: { opId: string; date: string }[] = [];
     const sbAffected = new Set<string>();
     const sbRollback: { opId: string; date: string; prev: Standby | null }[] = [];
+    let skippedConcurrent = 0;
 
     for (const e of entries) {
       const k = cellKey(e.opId, e.date);
       if (e.kind === 'shift') {
+        if (dir === 'undo') {
+          const cur = cell.get(k) ?? null;
+          const matchesExpected =
+            (cur?.shift_type_id ?? null) === (e.next?.shift_type_id ?? null) &&
+            (cur?.area_code_id ?? null) === (e.next?.area_code_id ?? null);
+          if (!matchesExpected) {
+            skippedConcurrent += 1;
+            continue;
+          }
+        }
         shiftAffected.add(k);
         const target = dir === 'undo' ? e.prev : e.next;
         const current = dir === 'undo' ? e.next : e.prev;
@@ -292,6 +311,13 @@ export default function Roster(p: {
         if (target) shiftUpserts.push(target);
         else shiftDeletes.push({ opId: e.opId, date: e.date });
       } else {
+        if (dir === 'undo') {
+          const curSb = standbyMap.get(k) ?? null;
+          if ((curSb?.standby_type ?? null) !== (e.next?.standby_type ?? null)) {
+            skippedConcurrent += 1;
+            continue;
+          }
+        }
         sbAffected.add(k);
         const target = dir === 'undo' ? e.prev : e.next;
         const current = dir === 'undo' ? e.next : e.prev;
@@ -300,6 +326,11 @@ export default function Roster(p: {
         else sbDeletes.push({ opId: e.opId, date: e.date });
       }
     }
+
+    if (skippedConcurrent > 0) {
+      setMsg(`Skipped undo on ${skippedConcurrent} cell(s) modified by another user.`);
+    }
+    if (shiftAffected.size === 0 && sbAffected.size === 0) return;
 
     if (shiftAffected.size > 0) {
       setRows((r) => [...r.filter((x) => !shiftAffected.has(cellKey(x.operator_id, x.schedule_date))), ...shiftUpserts]);
@@ -362,6 +393,7 @@ export default function Roster(p: {
   useEffect(() => {
     if (!p.canEdit) return;
     const onKeyDown = (e: KeyboardEvent) => {
+      if (importOpen || confirmFill || ctxMenu || document.querySelector('[role="dialog"]')) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
@@ -370,6 +402,21 @@ export default function Roster(p: {
       } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
         e.preventDefault();
         handleRedo();
+      } else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key >= '1' && e.key <= '9') {
+          const shift = p.shifts[Number(e.key) - 1];
+          if (shift) {
+            setMode('paint');
+            setShiftId(shift.id);
+          }
+        } else if (e.key === '0') {
+          setMode('paint');
+          setAreaId(null);
+        } else if (e.key.toLowerCase() === 's') {
+          setMode((m) => (m === 'standby' ? 'paint' : 'standby'));
+        } else if (e.key.toLowerCase() === 'e') {
+          setMode((m) => (m === 'erase' ? 'paint' : 'erase'));
+        }
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -644,12 +691,10 @@ export default function Roster(p: {
         const a = r?.area_code_id ? areaBy.get(r.area_code_id) : undefined;
         const sb = standbyMap.get(k);
         if (sb) ocCount += 1;
-        if (a?.category === 'leave') leaves += 1;
-        if (s) {
-          if (s.is_off) off += 1;
-          else duty += 1;
-          hrs += Number(s.duration_hours ?? 0);
-        }
+        if (isLeaveArea(a)) leaves += 1;
+        if (isRestArea(a) || s?.is_off) off += 1;
+        else if (s && !isLeaveArea(a)) duty += 1;
+        if (s) hrs += Number(s.duration_hours ?? 0);
         return [s?.code ?? '', a?.code ?? (s && !s.is_off ? 'PW' : ''), sb ? `(${sb.standby_type})` : ''].filter(Boolean).join(' ');
       });
       lines.push(
@@ -703,11 +748,12 @@ export default function Roster(p: {
         for (const o of filteredOperators) {
           const r = cell.get(cellKey(o.id, d.date));
           const s = r?.shift_type_id ? shiftBy.get(r.shift_type_id) : undefined;
-          if (s && !s.is_off) count += 1;
+          const a = r?.area_code_id ? areaBy.get(r.area_code_id) : undefined;
+          if (s && !s.is_off && !isLeaveArea(a) && !isRestArea(a)) count += 1;
         }
         return count;
       }),
-    [cell, days, filteredOperators, shiftBy],
+    [areaBy, cell, days, filteredOperators, shiftBy],
   );
 
   const todayCoverage = useMemo(() => {
@@ -721,9 +767,9 @@ export default function Roster(p: {
       const s = r?.shift_type_id ? shiftBy.get(r.shift_type_id) : undefined;
       const a = r?.area_code_id ? areaBy.get(r.area_code_id) : undefined;
       if (standbyMap.has(k)) sb += 1;
-      if (a?.category === 'leave') leave += 1;
+      if (isLeaveArea(a)) leave += 1;
+      else if (isRestArea(a) || s?.is_off) off += 1;
       else if (s && !s.is_off) duty += 1;
-      else if (s?.is_off) off += 1;
     }
     return { duty, sb, off, leave };
   }, [areaBy, cell, p.operators, p.today, shiftBy, standbyMap]);
@@ -784,7 +830,7 @@ export default function Roster(p: {
 
         <div className="desktop-only" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', fontSize: 11.5 }}>
           <strong style={{ color: 'var(--text)' }}>Today ({p.today}):</strong>
-          <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
+          <span style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
             {todayCoverage.duty} On Duty
           </span>
           <span style={{ background: 'rgba(124, 58, 237, 0.14)', color: 'var(--violet)', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
@@ -793,7 +839,7 @@ export default function Roster(p: {
           <span style={{ background: 'var(--surface-muted)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>
             {todayCoverage.off} Off
           </span>
-          <span style={{ background: '#ffe4e6', color: '#9f1239', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
+          <span style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
             {todayCoverage.leave} Leave
           </span>
         </div>
@@ -964,14 +1010,14 @@ export default function Roster(p: {
           </span>
 
           <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Shifts:</span>
-          {p.shifts.map((s) => (
+          {p.shifts.map((s, i) => (
             <button
               key={s.id}
               onClick={() => {
                 setMode('paint');
                 setShiftId(s.id);
               }}
-              title={s.description ?? ''}
+              title={i < 9 ? `${s.description ?? s.code} (Key ${i + 1})` : (s.description ?? '')}
               style={{
                 padding: '3px 8px',
                 borderRadius: 5,
@@ -1015,7 +1061,7 @@ export default function Roster(p: {
                 setAreaId(a.id);
               }}
               title={a.name ?? ''}
-              className={a.category === 'leave' ? 'cell-leave' : undefined}
+              className={isLeaveArea(a) || isRestArea(a) ? 'cell-leave' : undefined}
               style={{
                 padding: '3px 7px',
                 borderRadius: 5,
@@ -1227,15 +1273,14 @@ export default function Roster(p: {
                       const sb = standbyMap.get(k);
                       const pm = pmByCell.get(k);
 
+                      const isLeave = isLeaveArea(a);
+                      const isRest = isRestArea(a);
                       if (sb) ocCount += 1;
-                      if (a?.category === 'leave') leaves += 1;
-                      if (s) {
-                        if (s.is_off) off += 1;
-                        else duty += 1;
-                        hrs += Number(s.duration_hours ?? 0);
-                      }
+                      if (isLeave) leaves += 1;
+                      if (isRest || s?.is_off) off += 1;
+                      else if (s && !isLeave) duty += 1;
+                      if (s) hrs += Number(s.duration_hours ?? 0);
 
-                      const isLeave = a?.category === 'leave';
                       const bg =
                         a && a.background_color !== '#f1f5f9' && (s?.is_off || !s)
                           ? a.background_color
@@ -1245,7 +1290,7 @@ export default function Roster(p: {
                         s && !s.is_off
                           ? `${s.code}·${a?.code ?? 'PW'}`
                           : a?.code ?? s?.code ?? '';
-                      const classes = [isLeave ? 'cell-leave' : '', sb ? 'cell-oncall-active' : ''].filter(Boolean).join(' ');
+                      const classes = [isLeave || isRest ? 'cell-leave' : '', sb ? 'cell-oncall-active' : ''].filter(Boolean).join(' ');
                       const isFocused = focused.r === rIdx && focused.c === cIdx;
 
                       return (

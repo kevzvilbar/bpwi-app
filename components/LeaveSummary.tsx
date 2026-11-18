@@ -13,8 +13,9 @@ export default function LeaveSummary(p: { year: number; operators: Op[]; areas: 
   const router = useRouter();
   const [showHoliday, setShowHoliday] = useState(false);
   const [showRd, setShowRd] = useState(false);
-  const areas = p.areas.filter(
-    (a) => (showHoliday || a.category === 'leave') && (showRd || a.code.toUpperCase() !== 'RD'),
+  const isRd = (a: Area) => a.category === 'rest' || a.code.toUpperCase() === 'RD';
+  const areas = p.areas.filter((a) =>
+    isRd(a) ? showRd : a.category === 'holiday' ? showHoliday : a.category === 'leave',
   );
   const areaIds = new Set(areas.map((a) => a.id));
 

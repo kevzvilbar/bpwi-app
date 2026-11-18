@@ -248,7 +248,10 @@ export default function PmPlanner(p: {
       if (sbList.has(opId)) return true;
       const a = asgByDateOp.get(`${t.scheduled_date}:${opId}`);
       if (a?.shift_type_id && shiftBy.get(a.shift_type_id)?.is_off) return true;
-      if (a?.area_code_id && areaBy.get(a.area_code_id)?.category === 'leave') return true;
+      const area = a?.area_code_id ? areaBy.get(a.area_code_id) : undefined;
+      if (area && (area.category === 'leave' || area.category === 'rest' || area.category === 'holiday' || area.code.toUpperCase() === 'RD')) {
+        return true;
+      }
     }
     return false;
   }
@@ -479,9 +482,11 @@ export default function PmPlanner(p: {
     const a = asgByDateOp.get(`${selectedDate}:${op.id}`);
     const s = a?.shift_type_id ? shiftBy.get(a.shift_type_id) : undefined;
     const ar = a?.area_code_id ? areaBy.get(a.area_code_id) : undefined;
-    if (ar?.category === 'leave') onLeave += 1;
+    const isRest = Boolean(ar && (ar.category === 'rest' || ar.code.toUpperCase() === 'RD'));
+    const isLeave = Boolean(ar && ar.category === 'leave' && ar.code.toUpperCase() !== 'RD');
+    if (isLeave) onLeave += 1;
+    else if (isRest || s?.is_off) onRest += 1;
     else if (s && !s.is_off) onDuty += 1;
-    else if (s?.is_off) onRest += 1;
   }
   const dayDelta = diffDays(p.today, selectedDate);
   const dayRel = dayDelta === 0 ? 'Today' : dayDelta > 0 ? `in ${dayDelta} d` : `${Math.abs(dayDelta)} d ago`;
