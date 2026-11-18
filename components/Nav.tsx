@@ -454,6 +454,11 @@ export default function Nav(p: {
                       )}
                     </Link>
                   )}
+                  {(p.isAdmin || p.role === 'manager' || p.role === 'scheduler') && (
+                    <Link href="/org-chart" className="btn" style={{ justifyContent: 'flex-start', textDecoration: 'none' }}>
+                      Org Chart (Heads &amp; Up)
+                    </Link>
+                  )}
                   {p.isAdmin && (
                     <Link href="/operators" className="btn" style={{ justifyContent: 'space-between', textDecoration: 'none' }}>
                       <span>Operators, Users &amp; Setup</span>

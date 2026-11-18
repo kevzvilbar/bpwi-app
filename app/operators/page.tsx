@@ -15,7 +15,7 @@ export default async function OperatorsPage() {
     ? await sb.from('operators').select('id, full_name, position, phone_number, default_station, sort_order, is_active').order('sort_order')
     : opsPrimary;
 
-  const [shifts, users, logs, people, grants, holidaysRes] = await Promise.all([
+  const [shifts, users, logs, people, grants, holidaysRes, orgPosRes] = await Promise.all([
     sb.from('shift_types').select('id, code, description, start_time, end_time, duration_hours, is_off, background_color, text_color').order('code'),
     isAdmin
       ? sb.from('user_profiles').select('id, full_name, role, is_active, operator_id').order('role').order('full_name')
@@ -30,6 +30,9 @@ export default async function OperatorsPage() {
       ? sb.from('edit_grants').select('id, user_id, starts_at, ends_at, date_from, date_to, note, revoked_at, created_at').order('starts_at', { ascending: false }).limit(200)
       : Promise.resolve({ data: [], error: null }),
     sb.from('holidays').select('id, holiday_date, name, holiday_type').order('holiday_date'),
+    isAdmin
+      ? sb.from('org_positions').select('id, title, department_group, tier, holder_user_id, is_vacant').eq('is_active', true).order('sort_order')
+      : Promise.resolve({ data: [], error: null }),
   ]);
   const ops = opsFallback;
 
@@ -44,6 +47,7 @@ export default async function OperatorsPage() {
       grants={grants.data ?? []}
       holidays={holidaysRes.error ? [] : (holidaysRes.data ?? [])}
       holidaysError={holidaysRes.error?.message ?? ''}
+      orgPositions={orgPosRes.error ? [] : (orgPosRes.data ?? [])}
       headsError={people.error?.message ?? grants.error?.message ?? ''}
       orgId={orgId}
       currentUserId={user?.id ?? ''}

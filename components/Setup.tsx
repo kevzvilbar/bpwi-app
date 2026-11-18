@@ -188,6 +188,15 @@ function summarizeAudit(
   return log.record_id ?? 'Record updated';
 }
 
+type OrgPosLite = {
+  id: string;
+  title: string;
+  department_group: string;
+  tier: string;
+  holder_user_id: string | null;
+  is_vacant: boolean;
+};
+
 export default function Setup(p: {
   operators: Op[];
   shifts: Shift[];
@@ -199,6 +208,7 @@ export default function Setup(p: {
   grants?: Grant[];
   holidays?: HolidayRow[];
   holidaysError?: string;
+  orgPositions?: OrgPosLite[];
   headsError?: string;
   orgId: string;
   currentUserId?: string;
@@ -210,6 +220,33 @@ export default function Setup(p: {
   const [shifts, setShifts] = useState<Shift[]>(p.shifts);
   const [areas, setAreas] = useState<Area[]>(p.areas);
   const [users, setUsers] = useState<UserProfile[]>(p.users);
+  const [orgPositions, setOrgPositions] = useState<OrgPosLite[]>(p.orgPositions ?? []);
+
+  async function assignUserToOrgPosition(userId: string, newPosId: string) {
+    const sb = supabaseBrowser();
+    setMsg('');
+    // Vacate any old position held by this user
+    await sb.from('org_positions').update({ holder_user_id: null, is_vacant: true }).eq('holder_user_id', userId);
+    if (newPosId) {
+      const { error } = await sb
+        .from('org_positions')
+        .update({ holder_user_id: userId, is_vacant: false })
+        .eq('id', newPosId);
+      if (error) {
+        setMsg(error.message);
+        return;
+      }
+    }
+    setOrgPositions((prev) =>
+      prev.map((pos) =>
+        pos.id === newPosId
+          ? { ...pos, holder_user_id: userId, is_vacant: false }
+          : pos.holder_user_id === userId
+            ? { ...pos, holder_user_id: null, is_vacant: true }
+            : pos,
+      ),
+    );
+  }
   const [msg, setMsg] = useState(p.error);
   const [savedKey, setSavedKey] = useState('');
   const [dirty, setDirty] = useState<Set<string>>(new Set());
@@ -968,7 +1005,7 @@ export default function Setup(p: {
           <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5 }}>
             <thead>
               <tr>
-                {['Full name', 'Role', 'Linked Operator', 'Active (Approved)', 'User ID', ''].map((h) => (
+                {['Full name', 'Role', 'Org Position (Auto-Chart)', 'Linked Operator', 'Active (Approved)', 'User ID', ''].map((h) => (
                   <th key={h} style={{ ...cell, padding: '8px 6px', textAlign: 'left', background: 'var(--surface-muted)', color: 'var(--text)' }}>
                     {h}
                   </th>
@@ -1025,6 +1062,21 @@ export default function Setup(p: {
                           <option value="operator">operator</option>
                           <option value="manager">department head</option>
                           <option value="viewer">viewer</option>
+                        </select>
+                      </td>
+                      <td style={{ ...cell, width: 190 }}>
+                        <select
+                          style={inp}
+                          value={orgPositions.find((pos) => pos.holder_user_id === u.id)?.id ?? ''}
+                          onChange={(e) => assignUserToOrgPosition(u.id, e.target.value)}
+                          title="Assigning a Head position auto-updates the Org Chart & subordinate routing"
+                        >
+                          <option value="">— None —</option>
+                          {orgPositions.map((pos) => (
+                            <option key={pos.id} value={pos.id}>
+                              {pos.title}{pos.is_vacant ? ' (Vacant)' : pos.holder_user_id && pos.holder_user_id !== u.id ? ' (Occupied)' : ''}
+                            </option>
+                          ))}
                         </select>
                       </td>
                       <td style={{ ...cell, width: 220 }}>
