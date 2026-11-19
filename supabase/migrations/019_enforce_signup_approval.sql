@@ -53,3 +53,28 @@ drop trigger if exists trg_notify_admins_pending_signup on user_profiles;
 create trigger trg_notify_admins_pending_signup
   after insert on user_profiles
   for each row execute function notify_admins_on_pending_signup();
+
+-- Backfill any existing auth.users who signed up without a user_profiles row
+do $$
+declare
+  u record;
+  v_org uuid;
+begin
+  select id into v_org from organizations order by name limit 1;
+  if v_org is not null then
+    for u in
+      select id, email, raw_user_meta_data
+      from auth.users
+      where id not in (select id from user_profiles)
+    loop
+      insert into user_profiles(id, organization_id, full_name, role, is_active)
+      values (
+        u.id,
+        v_org,
+        coalesce(nullif(u.raw_user_meta_data->>'full_name', ''), u.email),
+        'viewer',
+        false
+      );
+    end loop;
+  end if;
+end $$;
