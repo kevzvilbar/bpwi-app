@@ -169,6 +169,17 @@ export const getProfile = cache(async () => {
     }
   }
 
+  let pendingReportsCount = 0;
+  if (user && orgId && isActive && ['admin', 'scheduler', 'manager'].includes(role)) {
+    const q = sb
+      .from('accomplishment_reports')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', orgId)
+      .eq('status', 'submitted');
+    const { count, error: repErr } = role === 'manager' ? await q.eq('assigned_head_id', user.id) : await q;
+    if (!repErr) pendingReportsCount = count ?? 0;
+  }
+
   return {
     sb,
     user,
@@ -176,6 +187,7 @@ export const getProfile = cache(async () => {
     isActive,
     pendingUsersCount,
     pendingRequestsCount,
+    pendingReportsCount,
     orgId,
     orgName,
     appTitle,

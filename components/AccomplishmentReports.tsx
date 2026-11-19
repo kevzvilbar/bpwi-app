@@ -79,6 +79,7 @@ export default function AccomplishmentReports(p: Props) {
   const [reportDate, setReportDate] = useState<string>(p.today);
   const [tab, setTab] = useState<'my' | 'inbox'>(p.canVerify ? 'inbox' : 'my');
   const [inboxFilter, setInboxFilter] = useState<'pending' | 'checked' | 'all'>('pending');
+  const [inboxScope, setInboxScope] = useState<'mine' | 'org'>(p.userRole === 'manager' ? 'mine' : 'org');
 
   // Find existing report for current user + selected date
   const existingForDate = useMemo(
@@ -333,17 +334,22 @@ export default function AccomplishmentReports(p: Props) {
     });
   }
 
+  const scopedReports = useMemo(
+    () => (inboxScope === 'mine' ? reports.filter((r) => r.assigned_head_id === p.userId) : reports),
+    [reports, inboxScope, p.userId],
+  );
+
   const inboxReports = useMemo(() => {
-    return reports.filter((r) => {
+    return scopedReports.filter((r) => {
       if (inboxFilter === 'pending') return r.status === 'submitted';
       if (inboxFilter === 'checked') return r.status === 'checked';
       return r.status !== 'draft';
     });
-  }, [reports, inboxFilter]);
+  }, [scopedReports, inboxFilter]);
 
   const pendingCount = useMemo(
-    () => reports.filter((r) => r.status === 'submitted').length,
-    [reports],
+    () => scopedReports.filter((r) => r.status === 'submitted').length,
+    [scopedReports],
   );
 
   const selectedInboxReport = useMemo(
@@ -425,7 +431,24 @@ export default function AccomplishmentReports(p: Props) {
         <div style={{ display: 'grid', gap: 12 }}>
           <div className="no-print card" style={{ padding: 12, display: 'grid', gap: 10 }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 12.5, fontWeight: 600 }}>Filter:</span>
+              <span style={{ fontSize: 12.5, fontWeight: 600 }}>Scope:</span>
+              <button
+                type="button"
+                className={`btn ${inboxScope === 'mine' ? 'btn-primary' : ''}`}
+                style={{ fontSize: 12, padding: '4px 10px' }}
+                onClick={() => setInboxScope('mine')}
+              >
+                Assigned to Me
+              </button>
+              <button
+                type="button"
+                className={`btn ${inboxScope === 'org' ? 'btn-primary' : ''}`}
+                style={{ fontSize: 12, padding: '4px 10px' }}
+                onClick={() => setInboxScope('org')}
+              >
+                All Org
+              </button>
+              <span style={{ fontSize: 12.5, fontWeight: 600, marginLeft: 8 }}>Status:</span>
               {(['pending', 'checked', 'all'] as const).map((f) => (
                 <button
                   key={f}
@@ -620,8 +643,112 @@ export default function AccomplishmentReports(p: Props) {
               </div>
             </div>
 
-            {/* Editable Rows Table */}
-            <div style={{ overflowX: 'auto' }}>
+            {/* Mobile Stacked Card Editor (<= 640px) */}
+            <div className="responsive-cards" style={{ gap: 10 }}>
+              {entries.map((row, idx) => (
+                <div
+                  key={`m-${row.id}`}
+                  style={{
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                    padding: 10,
+                    background: 'var(--surface-muted)',
+                    display: 'grid',
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <strong style={{ fontSize: 12 }}>
+                      Entry #{idx + 1}{row.source_activity_id ? ' · Synced' : ''}
+                    </strong>
+                    {!isLocked && (
+                      <button
+                        type="button"
+                        className="btn"
+                        style={{ padding: '2px 8px', fontSize: 12, color: '#b91c1c' }}
+                        onClick={() => setEntries((prev) => prev.filter((_, i) => i !== idx))}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: 8 }}>
+                    <label style={{ fontSize: 11.5 }}>
+                      Form Column
+                      <select
+                        className="input"
+                        disabled={isLocked}
+                        value={row.column_id ?? '__others__'}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          updateEntry(idx, {
+                            column_id: val === '__others__' ? null : val,
+                            others_specify: val === '__others__' ? (row.others_specify || 'W.M') : '',
+                          });
+                        }}
+                      >
+                        <option value="__others__">OTHERS (SPECIFY)</option>
+                        <optgroup label="TECHNICAL">
+                          {ALL_FORM_COLUMNS.filter((c) => c.group === 'technical').map((c) => (
+                            <option key={c.id} value={c.id}>{c.label}</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="PROJECT">
+                          {ALL_FORM_COLUMNS.filter((c) => c.group === 'project').map((c) => (
+                            <option key={c.id} value={c.id}>{c.label}</option>
+                          ))}
+                        </optgroup>
+                      </select>
+                    </label>
+                    <label style={{ fontSize: 11.5 }}>
+                      Others
+                      <input
+                        className="input"
+                        disabled={isLocked || row.column_id !== null}
+                        placeholder="W.M"
+                        value={row.column_id === null ? row.others_specify : ''}
+                        onChange={(e) => updateEntry(idx, { others_specify: e.target.value })}
+                      />
+                    </label>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 6 }}>
+                    <label style={{ fontSize: 11.5 }}>
+                      Project / Site
+                      <input className="input" disabled={isLocked} value={row.location_project} onChange={(e) => updateEntry(idx, { location_project: e.target.value })} />
+                    </label>
+                    <label style={{ fontSize: 11.5 }}>
+                      PH
+                      <input className="input" disabled={isLocked} value={row.location_ph} onChange={(e) => updateEntry(idx, { location_ph: e.target.value })} />
+                    </label>
+                    <label style={{ fontSize: 11.5 }}>
+                      BLK
+                      <input className="input" disabled={isLocked} value={row.location_blk} onChange={(e) => updateEntry(idx, { location_blk: e.target.value })} />
+                    </label>
+                    <label style={{ fontSize: 11.5 }}>
+                      LOT
+                      <input className="input" disabled={isLocked} value={row.location_lot} onChange={(e) => updateEntry(idx, { location_lot: e.target.value })} />
+                    </label>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <label style={{ fontSize: 11.5 }}>
+                      Time Started
+                      <input className="input" disabled={isLocked} placeholder="3:10 PM" value={row.time_started} onChange={(e) => updateEntry(idx, { time_started: e.target.value })} />
+                    </label>
+                    <label style={{ fontSize: 11.5 }}>
+                      Time Finished
+                      <input className="input" disabled={isLocked} placeholder="3:54 PM" value={row.time_finished} onChange={(e) => updateEntry(idx, { time_finished: e.target.value })} />
+                    </label>
+                  </div>
+                  <label style={{ fontSize: 11.5 }}>
+                    Remarks
+                    <input className="input" disabled={isLocked} placeholder="Well / site status, FM & PG readings..." value={row.remarks} onChange={(e) => updateEntry(idx, { remarks: e.target.value })} />
+                  </label>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Editable Rows Table */}
+            <div className="responsive-table-wrap" style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ background: 'var(--surface-muted)', textAlign: 'left' }}>

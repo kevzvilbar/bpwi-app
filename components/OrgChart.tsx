@@ -172,10 +172,15 @@ export default function OrgChart(p: Props) {
     } catch {
       // ignore
     }
-    const { error } = await sb.from('organizations').update({ org_chart_meta: next }).eq('id', p.orgId);
+    const rpcRes = await sb.rpc('update_org_chart_meta', { p_org_id: p.orgId, p_meta: next });
+    let error = rpcRes.error;
+    if (error && /update_org_chart_meta/i.test(error.message)) {
+      const fallbackRes = await sb.from('organizations').update({ org_chart_meta: next }).eq('id', p.orgId);
+      error = fallbackRes.error;
+    }
     setBusy(false);
     setEditingHeader(false);
-    if (error && !/org_chart_meta/i.test(error.message)) {
+    if (error && !/org_chart_meta|update_org_chart_meta/i.test(error.message)) {
       setMsg({ kind: 'err', text: error.message });
       return;
     }

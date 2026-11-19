@@ -39,6 +39,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     isActive: true,
     pendingUsersCount: 0,
     pendingRequestsCount: 0,
+    pendingReportsCount: 0,
     role: 'viewer',
     name: '',
     orgId: '',
@@ -61,6 +62,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         isActive: p.isActive,
         pendingUsersCount: p.pendingUsersCount,
         pendingRequestsCount: p.pendingRequestsCount,
+        pendingReportsCount: p.pendingReportsCount,
         role: p.role,
         name: p.name,
         orgId: p.orgId,
@@ -96,6 +98,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           isAdmin={profile.isAdmin}
           pendingUsersCount={profile.pendingUsersCount}
           pendingRequestsCount={profile.pendingRequestsCount}
+          pendingReportsCount={profile.pendingReportsCount}
         />
         {profile.isManager && <EditAccessBanner active={profile.editGrant} next={profile.nextGrant} />}
         <main className="app-main">

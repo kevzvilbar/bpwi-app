@@ -104,6 +104,7 @@ export default function Nav(p: {
   isAdmin: boolean;
   pendingUsersCount?: number;
   pendingRequestsCount?: number;
+  pendingReportsCount?: number;
 }) {
   const path = usePathname();
   const canGenerate = p.canGenerate ?? p.canEdit;
@@ -274,6 +275,22 @@ export default function Nav(p: {
               >
                 <Icon name={l.icon} />
                 <span>{l.label}</span>
+                {l.href === '/reports' && (p.pendingReportsCount ?? 0) > 0 && (
+                  <span
+                    style={{
+                      background: on ? '#ffffff' : '#f59e0b',
+                      color: on ? '#0f172a' : '#ffffff',
+                      borderRadius: 999,
+                      padding: '1px 6px',
+                      fontSize: 10,
+                      fontWeight: 800,
+                      lineHeight: 1.3,
+                    }}
+                    title={`${p.pendingReportsCount} submitted accomplishment report(s) pending review`}
+                  >
+                    {p.pendingReportsCount}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -371,9 +388,27 @@ export default function Nav(p: {
         {primaryLinks.map((l) => {
           const on = l.href === '/' ? path === '/' : path.startsWith(l.href);
           return (
-            <Link key={l.href} href={l.href} aria-current={on ? 'page' : undefined}>
+            <Link key={l.href} href={l.href} aria-current={on ? 'page' : undefined} style={{ position: 'relative' }}>
               <Icon name={l.icon} />
               <span>{l.mobileLabel}</span>
+              {l.href === '/reports' && (p.pendingReportsCount ?? 0) > 0 && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 4,
+                    right: '20%',
+                    background: '#f59e0b',
+                    color: '#ffffff',
+                    borderRadius: 999,
+                    padding: '0 5px',
+                    fontSize: 9.5,
+                    fontWeight: 800,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {p.pendingReportsCount}
+                </span>
+              )}
             </Link>
           );
         })}

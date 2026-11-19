@@ -592,9 +592,7 @@ export default function Setup(p: {
                 ...(!u.full_name?.trim() ? { full_name: suggested.full_name } : {}),
               });
             };
-            const headOptions = (p.people ?? []).filter((x) => x.is_active && (x.role === 'manager' || x.role === 'admin'));
-
-  return (
+            return (
               <div key={u.id} className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
                 <label style={{ fontSize: 12 }}>
                   Full name {isSelf && <span style={{ color: 'var(--accent)', fontWeight: 700 }}>(You)</span>}
@@ -623,9 +621,7 @@ export default function Setup(p: {
                       <option value="">(unlinked)</option>
                       {ops.filter((o) => o.id).map((o) => {
                         const takenByOther = users.some((x) => x.id !== u.id && x.operator_id === o.id);
-                        const headOptions = (p.people ?? []).filter((x) => x.is_active && (x.role === 'manager' || x.role === 'admin'));
-
-  return (
+                        return (
                           <option key={o.id} value={o.id}>
                             {o.full_name}
                             {takenByOther ? ' (linked)' : ''}
@@ -1032,9 +1028,7 @@ export default function Setup(p: {
                       ...(!u.full_name?.trim() ? { full_name: suggested.full_name } : {}),
                     });
                   };
-                  const headOptions = (p.people ?? []).filter((x) => x.is_active && (x.role === 'manager' || x.role === 'admin'));
-
-  return (
+                  return (
                     <tr key={u.id} style={{ background: u.is_active ? 'var(--surface)' : 'rgba(234, 179, 8, 0.12)' }}>
                       <td style={cell}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1089,9 +1083,7 @@ export default function Setup(p: {
                             <option value="">(unlinked)</option>
                             {ops.filter((o) => o.id).map((o) => {
                               const takenByOther = users.some((x) => x.id !== u.id && x.operator_id === o.id);
-                              const headOptions = (p.people ?? []).filter((x) => x.is_active && (x.role === 'manager' || x.role === 'admin'));
-
-  return (
+                              return (
                                 <option key={o.id} value={o.id}>
                                   {o.full_name}
                                   {takenByOther ? ' (linked)' : ''}
