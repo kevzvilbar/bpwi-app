@@ -112,6 +112,7 @@ export default function PmPlanner(p: {
   holidays?: Array<{ holiday_date: string; name: string; holiday_type: string }>;
   orgId: string;
   canEdit: boolean;
+  canExportCsv?: boolean;
   error: string;
 }) {
   const router = useRouter();
@@ -508,6 +509,52 @@ export default function PmPlanner(p: {
   }
 
   const monthTasks = visible.filter((t) => t.scheduled_date.startsWith(p.month));
+
+  function exportCsv() {
+    const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const actLabelByCode = new Map(activityChips.map((c) => [c.type, c.label]));
+    const headers = [
+      'Scheduled Date',
+      'Activity Code',
+      'Activity Name',
+      'Title',
+      'Locations',
+      'Asset',
+      'Assigned Operators',
+      'Status',
+      'Completed At',
+      'Remarks',
+    ];
+    const lines = [headers.map(esc).join(',')];
+    for (const t of monthTasks) {
+      const assignedNames = t.assigned_operator_ids
+        .map((id) => opBy.get(id)?.full_name ?? id)
+        .join('; ');
+      lines.push(
+        [
+          t.scheduled_date,
+          t.activity_type,
+          actLabelByCode.get(t.activity_type) ?? t.activity_type,
+          t.title,
+          t.locations.join('; '),
+          t.asset ?? '',
+          assignedNames,
+          t.status,
+          t.completed_at ?? '',
+          t.remarks ?? '',
+        ]
+          .map(esc)
+          .join(','),
+      );
+    }
+    const blob = new Blob([`\uFEFF${lines.join('\r\n')}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bpwi-pm-schedule-${p.month}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
   const counts = {
     total: monthTasks.length,
     planned: monthTasks.filter((t) => t.status === 'planned').length,
@@ -676,6 +723,11 @@ export default function PmPlanner(p: {
               <button className="btn" onClick={exportIcs}>
                 Export .ics
               </button>
+              {p.canExportCsv && (
+                <button className="btn" onClick={exportCsv} title="Download filtered PM Schedule for this month as CSV">
+                  Export CSV
+                </button>
+              )}
             </div>
             {p.canEdit && (
               <button

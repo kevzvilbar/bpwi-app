@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function PmPage({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
   const sp = await searchParams;
-  const { sb, orgId, canEdit } = await getProfile();
+  const { sb, orgId, canEdit, isAdmin, isManager } = await getProfile();
   const today = manilaToday();
   const month = /^\d{4}-\d{2}$/.test(sp.m ?? '') ? sp.m! : today.slice(0, 7);
   const [y, mo] = month.split('-').map(Number);
@@ -69,6 +69,7 @@ export default async function PmPage({ searchParams }: { searchParams: Promise<{
       holidays={holidaysRes.error ? [] : (holidaysRes.data ?? [])}
       orgId={orgId}
       canEdit={canEdit}
+      canExportCsv={isAdmin || isManager}
       error={error}
     />
   );

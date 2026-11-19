@@ -29,6 +29,7 @@ export function computePermissions(ctx: PermissionContext) {
     canViewOrgChart: isAdmin || isScheduler || isManager,
     canEditOrgChart: isAdmin || isManager,
     canRestructureOrgChart: isAdmin,
+    canExportPmCsv: isAdmin || isManager,
     canAccessSetup: isAdmin,
   };
 }

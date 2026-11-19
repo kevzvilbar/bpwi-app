@@ -9,6 +9,7 @@ describe('Role permission matrix', () => {
     assert.equal(p.canViewOrgChart, true);
     assert.equal(p.canEditOrgChart, true);
     assert.equal(p.canRestructureOrgChart, true);
+    assert.equal(p.canExportPmCsv, true);
     assert.equal(p.canLogActivity, true);
     assert.equal(p.canVerifyActivity, true);
   });
@@ -17,6 +18,7 @@ describe('Role permission matrix', () => {
     const noGrant = computePermissions({ role: 'manager', isActive: true, hasLiveEditGrant: false });
     assert.equal(noGrant.canViewOrgChart, true);
     assert.equal(noGrant.canEditOrgChart, true);
+    assert.equal(noGrant.canExportPmCsv, true);
     assert.equal(noGrant.canRestructureOrgChart, false);
     assert.equal(noGrant.canEditSchedule, false);
     assert.equal(noGrant.canProposeRequests, true);
@@ -34,6 +36,7 @@ describe('Role permission matrix', () => {
     assert.equal(op.canLogActivity, true);
     assert.equal(op.canClosePm, true);
     assert.equal(op.canViewOrgChart, false);
+    assert.equal(op.canExportPmCsv, false);
     assert.equal(op.canEditOrgChart, false);
     assert.equal(op.canVerifyActivity, false);
     assert.equal(op.canAccessSetup, false);
