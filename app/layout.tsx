@@ -5,6 +5,7 @@ import PwaRegister from '@/components/PwaRegister';
 import DialogA11y from '@/components/DialogA11y';
 import PendingApproval from '@/components/PendingApproval';
 import EditAccessBanner from '@/components/EditAccessBanner';
+import OfflineSyncBanner from '@/components/OfflineSyncBanner';
 import { getProfile, type EditGrant } from '@/lib/profile';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 
@@ -99,7 +100,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           pendingUsersCount={profile.pendingUsersCount}
           pendingRequestsCount={profile.pendingRequestsCount}
           pendingReportsCount={profile.pendingReportsCount}
+          hasUser={profile.hasUser}
         />
+        {profile.hasUser && <OfflineSyncBanner />}
         {profile.isManager && <EditAccessBanner active={profile.editGrant} next={profile.nextGrant} />}
         <main className="app-main">
           <PendingApproval pending={pendingApproval} userName={profile.name} userEmail={profile.userEmail}>

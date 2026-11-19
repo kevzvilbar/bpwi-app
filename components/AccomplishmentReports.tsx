@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import { enqueueOfflineReport } from '@/lib/offline-queue';
 import type { DailyActivityRow } from '@/lib/activity-types';
 import {
   ALL_FORM_COLUMNS,
@@ -272,28 +273,62 @@ export default function AccomplishmentReports(p: Props) {
       ...(targetStatus === 'submitted' ? { submitted_at: new Date().toISOString() } : {}),
     };
 
-    const res = editingId
-      ? await sb.from('accomplishment_reports').update(payload).eq('id', editingId).select('*').single()
-      : await sb.from('accomplishment_reports').insert(payload).select('*').single();
-
-    setBusy(false);
-    if (res.error || !res.data) {
-      setMsg({ kind: 'err', text: res.error?.message ?? 'Failed to save report.' });
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      await enqueueOfflineReport(editingId, payload);
+      setBusy(false);
+      setMsg({
+        kind: 'ok',
+        text: 'Offline detected — report queued on this device and will auto-send when signal returns.',
+      });
       return;
     }
-    const saved = res.data as AccomplishmentReportRow;
-    setEditingId(saved.id);
-    setReports((prev) => {
-      const idx = prev.findIndex((r) => r.id === saved.id);
-      return idx >= 0 ? prev.map((r) => (r.id === saved.id ? saved : r)) : [saved, ...prev];
-    });
-    setMsg({
-      kind: 'ok',
-      text:
-        targetStatus === 'submitted'
-          ? `Report sent to ${headById.get(assignedHeadId)?.full_name ?? 'Assigned Head'}.`
-          : 'Draft saved.',
-    });
+
+    try {
+      const res = editingId
+        ? await sb.from('accomplishment_reports').update(payload).eq('id', editingId).select('*').single()
+        : await sb.from('accomplishment_reports').insert(payload).select('*').single();
+
+      setBusy(false);
+      if (res.error || !res.data) {
+        const errText = res.error?.message ?? 'Failed to save report.';
+        if (/fetch|network|failed to load/i.test(errText)) {
+          await enqueueOfflineReport(editingId, payload);
+          setMsg({
+            kind: 'ok',
+            text: 'Weak signal — report saved offline and will auto-sync when connection returns.',
+          });
+          return;
+        }
+        setMsg({ kind: 'err', text: errText });
+        return;
+      }
+      const saved = res.data as AccomplishmentReportRow;
+      setEditingId(saved.id);
+      setReports((prev) => {
+        const idx = prev.findIndex((r) => r.id === saved.id);
+        return idx >= 0 ? prev.map((r) => (r.id === saved.id ? saved : r)) : [saved, ...prev];
+      });
+      setMsg({
+        kind: 'ok',
+        text:
+          targetStatus === 'submitted'
+            ? `Report sent to ${headById.get(assignedHeadId)?.full_name ?? 'Assigned Head'}.`
+            : 'Draft saved.',
+      });
+    } catch (err: any) {
+      const errText = String(err?.message ?? 'Failed to save report.');
+      if (!navigator.onLine || /fetch|network|failed to load/i.test(errText)) {
+        await enqueueOfflineReport(editingId, payload);
+        setBusy(false);
+        setMsg({
+          kind: 'ok',
+          text: 'Connection lost — report queued offline and will auto-sync when signal returns.',
+        });
+        return;
+      }
+      setBusy(false);
+      setMsg({ kind: 'err', text: errText });
+    }
   }
 
   async function reviewReport(report: AccomplishmentReportRow, nextStatus: 'checked' | 'returned') {

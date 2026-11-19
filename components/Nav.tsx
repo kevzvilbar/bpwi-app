@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import NotificationBell from '@/components/NotificationBell';
 
 function Icon({ name }: { name: 'schedule' | 'tasks' | 'activity' | 'pm' | 'standby' | 'reports' | 'menu' | 'close' | 'sun' | 'moon' }) {
   const common = {
@@ -105,6 +106,7 @@ export default function Nav(p: {
   pendingUsersCount?: number;
   pendingRequestsCount?: number;
   pendingReportsCount?: number;
+  hasUser?: boolean;
 }) {
   const path = usePathname();
   const canGenerate = p.canGenerate ?? p.canEdit;
@@ -347,6 +349,7 @@ export default function Nav(p: {
           >
             {roleLabel}
           </span>
+          <NotificationBell hasUser={Boolean(p.hasUser)} />
           <button
             className="btn desktop-only"
             onClick={toggleDark}
