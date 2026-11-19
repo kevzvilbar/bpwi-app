@@ -94,7 +94,7 @@ export default function ActivitiesMonitor(p: {
 
   // Printable preview state
   const [printState, setPrintState] = useState<{
-    mode: 'activity' | 'meter_test';
+    mode: 'activity' | 'meter_test' | 'well_pull_out';
     activity?: DailyActivityRow | null;
     jobOrder?: JobOrderRow | null;
   } | null>(null);
@@ -801,36 +801,22 @@ export default function ActivitiesMonitor(p: {
                           ⚠ Flag
                         </button>
                       )}
-                      <button
-                        type="button"
-                        className="btn"
-                        onClick={() => setPrintState({ mode: 'activity', activity: act })}
-                        style={{ fontSize: 11.5 }}
-                      >
+                      <button type="button" className="btn" onClick={() => setPrintState({ mode: 'activity', activity: act })} style={{ fontSize: 11.5 }}>
                         🖨 Print Report
                       </button>
                       {act.activity_type === 'meter_test' && (
-                        <button
-                          type="button"
-                          className="btn"
-                          onClick={() => setPrintState({ mode: 'meter_test', activity: act })}
-                          style={{ fontSize: 11.5, color: 'var(--violet)', fontWeight: 700 }}
-                        >
+                        <button type="button" className="btn" onClick={() => setPrintState({ mode: 'meter_test', activity: act })} style={{ fontSize: 11.5, color: 'var(--violet)', fontWeight: 700 }}>
                           🖨 Meter Certificate
+                        </button>
+                      )}
+                      {act.activity_type === 'well_pull_out' && (
+                        <button type="button" className="btn" onClick={() => setPrintState({ mode: 'well_pull_out', activity: act })} style={{ fontSize: 11.5, color: 'var(--accent)', fontWeight: 700 }}>
+                          🖨 Pull-Out Form
                         </button>
                       )}
                       {(p.isAdmin || act.logged_by === p.userId) && act.status !== 'verified' && (
                         <>
-                          <button
-                            type="button"
-                            className="btn"
-                            onClick={() => {
-                              setLinkedJoForLog(null);
-                              setEditingActivity(act);
-                              setLoggerOpen(true);
-                            }}
-                            style={{ fontSize: 11.5 }}
-                          >
+                          <button type="button" className="btn" onClick={() => { setLinkedJoForLog(null); setEditingActivity(act); setLoggerOpen(true); }} style={{ fontSize: 11.5 }}>
                             Edit
                           </button>
                           <button

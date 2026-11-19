@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   INITIAL_ACTIVITY_DETAIL_FIELDS,
+  INITIAL_WELL_PULLOUT_DETAILS,
   buildActivityDetailsPayload,
   hydrateActivityDetailFields,
   isMeterFieldActivity,
@@ -360,5 +361,90 @@ describe('activity-telemetry formatTelemetrySummary', () => {
       }),
     );
     assert.deepEqual(malformedFlushing, []);
+  });
+
+  it('builds and round-trips full well_pull_out form details and formats telemetry summary', () => {
+    const state: ActivityDetailFieldsState = {
+      ...INITIAL_ACTIVITY_DETAIL_FIELDS,
+      wellPullout: {
+        ...INITIAL_WELL_PULLOUT_DETAILS,
+        projectPumpStation: 'STA. BARBARA WELL 2',
+        reportMonth: 'July',
+        reportYear: '2026',
+        timeStarted: '1300H',
+        timeFinished: '0100H',
+        beforePulloutPressurePsi: '28',
+        beforePulloutIrL1: '0.036',
+        beforePulloutIrL2: '0.038',
+        beforePulloutIrL3: '0.037',
+        beforePulloutCurrentL1: '28',
+        beforePulloutCurrentL2: '28',
+        beforePulloutCurrentL3: '28',
+        beforePulloutVoltageL1: '232',
+        beforePulloutVoltageL2: '233',
+        beforePulloutVoltageL3: '231',
+        afterPulloutTime: '0245H',
+        afterPulloutRemarks: 'MOTOR IN GOOD CONDITION. PUMP FOR REPLACEMENT.',
+        pulledPumpBrand: 'SHAKTI INDIA',
+        pulledPumpModel: 'DP 17-8',
+        pulledMotorBrand: 'FRANKLIN MOTORS ELECTRIC',
+        pulledMotorHpVoltPhase: '10/230/3',
+        pulledRiserPipeSizeMm: '80',
+        pulledRiserPipeCount: '12',
+        wellCasingDiameterMm: '254',
+        pumpSettingM: '73',
+        swlMeters: '35',
+        pwlMeters: '69',
+        motorControlType: 'VFD',
+        pulledCableSizeMm2: '5.26',
+        pulledCableLengthM: '76',
+        beforeInstallTime: '0445H',
+        installPumpBrand: 'DYNAFLOW',
+        installPumpModel: 'DP17-8',
+        installPumpStatus: 'Repaired',
+        installMotorBrand: 'FRANKLIN MOTORS',
+        installMotorHpVoltPhase: '10/230/3',
+        installMotorStatus: 'Brand New',
+        splicedIrL1: '30.63',
+        splicedIrL2: '30.13',
+        splicedIrL3: '31.66',
+        afterInstallRemarks: 'ALL GOOD. NO LEAKS AFTER ACTIVITY COMPLETION.',
+        installRiserPipeSizeMm: '80',
+        installRiserPipeCount: '12',
+        soundingPipeLengthM: '72',
+        afterInstallPressurePsi: '28',
+        afterInstallIrL1: '29.5',
+        afterInstallIrL2: '30.1',
+        afterInstallIrL3: '32.33',
+        afterInstallCurrentL1: '28',
+        afterInstallCurrentL2: '27',
+        afterInstallCurrentL3: '28',
+        afterInstallVoltageL1: '231',
+        afterInstallVoltageL2: '233',
+        afterInstallVoltageL3: '235',
+        installCableSizeMm2: '5.26',
+        installCableLengthM: '75',
+        operationDuration: '9 HOURS',
+        reasonOfPullout: 'VIBRATION AND HIGH AMPERE',
+        overallRemarks: 'PUMP REPLACED. ALL GOOD AFTER INSTALLATION',
+      },
+    };
+
+    const payload = buildActivityDetailsPayload('well_pull_out', state, SAMPLE_METER_CALC);
+    assert.equal(payload.reasonOfPullout, 'VIBRATION AND HIGH AMPERE');
+    assert.equal(payload.pumpSettingM, '73');
+
+    const rehydrated = hydrateActivityDetailFields(payload);
+    assert.deepEqual(rehydrated.wellPullout, state.wellPullout);
+
+    const summary = formatTelemetrySummary(makeActivity('well_pull_out', payload));
+    assert.deepEqual(summary, [
+      'Reason: VIBRATION AND HIGH AMPERE',
+      'Pulled: SHAKTI INDIA DP 17-8',
+      'Installed: DYNAFLOW DP17-8 (Repaired)',
+      'Setting: 73m',
+      'SWL/PWL: 35m/69m',
+      'Duration: 9 HOURS',
+    ]);
   });
 });

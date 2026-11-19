@@ -1,4 +1,5 @@
 import type { DailyActivityRow } from '@/lib/activity-types';
+import { hydrateWellPulloutDetails } from './well-pullout-types.ts';
 
 export function formatTelemetrySummary(act: DailyActivityRow): string[] {
   const d = act.details ?? {};
@@ -77,6 +78,25 @@ export function formatTelemetrySummary(act: DailyActivityRow): string[] {
     if (prim('swlMeters') !== null) parts.push(`SWL: ${prim('swlMeters')}m`);
     if (prim('pwlMeters') !== null) parts.push(`PWL: ${prim('pwlMeters')}m`);
     if (prim('drawdownMeters') !== null) parts.push(`Drawdown: ${prim('drawdownMeters')}m`);
+  }
+
+  if (act.activity_type === 'well_pull_out') {
+    const wp = hydrateWellPulloutDetails(d);
+    if (wp.reasonOfPullout.trim()) parts.push(`Reason: ${wp.reasonOfPullout.trim()}`);
+    const pulled = [wp.pulledPumpBrand.trim(), wp.pulledPumpModel.trim()].filter(Boolean).join(' ');
+    if (pulled) parts.push(`Pulled: ${pulled}`);
+    const installedBase = [wp.installPumpBrand.trim(), wp.installPumpModel.trim()].filter(Boolean).join(' ');
+    if (installedBase) {
+      const statusSuffix = wp.installPumpStatus ? ` (${wp.installPumpStatus})` : '';
+      parts.push(`Installed: ${installedBase}${statusSuffix}`);
+    } else if (wp.installPumpStatus) {
+      parts.push(`Installed: ${wp.installPumpStatus}`);
+    }
+    if (wp.pumpSettingM.trim()) parts.push(`Setting: ${wp.pumpSettingM.trim()}m`);
+    if (wp.swlMeters.trim() || wp.pwlMeters.trim()) {
+      parts.push(`SWL/PWL: ${wp.swlMeters.trim() || '—'}m/${wp.pwlMeters.trim() || '—'}m`);
+    }
+    if (wp.operationDuration.trim()) parts.push(`Duration: ${wp.operationDuration.trim()}`);
   }
 
   return parts;

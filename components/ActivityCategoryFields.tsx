@@ -6,6 +6,7 @@ import {
   isMeterFieldActivity,
   type ActivityDetailFieldsState,
 } from '@/lib/activity-logger-details';
+import WellPulloutFields from '@/components/WellPulloutFields';
 
 interface ActivityCategoryFieldsProps {
   activityType: string;
@@ -591,6 +592,13 @@ export default function ActivityCategoryFields({
             </label>
           </div>
         </div>
+      )}
+
+      {activityType === 'well_pull_out' && (
+        <WellPulloutFields
+          value={fields.wellPullout}
+          onChange={(wellPullout) => patch({ wellPullout })}
+        />
       )}
     </>
   );

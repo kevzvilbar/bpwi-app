@@ -1,4 +1,13 @@
 import type { MeterTestCalculation } from '@/lib/activity-types';
+import {
+  INITIAL_WELL_PULLOUT_DETAILS,
+  buildWellPulloutPayload,
+  hydrateWellPulloutDetails,
+  type WellPulloutFormDetails,
+} from './well-pullout-types.ts';
+
+export type { WellPulloutFormDetails } from './well-pullout-types.ts';
+export { INITIAL_WELL_PULLOUT_DETAILS } from './well-pullout-types.ts';
 
 export interface BlowOffItem {
   name: string;
@@ -87,6 +96,9 @@ export interface ActivityDetailFieldsState {
   hotspotFound: 'No' | 'Yes';
   swlMeters: string;
   pwlMeters: string;
+
+  // 9. Deep Well Pump & Motor Pull-Out
+  wellPullout: WellPulloutFormDetails;
 }
 
 export const INITIAL_ACTIVITY_DETAIL_FIELDS: ActivityDetailFieldsState = {
@@ -140,6 +152,7 @@ export const INITIAL_ACTIVITY_DETAIL_FIELDS: ActivityDetailFieldsState = {
   hotspotFound: 'No',
   swlMeters: '',
   pwlMeters: '',
+  wellPullout: INITIAL_WELL_PULLOUT_DETAILS,
 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -239,6 +252,7 @@ export function hydrateActivityDetailFields(
   if (d.hotspotFound === 'No' || d.hotspotFound === 'Yes') next.hotspotFound = d.hotspotFound;
   if (d.swlMeters != null) next.swlMeters = String(d.swlMeters);
   if (d.pwlMeters != null) next.pwlMeters = String(d.pwlMeters);
+  next.wellPullout = hydrateWellPulloutDetails(d);
 
   return next;
 }
@@ -365,6 +379,9 @@ export function buildActivityDetailsPayload(
       pwlMeters: pwl,
       drawdownMeters: swl !== null && pwl !== null ? Math.round((pwl - swl) * 100) / 100 : null,
     };
+  }
+  if (activityType === 'well_pull_out') {
+    return buildWellPulloutPayload(f.wellPullout);
   }
   return {};
 }

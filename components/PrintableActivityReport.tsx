@@ -1,6 +1,8 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { ACTIVITY_BY_ID, type DailyActivityRow, type JobOrderRow } from '@/lib/activity-types';
+import WellPulloutReportSheet from '@/components/WellPulloutReportSheet';
 
 type LookupOp = { id: string; full_name: string; position: string | null };
 type LookupArea = { id: string; code: string; name: string | null };
@@ -29,7 +31,7 @@ function calcTatHours(startIso?: string | null, endIso?: string | null) {
 }
 
 export default function PrintableActivityReport(p: {
-  mode: 'activity' | 'meter_test';
+  mode: 'activity' | 'meter_test' | 'well_pull_out';
   orgName: string;
   activity?: DailyActivityRow | null;
   jobOrder?: JobOrderRow | null;
@@ -38,6 +40,13 @@ export default function PrintableActivityReport(p: {
   shifts: LookupShift[];
   onClose: () => void;
 }) {
+  const [pulloutView, setPulloutView] = useState<'form' | 'standard'>('form');
+  const actId = p.activity?.id ?? '';
+
+  useEffect(() => {
+    setPulloutView('form');
+  }, [p.mode, actId]);
+
   if (!p.activity && !p.jobOrder) return null;
 
   const opBy = new Map(p.operators.map((o) => [o.id, o]));
@@ -66,6 +75,11 @@ export default function PrintableActivityReport(p: {
 
   const actDef = act ? ACTIVITY_BY_ID[act.activity_type] : jo?.activity_type ? ACTIVITY_BY_ID[jo.activity_type] : undefined;
   const refCode = jo?.jo_number ?? (act ? `ACT-${act.id.slice(0, 8).toUpperCase()}` : 'REPORT');
+  const isPulloutEligible = act?.activity_type === 'well_pull_out';
+  const showPulloutSheet = Boolean(
+    act && (p.mode === 'well_pull_out' || isPulloutEligible) && pulloutView === 'form',
+  );
+  const areaLabel = areaObj ? `${areaObj.code}${areaObj.name ? ` · ${areaObj.name}` : ''}` : '';
 
   return (
     <div
@@ -80,11 +94,11 @@ export default function PrintableActivityReport(p: {
         className="modal-sheet bpwi-printable-sheet"
         onClick={(e) => e.stopPropagation()}
         style={{
-          maxWidth: 820,
+          maxWidth: showPulloutSheet ? 900 : 820,
           width: '100%',
           background: '#ffffff',
           color: '#0f172a',
-          padding: 28,
+          padding: showPulloutSheet ? 20 : 28,
           borderRadius: 12,
         }}
       >
@@ -106,21 +120,59 @@ export default function PrintableActivityReport(p: {
                   color: #000000 !important;
                   box-shadow: none !important;
                   border: none !important;
-                  padding: 6mm !important;
+                  padding: ${showPulloutSheet ? '3mm' : '6mm'} !important;
                   margin: 0 !important;
                   z-index: 9999 !important;
                 }
-                @page { size: portrait; margin: 10mm; }
+                @page { size: ${showPulloutSheet ? 'legal portrait' : 'portrait'}; margin: ${showPulloutSheet ? '6mm' : '10mm'}; }
               }
             `,
           }}
         />
 
         {/* Action Toolbar (hidden when printed) */}
-        <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingBottom: 10, borderBottom: '1px solid #cbd5e1' }}>
-          <strong style={{ fontSize: 13.5, color: '#334155' }}>
-            {p.mode === 'meter_test' ? 'Meter Volumetric Test Certificate Preview' : 'Field Operations / Job Order Report Preview'}
-          </strong>
+        <div
+          className="no-print"
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 10,
+            flexWrap: 'wrap',
+            marginBottom: 14,
+            paddingBottom: 10,
+            borderBottom: '1px solid #cbd5e1',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <strong style={{ fontSize: 13.5, color: '#334155' }}>
+              {p.mode === 'meter_test'
+                ? 'Meter Volumetric Test Certificate Preview'
+                : showPulloutSheet
+                  ? 'Deepwell Pull-Out & Installation Accomplishment Report'
+                  : 'Field Operations / Job Order Report Preview'}
+            </strong>
+            {isPulloutEligible && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className={pulloutView === 'form' ? 'btn btn-primary' : 'btn'}
+                  style={{ fontSize: 11.5, padding: '4px 9px' }}
+                  onClick={() => setPulloutView('form')}
+                >
+                  📄 Official Deepwell Pull-Out Form
+                </button>
+                <button
+                  type="button"
+                  className={pulloutView === 'standard' ? 'btn btn-primary' : 'btn'}
+                  style={{ fontSize: 11.5, padding: '4px 9px' }}
+                  onClick={() => setPulloutView('standard')}
+                >
+                  📋 Standard Activity Sheet (with Photos)
+                </button>
+              </div>
+            )}
+          </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="button" className="btn btn-primary" onClick={() => window.print()}>
               Print / Save PDF
@@ -131,27 +183,36 @@ export default function PrintableActivityReport(p: {
           </div>
         </div>
 
-        {/* Official Document Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #0f172a', paddingBottom: 12, marginBottom: 18, gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <img src="/bpwi-logo.png" alt="BP Waterworks, Inc." style={{ width: 52, height: 39, objectFit: 'contain' }} />
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#334155' }}>
-                {p.orgName || 'BP Waterworks, Inc.'}
+        {/* Official Document Header (standard reports / meter certificate) */}
+        {!showPulloutSheet && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #0f172a', paddingBottom: 12, marginBottom: 18, gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <img src="/bpwi-logo.png" alt="BP Waterworks, Inc." style={{ width: 52, height: 39, objectFit: 'contain' }} />
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#334155' }}>
+                  {p.orgName || 'BP Waterworks, Inc.'}
+                </div>
+                <h1 style={{ margin: 0, fontSize: 19, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                  {p.mode === 'meter_test' ? 'Water Meter Volumetric Test Certificate' : 'Field Activity & Job Order Report'}
+                </h1>
               </div>
-              <h1 style={{ margin: 0, fontSize: 19, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                {p.mode === 'meter_test' ? 'Water Meter Volumetric Test Certificate' : 'Field Activity & Job Order Report'}
-              </h1>
+            </div>
+            <div style={{ textAlign: 'right', fontSize: 12 }}>
+              <div style={{ fontWeight: 800, fontSize: 15 }}>{refCode}</div>
+              <div style={{ color: '#475569' }}>Date: {act?.activity_date ?? (jo?.created_at ? jo.created_at.slice(0, 10) : 'N/A')}</div>
+              <div style={{ color: '#475569', fontSize: 11 }}>Printed: {fmtTs(new Date().toISOString())}</div>
             </div>
           </div>
-          <div style={{ textAlign: 'right', fontSize: 12 }}>
-            <div style={{ fontWeight: 800, fontSize: 15 }}>{refCode}</div>
-            <div style={{ color: '#475569' }}>Date: {act?.activity_date ?? (jo?.created_at ? jo.created_at.slice(0, 10) : 'N/A')}</div>
-            <div style={{ color: '#475569', fontSize: 11 }}>Printed: {fmtTs(new Date().toISOString())}</div>
-          </div>
-        </div>
+        )}
 
-        {p.mode === 'meter_test' ? (
+        {showPulloutSheet && act ? (
+          <WellPulloutReportSheet
+            activity={act}
+            orgName={p.orgName}
+            areaLabel={areaLabel}
+            leadOpName={leadOp?.full_name ?? ''}
+          />
+        ) : p.mode === 'meter_test' ? (
           /* Official Water Meter Volumetric Test Certificate Layout */
           <div style={{ display: 'grid', gap: 16, fontSize: 12.5 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, border: '1px solid #334155', padding: 12 }}>
