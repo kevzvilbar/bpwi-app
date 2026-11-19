@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import PmExportModal from '@/components/PmExportModal';
 
 type Task = {
   id: string;
@@ -137,6 +138,7 @@ export default function PmPlanner(p: {
   const [busy, setBusy] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [exportCsvOpen, setExportCsvOpen] = useState(false);
   const [confirmDel, setConfirmDel] = useState<{
     scope: 'one' | 'series' | 'following';
     target?: { id: string; legacy_key: string | null; date: string };
@@ -509,52 +511,6 @@ export default function PmPlanner(p: {
   }
 
   const monthTasks = visible.filter((t) => t.scheduled_date.startsWith(p.month));
-
-  function exportCsv() {
-    const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const actLabelByCode = new Map(activityChips.map((c) => [c.type, c.label]));
-    const headers = [
-      'Scheduled Date',
-      'Activity Code',
-      'Activity Name',
-      'Title',
-      'Locations',
-      'Asset',
-      'Assigned Operators',
-      'Status',
-      'Completed At',
-      'Remarks',
-    ];
-    const lines = [headers.map(esc).join(',')];
-    for (const t of monthTasks) {
-      const assignedNames = t.assigned_operator_ids
-        .map((id) => opBy.get(id)?.full_name ?? id)
-        .join('; ');
-      lines.push(
-        [
-          t.scheduled_date,
-          t.activity_type,
-          actLabelByCode.get(t.activity_type) ?? t.activity_type,
-          t.title,
-          t.locations.join('; '),
-          t.asset ?? '',
-          assignedNames,
-          t.status,
-          t.completed_at ?? '',
-          t.remarks ?? '',
-        ]
-          .map(esc)
-          .join(','),
-      );
-    }
-    const blob = new Blob([`\uFEFF${lines.join('\r\n')}`], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `bpwi-pm-schedule-${p.month}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
   const counts = {
     total: monthTasks.length,
     planned: monthTasks.filter((t) => t.status === 'planned').length,
@@ -724,7 +680,7 @@ export default function PmPlanner(p: {
                 Export .ics
               </button>
               {p.canExportCsv && (
-                <button className="btn" onClick={exportCsv} title="Download filtered PM Schedule for this month as CSV">
+                <button className="btn" onClick={() => setExportCsvOpen(true)} title="Choose timeframe (Month, Quarter, Full Year, Custom) and export PM Schedule as CSV">
                   Export CSV
                 </button>
               )}
@@ -1551,6 +1507,16 @@ export default function PmPlanner(p: {
             </div>
           </div>
         </div>
+      )}
+
+      {exportCsvOpen && p.canExportCsv && (
+        <PmExportModal
+          currentMonth={p.month}
+          typeFilter={typeFilter}
+          statusFilter={statusFilter}
+          areaFilter={areaFilter}
+          onClose={() => setExportCsvOpen(false)}
+        />
       )}
     </div>
   );
