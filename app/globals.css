@@ -473,7 +473,7 @@ a:focus-visible {
   display: none;
 }
 
-@media (max-width: 1024px) {
+@media screen and (max-width: 1024px) {
   .desktop-only-kanban {
     display: none !important;
   }
@@ -559,7 +559,7 @@ a:focus-visible {
   display: none;
 }
 
-@media (max-width: 640px) {
+@media screen and (max-width: 640px) {
   .pm-day-cell {
     min-height: 52px;
   }
@@ -599,31 +599,85 @@ a:focus-visible {
   }
 }
 
+.print-only {
+  display: none;
+}
+
 @media print {
+  :root,
+  html,
+  [data-theme='dark'],
+  [data-theme='dark'][data-contrast='high'] {
+    --bg: #ffffff !important;
+    --surface: #ffffff !important;
+    --surface-muted: #f8fafc !important;
+    --border: #94a3b8 !important;
+    --border-light: #cbd5e1 !important;
+    --text: #0f172a !important;
+    --text-secondary: #334155 !important;
+    --text-muted: #475569 !important;
+    --header-bg: #0f172a !important;
+    --header-fg: #ffffff !important;
+    color-scheme: light !important;
+  }
   * {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
   .no-print,
-  .bottom-nav {
+  .bottom-nav,
+  .mobile-only-schedule,
+  .mobile-only-block,
+  .responsive-cards,
+  .call-sheet-cards {
     display: none !important;
   }
+  .print-only {
+    display: flex !important;
+  }
+  .desktop-only-grid,
+  .responsive-table-wrap,
+  .call-sheet-table-wrap {
+    display: block !important;
+  }
+  html,
   body {
     background: #ffffff !important;
-    color: #000000 !important;
+    color: #0f172a !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+  .app-main {
+    padding: 0 !important;
   }
   .schedule-container {
     overflow: visible !important;
     max-height: none !important;
     border: none !important;
+    box-shadow: none !important;
+    width: 100% !important;
+  }
+  .schedule-table {
+    width: 100% !important;
+    font-size: 7.5px !important;
+    border-collapse: collapse !important;
   }
   .schedule-table th,
   .schedule-table td {
-    border-color: #333333 !important;
+    position: static !important;
+    border: 1px solid #475569 !important;
+    padding: 1px 2px !important;
+    min-width: 0 !important;
+    height: auto !important;
+  }
+  .schedule-table .sticky-corner-name,
+  .schedule-table .sticky-col-name {
+    min-width: 105px !important;
+    padding: 2px 4px !important;
   }
   @page {
     size: landscape;
-    margin: 4mm;
+    margin: 5mm;
   }
 }
 

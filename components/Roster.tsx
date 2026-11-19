@@ -1541,6 +1541,31 @@ export default function Roster(p: {
         }
       />
 
+      {/* Print-only header */}
+      <div
+        className="print-only"
+        style={{
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 8,
+          paddingBottom: 6,
+          borderBottom: '1px solid #475569',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/bpwi-logo.svg" alt="BPWI Logo" style={{ width: 34, height: 26, objectFit: 'contain' }} />
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>
+              BP Waterworks, Inc. — Operations &amp; Plant Schedule
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#334155' }}>
+              {monthLabel}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Desktop Spreadsheet Schedule Table (> 1024px only) */}
       <div
         className="schedule-container desktop-only-grid"
