@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
+import { findOffShift, isOffPartnerArea } from '@/lib/roster-helpers';
 
 type Op = { id: string; full_name: string; position: string | null };
 type Shift = {
@@ -89,6 +90,25 @@ export default function RosterMobileViews(p: {
   // Monthly calendar leading blanks
   const leadingBlanks = p.days[0]?.dow ?? 0;
   const activeOpId = p.operators.some((o) => o.id === selectedOpId) ? selectedOpId : p.operators[0]?.id ?? '';
+  const offShift = useMemo(() => findOffShift(Array.from(p.shiftBy.values())), [p.shiftBy]);
+
+  function resolveMobileCellVisual(s: Shift | undefined, a: Area | undefined) {
+    if (isOffPartnerArea(a)) {
+      const effShift = offShift ?? s;
+      return {
+        effShift,
+        isOffArea: true,
+        bg: offShift?.background_color ?? (s?.is_off ? s.background_color : '#f8fafc'),
+        fg: a?.text_color ?? offShift?.text_color ?? s?.text_color ?? 'var(--text-secondary)',
+      };
+    }
+    return {
+      effShift: s,
+      isOffArea: false,
+      bg: s?.background_color ?? 'var(--surface-muted)',
+      fg: s?.text_color ?? 'var(--text-secondary)',
+    };
+  }
 
   return (
     <div className="mobile-only-schedule no-print">
@@ -166,7 +186,8 @@ export default function RosterMobileViews(p: {
             const s = r?.shift_type_id ? p.shiftBy.get(r.shift_type_id) : undefined;
             const a = r?.area_code_id ? p.areaBy.get(r.area_code_id) : undefined;
             const sb = p.standbyMap.get(k);
-            const areaLabel = a?.code ?? (s && !s.is_off ? 'PW' : '');
+            const { effShift, isOffArea, bg, fg } = resolveMobileCellVisual(s, a);
+            const areaLabel = a?.code ?? (effShift && !effShift.is_off ? 'PW' : '');
 
             return (
               <div
@@ -207,16 +228,16 @@ export default function RosterMobileViews(p: {
                     </span>
                   )}
                   <button
-                    className="btn"
+                    className={`btn${isOffArea ? ' cell-leave' : ''}`}
                     onClick={() => p.onCellTap(op.id, selectedDate)}
                     style={{
                       minWidth: 74,
-                      background: s?.background_color ?? 'var(--surface-muted)',
-                      color: s?.text_color ?? 'var(--text-secondary)',
+                      background: bg,
+                      color: fg,
                       fontWeight: 800,
                     }}
                   >
-                    {s ? `${s.code}${areaLabel ? ` · ${areaLabel}` : ''}` : 'Assign'}
+                    {effShift ? `${effShift.code}${areaLabel ? ` · ${areaLabel}` : ''}` : areaLabel || 'Assign'}
                   </button>
                   {p.canEdit && (
                     <button
@@ -271,16 +292,18 @@ export default function RosterMobileViews(p: {
                   const s = r?.shift_type_id ? p.shiftBy.get(r.shift_type_id) : undefined;
                   const a = r?.area_code_id ? p.areaBy.get(r.area_code_id) : undefined;
                   const sb = p.standbyMap.get(k);
+                  const { effShift, isOffArea, bg, fg } = resolveMobileCellVisual(s, a);
                   return (
                     <button
                       key={d.date}
                       onClick={() => p.onCellTap(op.id, d.date)}
+                      className={isOffArea ? 'cell-leave' : undefined}
                       style={{
                         minHeight: 46,
                         borderRadius: 6,
                         border: sb ? '2px solid var(--violet)' : '1px solid var(--border)',
-                        background: s?.background_color ?? 'var(--surface-muted)',
-                        color: s?.text_color ?? 'var(--text-secondary)',
+                        background: bg,
+                        color: fg,
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
@@ -292,7 +315,7 @@ export default function RosterMobileViews(p: {
                       }}
                     >
                       <span style={{ fontSize: 9.5, opacity: 0.8 }}>{d.dowLabel} {d.dayNum}</span>
-                      <span>{a?.code ?? (s && !s.is_off ? 'PW' : s?.code ?? '—')}</span>
+                      <span>{a?.code ?? (effShift && !effShift.is_off ? 'PW' : effShift?.code ?? '—')}</span>
                     </button>
                   );
                 })}
@@ -330,7 +353,8 @@ export default function RosterMobileViews(p: {
                 const k = cellKey(op.id, d.date);
                 const r = p.cell.get(k);
                 const s = r?.shift_type_id ? p.shiftBy.get(r.shift_type_id) : undefined;
-                if (s && !s.is_off) dutyCnt += 1;
+                const a = r?.area_code_id ? p.areaBy.get(r.area_code_id) : undefined;
+                if (s && !s.is_off && !isOffPartnerArea(a)) dutyCnt += 1;
                 if (p.standbyMap.has(k)) sbCnt += 1;
               }
               return (
@@ -367,6 +391,7 @@ export default function RosterMobileViews(p: {
             const s = r?.shift_type_id ? p.shiftBy.get(r.shift_type_id) : undefined;
             const a = r?.area_code_id ? p.areaBy.get(r.area_code_id) : undefined;
             const sb = p.standbyMap.get(k);
+            const { effShift, isOffArea, bg, fg } = resolveMobileCellVisual(s, a);
             return (
               <div
                 key={op.id}
@@ -382,9 +407,10 @@ export default function RosterMobileViews(p: {
                     </span>
                   )}
                   <span
+                    className={isOffArea ? 'cell-leave' : undefined}
                     style={{
-                      background: s?.background_color ?? 'var(--surface-muted)',
-                      color: s?.text_color ?? 'var(--text-secondary)',
+                      background: bg,
+                      color: fg,
                       border: '1px solid var(--border)',
                       borderRadius: 6,
                       padding: '3px 8px',
@@ -392,7 +418,7 @@ export default function RosterMobileViews(p: {
                       fontWeight: 700,
                     }}
                   >
-                    {s ? `${s.code} · ${a?.code ?? (s.is_off ? 'OFF' : 'PW')}` : '—'}
+                    {effShift ? `${effShift.code} · ${a?.code ?? (effShift.is_off ? 'OFF' : 'PW')}` : a?.code ?? '—'}
                   </span>
                 </span>
               </div>
@@ -427,6 +453,7 @@ export default function RosterMobileViews(p: {
                 const a = r?.area_code_id ? p.areaBy.get(r.area_code_id) : undefined;
                 const sb = p.standbyMap.get(k);
                 const op = p.operators.find((o) => o.id === activeOpId)!;
+                const { effShift, isOffArea, bg, fg } = resolveMobileCellVisual(s, a);
 
                 return (
                   <div
@@ -444,7 +471,7 @@ export default function RosterMobileViews(p: {
                       <div style={{ fontWeight: 700, fontSize: 13 }}>
                         {d.dowLabel}, {d.date}
                       </div>
-                      {s?.description && <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{s.description}</div>}
+                      {effShift?.description && <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{effShift.description}</div>}
                     </div>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       {sb && (
@@ -453,15 +480,15 @@ export default function RosterMobileViews(p: {
                         </span>
                       )}
                       <button
-                        className="btn"
+                        className={`btn${isOffArea ? ' cell-leave' : ''}`}
                         onClick={() => p.onCellTap(activeOpId, d.date)}
                         style={{
-                          background: s?.background_color ?? 'var(--surface-muted)',
-                          color: s?.text_color ?? 'var(--text-secondary)',
+                          background: bg,
+                          color: fg,
                           fontWeight: 700,
                         }}
                       >
-                        {s ? `${s.code} · ${a?.code ?? (s.is_off ? 'OFF' : 'PW')}` : 'Assign'}
+                        {effShift ? `${effShift.code} · ${a?.code ?? (effShift.is_off ? 'OFF' : 'PW')}` : a?.code ?? 'Assign'}
                       </button>
                       {p.canEdit && op && (
                         <button className="btn" onClick={(e) => p.onCellMenu(op, d.date, { clientX: e.clientX, clientY: e.clientY })}>

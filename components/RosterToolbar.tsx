@@ -3,8 +3,8 @@
 import Link from 'next/link';
 import type { ChangeRequestItem } from '@/lib/profile';
 import {
-  isLeaveArea,
-  isRestArea,
+  findOffShift,
+  isOffPartnerArea,
   type Area,
   type Shift,
   type ToolMode,
@@ -57,6 +57,7 @@ interface RosterToolbarProps {
 }
 
 export default function RosterToolbar(p: RosterToolbarProps) {
+  const offShift = findOffShift(p.shifts);
   return (
     <>
       {/* Action & Filter Bar */}
@@ -376,29 +377,36 @@ export default function RosterToolbar(p: RosterToolbarProps) {
           >
             PW (default)
           </button>
-          {p.areas.map((a) => (
-            <button
-              key={a.id}
-              onClick={() => {
-                p.setMode('paint');
-                p.setAreaId(a.id);
-              }}
-              title={a.name ?? ''}
-              className={isLeaveArea(a) || isRestArea(a) ? 'cell-leave' : undefined}
-              style={{
-                padding: '3px 7px',
-                borderRadius: 5,
-                fontSize: 11.5,
-                fontWeight: 700,
-                cursor: 'pointer',
-                background: a.background_color,
-                color: a.text_color,
-                border: p.mode === 'paint' && p.areaId === a.id ? '2px solid var(--primary)' : '1px solid var(--border)',
-              }}
-            >
-              {a.code}
-            </button>
-          ))}
+          {p.areas.map((a) => {
+            const isOffPartner = isOffPartnerArea(a);
+            return (
+              <button
+                key={a.id}
+                onClick={() => {
+                  p.setMode('paint');
+                  p.setAreaId(a.id);
+                }}
+                title={
+                  isOffPartner
+                    ? `${a.name ?? a.code} (auto-paired with ${offShift?.code ?? 'OFF'})`
+                    : (a.name ?? '')
+                }
+                className={isOffPartner ? 'cell-leave' : undefined}
+                style={{
+                  padding: '3px 7px',
+                  borderRadius: 5,
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  background: isOffPartner ? (offShift?.background_color ?? a.background_color) : a.background_color,
+                  color: a.text_color,
+                  border: p.mode === 'paint' && p.areaId === a.id ? '2px solid var(--primary)' : '1px solid var(--border)',
+                }}
+              >
+                {a.code}
+              </button>
+            );
+          })}
 
           <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 3px' }} />
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>

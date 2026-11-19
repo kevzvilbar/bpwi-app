@@ -104,12 +104,73 @@ export function cellKey(opId: string, date: string) {
   return `${opId}:${date}`;
 }
 
-export function isRestArea(a?: Area) {
+export function isRestArea(a?: Pick<Area, 'code' | 'category'>) {
   return Boolean(a && (a.category === 'rest' || a.code.toUpperCase() === 'RD'));
 }
 
-export function isLeaveArea(a?: Area) {
+export function isLeaveArea(a?: Pick<Area, 'code' | 'category'>) {
   return Boolean(a && a.category === 'leave' && a.code.toUpperCase() !== 'RD');
+}
+
+export function isHolidayArea(a?: Pick<Area, 'code' | 'category'>) {
+  return Boolean(a && (a.category === 'holiday' || a.code.toUpperCase() === 'H'));
+}
+
+export function isOffPartnerArea(a?: Pick<Area, 'code' | 'category'>) {
+  return isLeaveArea(a) || isRestArea(a) || isHolidayArea(a);
+}
+
+export function findOffShift<T extends Pick<Shift, 'code' | 'is_off'>>(shifts: T[]): T | undefined {
+  return shifts.find((s) => s.is_off) ?? shifts.find((s) => /^off\b/i.test(s.code.trim()));
+}
+
+export function normalizeShiftForArea(
+  shiftId: string | null,
+  areaId: string | null,
+  areaBy: ReadonlyMap<string, Pick<Area, 'code' | 'category'>>,
+  offShift?: Pick<Shift, 'id'>,
+): string | null {
+  const area = areaId ? areaBy.get(areaId) : undefined;
+  if (isOffPartnerArea(area)) return offShift?.id ?? null;
+  return shiftId;
+}
+
+export function resolveAreaSelection(
+  nextAreaId: string | null,
+  currentShiftId: string | null,
+  lastDutyShiftId: string | null,
+  shiftBy: ReadonlyMap<string, Pick<Shift, 'id' | 'is_off'>>,
+  areaBy: ReadonlyMap<string, Pick<Area, 'code' | 'category'>>,
+  offShift?: Pick<Shift, 'id'>,
+): { shiftId: string | null; areaId: string | null } {
+  const nextArea = nextAreaId ? areaBy.get(nextAreaId) : undefined;
+  if (isOffPartnerArea(nextArea)) {
+    return { shiftId: offShift?.id ?? null, areaId: nextAreaId };
+  }
+  if (nextArea) {
+    const curShift = currentShiftId ? shiftBy.get(currentShiftId) : undefined;
+    if ((!curShift || curShift.is_off) && lastDutyShiftId) {
+      return { shiftId: lastDutyShiftId, areaId: nextAreaId };
+    }
+  }
+  return { shiftId: currentShiftId, areaId: nextAreaId };
+}
+
+export function resolveShiftSelection(
+  nextShiftId: string,
+  currentAreaId: string | null,
+  shiftBy: ReadonlyMap<string, Pick<Shift, 'id' | 'is_off'>>,
+  areaBy: ReadonlyMap<string, Pick<Area, 'code' | 'category'>>,
+): { shiftId: string; areaId: string | null } {
+  const nextShift = shiftBy.get(nextShiftId);
+  const curArea = currentAreaId ? areaBy.get(currentAreaId) : undefined;
+  if (nextShift && !nextShift.is_off && isOffPartnerArea(curArea)) {
+    return { shiftId: nextShiftId, areaId: null };
+  }
+  if (nextShift?.is_off && curArea && !isOffPartnerArea(curArea)) {
+    return { shiftId: nextShiftId, areaId: null };
+  }
+  return { shiftId: nextShiftId, areaId: currentAreaId };
 }
 
 export function csvEscape(v: string) {
@@ -137,6 +198,7 @@ export function buildRosterCsv(params: {
   standbyMap: Map<string, Standby>;
 }): string {
   const { days, operators, cell, shiftBy, areaBy, standbyMap } = params;
+  const offShift = findOffShift(Array.from(shiftBy.values()));
   const header = ['Operator', 'Position', ...days.map((d) => d.date), 'Duty', 'OC', 'Hours', 'Off', 'Leaves'];
   const lines = [header.map(csvEscape).join(',')];
 
@@ -152,14 +214,21 @@ export function buildRosterCsv(params: {
       const s = r?.shift_type_id ? shiftBy.get(r.shift_type_id) : undefined;
       const a = r?.area_code_id ? areaBy.get(r.area_code_id) : undefined;
       const sb = standbyMap.get(k);
+      const isLeave = isLeaveArea(a);
+      const isRest = isRestArea(a);
+      const isHoliday = isHolidayArea(a);
+      const isOffArea = isLeave || isRest || isHoliday;
+      const effShift = isOffArea ? (offShift ?? s) : s;
       if (sb) ocCount += 1;
-      if (isLeaveArea(a)) leaves += 1;
-      if (isRestArea(a) || s?.is_off) off += 1;
-      else if (s && !isLeaveArea(a)) duty += 1;
-      if (s) hrs += Number(s.duration_hours ?? 0);
-      return [s?.code ?? '', a?.code ?? (s && !s.is_off ? 'PW' : ''), sb ? `(${sb.standby_type})` : '']
-        .filter(Boolean)
-        .join(' ');
+      if (isLeave) leaves += 1;
+      if (isRest || isHoliday || effShift?.is_off) off += 1;
+      else if (effShift && !isLeave) duty += 1;
+      if (effShift && !isOffArea) hrs += Number(effShift.duration_hours ?? 0);
+      const label =
+        !isOffArea && effShift && !effShift.is_off
+          ? [effShift.code, a?.code ?? 'PW']
+          : [a?.code ?? effShift?.code ?? ''];
+      return [...label, sb ? `(${sb.standby_type})` : ''].filter(Boolean).join(' ');
     });
     lines.push(
       [o.full_name, o.position ?? '', ...cols, String(duty), String(ocCount), String(hrs), String(off), String(leaves)]
@@ -303,4 +372,54 @@ export async function persistDirectStandbyChanges(
     if (error && !errMsg) errMsg = error.message;
   }
   return errMsg;
+}
+
+export function computeHistoryTransition(
+  entries: HistoryEntry,
+  dir: 'undo' | 'redo',
+  cell: ReadonlyMap<string, Row>,
+  standbyMap: ReadonlyMap<string, Standby>,
+) {
+  const shiftUpserts: Row[] = [];
+  const shiftDeletes: { opId: string; date: string }[] = [];
+  const shiftAffected = new Set<string>();
+  const shiftRollback: { opId: string; date: string; prev: Row | null }[] = [];
+  const sbUpserts: Standby[] = [];
+  const sbDeletes: { opId: string; date: string }[] = [];
+  const sbAffected = new Set<string>();
+  const sbRollback: { opId: string; date: string; prev: Standby | null }[] = [];
+  let skippedConcurrent = 0;
+
+  for (const e of entries) {
+    const k = cellKey(e.opId, e.date);
+    if (e.kind === 'shift') {
+      if (dir === 'undo') {
+        const cur = cell.get(k) ?? null;
+        if (
+          (cur?.shift_type_id ?? null) !== (e.next?.shift_type_id ?? null) ||
+          (cur?.area_code_id ?? null) !== (e.next?.area_code_id ?? null)
+        ) {
+          skippedConcurrent += 1;
+          continue;
+        }
+      }
+      shiftAffected.add(k);
+      const target = dir === 'undo' ? e.prev : e.next;
+      shiftRollback.push({ opId: e.opId, date: e.date, prev: dir === 'undo' ? e.next : e.prev });
+      if (target) shiftUpserts.push(target);
+      else shiftDeletes.push({ opId: e.opId, date: e.date });
+    } else {
+      if (dir === 'undo' && (standbyMap.get(k)?.standby_type ?? null) !== (e.next?.standby_type ?? null)) {
+        skippedConcurrent += 1;
+        continue;
+      }
+      sbAffected.add(k);
+      const target = dir === 'undo' ? e.prev : e.next;
+      sbRollback.push({ opId: e.opId, date: e.date, prev: dir === 'undo' ? e.next : e.prev });
+      if (target) sbUpserts.push(target);
+      else sbDeletes.push({ opId: e.opId, date: e.date });
+    }
+  }
+
+  return { shiftUpserts, shiftDeletes, shiftAffected, shiftRollback, sbUpserts, sbDeletes, sbAffected, sbRollback, skippedConcurrent };
 }

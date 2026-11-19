@@ -7,8 +7,10 @@ import { formatManila, formatDateOnly } from '@/lib/date';
 import type { ChangeRequest, ChangeRequestItem } from '@/lib/profile';
 import { getErrorMessage } from '@/lib/error-utils';
 
-type Shift = { id: string; code: string; description?: string | null; background_color: string; text_color: string };
-type Area = { id: string; code: string; name?: string | null; background_color: string; text_color: string };
+import { findOffShift, isOffPartnerArea } from '@/lib/roster-helpers';
+
+type Shift = { id: string; code: string; description?: string | null; background_color: string; text_color: string; is_off?: boolean };
+type Area = { id: string; code: string; name?: string | null; category?: string; background_color: string; text_color: string };
 type Op = { id: string; full_name: string; position?: string | null };
 
 type Props = {
@@ -43,6 +45,7 @@ export default function ChangeRequests(p: Props) {
   const opMap = new Map(p.operators.map((o) => [o.id, o.full_name]));
   const shiftMap = new Map(p.shifts.map((s) => [s.id, s]));
   const areaMap = new Map(p.areas.map((a) => [a.id, a]));
+  const offShift = findOffShift(p.shifts.map((s) => ({ ...s, is_off: Boolean(s.is_off) })));
 
   const filteredRequests = p.requests.filter((r) => {
     if (tab === 'pending') return r.status === 'pending' || (r.status === 'partially_approved' && hasOpenItems(r));
@@ -155,9 +158,12 @@ export default function ChangeRequests(p: Props) {
     if (!shiftId && !areaId) return <span style={{ color: 'var(--text-muted)' }}>Off / Cleared</span>;
     const s = shiftId ? shiftMap.get(shiftId) : null;
     const a = areaId ? areaMap.get(areaId) : null;
+    const isOffArea = Boolean(a && isOffPartnerArea({ code: a.code, category: a.category ?? '' }));
+    const effShift = isOffArea ? (offShift ?? s) : s;
 
     return (
       <span
+        className={isOffArea ? 'cell-leave' : undefined}
         style={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -166,12 +172,12 @@ export default function ChangeRequests(p: Props) {
           borderRadius: 4,
           fontSize: 11.5,
           fontWeight: 700,
-          background: s?.background_color ?? 'var(--surface-muted)',
-          color: s?.text_color ?? 'var(--text)',
+          background: isOffArea ? (offShift?.background_color ?? s?.background_color ?? '#f8fafc') : (s?.background_color ?? 'var(--surface-muted)'),
+          color: isOffArea ? (a?.text_color ?? offShift?.text_color ?? 'var(--text)') : (s?.text_color ?? 'var(--text)'),
           border: '1px solid var(--border)',
         }}
       >
-        {s?.code ?? 'Off'}
+        {effShift?.code ?? 'Off'}
         {a && <span style={{ opacity: 0.85 }}>· {a.code}</span>}
       </span>
     );

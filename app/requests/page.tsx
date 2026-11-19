@@ -22,8 +22,8 @@ export default async function RequestsPage() {
   // Load operators, shifts, areas for displaying labels
   const [opsRes, shiftsRes, areasRes] = await Promise.all([
     sb.from('operators').select('id, full_name, position').eq('is_active', true).order('sort_order'),
-    sb.from('shift_types').select('id, code, description, background_color, text_color').order('code'),
-    sb.from('area_codes').select('id, code, name, background_color, text_color').order('code'),
+    sb.from('shift_types').select('id, code, description, background_color, text_color, is_off').order('code'),
+    sb.from('area_codes').select('id, code, name, category, background_color, text_color').order('code'),
   ]);
 
   // Load change requests: approvers see all in org; managers see own

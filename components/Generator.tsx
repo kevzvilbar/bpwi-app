@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import { findOffShift, isOffPartnerArea } from '@/lib/roster-helpers';
 
 type Op = { id: string; full_name: string };
 type Shift = { id: string; code: string; description: string | null; is_off: boolean; background_color: string; text_color: string };
@@ -38,6 +39,7 @@ export default function Generator(p: {
 
   const byCode = useMemo(() => new Map(p.shifts.map((s) => [s.code.toUpperCase(), s])), [p.shifts]);
   const shiftIsOff = useMemo(() => new Map(p.shifts.map((s) => [s.id, s.is_off])), [p.shifts]);
+  const offShift = useMemo(() => findOffShift(p.shifts), [p.shifts]);
   const areaBy = useMemo(() => new Map((p.areas ?? []).map((a) => [a.id, a])), [p.areas]);
   const holidayArea = useMemo(
     () => (p.areas ?? []).find((a) => a.category === 'holiday') ?? (p.areas ?? []).find((a) => a.code.toUpperCase() === 'H'),
@@ -130,7 +132,9 @@ export default function Generator(p: {
         markHolidays && holidayArea && holidayDateSet.has(r.schedule_date) && !preservedArea
           ? holidayArea.id
           : preservedArea;
-      rows.push({ ...r, area_code_id: finalArea });
+      const finalAreaObj = finalArea ? areaBy.get(finalArea) : undefined;
+      const finalShiftId = isOffPartnerArea(finalAreaObj) && offShift ? offShift.id : r.shift_type_id;
+      rows.push({ ...r, shift_type_id: finalShiftId, area_code_id: finalArea });
     }
 
     for (let i = 0; i < rows.length; i += 500) {

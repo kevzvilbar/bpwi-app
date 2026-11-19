@@ -9,13 +9,20 @@ import {
   buildRosterCsv,
   buildRosterPendingMap,
   cellKey,
+  computeHistoryTransition,
+  findOffShift,
   friendlyError,
+  isHolidayArea,
   isLeaveArea,
+  isOffPartnerArea,
   isRestArea,
   MONTHS_FULL,
+  normalizeShiftForArea,
   persistDirectShiftChanges,
   persistDirectStandbyChanges,
   replaceProposedDraftItems,
+  resolveAreaSelection,
+  resolveShiftSelection,
   WEEKDAYS,
   type Area,
   type HistoryEntry,
@@ -308,6 +315,32 @@ export default function Roster(p: {
   const standbyMap = useMemo(() => new Map(standby.map((s) => [cellKey(s.operator_id, s.schedule_date), s])), [standby]);
   const shiftBy = useMemo(() => new Map(p.shifts.map((s) => [s.id, s])), [p.shifts]);
   const areaBy = useMemo(() => new Map(p.areas.map((a) => [a.id, a])), [p.areas]);
+  const offShift = useMemo(() => findOffShift(p.shifts), [p.shifts]);
+  const lastDutyShiftIdRef = useRef<string | null>(p.shifts.find((s) => !s.is_off)?.id ?? p.shifts[0]?.id ?? null);
+
+  function handleSelectShift(nextShiftId: string | null) {
+    if (!nextShiftId) {
+      setShiftId(null);
+      return;
+    }
+    const { shiftId: nextS, areaId: nextA } = resolveShiftSelection(nextShiftId, areaId, shiftBy, areaBy);
+    if (!shiftBy.get(nextS)?.is_off) lastDutyShiftIdRef.current = nextS;
+    setShiftId(nextS);
+    setAreaId(nextA);
+  }
+
+  function handleSelectArea(nextAreaId: string | null) {
+    const { shiftId: nextS, areaId: nextA } = resolveAreaSelection(
+      nextAreaId,
+      shiftId,
+      lastDutyShiftIdRef.current,
+      shiftBy,
+      areaBy,
+      offShift,
+    );
+    setShiftId(nextS);
+    setAreaId(nextA);
+  }
 
   const pmByCell = useMemo(() => {
     const m = new Map<string, { titles: string[]; warn: boolean }>();
@@ -358,52 +391,17 @@ export default function Roster(p: {
   }
 
   async function applyHistory(entries: HistoryEntry, dir: 'undo' | 'redo') {
-    const shiftUpserts: Row[] = [];
-    const shiftDeletes: { opId: string; date: string }[] = [];
-    const shiftAffected = new Set<string>();
-    const shiftRollback: { opId: string; date: string; prev: Row | null }[] = [];
-
-    const sbUpserts: Standby[] = [];
-    const sbDeletes: { opId: string; date: string }[] = [];
-    const sbAffected = new Set<string>();
-    const sbRollback: { opId: string; date: string; prev: Standby | null }[] = [];
-    let skippedConcurrent = 0;
-
-    for (const e of entries) {
-      const k = cellKey(e.opId, e.date);
-      if (e.kind === 'shift') {
-        if (dir === 'undo') {
-          const cur = cell.get(k) ?? null;
-          const matchesExpected =
-            (cur?.shift_type_id ?? null) === (e.next?.shift_type_id ?? null) &&
-            (cur?.area_code_id ?? null) === (e.next?.area_code_id ?? null);
-          if (!matchesExpected) {
-            skippedConcurrent += 1;
-            continue;
-          }
-        }
-        shiftAffected.add(k);
-        const target = dir === 'undo' ? e.prev : e.next;
-        const current = dir === 'undo' ? e.next : e.prev;
-        shiftRollback.push({ opId: e.opId, date: e.date, prev: current });
-        if (target) shiftUpserts.push(target);
-        else shiftDeletes.push({ opId: e.opId, date: e.date });
-      } else {
-        if (dir === 'undo') {
-          const curSb = standbyMap.get(k) ?? null;
-          if ((curSb?.standby_type ?? null) !== (e.next?.standby_type ?? null)) {
-            skippedConcurrent += 1;
-            continue;
-          }
-        }
-        sbAffected.add(k);
-        const target = dir === 'undo' ? e.prev : e.next;
-        const current = dir === 'undo' ? e.next : e.prev;
-        sbRollback.push({ opId: e.opId, date: e.date, prev: current });
-        if (target) sbUpserts.push(target);
-        else sbDeletes.push({ opId: e.opId, date: e.date });
-      }
-    }
+    const {
+      shiftUpserts,
+      shiftDeletes,
+      shiftAffected,
+      shiftRollback,
+      sbUpserts,
+      sbDeletes,
+      sbAffected,
+      sbRollback,
+      skippedConcurrent,
+    } = computeHistoryTransition(entries, dir, cell, standbyMap);
 
     if (skippedConcurrent > 0) setMsg(`Skipped undo on ${skippedConcurrent} cell(s) modified by another user.`);
     if (shiftAffected.size === 0 && sbAffected.size === 0) return;
@@ -463,7 +461,7 @@ export default function Roster(p: {
           const shift = p.shifts[Number(e.key) - 1];
           if (shift) {
             setMode('paint');
-            setShiftId(shift.id);
+            handleSelectShift(shift.id);
           }
         } else if (e.key === '0') {
           setMode('paint');
@@ -584,13 +582,14 @@ export default function Roster(p: {
       setMsg('Select a cell with an assignment before filling right.');
       return;
     }
+    const normalizedShiftId = normalizeShiftForArea(source.shift_type_id, source.area_code_id, areaBy, offShift);
     const targets = days.filter((d) => d.date >= fromDate).map((d) => d.date);
     const history: ShiftHistoryItem[] = targets.map((date) => ({
       kind: 'shift',
       opId,
       date,
       prev: cell.get(cellKey(opId, date)) ?? null,
-      next: { operator_id: opId, schedule_date: date, shift_type_id: source.shift_type_id, area_code_id: source.area_code_id },
+      next: { operator_id: opId, schedule_date: date, shift_type_id: normalizedShiftId, area_code_id: source.area_code_id },
     }));
     const upserts: Row[] = history.map((h) => h.next!);
     const targetSet = new Set(targets);
@@ -607,7 +606,7 @@ export default function Roster(p: {
           action: 'upsert',
           operator_id: h.opId,
           schedule_date: h.date,
-          shift_type_id: source.shift_type_id,
+          shift_type_id: normalizedShiftId,
           area_code_id: source.area_code_id,
           original_state: h.prev ? { shift_type_id: h.prev.shift_type_id, area_code_id: h.prev.area_code_id } : null,
         })),
@@ -641,8 +640,9 @@ export default function Roster(p: {
       return;
     }
 
-    if (!shiftId) return;
-    const nextRow: Row = { operator_id: opId, schedule_date: date, shift_type_id: shiftId, area_code_id: areaId };
+    const effShiftId = normalizeShiftForArea(shiftId, areaId, areaBy, offShift);
+    if (!effShiftId && !areaId) return;
+    const nextRow: Row = { operator_id: opId, schedule_date: date, shift_type_id: effShiftId, area_code_id: areaId };
     batch.entries.push({ kind: 'shift', opId, date, prev: prevCell, next: nextRow });
     batch.upserts.push(nextRow);
     setRows((r) => [...r.filter((x) => !(x.operator_id === opId && x.schedule_date === date)), nextRow]);
@@ -716,9 +716,10 @@ export default function Roster(p: {
       await clearCell(opId, date);
       return;
     }
-    if (!shiftId) return;
+    const effShiftId = normalizeShiftForArea(shiftId, areaId, areaBy, offShift);
+    if (!effShiftId && !areaId) return;
     const prevCell = cell.get(cellKey(opId, date)) ?? null;
-    await saveShiftCell(opId, date, { operator_id: opId, schedule_date: date, shift_type_id: shiftId, area_code_id: areaId }, prevCell);
+    await saveShiftCell(opId, date, { operator_id: opId, schedule_date: date, shift_type_id: effShiftId, area_code_id: areaId }, prevCell);
   }
 
   function copyCell(opId: string, date: string) {
@@ -728,12 +729,13 @@ export default function Roster(p: {
 
   function pasteCell(opId: string, date: string) {
     if (!clipboard || !canOperate) return;
-    if (!clipboard.shift_type_id && !clipboard.area_code_id) {
+    const effShiftId = normalizeShiftForArea(clipboard.shift_type_id, clipboard.area_code_id, areaBy, offShift);
+    if (!effShiftId && !clipboard.area_code_id) {
       void clearCell(opId, date);
       return;
     }
     const prevCell = cell.get(cellKey(opId, date)) ?? null;
-    void saveShiftCell(opId, date, { operator_id: opId, schedule_date: date, shift_type_id: clipboard.shift_type_id, area_code_id: clipboard.area_code_id }, prevCell);
+    void saveShiftCell(opId, date, { operator_id: opId, schedule_date: date, shift_type_id: effShiftId, area_code_id: clipboard.area_code_id }, prevCell);
   }
 
   function exportCsv() {
@@ -783,7 +785,7 @@ export default function Roster(p: {
           const r = cell.get(cellKey(o.id, d.date));
           const s = r?.shift_type_id ? shiftBy.get(r.shift_type_id) : undefined;
           const a = r?.area_code_id ? areaBy.get(r.area_code_id) : undefined;
-          if (s && !s.is_off && !isLeaveArea(a) && !isRestArea(a)) count += 1;
+          if (s && !s.is_off && !isOffPartnerArea(a)) count += 1;
         }
         return count;
       }),
@@ -802,7 +804,7 @@ export default function Roster(p: {
       const a = r?.area_code_id ? areaBy.get(r.area_code_id) : undefined;
       if (standbyMap.has(k)) sb += 1;
       if (isLeaveArea(a)) leave += 1;
-      else if (isRestArea(a) || s?.is_off) off += 1;
+      else if (isRestArea(a) || isHolidayArea(a) || s?.is_off) off += 1;
       else if (s && !s.is_off) duty += 1;
     }
     return { duty, sb, off, leave };
@@ -858,9 +860,9 @@ export default function Roster(p: {
         mode={mode}
         setMode={setMode}
         shiftId={shiftId}
-        setShiftId={setShiftId}
+        setShiftId={handleSelectShift}
         areaId={areaId}
-        setAreaId={setAreaId}
+        setAreaId={handleSelectArea}
         standbyType={standbyType}
         setStandbyType={setStandbyType}
         canUndo={undoStack.length > 0}

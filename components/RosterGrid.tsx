@@ -1,8 +1,10 @@
 'use client';
 
-import { useRef, useState, type MutableRefObject } from 'react';
+import { useMemo, useRef, useState, type MutableRefObject } from 'react';
 import {
   cellKey,
+  findOffShift,
+  isHolidayArea,
   isLeaveArea,
   isRestArea,
   type Area,
@@ -48,6 +50,7 @@ export default function RosterGrid(p: RosterGridProps) {
   const [focused, setFocused] = useState<{ r: number; c: number }>({ r: 0, c: 0 });
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gridRef = useRef<HTMLTableElement | null>(null);
+  const offShift = useMemo(() => findOffShift(Array.from(p.shiftBy.values())), [p.shiftBy]);
 
   function handleCellKeyDown(e: React.KeyboardEvent<HTMLTableCellElement>, rIdx: number, cIdx: number, op: Op, date: string) {
     const maxR = p.operators.length - 1;
@@ -247,23 +250,27 @@ export default function RosterGrid(p: RosterGridProps) {
 
                       const isLeave = isLeaveArea(a);
                       const isRest = isRestArea(a);
+                      const isHoliday = isHolidayArea(a);
+                      const isOffArea = isLeave || isRest || isHoliday;
+                      const effShift = isOffArea ? (offShift ?? s) : s;
                       if (sb) ocCount += 1;
                       if (isLeave) leaves += 1;
-                      if (isRest || s?.is_off) off += 1;
-                      else if (s && !isLeave) duty += 1;
-                      if (s) hrs += Number(s.duration_hours ?? 0);
+                      if (isRest || isHoliday || effShift?.is_off) off += 1;
+                      else if (effShift && !isLeave) duty += 1;
+                      if (effShift && !isOffArea) hrs += Number(effShift.duration_hours ?? 0);
 
-                      const bg =
-                        a && a.background_color !== '#f1f5f9' && (s?.is_off || !s)
-                          ? a.background_color
-                          : s?.background_color ?? (sb ? 'var(--violet-bg)' : d.isWeekend ? 'var(--surface-muted)' : 'var(--surface)');
-                      const fg = a && (s?.is_off || !s) ? a.text_color : s?.text_color ?? (sb ? 'var(--violet-fg)' : 'var(--text-muted)');
+                      const bg = isOffArea
+                        ? (offShift?.background_color ?? (s?.is_off ? s.background_color : '#f8fafc'))
+                        : (s?.background_color ?? (sb ? 'var(--violet-bg)' : d.isWeekend ? 'var(--surface-muted)' : 'var(--surface)'));
+                      const fg = isOffArea
+                        ? (a?.text_color ?? offShift?.text_color ?? 'var(--text)')
+                        : (a && (s?.is_off || !s) ? a.text_color : s?.text_color ?? (sb ? 'var(--violet-fg)' : 'var(--text-muted)'));
                       const cellText =
-                        s && !s.is_off
-                          ? `${s.code}·${a?.code ?? 'PW'}`
-                          : a?.code ?? s?.code ?? '';
+                        !isOffArea && effShift && !effShift.is_off
+                          ? `${effShift.code}·${a?.code ?? 'PW'}`
+                          : a?.code ?? effShift?.code ?? '';
                       const classes = [
-                        isLeave || isRest ? 'cell-leave' : '',
+                        isOffArea ? 'cell-leave' : '',
                         sb ? 'cell-oncall-active' : '',
                         pending ? 'cell-pending' : '',
                       ].filter(Boolean).join(' ');
@@ -275,7 +282,7 @@ export default function RosterGrid(p: RosterGridProps) {
                           data-rc={`${rIdx}-${cIdx}`}
                           tabIndex={isFocused ? 0 : -1}
                           role="gridcell"
-                          aria-label={`${o.full_name}, ${d.date}, ${s ? s.code : 'No shift'}, ${cellText || 'none'}${sb ? `, Standby ${sb.standby_type}` : ''}${pending ? ' (Pending proposal)' : ''}`}
+                          aria-label={`${o.full_name}, ${d.date}, ${effShift ? effShift.code : 'No shift'}, ${cellText || 'none'}${sb ? `, Standby ${sb.standby_type}` : ''}${pending ? ' (Pending proposal)' : ''}`}
                           className={classes || undefined}
                           onFocus={() => setFocused({ r: rIdx, c: cIdx })}
                           onKeyDown={(e) => handleCellKeyDown(e, rIdx, cIdx, o, d.date)}
@@ -315,7 +322,7 @@ export default function RosterGrid(p: RosterGridProps) {
                           title={[
                             `${o.full_name} • ${d.date}`,
                             pending ? `[Proposed: ${pending.isDraft ? 'Draft' : 'Pending Review'}]` : null,
-                            s ? `${s.code}${s.description ? ` (${s.description})` : ''}` : null,
+                            effShift ? `${effShift.code}${effShift.description ? ` (${effShift.description})` : ''}` : null,
                             cellText ? `Area: ${a?.name ?? cellText}` : null,
                             sb ? `Standby: ${sb.standby_type}` : null,
                             pm ? `PM: ${pm.titles.join(', ')}` : null,
