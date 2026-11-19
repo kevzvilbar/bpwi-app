@@ -287,17 +287,26 @@ export default function PmPlanner(p: {
     startTransition(() => router.push(`/pm?m=${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`));
   };
 
+  function getOperatorConflict(date: string, opId: string): string | null {
+    const reasons: string[] = [];
+    const sbList = standbyByDate.get(date) ?? [];
+    if (sbList.some((s) => s.operator_id === opId)) {
+      reasons.push('Standby');
+    }
+    const a = asgByDateOp.get(`${date}:${opId}`);
+    const area = a?.area_code_id ? areaBy.get(a.area_code_id) : undefined;
+    if (area && (area.category === 'leave' || area.category === 'rest' || area.category === 'holiday' || area.code.toUpperCase() === 'RD')) {
+      reasons.push(area.code.toUpperCase());
+    } else if (a?.shift_type_id && shiftBy.get(a.shift_type_id)?.is_off) {
+      reasons.push('Off');
+    }
+    return reasons.length ? reasons.join('/') : null;
+  }
+
   function hasConflict(t: Task) {
     if (t.status === 'done') return false;
-    const sbList = new Set((standbyByDate.get(t.scheduled_date) ?? []).map((s) => s.operator_id));
     for (const opId of t.assigned_operator_ids ?? []) {
-      if (sbList.has(opId)) return true;
-      const a = asgByDateOp.get(`${t.scheduled_date}:${opId}`);
-      if (a?.shift_type_id && shiftBy.get(a.shift_type_id)?.is_off) return true;
-      const area = a?.area_code_id ? areaBy.get(a.area_code_id) : undefined;
-      if (area && (area.category === 'leave' || area.category === 'rest' || area.category === 'holiday' || area.code.toUpperCase() === 'RD')) {
-        return true;
-      }
+      if (getOperatorConflict(t.scheduled_date, opId)) return true;
     }
     return false;
   }
@@ -1105,22 +1114,28 @@ export default function PmPlanner(p: {
                       {t.assigned_operator_ids.map((id) => {
                         const op = opBy.get(id);
                         if (!op) return null;
+                        const conflictReason = t.status !== 'done' ? getOperatorConflict(t.scheduled_date, id) : null;
+                        const chipBg = conflictReason ? '#fee2e2' : '#dcfce7';
+                        const chipFg = conflictReason ? '#991b1b' : '#166534';
+                        const chipBorder = conflictReason ? '1px solid #f87171' : '1px solid transparent';
                         return (
                           <span
                             key={id}
+                            title={conflictReason ? `Schedule conflict: ${conflictReason}` : 'On duty'}
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: 4,
-                              background: '#dcfce7',
-                              color: '#166534',
+                              background: chipBg,
+                              color: chipFg,
+                              border: chipBorder,
                               padding: '2px 7px',
                               borderRadius: 999,
                               fontSize: 11,
                               fontWeight: 600,
                             }}
                           >
-                            {op.full_name}
+                            {conflictReason ? `⚠ ${op.full_name} (${conflictReason})` : op.full_name}
                             {p.canEdit && (
                               <button
                                 type="button"
@@ -1132,7 +1147,7 @@ export default function PmPlanner(p: {
                                 style={{
                                   border: 'none',
                                   background: 'transparent',
-                                  color: '#166534',
+                                  color: chipFg,
                                   cursor: 'pointer',
                                   padding: 0,
                                   fontWeight: 800,
@@ -1169,11 +1184,14 @@ export default function PmPlanner(p: {
                           }}
                         >
                           <option value="">+ Add crew…</option>
-                          {availableOps.map((o) => (
-                            <option key={o.id} value={o.id}>
-                              {o.full_name}
-                            </option>
-                          ))}
+                          {availableOps.map((o) => {
+                            const cReason = getOperatorConflict(t.scheduled_date, o.id);
+                            return (
+                              <option key={o.id} value={o.id}>
+                                {cReason ? `⚠ ${o.full_name} (${cReason})` : o.full_name}
+                              </option>
+                            );
+                          })}
                         </select>
                       </div>
                     )}
@@ -1285,23 +1303,36 @@ export default function PmPlanner(p: {
             )}
             <fieldset style={{ border: '1px solid #e2e8f0', borderRadius: 8, maxHeight: 120, overflow: 'auto', fontSize: 12 }}>
               <legend>Assignees</legend>
-              {p.operators.map((o) => (
-                <label key={o.id} style={{ display: 'inline-flex', gap: 4, margin: '2px 10px 2px 0' }}>
-                  <input
-                    type="checkbox"
-                    checked={draft.assignees.includes(o.id)}
-                    onChange={(e) =>
-                      setDraft({
-                        ...draft,
-                        assignees: e.target.checked
-                          ? [...draft.assignees, o.id]
-                          : draft.assignees.filter((x) => x !== o.id),
-                      })
-                    }
-                  />
-                  {o.full_name}
-                </label>
-              ))}
+              {p.operators.map((o) => {
+                const cReason = getOperatorConflict(draft.date, o.id);
+                return (
+                  <label
+                    key={o.id}
+                    style={{
+                      display: 'inline-flex',
+                      gap: 4,
+                      margin: '2px 10px 2px 0',
+                      color: cReason ? '#b91c1c' : undefined,
+                      fontWeight: cReason ? 700 : undefined,
+                    }}
+                    title={cReason ? `Schedule conflict on ${draft.date}: ${cReason}` : undefined}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={draft.assignees.includes(o.id)}
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          assignees: e.target.checked
+                            ? [...draft.assignees, o.id]
+                            : draft.assignees.filter((x) => x !== o.id),
+                        })
+                      }
+                    />
+                    {cReason ? `⚠ ${o.full_name} (${cReason})` : o.full_name}
+                  </label>
+                );
+              })}
             </fieldset>
             <label style={{ fontSize: 13 }}>
               Remarks <input className="input" value={draft.remarks} onChange={(e) => setDraft({ ...draft, remarks: e.target.value })} />
