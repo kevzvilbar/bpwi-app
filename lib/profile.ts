@@ -1,5 +1,6 @@
 import { cache } from 'react';
 import { supabaseServer } from '@/lib/supabase/server';
+import { computePermissions } from '@/lib/permissions';
 
 /** An admin-granted edit window for a department head (see supabase/migrations/008). */
 export type EditGrant = {
@@ -139,8 +140,14 @@ export const getProfile = cache(async () => {
     }
   }
 
-  const canApprove = isActive && (role === 'admin' || prof?.can_approve === true);
-  const canPropose = isActive && isManager && editGrant === null;
+  const perms = computePermissions({
+    role,
+    isActive,
+    canApproveFlag: prof?.can_approve === true,
+    hasLiveEditGrant: editGrant !== null,
+  });
+  const canApprove = perms.canApproveRequests;
+  const canPropose = perms.canProposeRequests;
 
   let pendingUsersCount = 0;
   if (isAdmin && orgId) {
@@ -193,15 +200,15 @@ export const getProfile = cache(async () => {
     appTitle,
     operatorId: (prof?.operator_id ?? null) as string | null,
     name: (prof?.full_name ?? (user?.user_metadata?.full_name as string | undefined) ?? '') as string,
-    canEdit: isActive && (role === 'admin' || role === 'scheduler' || (isManager && editGrant !== null)),
+    canEdit: perms.canEditSchedule,
     canPropose,
-    canClosePm: isActive && (role === 'admin' || role === 'scheduler' || role === 'operator' || (isManager && editGrant !== null)),
+    canClosePm: perms.canClosePm,
     /** Only operators and admins can submit daily field activity logs. */
-    canLogActivity: isActive && (role === 'operator' || role === 'admin'),
+    canLogActivity: perms.canLogActivity,
     /** Admins, schedulers, and department heads can verify or flag logged activities. */
-    canVerifyActivity: isActive && (role === 'admin' || role === 'scheduler' || role === 'manager'),
+    canVerifyActivity: perms.canVerifyActivity,
     /** Bulk schedule generation stays with admins and schedulers. */
-    canGenerate: isActive && (role === 'admin' || role === 'scheduler'),
+    canGenerate: perms.canGenerateSchedule,
     /** Admins, plus anyone an admin has delegated approval to. */
     canApprove,
     isAdmin,
