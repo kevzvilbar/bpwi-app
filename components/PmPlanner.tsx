@@ -288,19 +288,15 @@ export default function PmPlanner(p: {
   };
 
   function getOperatorConflict(date: string, opId: string): string | null {
-    const reasons: string[] = [];
-    const sbList = standbyByDate.get(date) ?? [];
-    if (sbList.some((s) => s.operator_id === opId)) {
-      reasons.push('Standby');
-    }
     const a = asgByDateOp.get(`${date}:${opId}`);
     const area = a?.area_code_id ? areaBy.get(a.area_code_id) : undefined;
     if (area && (area.category === 'leave' || area.category === 'rest' || area.category === 'holiday' || area.code.toUpperCase() === 'RD')) {
-      reasons.push(area.code.toUpperCase());
-    } else if (a?.shift_type_id && shiftBy.get(a.shift_type_id)?.is_off) {
-      reasons.push('Off');
+      return area.code.toUpperCase();
     }
-    return reasons.length ? reasons.join('/') : null;
+    if (a?.shift_type_id && shiftBy.get(a.shift_type_id)?.is_off) {
+      return 'Off';
+    }
+    return null;
   }
 
   function hasConflict(t: Task) {
@@ -904,7 +900,7 @@ export default function PmPlanner(p: {
                       title={`${fullTitle}\n${t.locations.join(', ')}${t.asset ? '\n' + t.asset : ''}\n${t.assigned_operator_ids
                         .map((id) => opBy.get(id)?.full_name)
                         .filter(Boolean)
-                        .join(', ')}${conflict ? '\n⚠ Crew conflict (off/leave/standby)' : ''}`}
+                        .join(', ')}${conflict ? '\n⚠ Crew conflict (RD/off/leave)' : ''}`}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
