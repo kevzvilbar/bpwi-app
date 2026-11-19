@@ -87,23 +87,25 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body>
         <PwaRegister />
         <DialogA11y />
-        <Nav
-          role={profile.role}
-          userName={profile.name}
-          orgId={profile.orgId}
-          orgName={profile.orgName}
-          appTitle={profile.appTitle}
-          canEdit={profile.canEdit}
-          canGenerate={profile.canGenerate}
-          canApprove={profile.canApprove}
-          isAdmin={profile.isAdmin}
-          pendingUsersCount={profile.pendingUsersCount}
-          pendingRequestsCount={profile.pendingRequestsCount}
-          pendingReportsCount={profile.pendingReportsCount}
-          hasUser={profile.hasUser}
-        />
-        {profile.hasUser && <OfflineSyncBanner />}
-        {profile.isManager && <EditAccessBanner active={profile.editGrant} next={profile.nextGrant} />}
+        {!pendingApproval && (
+          <Nav
+            role={profile.role}
+            userName={profile.name}
+            orgId={profile.orgId}
+            orgName={profile.orgName}
+            appTitle={profile.appTitle}
+            canEdit={profile.canEdit}
+            canGenerate={profile.canGenerate}
+            canApprove={profile.canApprove}
+            isAdmin={profile.isAdmin}
+            pendingUsersCount={profile.pendingUsersCount}
+            pendingRequestsCount={profile.pendingRequestsCount}
+            pendingReportsCount={profile.pendingReportsCount}
+            hasUser={profile.hasUser}
+          />
+        )}
+        {profile.hasUser && !pendingApproval && <OfflineSyncBanner />}
+        {profile.isManager && !pendingApproval && <EditAccessBanner active={profile.editGrant} next={profile.nextGrant} />}
         <main className="app-main">
           <PendingApproval pending={pendingApproval} userName={profile.name} userEmail={profile.userEmail}>
             {children}
