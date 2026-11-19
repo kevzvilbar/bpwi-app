@@ -166,8 +166,8 @@ export default function ChangeRequests(p: Props) {
           borderRadius: 4,
           fontSize: 11.5,
           fontWeight: 700,
-          background: s?.background_color ?? '#e2e8f0',
-          color: s?.text_color ?? '#1e293b',
+          background: s?.background_color ?? 'var(--surface-muted)',
+          color: s?.text_color ?? 'var(--text)',
           border: '1px solid var(--border)',
         }}
       >
@@ -398,7 +398,7 @@ export default function ChangeRequests(p: Props) {
                     )}
 
                     {req.review_notes && (
-                      <div style={{ marginTop: 6, fontSize: 12.5, color: req.status === 'rejected' ? '#dc2626' : 'var(--text-secondary)' }}>
+                      <div style={{ marginTop: 6, fontSize: 12.5, color: req.status === 'rejected' ? 'var(--danger)' : 'var(--text-secondary)' }}>
                         <strong>Approver note:</strong> {req.review_notes}
                       </div>
                     )}
@@ -466,7 +466,7 @@ export default function ChangeRequests(p: Props) {
                       <button
                         type="button"
                         className="btn"
-                        style={{ background: 'transparent', color: '#dc2626', borderColor: '#fca5a5' }}
+                        style={{ background: 'transparent', color: 'var(--danger)', borderColor: 'var(--danger-border)' }}
                         onClick={() => setRejectDialog({ requestId: req.id, requesterName: req.requester_name || 'Department Head' })}
                         disabled={isProcessing}
                       >
@@ -551,7 +551,7 @@ export default function ChangeRequests(p: Props) {
                             </td>
                             <td style={{ padding: '6px 8px' }}>
                               {item.action === 'delete' ? (
-                                <span style={{ color: '#dc2626', fontWeight: 700 }}>Delete assignment</span>
+                                <span style={{ color: 'var(--danger)', fontWeight: 700 }}>Delete assignment</span>
                               ) : item.target_table === 'schedule_assignments' ? (
                                 renderShiftBadge(item.shift_type_id, item.area_code_id)
                               ) : item.target_table === 'standby_assignments' ? (
@@ -569,9 +569,9 @@ export default function ChangeRequests(p: Props) {
                                   ⚠️ Live Conflict
                                 </span>
                               ) : item.status === 'approved' ? (
-                                <span style={{ color: '#16a34a', fontWeight: 700 }}>✓ Approved</span>
+                                <span style={{ color: 'var(--ok-fg)', fontWeight: 700 }}>✓ Approved</span>
                               ) : item.status === 'rejected' ? (
-                                <span style={{ color: '#dc2626', fontWeight: 700 }}>✗ Rejected</span>
+                                <span style={{ color: 'var(--danger)', fontWeight: 700 }}>✗ Rejected</span>
                               ) : (
                                 <span style={{ color: 'var(--text-secondary)' }}>Pending</span>
                               )}

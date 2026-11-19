@@ -1,0 +1,370 @@
+import type { MeterTestCalculation } from '@/lib/activity-types';
+
+export interface BlowOffItem {
+  name: string;
+  initialRead: string;
+  finalRead: string;
+}
+
+export interface UsedMaterialItem {
+  item: string;
+  qty: string;
+}
+
+export interface HaulingCycleItem {
+  sourceLocation: string;
+  deliveryLocation: string;
+  volumeM3: string;
+  loadingTime: string;
+  injectionTime: string;
+}
+
+export interface ActivityDetailFieldsState {
+  // 1. Genset
+  gensetInitialFuel: string;
+  gensetFinalFuel: string;
+  runningHours: string;
+  gensetCause: 'Routine' | 'Power Outage' | 'PMS';
+
+  // 2. Pump Monitoring
+  pressurePsi: string;
+  flowLps: string;
+  totalizerReading: string;
+  chlorineResidual: string;
+
+  // 3. Flushing
+  flushingInitialRead: string;
+  flushingFinalRead: string;
+  blowOffs: BlowOffItem[];
+
+  // 4. Customer & Metering (common + meter test)
+  accountNumber: string;
+  accountName: string;
+  meterBrand: string;
+  meterSerialNumber: string;
+  meterSize: string;
+  meterNature: 'Old' | 'New';
+  testNature: 'Re-testing' | 'Initial';
+  refVolumeM3: string;
+  initialReading: string;
+  reading1: string;
+  reading2: string;
+  reading3: string;
+  witnessedBy: string;
+
+  // Replacement / check fields
+  oldMeterBrand: string;
+  oldMeterSerial: string;
+  oldMeterReading: string;
+  newMeterBrand: string;
+  newMeterSerial: string;
+  newMeterReading: string;
+  isMeterRunning: 'Yes' | 'No';
+  needsDeclogging: 'No' | 'Yes';
+
+  // 5. Leak Repair / Detection
+  pipeSize: string;
+  leakType: string;
+  usedMaterials: UsedMaterialItem[];
+
+  // 6. Water Hauling
+  vehicleType: string;
+  plateNumber: string;
+  driverName: string;
+  haulingCycles: HaulingCycleItem[];
+
+  // 7. Water Sampling
+  turbidityNtu: string;
+  phLevel: string;
+  samplePoint: string;
+
+  // 8. Backwash / Thermal Scanning / Water Level Monitoring
+  filterUnit: string;
+  backwashDurationMin: string;
+  waterClarity: 'Clear' | 'Slightly Turbid' | 'Turbid';
+  scannedEquipment: string;
+  maxTempC: string;
+  hotspotFound: 'No' | 'Yes';
+  swlMeters: string;
+  pwlMeters: string;
+}
+
+export const INITIAL_ACTIVITY_DETAIL_FIELDS: ActivityDetailFieldsState = {
+  gensetInitialFuel: '',
+  gensetFinalFuel: '',
+  runningHours: '',
+  gensetCause: 'Routine',
+  pressurePsi: '',
+  flowLps: '',
+  totalizerReading: '',
+  chlorineResidual: '',
+  flushingInitialRead: '',
+  flushingFinalRead: '',
+  blowOffs: [{ name: 'Blow-off 1', initialRead: '', finalRead: '' }],
+  accountNumber: '',
+  accountName: '',
+  meterBrand: '',
+  meterSerialNumber: '',
+  meterSize: '1/2"',
+  meterNature: 'Old',
+  testNature: 'Re-testing',
+  refVolumeM3: '0.01',
+  initialReading: '',
+  reading1: '',
+  reading2: '',
+  reading3: '',
+  witnessedBy: '',
+  oldMeterBrand: '',
+  oldMeterSerial: '',
+  oldMeterReading: '',
+  newMeterBrand: '',
+  newMeterSerial: '',
+  newMeterReading: '',
+  isMeterRunning: 'Yes',
+  needsDeclogging: 'No',
+  pipeSize: '',
+  leakType: '',
+  usedMaterials: [],
+  vehicleType: '',
+  plateNumber: '',
+  driverName: '',
+  haulingCycles: [{ sourceLocation: '', deliveryLocation: '', volumeM3: '', loadingTime: '', injectionTime: '' }],
+  turbidityNtu: '',
+  phLevel: '',
+  samplePoint: '',
+  filterUnit: '',
+  backwashDurationMin: '',
+  waterClarity: 'Clear',
+  scannedEquipment: '',
+  maxTempC: '',
+  hotspotFound: 'No',
+  swlMeters: '',
+  pwlMeters: '',
+};
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+const optStr = (v: unknown): string | undefined =>
+  v != null && String(v) !== '' ? String(v) : undefined;
+
+export function hydrateActivityDetailFields(
+  d: Record<string, unknown>,
+): ActivityDetailFieldsState {
+  const next: ActivityDetailFieldsState = {
+    ...INITIAL_ACTIVITY_DETAIL_FIELDS,
+    blowOffs: [{ name: 'Blow-off 1', initialRead: '', finalRead: '' }],
+    usedMaterials: [],
+    haulingCycles: [{ sourceLocation: '', deliveryLocation: '', volumeM3: '', loadingTime: '', injectionTime: '' }],
+  };
+
+  if (d.gensetInitialFuel != null) next.gensetInitialFuel = String(d.gensetInitialFuel);
+  if (d.gensetFinalFuel != null) next.gensetFinalFuel = String(d.gensetFinalFuel);
+  if (d.runningHours != null) next.runningHours = String(d.runningHours);
+  if (d.gensetCause === 'Routine' || d.gensetCause === 'Power Outage' || d.gensetCause === 'PMS') {
+    next.gensetCause = d.gensetCause;
+  }
+  if (d.pressurePsi != null) next.pressurePsi = String(d.pressurePsi);
+  if (d.flowLps != null) next.flowLps = String(d.flowLps);
+  if (d.totalizerReading != null) next.totalizerReading = String(d.totalizerReading);
+  if (d.chlorineResidual != null) next.chlorineResidual = String(d.chlorineResidual);
+  if (d.flushingInitialRead != null) next.flushingInitialRead = String(d.flushingInitialRead);
+  if (d.flushingFinalRead != null) next.flushingFinalRead = String(d.flushingFinalRead);
+
+  if (Array.isArray(d.blowOffs) && d.blowOffs.length > 0) {
+    const mapped = d.blowOffs.filter(isRecord).map((b) => ({
+      name: typeof b.name === 'string' ? b.name : '',
+      initialRead: b.initialRead != null ? String(b.initialRead) : '',
+      finalRead: b.finalRead != null ? String(b.finalRead) : '',
+    }));
+    if (mapped.length > 0) next.blowOffs = mapped;
+  }
+
+  if (d.accountNumber) next.accountNumber = String(d.accountNumber);
+  if (d.accountName) next.accountName = String(d.accountName);
+  if (d.meterBrand) next.meterBrand = String(d.meterBrand);
+  if (d.meterSerialNumber) next.meterSerialNumber = String(d.meterSerialNumber);
+  if (d.meterSize) next.meterSize = String(d.meterSize);
+  if (d.meterNature === 'Old' || d.meterNature === 'New') next.meterNature = d.meterNature;
+  if (d.testNature === 'Re-testing' || d.testNature === 'Initial') next.testNature = d.testNature;
+  if (d.refVolumeM3 != null) next.refVolumeM3 = String(d.refVolumeM3);
+  if (d.initialReading != null) next.initialReading = String(d.initialReading);
+  if (d.reading1 != null) next.reading1 = String(d.reading1);
+  if (d.reading2 != null) next.reading2 = String(d.reading2);
+  if (d.reading3 != null) next.reading3 = String(d.reading3);
+  if (d.witnessedBy) next.witnessedBy = String(d.witnessedBy);
+  if (d.oldMeterBrand) next.oldMeterBrand = String(d.oldMeterBrand);
+  if (d.oldMeterSerial) next.oldMeterSerial = String(d.oldMeterSerial);
+  if (d.oldMeterReading != null) next.oldMeterReading = String(d.oldMeterReading);
+  if (d.newMeterBrand) next.newMeterBrand = String(d.newMeterBrand);
+  if (d.newMeterSerial) next.newMeterSerial = String(d.newMeterSerial);
+  if (d.newMeterReading != null) next.newMeterReading = String(d.newMeterReading);
+  if (d.isMeterRunning === 'Yes' || d.isMeterRunning === 'No') next.isMeterRunning = d.isMeterRunning;
+  if (d.needsDeclogging === 'No' || d.needsDeclogging === 'Yes') next.needsDeclogging = d.needsDeclogging;
+  if (d.pipeSize) next.pipeSize = String(d.pipeSize);
+  if (d.leakType) next.leakType = String(d.leakType);
+
+  if (Array.isArray(d.usedMaterials)) {
+    next.usedMaterials = d.usedMaterials.filter(isRecord).map((m) => ({
+      item: String(m.item ?? ''),
+      qty: String(m.qty ?? '1'),
+    }));
+  }
+
+  if (d.vehicleType) next.vehicleType = String(d.vehicleType);
+  if (d.plateNumber) next.plateNumber = String(d.plateNumber);
+  if (d.driverName) next.driverName = String(d.driverName);
+
+  if (Array.isArray(d.haulingCycles) && d.haulingCycles.length > 0) {
+    const mapped = d.haulingCycles.filter(isRecord).map((c) => ({
+      sourceLocation: typeof c.sourceLocation === 'string' ? c.sourceLocation : '',
+      deliveryLocation: typeof c.deliveryLocation === 'string' ? c.deliveryLocation : '',
+      volumeM3: optStr(c.volumeM3) ?? '',
+      loadingTime: typeof c.loadingTime === 'string' ? c.loadingTime : '',
+      injectionTime: typeof c.injectionTime === 'string' ? c.injectionTime : '',
+    }));
+    if (mapped.length > 0) next.haulingCycles = mapped;
+  }
+
+  if (d.turbidityNtu != null) next.turbidityNtu = String(d.turbidityNtu);
+  if (d.phLevel != null) next.phLevel = String(d.phLevel);
+  if (d.samplePoint) next.samplePoint = String(d.samplePoint);
+  if (d.filterUnit) next.filterUnit = String(d.filterUnit);
+  if (d.backwashDurationMin != null) next.backwashDurationMin = String(d.backwashDurationMin);
+  if (d.waterClarity === 'Clear' || d.waterClarity === 'Slightly Turbid' || d.waterClarity === 'Turbid') {
+    next.waterClarity = d.waterClarity;
+  }
+  if (d.scannedEquipment) next.scannedEquipment = String(d.scannedEquipment);
+  if (d.maxTempC != null) next.maxTempC = String(d.maxTempC);
+  if (d.hotspotFound === 'No' || d.hotspotFound === 'Yes') next.hotspotFound = d.hotspotFound;
+  if (d.swlMeters != null) next.swlMeters = String(d.swlMeters);
+  if (d.pwlMeters != null) next.pwlMeters = String(d.pwlMeters);
+
+  return next;
+}
+
+export function isMeterFieldActivity(activityType: string): boolean {
+  return (
+    activityType === 'meter_inst' ||
+    activityType === 'meter_replacement' ||
+    activityType === 'meter_check_indiv' ||
+    activityType === 'meter_check_bulk' ||
+    activityType === 'reconnection'
+  );
+}
+
+export function buildActivityDetailsPayload(
+  activityType: string,
+  f: ActivityDetailFieldsState,
+  meterCalc: MeterTestCalculation,
+): Record<string, unknown> {
+  if (activityType === 'genset_monitoring') {
+    return {
+      gensetInitialFuel: f.gensetInitialFuel ? Number(f.gensetInitialFuel) : null,
+      gensetFinalFuel: f.gensetFinalFuel ? Number(f.gensetFinalFuel) : null,
+      runningHours: f.runningHours ? Number(f.runningHours) : null,
+      gensetCause: f.gensetCause,
+    };
+  }
+  if (activityType === 'pump_monitoring') {
+    return {
+      pressurePsi: f.pressurePsi ? Number(f.pressurePsi) : null,
+      flowLps: f.flowLps ? Number(f.flowLps) : null,
+      totalizerReading: f.totalizerReading ? Number(f.totalizerReading) : null,
+      chlorineResidual: f.chlorineResidual ? Number(f.chlorineResidual) : null,
+    };
+  }
+  if (activityType === 'flushing') {
+    return {
+      flushingInitialRead: f.flushingInitialRead ? Number(f.flushingInitialRead) : null,
+      flushingFinalRead: f.flushingFinalRead ? Number(f.flushingFinalRead) : null,
+      blowOffs: f.blowOffs.map((b) => ({
+        name: b.name,
+        initialRead: b.initialRead ? Number(b.initialRead) : null,
+        finalRead: b.finalRead ? Number(b.finalRead) : null,
+      })),
+    };
+  }
+  if (activityType === 'meter_test') {
+    return {
+      accountNumber: f.accountNumber.trim() || null,
+      accountName: f.accountName.trim() || null,
+      meterBrand: f.meterBrand.trim() || null,
+      meterSerialNumber: f.meterSerialNumber.trim() || null,
+      meterSize: f.meterSize.trim() || null,
+      meterNature: f.meterNature,
+      testNature: f.testNature,
+      refVolumeM3: Number(f.refVolumeM3) || 0.01,
+      initialReading: f.initialReading !== '' ? Number(f.initialReading) : null,
+      reading1: f.reading1 !== '' ? Number(f.reading1) : null,
+      reading2: f.reading2 !== '' ? Number(f.reading2) : null,
+      reading3: f.reading3 !== '' ? Number(f.reading3) : null,
+      ...meterCalc,
+      witnessedBy: f.witnessedBy.trim() || null,
+    };
+  }
+  if (isMeterFieldActivity(activityType)) {
+    return {
+      accountNumber: f.accountNumber.trim() || null,
+      accountName: f.accountName.trim() || null,
+      isMeterRunning: f.isMeterRunning,
+      needsDeclogging: f.needsDeclogging,
+      oldMeterBrand: f.oldMeterBrand.trim() || null,
+      oldMeterSerial: f.oldMeterSerial.trim() || null,
+      oldMeterReading: f.oldMeterReading !== '' ? Number(f.oldMeterReading) : null,
+      newMeterBrand: f.newMeterBrand.trim() || null,
+      newMeterSerial: f.newMeterSerial.trim() || null,
+      newMeterReading: f.newMeterReading !== '' ? Number(f.newMeterReading) : null,
+    };
+  }
+  if (activityType === 'leak_repair' || activityType === 'leak_detection') {
+    return {
+      pipeSize: f.pipeSize.trim() || null,
+      leakType: f.leakType.trim() || null,
+      usedMaterials: f.usedMaterials.filter((m) => m.item.trim() !== ''),
+    };
+  }
+  if (activityType === 'tankering') {
+    return {
+      vehicleType: f.vehicleType.trim() || null,
+      plateNumber: f.plateNumber.trim() || null,
+      driverName: f.driverName.trim() || null,
+      haulingCycles: f.haulingCycles.filter(
+        (c) => c.sourceLocation.trim() || c.deliveryLocation.trim() || c.volumeM3.trim(),
+      ),
+    };
+  }
+  if (activityType === 'water_sampling') {
+    return {
+      chlorineResidual: f.chlorineResidual !== '' ? Number(f.chlorineResidual) : null,
+      turbidityNtu: f.turbidityNtu !== '' ? Number(f.turbidityNtu) : null,
+      phLevel: f.phLevel !== '' ? Number(f.phLevel) : null,
+      samplePoint: f.samplePoint.trim() || null,
+    };
+  }
+  if (activityType === 'backwash') {
+    return {
+      filterUnit: f.filterUnit.trim() || null,
+      backwashDurationMin: f.backwashDurationMin !== '' ? Number(f.backwashDurationMin) : null,
+      pressurePsi: f.pressurePsi !== '' ? Number(f.pressurePsi) : null,
+      waterClarity: f.waterClarity,
+    };
+  }
+  if (activityType === 'thermal_scanning') {
+    return {
+      scannedEquipment: f.scannedEquipment.trim() || null,
+      maxTempC: f.maxTempC !== '' ? Number(f.maxTempC) : null,
+      hotspotFound: f.hotspotFound,
+    };
+  }
+  if (activityType === 'water_level_monitoring') {
+    const swl = f.swlMeters !== '' ? Number(f.swlMeters) : null;
+    const pwl = f.pwlMeters !== '' ? Number(f.pwlMeters) : null;
+    return {
+      swlMeters: swl,
+      pwlMeters: pwl,
+      drawdownMeters: swl !== null && pwl !== null ? Math.round((pwl - swl) * 100) / 100 : null,
+    };
+  }
+  return {};
+}

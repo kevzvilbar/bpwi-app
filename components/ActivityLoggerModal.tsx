@@ -14,7 +14,15 @@ import {
 } from '@/lib/activity-types';
 import { getErrorMessage } from '@/lib/error-utils';
 import { resolveActivityPhotoUrl } from '@/lib/activity-media';
+import {
+  buildActivityDetailsPayload,
+  hydrateActivityDetailFields,
+  INITIAL_ACTIVITY_DETAIL_FIELDS,
+  type ActivityDetailFieldsState,
+} from '@/lib/activity-logger-details';
 import { compressImageFile, uploadActivityPhoto } from '@/lib/image-compress';
+import ActivityCategoryFields from '@/components/ActivityCategoryFields';
+import ActivityMediaCapture, { type ActivityPhotoEntry } from '@/components/ActivityMediaCapture';
 
 export type LoggerOperator = {
   id: string;
@@ -139,82 +147,12 @@ export default function ActivityLoggerModal(p: {
   const [gpsStatus, setGpsStatus] = useState<string>('');
 
   // Photos state
-  const [photos, setPhotos] = useState<Array<{ url: string; storagePath: string | null; preview: string }>>([]);
+  const [photos, setPhotos] = useState<ActivityPhotoEntry[]>([]);
   const [savedBytesTotal, setSavedBytesTotal] = useState(0);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
-  // Dynamic Details State
-  // 1. Genset
-  const [gensetInitialFuel, setGensetInitialFuel] = useState('');
-  const [gensetFinalFuel, setGensetFinalFuel] = useState('');
-  const [runningHours, setRunningHours] = useState('');
-  const [gensetCause, setGensetCause] = useState<'Routine' | 'Power Outage' | 'PMS'>('Routine');
-
-  // 2. Pump Monitoring
-  const [pressurePsi, setPressurePsi] = useState('');
-  const [flowLps, setFlowLps] = useState('');
-  const [totalizerReading, setTotalizerReading] = useState('');
-  const [chlorineResidual, setChlorineResidual] = useState('');
-
-  // 3. Flushing
-  const [flushingInitialRead, setFlushingInitialRead] = useState('');
-  const [flushingFinalRead, setFlushingFinalRead] = useState('');
-  const [blowOffs, setBlowOffs] = useState<Array<{ name: string; initialRead: string; finalRead: string }>>([
-    { name: 'Blow-off 1', initialRead: '', finalRead: '' },
-  ]);
-
-  // 4. Customer & Metering (common + meter test)
-  const [accountNumber, setAccountNumber] = useState('');
-  const [accountName, setAccountName] = useState('');
-  const [meterBrand, setMeterBrand] = useState('');
-  const [meterSerialNumber, setMeterSerialNumber] = useState('');
-  const [meterSize, setMeterSize] = useState('1/2"');
-  const [meterNature, setMeterNature] = useState<'Old' | 'New'>('Old');
-  const [testNature, setTestNature] = useState<'Re-testing' | 'Initial'>('Re-testing');
-  const [refVolumeM3, setRefVolumeM3] = useState('0.01');
-  const [initialReading, setInitialReading] = useState('');
-  const [reading1, setReading1] = useState('');
-  const [reading2, setReading2] = useState('');
-  const [reading3, setReading3] = useState('');
-  const [witnessedBy, setWitnessedBy] = useState('');
-
-  // Replacement / check fields
-  const [oldMeterBrand, setOldMeterBrand] = useState('');
-  const [oldMeterSerial, setOldMeterSerial] = useState('');
-  const [oldMeterReading, setOldMeterReading] = useState('');
-  const [newMeterBrand, setNewMeterBrand] = useState('');
-  const [newMeterSerial, setNewMeterSerial] = useState('');
-  const [newMeterReading, setNewMeterReading] = useState('');
-  const [isMeterRunning, setIsMeterRunning] = useState<'Yes' | 'No'>('Yes');
-  const [needsDeclogging, setNeedsDeclogging] = useState<'No' | 'Yes'>('No');
-
-  // 5. Leak Repair / Detection
-  const [pipeSize, setPipeSize] = useState('');
-  const [leakType, setLeakType] = useState('');
-  const [usedMaterials, setUsedMaterials] = useState<Array<{ item: string; qty: string }>>([]);
-
-  // 6. Water Hauling
-  const [vehicleType, setVehicleType] = useState('');
-  const [plateNumber, setPlateNumber] = useState('');
-  const [driverName, setDriverName] = useState('');
-  const [haulingCycles, setHaulingCycles] = useState<
-    Array<{ sourceLocation: string; deliveryLocation: string; volumeM3: string; loadingTime: string; injectionTime: string }>
-  >([{ sourceLocation: '', deliveryLocation: '', volumeM3: '', loadingTime: '', injectionTime: '' }]);
-
-  // 7. Water Sampling
-  const [turbidityNtu, setTurbidityNtu] = useState('');
-  const [phLevel, setPhLevel] = useState('');
-  const [samplePoint, setSamplePoint] = useState('');
-
-  // 8. Backwash / Thermal Scanning / Water Level Monitoring
-  const [filterUnit, setFilterUnit] = useState('');
-  const [backwashDurationMin, setBackwashDurationMin] = useState('');
-  const [waterClarity, setWaterClarity] = useState<'Clear' | 'Slightly Turbid' | 'Turbid'>('Clear');
-  const [scannedEquipment, setScannedEquipment] = useState('');
-  const [maxTempC, setMaxTempC] = useState('');
-  const [hotspotFound, setHotspotFound] = useState<'No' | 'Yes'>('No');
-  const [swlMeters, setSwlMeters] = useState('');
-  const [pwlMeters, setPwlMeters] = useState('');
+  // Dynamic category-specific telemetry state
+  const [details, setDetails] = useState<ActivityDetailFieldsState>(INITIAL_ACTIVITY_DETAIL_FIELDS);
 
   // Signature pad ref for meter_test
   const sigCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -242,54 +180,11 @@ export default function ActivityLoggerModal(p: {
     lastParsedRef.current = '';
 
     // Reset all activity-specific telemetry fields so previous submissions never bleed over
-    setGensetInitialFuel('');
-    setGensetFinalFuel('');
-    setRunningHours('');
-    setGensetCause('Routine');
-    setPressurePsi('');
-    setFlowLps('');
-    setTotalizerReading('');
-    setChlorineResidual('');
-    setFlushingInitialRead('');
-    setFlushingFinalRead('');
-    setBlowOffs([{ name: 'Blow-off 1', initialRead: '', finalRead: '' }]);
-    setMeterBrand('');
-    setMeterSerialNumber('');
-    setMeterSize('1/2"');
-    setMeterNature('Old');
-    setTestNature('Re-testing');
-    setRefVolumeM3('0.01');
-    setInitialReading('');
-    setReading1('');
-    setReading2('');
-    setReading3('');
-    setWitnessedBy('');
-    setOldMeterBrand('');
-    setOldMeterSerial('');
-    setOldMeterReading('');
-    setNewMeterBrand('');
-    setNewMeterSerial('');
-    setNewMeterReading('');
-    setIsMeterRunning('Yes');
-    setNeedsDeclogging('No');
-    setPipeSize('');
-    setLeakType('');
-    setUsedMaterials([]);
-    setVehicleType('');
-    setPlateNumber('');
-    setDriverName('');
-    setHaulingCycles([{ sourceLocation: '', deliveryLocation: '', volumeM3: '', loadingTime: '', injectionTime: '' }]);
-    setTurbidityNtu('');
-    setPhLevel('');
-    setSamplePoint('');
-    setFilterUnit('');
-    setBackwashDurationMin('');
-    setWaterClarity('Clear');
-    setScannedEquipment('');
-    setMaxTempC('');
-    setHotspotFound('No');
-    setSwlMeters('');
-    setPwlMeters('');
+    setDetails({
+      ...INITIAL_ACTIVITY_DETAIL_FIELDS,
+      accountNumber: p.linkedJobOrder?.account_number ?? '',
+      accountName: p.linkedJobOrder?.account_name ?? '',
+    });
 
     if (p.editingActivity) {
       const ea = p.editingActivity;
@@ -325,87 +220,7 @@ export default function ActivityLoggerModal(p: {
       };
       setStartedHHMM(toHHMM(ea.started_at));
       setCompletedHHMM(toHHMM(ea.completed_at) || currentManilaHHMM());
-
-      if (d.gensetInitialFuel != null) setGensetInitialFuel(String(d.gensetInitialFuel));
-      if (d.gensetFinalFuel != null) setGensetFinalFuel(String(d.gensetFinalFuel));
-      if (d.runningHours != null) setRunningHours(String(d.runningHours));
-      if (d.gensetCause === 'Routine' || d.gensetCause === 'Power Outage' || d.gensetCause === 'PMS') {
-        setGensetCause(d.gensetCause);
-      }
-      if (d.pressurePsi != null) setPressurePsi(String(d.pressurePsi));
-      if (d.flowLps != null) setFlowLps(String(d.flowLps));
-      if (d.totalizerReading != null) setTotalizerReading(String(d.totalizerReading));
-      if (d.chlorineResidual != null) setChlorineResidual(String(d.chlorineResidual));
-      if (d.flushingInitialRead != null) setFlushingInitialRead(String(d.flushingInitialRead));
-      if (d.flushingFinalRead != null) setFlushingFinalRead(String(d.flushingFinalRead));
-      if (Array.isArray(d.blowOffs) && d.blowOffs.length > 0) {
-        setBlowOffs(
-          d.blowOffs
-            .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
-            .map((b) => ({
-              name: typeof b.name === 'string' ? b.name : '',
-              initialRead: b.initialRead != null ? String(b.initialRead) : '',
-              finalRead: b.finalRead != null ? String(b.finalRead) : '',
-            })),
-        );
-      }
-      if (d.accountNumber) setAccountNumber(String(d.accountNumber));
-      if (d.accountName) setAccountName(String(d.accountName));
-      if (d.meterBrand) setMeterBrand(String(d.meterBrand));
-      if (d.meterSerialNumber) setMeterSerialNumber(String(d.meterSerialNumber));
-      if (d.meterSize) setMeterSize(String(d.meterSize));
-      if (d.meterNature === 'Old' || d.meterNature === 'New') setMeterNature(d.meterNature);
-      if (d.testNature === 'Re-testing' || d.testNature === 'Initial') setTestNature(d.testNature);
-      if (d.refVolumeM3 != null) setRefVolumeM3(String(d.refVolumeM3));
-      if (d.initialReading != null) setInitialReading(String(d.initialReading));
-      if (d.reading1 != null) setReading1(String(d.reading1));
-      if (d.reading2 != null) setReading2(String(d.reading2));
-      if (d.reading3 != null) setReading3(String(d.reading3));
-      if (d.witnessedBy) setWitnessedBy(String(d.witnessedBy));
-      if (d.oldMeterSerial) setOldMeterSerial(String(d.oldMeterSerial));
-      if (d.oldMeterReading != null) setOldMeterReading(String(d.oldMeterReading));
-      if (d.newMeterSerial) setNewMeterSerial(String(d.newMeterSerial));
-      if (d.newMeterReading != null) setNewMeterReading(String(d.newMeterReading));
-      if (d.isMeterRunning === 'Yes' || d.isMeterRunning === 'No') setIsMeterRunning(d.isMeterRunning);
-      if (d.needsDeclogging === 'No' || d.needsDeclogging === 'Yes') setNeedsDeclogging(d.needsDeclogging);
-      if (d.pipeSize) setPipeSize(String(d.pipeSize));
-      if (d.leakType) setLeakType(String(d.leakType));
-      if (Array.isArray(d.usedMaterials)) {
-        setUsedMaterials(
-          d.usedMaterials
-            .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
-            .map((m) => ({ item: String(m.item ?? ''), qty: String(m.qty ?? '1') })),
-        );
-      }
-      if (d.vehicleType) setVehicleType(String(d.vehicleType));
-      if (d.plateNumber) setPlateNumber(String(d.plateNumber));
-      if (d.driverName) setDriverName(String(d.driverName));
-      if (Array.isArray(d.haulingCycles) && d.haulingCycles.length > 0) {
-        setHaulingCycles(
-          d.haulingCycles
-            .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
-            .map((c) => ({
-              sourceLocation: typeof c.sourceLocation === 'string' ? c.sourceLocation : '',
-              deliveryLocation: typeof c.deliveryLocation === 'string' ? c.deliveryLocation : '',
-              volumeM3: c.volumeM3 != null ? String(c.volumeM3) : '',
-              loadingTime: typeof c.loadingTime === 'string' ? c.loadingTime : '',
-              injectionTime: typeof c.injectionTime === 'string' ? c.injectionTime : '',
-            })),
-        );
-      }
-      if (d.turbidityNtu != null) setTurbidityNtu(String(d.turbidityNtu));
-      if (d.phLevel != null) setPhLevel(String(d.phLevel));
-      if (d.samplePoint) setSamplePoint(String(d.samplePoint));
-      if (d.filterUnit) setFilterUnit(String(d.filterUnit));
-      if (d.backwashDurationMin != null) setBackwashDurationMin(String(d.backwashDurationMin));
-      if (d.waterClarity === 'Clear' || d.waterClarity === 'Slightly Turbid' || d.waterClarity === 'Turbid') {
-        setWaterClarity(d.waterClarity);
-      }
-      if (d.scannedEquipment) setScannedEquipment(String(d.scannedEquipment));
-      if (d.maxTempC != null) setMaxTempC(String(d.maxTempC));
-      if (d.hotspotFound === 'No' || d.hotspotFound === 'Yes') setHotspotFound(d.hotspotFound);
-      if (d.swlMeters != null) setSwlMeters(String(d.swlMeters));
-      if (d.pwlMeters != null) setPwlMeters(String(d.pwlMeters));
+      setDetails(hydrateActivityDetailFields(d));
       return;
     }
 
@@ -468,8 +283,6 @@ export default function ActivityLoggerModal(p: {
           : ''),
     );
     setBlockLot(p.linkedJobOrder?.block_lot ?? '');
-    setAccountNumber(p.linkedJobOrder?.account_number ?? '');
-    setAccountName(p.linkedJobOrder?.account_name ?? '');
 
     // Clear signature canvas if present
     setTimeout(() => {
@@ -494,9 +307,9 @@ export default function ActivityLoggerModal(p: {
 
   // 12-digit utility account auto-parser
   useEffect(() => {
-    const parsed = parse12DigitAccount(accountNumber);
+    const parsed = parse12DigitAccount(details.accountNumber);
     if (!parsed) return;
-    const clean = accountNumber.replace(/[\s-]+/g, '').trim();
+    const clean = details.accountNumber.replace(/[\s-]+/g, '').trim();
     if (clean === lastParsedRef.current) return;
     lastParsedRef.current = clean;
 
@@ -510,7 +323,7 @@ export default function ActivityLoggerModal(p: {
       );
       if (matchedArea) setAreaCodeId(matchedArea.id);
     }
-  }, [accountNumber, areaTouched, stationAreas]);
+  }, [details.accountNumber, areaTouched, stationAreas]);
 
   // Operators on duty today for 1-tap crew tagging
   const { sameShiftOps, otherOps } = useMemo(() => {
@@ -534,9 +347,15 @@ export default function ActivityLoggerModal(p: {
 
   const meterCalc = useMemo(() => {
     const toNum = (v: string) => (v.trim() === '' ? null : Number(v));
-    const refV = Number(refVolumeM3) || 0.01;
-    return computeMeterTestResult(toNum(initialReading), toNum(reading1), toNum(reading2), toNum(reading3), refV);
-  }, [initialReading, reading1, reading2, reading3, refVolumeM3]);
+    const refV = Number(details.refVolumeM3) || 0.01;
+    return computeMeterTestResult(
+      toNum(details.initialReading),
+      toNum(details.reading1),
+      toNum(details.reading2),
+      toNum(details.reading3),
+      refV,
+    );
+  }, [details.initialReading, details.reading1, details.reading2, details.reading3, details.refVolumeM3]);
 
   if (!p.open) return null;
 
@@ -599,134 +418,6 @@ export default function ActivityLoggerModal(p: {
     e.target.value = '';
   }
 
-  function getCanvasCoords(e: React.PointerEvent<HTMLCanvasElement>) {
-    const canvas = sigCanvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY,
-    };
-  }
-
-  function buildDetails(): Record<string, unknown> {
-    if (activityType === 'genset_monitoring') {
-      return {
-        gensetInitialFuel: gensetInitialFuel ? Number(gensetInitialFuel) : null,
-        gensetFinalFuel: gensetFinalFuel ? Number(gensetFinalFuel) : null,
-        runningHours: runningHours ? Number(runningHours) : null,
-        gensetCause,
-      };
-    }
-    if (activityType === 'pump_monitoring') {
-      return {
-        pressurePsi: pressurePsi ? Number(pressurePsi) : null,
-        flowLps: flowLps ? Number(flowLps) : null,
-        totalizerReading: totalizerReading ? Number(totalizerReading) : null,
-        chlorineResidual: chlorineResidual ? Number(chlorineResidual) : null,
-      };
-    }
-    if (activityType === 'flushing') {
-      return {
-        flushingInitialRead: flushingInitialRead ? Number(flushingInitialRead) : null,
-        flushingFinalRead: flushingFinalRead ? Number(flushingFinalRead) : null,
-        blowOffs: blowOffs.map((b) => ({
-          name: b.name,
-          initialRead: b.initialRead ? Number(b.initialRead) : null,
-          finalRead: b.finalRead ? Number(b.finalRead) : null,
-        })),
-      };
-    }
-    if (activityType === 'meter_test') {
-      return {
-        accountNumber: accountNumber.trim() || null,
-        accountName: accountName.trim() || null,
-        meterBrand: meterBrand.trim() || null,
-        meterSerialNumber: meterSerialNumber.trim() || null,
-        meterSize: meterSize.trim() || null,
-        meterNature,
-        testNature,
-        refVolumeM3: Number(refVolumeM3) || 0.01,
-        initialReading: initialReading !== '' ? Number(initialReading) : null,
-        reading1: reading1 !== '' ? Number(reading1) : null,
-        reading2: reading2 !== '' ? Number(reading2) : null,
-        reading3: reading3 !== '' ? Number(reading3) : null,
-        ...meterCalc,
-        witnessedBy: witnessedBy.trim() || null,
-      };
-    }
-    if (
-      activityType === 'meter_inst' ||
-      activityType === 'meter_replacement' ||
-      activityType === 'meter_check_indiv' ||
-      activityType === 'meter_check_bulk' ||
-      activityType === 'reconnection'
-    ) {
-      return {
-        accountNumber: accountNumber.trim() || null,
-        accountName: accountName.trim() || null,
-        isMeterRunning,
-        needsDeclogging,
-        oldMeterBrand: oldMeterBrand.trim() || null,
-        oldMeterSerial: oldMeterSerial.trim() || null,
-        oldMeterReading: oldMeterReading !== '' ? Number(oldMeterReading) : null,
-        newMeterBrand: newMeterBrand.trim() || null,
-        newMeterSerial: newMeterSerial.trim() || null,
-        newMeterReading: newMeterReading !== '' ? Number(newMeterReading) : null,
-      };
-    }
-    if (activityType === 'leak_repair' || activityType === 'leak_detection') {
-      return {
-        pipeSize: pipeSize.trim() || null,
-        leakType: leakType.trim() || null,
-        usedMaterials: usedMaterials.filter((m) => m.item.trim() !== ''),
-      };
-    }
-    if (activityType === 'tankering') {
-      return {
-        vehicleType: vehicleType.trim() || null,
-        plateNumber: plateNumber.trim() || null,
-        driverName: driverName.trim() || null,
-        haulingCycles: haulingCycles.filter((c) => c.sourceLocation.trim() || c.deliveryLocation.trim() || c.volumeM3.trim()),
-      };
-    }
-    if (activityType === 'water_sampling') {
-      return {
-        chlorineResidual: chlorineResidual !== '' ? Number(chlorineResidual) : null,
-        turbidityNtu: turbidityNtu !== '' ? Number(turbidityNtu) : null,
-        phLevel: phLevel !== '' ? Number(phLevel) : null,
-        samplePoint: samplePoint.trim() || null,
-      };
-    }
-    if (activityType === 'backwash') {
-      return {
-        filterUnit: filterUnit.trim() || null,
-        backwashDurationMin: backwashDurationMin !== '' ? Number(backwashDurationMin) : null,
-        pressurePsi: pressurePsi !== '' ? Number(pressurePsi) : null,
-        waterClarity,
-      };
-    }
-    if (activityType === 'thermal_scanning') {
-      return {
-        scannedEquipment: scannedEquipment.trim() || null,
-        maxTempC: maxTempC !== '' ? Number(maxTempC) : null,
-        hotspotFound,
-      };
-    }
-    if (activityType === 'water_level_monitoring') {
-      const swl = swlMeters !== '' ? Number(swlMeters) : null;
-      const pwl = pwlMeters !== '' ? Number(pwlMeters) : null;
-      return {
-        swlMeters: swl,
-        pwlMeters: pwl,
-        drawdownMeters: swl !== null && pwl !== null ? Math.round((pwl - swl) * 100) / 100 : null,
-      };
-    }
-    return {};
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErrMsg('');
@@ -764,7 +455,7 @@ export default function ActivityLoggerModal(p: {
       gps_lat: gpsLat,
       gps_lng: gpsLng,
       notes: notes.trim() || null,
-      details: buildDetails(),
+      details: buildActivityDetailsPayload(activityType, details, meterCalc),
       photo_urls: photos.map((ph) => ph.url),
       photo_storage_paths: photos.map((ph) => ph.storagePath).filter((sp): sp is string => Boolean(sp)),
       photos_expires_at: photos.length > 0 ? expiresIso : null,
@@ -869,13 +560,6 @@ export default function ActivityLoggerModal(p: {
       setErrMsg(message);
     }
   }
-
-  const isMeterActivity =
-    activityType === 'meter_inst' ||
-    activityType === 'meter_replacement' ||
-    activityType === 'meter_check_indiv' ||
-    activityType === 'meter_check_bulk' ||
-    activityType === 'reconnection';
 
   return (
     <div
@@ -1141,507 +825,15 @@ export default function ActivityLoggerModal(p: {
         </div>
 
         {/* Dynamic Specialized Fields based on activityType */}
-        {activityType === 'genset_monitoring' && (
-          <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: '#f59e0b' }}>
-            <strong style={{ fontSize: 12.5, color: '#b45309' }}>Genset Monitoring Telemetry</strong>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Initial Fuel (L / %)
-                <input className="input" type="number" step="0.1" value={gensetInitialFuel} onChange={(e) => setGensetInitialFuel(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Final Fuel (L / %)
-                <input className="input" type="number" step="0.1" value={gensetFinalFuel} onChange={(e) => setGensetFinalFuel(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Running Hours
-                <input className="input" type="number" step="0.1" value={runningHours} onChange={(e) => setRunningHours(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Run Cause
-                <select className="input" value={gensetCause} onChange={(e) => setGensetCause(e.target.value as 'Routine' | 'Power Outage' | 'PMS')}>
-                  <option value="Routine">Routine Test</option>
-                  <option value="Power Outage">Power Outage</option>
-                  <option value="PMS">PMS</option>
-                </select>
-              </label>
-            </div>
-          </div>
-        )}
-
-        {activityType === 'pump_monitoring' && (
-          <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: '#0284c7' }}>
-            <strong style={{ fontSize: 12.5, color: '#0369a1' }}>Pump House Readings</strong>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Pressure (PSI)
-                <input className="input" type="number" step="0.1" value={pressurePsi} onChange={(e) => setPressurePsi(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Flow (LPS)
-                <input className="input" type="number" step="0.1" value={flowLps} onChange={(e) => setFlowLps(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Totalizer (m³)
-                <input className="input" type="number" step="0.01" value={totalizerReading} onChange={(e) => setTotalizerReading(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Chlorine Res. (mg/L)
-                <input className="input" type="number" step="0.01" value={chlorineResidual} onChange={(e) => setChlorineResidual(e.target.value)} />
-              </label>
-            </div>
-          </div>
-        )}
-
-        {activityType === 'flushing' && (
-          <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: '#2563eb' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <strong style={{ fontSize: 12.5, color: '#1d4ed8' }}>Line Flushing &amp; Blow-Off Readings</strong>
-              <button
-                type="button"
-                className="btn"
-                style={{ minHeight: 28, padding: '2px 8px', fontSize: 11.5 }}
-                onClick={() =>
-                  setBlowOffs((prev) => [...prev, { name: `Blow-off ${prev.length + 1}`, initialRead: '', finalRead: '' }])
-                }
-              >
-                + Add Point
-              </button>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Main Meter Initial (m³)
-                <input className="input" type="number" step="0.01" value={flushingInitialRead} onChange={(e) => setFlushingInitialRead(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Main Meter Final (m³)
-                <input className="input" type="number" step="0.01" value={flushingFinalRead} onChange={(e) => setFlushingFinalRead(e.target.value)} />
-              </label>
-            </div>
-            {blowOffs.map((bo, idx) => (
-              <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr auto', gap: 6, alignItems: 'end' }}>
-                <input
-                  className="input"
-                  placeholder="Point name"
-                  value={bo.name}
-                  onChange={(e) =>
-                    setBlowOffs((prev) => prev.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)))
-                  }
-                />
-                <input
-                  className="input"
-                  type="number"
-                  step="0.01"
-                  placeholder="Initial"
-                  value={bo.initialRead}
-                  onChange={(e) =>
-                    setBlowOffs((prev) => prev.map((x, i) => (i === idx ? { ...x, initialRead: e.target.value } : x)))
-                  }
-                />
-                <input
-                  className="input"
-                  type="number"
-                  step="0.01"
-                  placeholder="Final"
-                  value={bo.finalRead}
-                  onChange={(e) =>
-                    setBlowOffs((prev) => prev.map((x, i) => (i === idx ? { ...x, finalRead: e.target.value } : x)))
-                  }
-                />
-                {blowOffs.length > 1 && (
-                  <button
-                    type="button"
-                    className="btn"
-                    style={{ minHeight: 38, padding: '0 8px', color: 'var(--danger)' }}
-                    onClick={() => setBlowOffs((prev) => prev.filter((_, i) => i !== idx))}
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {activityType === 'meter_test' && (
-          <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: '#9333ea' }}>
-            <strong style={{ fontSize: 12.5, color: '#7e22ce' }}>Volumetric Meter Calibration Test</strong>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Account # (12-char auto-parse)
-                <input className="input" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} placeholder="e.g. 001002003004" />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Account Name
-                <input className="input" value={accountName} onChange={(e) => setAccountName(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Meter Brand
-                <input className="input" value={meterBrand} onChange={(e) => setMeterBrand(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Serial #
-                <input className="input" value={meterSerialNumber} onChange={(e) => setMeterSerialNumber(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Size
-                <input className="input" value={meterSize} onChange={(e) => setMeterSize(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Ref. Vol (m³)
-                <input className="input" type="number" step="0.001" value={refVolumeM3} onChange={(e) => setRefVolumeM3(e.target.value)} />
-              </label>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
-              <label style={{ display: 'grid', gap: 2, fontSize: 11.5 }}>
-                Initial
-                <input className="input" type="number" step="0.0001" value={initialReading} onChange={(e) => setInitialReading(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 2, fontSize: 11.5 }}>
-                Trial 1
-                <input className="input" type="number" step="0.0001" value={reading1} onChange={(e) => setReading1(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 2, fontSize: 11.5 }}>
-                Trial 2
-                <input className="input" type="number" step="0.0001" value={reading2} onChange={(e) => setReading2(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 2, fontSize: 11.5 }}>
-                Trial 3
-                <input className="input" type="number" step="0.0001" value={reading3} onChange={(e) => setReading3(e.target.value)} />
-              </label>
-            </div>
-            {meterCalc.avgErr !== null && (
-              <div
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: 6,
-                  background: meterCalc.verdict === 'Passed' ? '#dcfce7' : '#fee2e2',
-                  color: meterCalc.verdict === 'Passed' ? '#166534' : '#991b1b',
-                  fontSize: 12.5,
-                  fontWeight: 700,
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  flexWrap: 'wrap',
-                  gap: 8,
-                }}
-              >
-                <span>Avg Error: {meterCalc.avgErr}% ({meterCalc.verdict})</span>
-                <span>Recommendation: {meterCalc.recommendation}</span>
-              </div>
-            )}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Witnessed By
-                <input className="input" value={witnessedBy} onChange={(e) => setWitnessedBy(e.target.value)} placeholder="Customer / rep name" />
-              </label>
-              <div style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Witness Signature</span>
-                  <button
-                    type="button"
-                    style={{ background: 'transparent', border: 'none', color: 'var(--accent)', fontSize: 11, cursor: 'pointer', padding: 0 }}
-                    onClick={() => {
-                      const cv = sigCanvasRef.current;
-                      if (cv) cv.getContext('2d')?.clearRect(0, 0, cv.width, cv.height);
-                      setHasSignature(false);
-                    }}
-                  >
-                    Clear
-                  </button>
-                </div>
-                <canvas
-                  ref={sigCanvasRef}
-                  width={260}
-                  height={76}
-                  style={{
-                    width: '100%',
-                    height: 76,
-                    background: '#ffffff',
-                    border: '1px solid var(--border)',
-                    borderRadius: 6,
-                    touchAction: 'none',
-                  }}
-                  onPointerDown={(e) => {
-                    const cv = sigCanvasRef.current;
-                    const ctx = cv?.getContext('2d');
-                    if (!cv || !ctx) return;
-                    sigDrawingRef.current = true;
-                    const pt = getCanvasCoords(e);
-                    ctx.strokeStyle = '#0f172a';
-                    ctx.lineWidth = 2;
-                    ctx.lineCap = 'round';
-                    ctx.beginPath();
-                    ctx.moveTo(pt.x, pt.y);
-                    setHasSignature(true);
-                  }}
-                  onPointerMove={(e) => {
-                    if (!sigDrawingRef.current) return;
-                    const ctx = sigCanvasRef.current?.getContext('2d');
-                    if (!ctx) return;
-                    const pt = getCanvasCoords(e);
-                    ctx.lineTo(pt.x, pt.y);
-                    ctx.stroke();
-                  }}
-                  onPointerUp={() => {
-                    sigDrawingRef.current = false;
-                  }}
-                  onPointerLeave={() => {
-                    sigDrawingRef.current = false;
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {isMeterActivity && (
-          <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: '#16a34a' }}>
-            <strong style={{ fontSize: 12.5, color: '#15803d' }}>Customer &amp; Meter Details</strong>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Account # (12-char auto-parse)
-                <input className="input" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} placeholder="e.g. 001002003004" />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Account Name
-                <input className="input" value={accountName} onChange={(e) => setAccountName(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Meter Running?
-                <select className="input" value={isMeterRunning} onChange={(e) => setIsMeterRunning(e.target.value as 'Yes' | 'No')}>
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </select>
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Needs Declogging?
-                <select className="input" value={needsDeclogging} onChange={(e) => setNeedsDeclogging(e.target.value as 'No' | 'Yes')}>
-                  <option value="No">No</option>
-                  <option value="Yes">Yes</option>
-                </select>
-              </label>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Old Brand / Serial
-                <input className="input" value={oldMeterSerial} onChange={(e) => setOldMeterSerial(e.target.value)} placeholder="Serial #" />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Old Reading
-                <input className="input" type="number" step="0.01" value={oldMeterReading} onChange={(e) => setOldMeterReading(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                New Brand / Serial
-                <input className="input" value={newMeterSerial} onChange={(e) => setNewMeterSerial(e.target.value)} placeholder="Serial #" />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                New Initial Read
-                <input className="input" type="number" step="0.01" value={newMeterReading} onChange={(e) => setNewMeterReading(e.target.value)} />
-              </label>
-            </div>
-          </div>
-        )}
-
-        {(activityType === 'leak_repair' || activityType === 'leak_detection') && (
-          <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: '#dc2626' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <strong style={{ fontSize: 12.5, color: '#b91c1c' }}>Leak Details &amp; Materials</strong>
-              <button
-                type="button"
-                className="btn"
-                style={{ minHeight: 28, padding: '2px 8px', fontSize: 11.5 }}
-                onClick={() => setUsedMaterials((prev) => [...prev, { item: '', qty: '1' }])}
-              >
-                + Material
-              </button>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Pipe Size / Material
-                <input className="input" value={pipeSize} onChange={(e) => setPipeSize(e.target.value)} placeholder='e.g. 2" uPVC' />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Leak Classification / Cause
-                <input className="input" value={leakType} onChange={(e) => setLeakType(e.target.value)} placeholder="e.g. Saddle clamp, joint" />
-              </label>
-            </div>
-            {usedMaterials.map((m, idx) => (
-              <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 90px auto', gap: 6 }}>
-                <input
-                  className="input"
-                  placeholder="Material used (e.g. Coupling 2 inch)"
-                  value={m.item}
-                  onChange={(e) =>
-                    setUsedMaterials((prev) => prev.map((x, i) => (i === idx ? { ...x, item: e.target.value } : x)))
-                  }
-                />
-                <input
-                  className="input"
-                  placeholder="Qty"
-                  value={m.qty}
-                  onChange={(e) =>
-                    setUsedMaterials((prev) => prev.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)))
-                  }
-                />
-                <button
-                  type="button"
-                  className="btn"
-                  style={{ minHeight: 38, padding: '0 8px', color: 'var(--danger)' }}
-                  onClick={() => setUsedMaterials((prev) => prev.filter((_, i) => i !== idx))}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {activityType === 'tankering' && (
-          <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: '#7c3aed' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <strong style={{ fontSize: 12.5, color: '#6d28d9' }}>Water Hauling / Tanker Log</strong>
-              <button
-                type="button"
-                className="btn"
-                style={{ minHeight: 28, padding: '2px 8px', fontSize: 11.5 }}
-                onClick={() =>
-                  setHaulingCycles((prev) => [
-                    ...prev,
-                    { sourceLocation: '', deliveryLocation: '', volumeM3: '', loadingTime: '', injectionTime: '' },
-                  ])
-                }
-              >
-                + Trip Cycle
-              </button>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-              <input className="input" placeholder="Vehicle Type" value={vehicleType} onChange={(e) => setVehicleType(e.target.value)} />
-              <input className="input" placeholder="Plate #" value={plateNumber} onChange={(e) => setPlateNumber(e.target.value)} />
-              <input className="input" placeholder="Driver Name" value={driverName} onChange={(e) => setDriverName(e.target.value)} />
-            </div>
-            {haulingCycles.map((c, idx) => (
-              <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px', gap: 6 }}>
-                <input
-                  className="input"
-                  placeholder="Source"
-                  value={c.sourceLocation}
-                  onChange={(e) =>
-                    setHaulingCycles((prev) => prev.map((x, i) => (i === idx ? { ...x, sourceLocation: e.target.value } : x)))
-                  }
-                />
-                <input
-                  className="input"
-                  placeholder="Delivery site"
-                  value={c.deliveryLocation}
-                  onChange={(e) =>
-                    setHaulingCycles((prev) => prev.map((x, i) => (i === idx ? { ...x, deliveryLocation: e.target.value } : x)))
-                  }
-                />
-                <input
-                  className="input"
-                  type="number"
-                  step="0.1"
-                  placeholder="m³"
-                  value={c.volumeM3}
-                  onChange={(e) =>
-                    setHaulingCycles((prev) => prev.map((x, i) => (i === idx ? { ...x, volumeM3: e.target.value } : x)))
-                  }
-                />
-              </div>
-            ))}
-          </div>
-        )}
-
-        {activityType === 'water_sampling' && (
-          <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: '#0891b2' }}>
-            <strong style={{ fontSize: 12.5, color: '#0e7490' }}>Water Quality / Chlorination Readings</strong>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8 }}>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Free Cl₂ (mg/L)
-                <input className="input" type="number" step="0.01" value={chlorineResidual} onChange={(e) => setChlorineResidual(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Turbidity (NTU)
-                <input className="input" type="number" step="0.01" value={turbidityNtu} onChange={(e) => setTurbidityNtu(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                pH Level
-                <input className="input" type="number" step="0.1" value={phLevel} onChange={(e) => setPhLevel(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Sample Point
-                <input className="input" value={samplePoint} onChange={(e) => setSamplePoint(e.target.value)} />
-              </label>
-            </div>
-          </div>
-        )}
-
-        {activityType === 'backwash' && (
-          <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: '#7c3aed' }}>
-            <strong style={{ fontSize: 12.5, color: '#6d28d9' }}>MMF / Filter Backwash Telemetry</strong>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Filter / MMF Unit
-                <input className="input" placeholder="e.g. MMF-1, Vessel A" value={filterUnit} onChange={(e) => setFilterUnit(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Duration (mins)
-                <input className="input" type="number" step="1" value={backwashDurationMin} onChange={(e) => setBackwashDurationMin(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Pressure (PSI)
-                <input className="input" type="number" step="0.1" value={pressurePsi} onChange={(e) => setPressurePsi(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Discharge Clarity
-                <select className="input" value={waterClarity} onChange={(e) => setWaterClarity(e.target.value as 'Clear' | 'Slightly Turbid' | 'Turbid')}>
-                  <option value="Clear">Clear</option>
-                  <option value="Slightly Turbid">Slightly Turbid</option>
-                  <option value="Turbid">Turbid</option>
-                </select>
-              </label>
-            </div>
-          </div>
-        )}
-
-        {activityType === 'thermal_scanning' && (
-          <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: '#ea580c' }}>
-            <strong style={{ fontSize: 12.5, color: '#c2410c' }}>Thermal Scanning Readings</strong>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Panel / Motor Scanned
-                <input className="input" placeholder="e.g. MCC Panel, Pump 1" value={scannedEquipment} onChange={(e) => setScannedEquipment(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Max Temp (°C)
-                <input className="input" type="number" step="0.1" value={maxTempC} onChange={(e) => setMaxTempC(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Hotspot Detected?
-                <select className="input" value={hotspotFound} onChange={(e) => setHotspotFound(e.target.value as 'No' | 'Yes')}>
-                  <option value="No">No (Normal)</option>
-                  <option value="Yes">Yes (Needs Attention)</option>
-                </select>
-              </label>
-            </div>
-          </div>
-        )}
-
-        {activityType === 'water_level_monitoring' && (
-          <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: '#ca8a04' }}>
-            <strong style={{ fontSize: 12.5, color: '#a16207' }}>Well Water Level (SWL &amp; PWL)</strong>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Static Water Level — SWL (m)
-                <input className="input" type="number" step="0.01" value={swlMeters} onChange={(e) => setSwlMeters(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-                Pumping Water Level — PWL (m)
-                <input className="input" type="number" step="0.01" value={pwlMeters} onChange={(e) => setPwlMeters(e.target.value)} />
-              </label>
-            </div>
-          </div>
-        )}
+        <ActivityCategoryFields
+          activityType={activityType}
+          fields={details}
+          setFields={setDetails}
+          meterCalc={meterCalc}
+          sigCanvasRef={sigCanvasRef}
+          sigDrawingRef={sigDrawingRef}
+          setHasSignature={setHasSignature}
+        />
 
         {/* Times + Notes */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -1668,71 +860,17 @@ export default function ActivityLoggerModal(p: {
         </label>
 
         {/* GPS & 30-day Expiring Photo Capture */}
-        <div style={{ display: 'grid', gap: 8, padding: 10, borderRadius: 8, border: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-            <button type="button" className="btn" onClick={handleCaptureGps} style={{ fontSize: 12 }}>
-              {gpsLat !== null ? `📍 ${gpsLat}, ${gpsLng}` : '📍 Attach GPS Location'}
-            </button>
-            {gpsStatus && <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{gpsStatus}</span>}
-
-            <label className="btn" style={{ fontSize: 12, cursor: uploadingPhoto ? 'wait' : 'pointer' }}>
-              {uploadingPhoto ? 'Compressing & Uploading…' : '📷 Add Field Photos'}
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                multiple
-                disabled={uploadingPhoto}
-                onChange={handlePhotoUpload}
-                style={{ display: 'none' }}
-              />
-            </label>
-          </div>
-
-          <div style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-            <span>Compressed client-side · Photos auto-expire after 30 days to conserve storage limits.</span>
-            {savedBytesTotal > 0 && (
-              <span style={{ color: '#16a34a', fontWeight: 700 }}>
-                Saved {(savedBytesTotal / 1024).toFixed(0)} KB
-              </span>
-            )}
-          </div>
-
-          {photos.length > 0 && (
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {photos.map((ph, idx) => (
-                <div key={idx} style={{ position: 'relative', width: 68, height: 68 }}>
-                  <img
-                    src={ph.preview}
-                    alt={`Field attachment ${idx + 1}`}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }}
-                  />
-                  <button
-                    type="button"
-                    aria-label="Remove photo"
-                    onClick={() => setPhotos((prev) => prev.filter((_, i) => i !== idx))}
-                    style={{
-                      position: 'absolute',
-                      top: -5,
-                      right: -5,
-                      width: 20,
-                      height: 20,
-                      borderRadius: '50%',
-                      border: 'none',
-                      background: '#dc2626',
-                      color: '#fff',
-                      fontSize: 11,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <ActivityMediaCapture
+          gpsLat={gpsLat}
+          gpsLng={gpsLng}
+          gpsStatus={gpsStatus}
+          onCaptureGps={handleCaptureGps}
+          uploadingPhoto={uploadingPhoto}
+          onPhotoUpload={handlePhotoUpload}
+          savedBytesTotal={savedBytesTotal}
+          photos={photos}
+          onRemovePhoto={(idx) => setPhotos((prev) => prev.filter((_, i) => i !== idx))}
+        />
 
         {errMsg && (
           <p role="alert" style={{ margin: 0, fontSize: 12.5, color: 'var(--danger)', fontWeight: 600 }}>

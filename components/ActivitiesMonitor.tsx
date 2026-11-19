@@ -8,17 +8,16 @@ import { resolveActivityPhotoUrl } from '@/lib/activity-media';
 import {
   ACTIVITY_BY_ID,
   ACTIVITY_TYPES,
-  ACTIVITY_CATEGORIES,
-  ACTIVITY_CATEGORY_LABELS,
-  parse12DigitAccount,
-  type ActivityCategory,
   type DailyActivityRow,
   type JobOrderRow,
   type ShiftHandoverRow,
 } from '@/lib/activity-types';
+import { formatTelemetrySummary } from '@/lib/activity-telemetry';
 import ActivityLoggerModal, { type LinkedJobOrder } from '@/components/ActivityLoggerModal';
 import PrintableActivityReport from '@/components/PrintableActivityReport';
 import ActivitiesKpiTab from '@/components/ActivitiesKpiTab';
+import JobOrdersTab from '@/components/JobOrdersTab';
+import ShiftHandoversTab from '@/components/ShiftHandoversTab';
 import { enqueueOfflineActivity, flushOfflineQueue, getOfflineQueue, type PendingOfflineActivity } from '@/lib/offline-queue';
 
 type MonOp = { id: string; full_name: string; position: string | null; phone_number: string | null; default_station: string | null };
@@ -45,91 +44,10 @@ function fmtTimeManila(iso: string | null | undefined) {
   }).format(dt);
 }
 
-function fmtDateTimeManila(iso: string | null | undefined) {
-  if (!iso) return '—';
-  const dt = new Date(iso);
-  if (Number.isNaN(dt.getTime())) return iso;
-  return new Intl.DateTimeFormat('en-PH', {
-    timeZone: 'Asia/Manila',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(dt);
-}
-
 function daysUntil(iso: string | null | undefined) {
   if (!iso) return null;
   const ms = new Date(iso).getTime() - Date.now();
   return Math.ceil(ms / (1000 * 60 * 60 * 24));
-}
-
-function formatTelemetrySummary(act: DailyActivityRow): string[] {
-  const d = act.details ?? {};
-  const parts: string[] = [];
-  if (act.activity_type === 'genset_monitoring') {
-    if (d.gensetInitialFuel !== undefined || d.gensetFinalFuel !== undefined) {
-      parts.push(`Fuel: ${d.gensetInitialFuel ?? '—'} → ${d.gensetFinalFuel ?? '—'}`);
-    }
-    if (d.runningHours !== undefined && d.runningHours !== null) parts.push(`Run: ${d.runningHours}h`);
-    if (d.gensetCause) parts.push(`Cause: ${d.gensetCause}`);
-  } else if (act.activity_type === 'pump_monitoring') {
-    if (d.pressurePsi !== undefined && d.pressurePsi !== null) parts.push(`${d.pressurePsi} PSI`);
-    if (d.flowLps !== undefined && d.flowLps !== null) parts.push(`${d.flowLps} LPS`);
-    if (d.totalizerReading !== undefined && d.totalizerReading !== null) parts.push(`Totalizer: ${d.totalizerReading} m³`);
-    if (d.chlorineResidual !== undefined && d.chlorineResidual !== null) parts.push(`Cl₂: ${d.chlorineResidual} mg/L`);
-  } else if (act.activity_type === 'flushing') {
-    if (d.flushingInitialRead !== undefined || d.flushingFinalRead !== undefined) {
-      parts.push(`Main Read: ${d.flushingInitialRead ?? '—'} → ${d.flushingFinalRead ?? '—'}`);
-    }
-    if (Array.isArray(d.blowOffs) && d.blowOffs.length > 0) {
-      parts.push(`${d.blowOffs.length} blow-off point(s)`);
-    }
-  } else if (act.activity_type === 'meter_test') {
-    if (d.accountNumber) parts.push(`Acct: ${d.accountNumber}`);
-    if (d.accountName) parts.push(d.accountName);
-    if (d.avgErr !== undefined && d.avgErr !== null) {
-      parts.push(`Avg Err: ${d.avgErr}% (${d.verdict ?? ''} · ${d.recommendation ?? ''})`);
-    }
-  } else if (d.accountNumber || d.accountName) {
-    parts.push(`Acct: ${[d.accountNumber, d.accountName].filter(Boolean).join(' · ')}`);
-  }
-  if (act.activity_type === 'leak_repair' || act.activity_type === 'leak_detection') {
-    if (d.pipeSize) parts.push(`Pipe: ${d.pipeSize}`);
-    if (d.leakType) parts.push(`Cause: ${d.leakType}`);
-    if (Array.isArray(d.usedMaterials) && d.usedMaterials.length > 0) {
-      const mats = d.usedMaterials as Array<{ item?: unknown; qty?: unknown }>;
-      parts.push(`Materials: ${mats.map((m) => `${String(m.item ?? '')} (${String(m.qty ?? '')})`).join(', ')}`);
-    }
-  }
-  if (act.activity_type === 'tankering' && Array.isArray(d.haulingCycles)) {
-    const cycles = d.haulingCycles as Array<{ volumeM3?: unknown }>;
-    const totalVol = cycles.reduce((acc: number, c) => acc + (Number(c.volumeM3) || 0), 0);
-    parts.push(`${cycles.length} trip(s) · ${totalVol} m³`);
-    if (d.plateNumber) parts.push(`Plate: ${d.plateNumber}`);
-  }
-  if (act.activity_type === 'water_sampling') {
-    if (d.chlorineResidual !== undefined && d.chlorineResidual !== null) parts.push(`Cl₂: ${d.chlorineResidual} mg/L`);
-    if (d.turbidityNtu !== undefined && d.turbidityNtu !== null) parts.push(`Turb: ${d.turbidityNtu} NTU`);
-    if (d.phLevel !== undefined && d.phLevel !== null) parts.push(`pH: ${d.phLevel}`);
-  }
-  if (act.activity_type === 'backwash') {
-    if (d.filterUnit) parts.push(`Unit: ${d.filterUnit}`);
-    if (d.backwashDurationMin !== undefined && d.backwashDurationMin !== null) parts.push(`${d.backwashDurationMin} mins`);
-    if (d.pressurePsi !== undefined && d.pressurePsi !== null) parts.push(`${d.pressurePsi} PSI`);
-    if (d.waterClarity) parts.push(`Clarity: ${d.waterClarity}`);
-  }
-  if (act.activity_type === 'thermal_scanning') {
-    if (d.scannedEquipment) parts.push(`Equip: ${d.scannedEquipment}`);
-    if (d.maxTempC !== undefined && d.maxTempC !== null) parts.push(`Max: ${d.maxTempC}°C`);
-    if (d.hotspotFound) parts.push(`Hotspot: ${d.hotspotFound}`);
-  }
-  if (act.activity_type === 'water_level_monitoring') {
-    if (d.swlMeters !== undefined && d.swlMeters !== null) parts.push(`SWL: ${d.swlMeters}m`);
-    if (d.pwlMeters !== undefined && d.pwlMeters !== null) parts.push(`PWL: ${d.pwlMeters}m`);
-    if (d.drawdownMeters !== undefined && d.drawdownMeters !== null) parts.push(`Drawdown: ${d.drawdownMeters}m`);
-  }
-  return parts;
 }
 
 export default function ActivitiesMonitor(p: {
@@ -188,36 +106,10 @@ export default function ActivitiesMonitor(p: {
   const [purging, setPurging] = useState(false);
   const [bannerMsg, setBannerMsg] = useState('');
 
-  // Job Orders tab state
+  // Job Orders & Shift Handover tab permissions/filters
   const canManageJo = p.isAdmin || p.role === 'scheduler' || p.role === 'manager';
   const [joFilter, setJoFilter] = useState<'open' | 'completed' | 'all'>('open');
-  const [joModalOpen, setJoModalOpen] = useState(false);
-  const [joTitle, setJoTitle] = useState('');
-  const [joActivityType, setJoActivityType] = useState('leak_repair');
-  const [joPriority, setJoPriority] = useState<'low' | 'medium' | 'high'>('medium');
-  const [joAreaId, setJoAreaId] = useState('');
-  const [joSite, setJoSite] = useState('');
-  const [joBlockLot, setJoBlockLot] = useState('');
-  const [joAccountNo, setJoAccountNo] = useState('');
-  const [joAccountName, setJoAccountName] = useState('');
-  const [joContactNo, setJoContactNo] = useState('');
-  const [joDesc, setJoDesc] = useState('');
-  const [joDeadline, setJoDeadline] = useState('');
-  const [joEstHours, setJoEstHours] = useState('2');
-  const [joAssignedOps, setJoAssignedOps] = useState<string[]>([]);
-  const [savingJo, setSavingJo] = useState(false);
-
-  // Shift Handover tab state
   const canLogHandover = p.canLogActivity || p.canVerifyActivity;
-  const [hoAreaId, setHoAreaId] = useState('');
-  const [hoShiftId, setHoShiftId] = useState('');
-  const [hoOutOpId, setHoOutOpId] = useState(p.operatorId ?? '');
-  const [hoInOpId, setHoInOpId] = useState('');
-  const [hoPlantStatus, setHoPlantStatus] = useState<'normal' | 'watch' | 'critical'>('normal');
-  const [hoSummary, setHoSummary] = useState('');
-  const [hoPending, setHoPending] = useState('');
-  const [hoChemFuel, setHoChemFuel] = useState('');
-  const [savingHo, setSavingHo] = useState(false);
 
   useEffect(() => setActivities(p.activities), [p.activities]);
   useEffect(() => setJobOrders(p.jobOrders), [p.jobOrders]);
@@ -452,104 +344,6 @@ export default function ActivitiesMonitor(p: {
     setBannerMsg('✓ Activity deleted.');
   }
 
-  async function handleCreateJobOrder(e: React.FormEvent) {
-    e.preventDefault();
-    if (!joTitle.trim()) return;
-    setSavingJo(true);
-    const parsedAcct = parse12DigitAccount(joAccountNo);
-
-    const sb = supabaseBrowser();
-    const { data, error } = await sb
-      .from('job_orders')
-      .insert({
-        organization_id: p.orgId,
-        jo_number: 'AUTO',
-        title: joTitle.trim(),
-        activity_type: joActivityType || null,
-        priority: joPriority,
-        area_code_id: joAreaId || null,
-        site_or_well: joSite.trim() || (parsedAcct ? `Phase ${parsedAcct.phaseCode}` : null),
-        block_lot: joBlockLot.trim() || parsedAcct?.blockLotFormatted || null,
-        account_number: joAccountNo.trim() || null,
-        account_name: joAccountName.trim() || null,
-        contact_number: joContactNo.trim() || null,
-        description: joDesc.trim() || null,
-        assigned_operator_ids: joAssignedOps,
-        deadline: joDeadline ? new Date(`${joDeadline}:00+08:00`).toISOString() : null,
-        estimated_hours: Number(joEstHours) || 2,
-        status: 'pending',
-        created_by: p.userId,
-      })
-      .select('*')
-      .single();
-
-    setSavingJo(false);
-    if (error) {
-      setBannerMsg(`Job order error: ${error.message}`);
-      return;
-    }
-    setJobOrders((prev) => [data as JobOrderRow, ...prev]);
-    setJoModalOpen(false);
-    setJoTitle('');
-    setJoAccountNo('');
-    setJoAccountName('');
-    setJoContactNo('');
-    setJoBlockLot('');
-    setJoSite('');
-    setJoDesc('');
-    setJoAssignedOps([]);
-    setBannerMsg(`✓ Dispatched ${(data as JobOrderRow).jo_number}.`);
-  }
-
-  async function updateJobOrderStatus(jo: JobOrderRow, nextStatus: JobOrderRow['status']) {
-    const sb = supabaseBrowser();
-    const updates: Record<string, unknown> = {
-      status: nextStatus,
-      completed_at: nextStatus === 'completed' ? new Date().toISOString() : null,
-    };
-    const { data, error } = await sb.from('job_orders').update(updates).eq('id', jo.id).select('*').single();
-    if (error) {
-      setBannerMsg(`Update failed: ${error.message}`);
-      return;
-    }
-    setJobOrders((prev) => prev.map((x) => (x.id === jo.id ? (data as JobOrderRow) : x)));
-  }
-
-  async function handleSaveHandover(e: React.FormEvent) {
-    e.preventDefault();
-    if (!hoSummary.trim()) return;
-    setSavingHo(true);
-    const sb = supabaseBrowser();
-    const { data, error } = await sb
-      .from('shift_handovers')
-      .insert({
-        organization_id: p.orgId,
-        handover_date: p.date,
-        shift_type_id: hoShiftId || null,
-        area_code_id: hoAreaId || null,
-        outgoing_operator_id: hoOutOpId || null,
-        incoming_operator_id: hoInOpId || null,
-        plant_status: hoPlantStatus,
-        summary: hoSummary.trim(),
-        pending_items: hoPending.trim() || null,
-        chemical_fuel_notes: hoChemFuel.trim() || null,
-        created_by: p.userId,
-      })
-      .select('*')
-      .single();
-
-    setSavingHo(false);
-    if (error) {
-      setBannerMsg(`Handover save error: ${error.message}`);
-      return;
-    }
-    setHandovers((prev) => [data as ShiftHandoverRow, ...prev]);
-    setHoSummary('');
-    setHoPending('');
-    setHoChemFuel('');
-    setBannerMsg('✓ Shift handover recorded.');
-  }
-
   // Huddle summary numbers for p.date
   const openHighJos = jobOrders.filter((j) => (j.status === 'pending' || j.status === 'in_progress') && j.priority === 'high').length;
   const overduePms = p.pmTasks.filter((t) => t.status !== 'done' && t.scheduled_date < p.date).length;
@@ -634,7 +428,7 @@ export default function ActivitiesMonitor(p: {
       </div>
 
       {p.schemaWarning && (
-        <div role="alert" style={{ padding: '10px 14px', borderRadius: 8, background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', fontSize: 12.5 }}>
+        <div role="alert" style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--warn-bg)', border: '1px solid var(--warn-border)', color: 'var(--warn-fg)', fontSize: 12.5 }}>
           <b>Setup Notice:</b> {p.schemaWarning}
         </div>
       )}
@@ -645,9 +439,9 @@ export default function ActivitiesMonitor(p: {
           style={{
             padding: '9px 14px',
             borderRadius: 8,
-            background: bannerMsg.startsWith('✓') ? '#f0fdf4' : '#fef2f2',
-            border: `1px solid ${bannerMsg.startsWith('✓') ? '#bbf7d0' : '#fecaca'}`,
-            color: bannerMsg.startsWith('✓') ? '#166534' : '#991b1b',
+            background: bannerMsg.startsWith('✓') ? 'var(--ok-bg)' : 'var(--danger-bg)',
+            border: `1px solid ${bannerMsg.startsWith('✓') ? 'var(--ok-border)' : 'var(--danger-border)'}`,
+            color: bannerMsg.startsWith('✓') ? 'var(--ok-fg)' : 'var(--danger-fg)',
             fontSize: 13,
             display: 'flex',
             justifyContent: 'space-between',
@@ -662,7 +456,7 @@ export default function ActivitiesMonitor(p: {
       )}
 
       {offlineQueue.length > 0 && (
-        <div className="card" style={{ padding: '9px 14px', background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="card" style={{ padding: '9px 14px', background: 'var(--warn-bg)', border: '1px solid var(--warn-border)', color: 'var(--warn-fg)', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>
             <b>{offlineQueue.length}</b> field activity log{offlineQueue.length === 1 ? '' : 's'} queued in browser IndexedDB (offline mode).
           </span>
@@ -725,7 +519,7 @@ export default function ActivitiesMonitor(p: {
                 </div>
               </div>
               {idleOnDutyCount > 0 && (
-                <span style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
+                <span style={{ background: 'var(--warn-bg)', color: 'var(--warn-fg)', border: '1px solid var(--warn-border)', padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
                   ⚠️ {idleOnDutyCount} on-duty operator{idleOnDutyCount === 1 ? '' : 's'} with 0 logs yet
                 </span>
               )}
@@ -750,8 +544,8 @@ export default function ActivitiesMonitor(p: {
                         padding: 10,
                         display: 'grid',
                         gap: 6,
-                        background: isFiltered ? 'rgba(3, 105, 161, 0.08)' : 'var(--surface-muted)',
-                        borderColor: isFiltered ? 'var(--accent)' : hasOutput ? '#bbf7d0' : row.isOnDuty ? '#fde68a' : 'var(--border)',
+                        background: isFiltered ? 'var(--info-bg)' : 'var(--surface-muted)',
+                        borderColor: isFiltered ? 'var(--accent)' : hasOutput ? 'var(--ok-border)' : row.isOnDuty ? 'var(--warn-border)' : 'var(--border)',
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 6 }}>
@@ -770,8 +564,8 @@ export default function ActivitiesMonitor(p: {
                             borderRadius: 999,
                             fontSize: 11,
                             fontWeight: 700,
-                            background: hasOutput ? '#dcfce7' : '#fef3c7',
-                            color: hasOutput ? '#166534' : '#92400e',
+                            background: hasOutput ? 'var(--ok-bg)' : 'var(--warn-bg)',
+                            color: hasOutput ? 'var(--ok-fg)' : 'var(--warn-fg)',
                             whiteSpace: 'nowrap',
                           }}
                         >
@@ -899,8 +693,8 @@ export default function ActivitiesMonitor(p: {
                           fontSize: 11,
                           fontWeight: 700,
                           textTransform: 'uppercase',
-                          background: act.status === 'verified' ? '#dcfce7' : act.status === 'flagged' ? '#fee2e2' : '#dbeafe',
-                          color: act.status === 'verified' ? '#166534' : act.status === 'flagged' ? '#991b1b' : '#1e40af',
+                          background: act.status === 'verified' ? 'var(--ok-bg)' : act.status === 'flagged' ? 'var(--danger-bg)' : 'var(--info-bg)',
+                          color: act.status === 'verified' ? 'var(--ok-fg)' : act.status === 'flagged' ? 'var(--danger-fg)' : 'var(--info-fg)',
                         }}
                       >
                         {act.status}
@@ -937,7 +731,7 @@ export default function ActivitiesMonitor(p: {
                     {act.notes && <div style={{ fontSize: 12.5 }}>{act.notes}</div>}
 
                     {act.review_note && (
-                      <div style={{ fontSize: 12, color: '#b91c1c', background: '#fef2f2', padding: '5px 8px', borderRadius: 6 }}>
+                      <div style={{ fontSize: 12, color: 'var(--danger-fg)', background: 'var(--danger-bg)', padding: '5px 8px', borderRadius: 6 }}>
                         <b>Supervisor Note:</b> {act.review_note}
                       </div>
                     )}
@@ -977,7 +771,7 @@ export default function ActivitiesMonitor(p: {
                           })}
                         </div>
                         {expDays !== null && (
-                          <span style={{ fontSize: 10.5, color: expDays <= 5 ? '#b45309' : 'var(--text-secondary)' }}>
+                          <span style={{ fontSize: 10.5, color: expDays <= 5 ? 'var(--warn-fg)' : 'var(--text-secondary)' }}>
                             {expDays > 0 ? `Storage auto-expires in ${expDays}d` : 'Photo retention expired — ready to purge'}
                           </span>
                         )}
@@ -991,7 +785,7 @@ export default function ActivitiesMonitor(p: {
                           type="button"
                           className="btn"
                           onClick={() => void updateActivityVerification(act, 'verified')}
-                          style={{ fontSize: 11.5, background: '#dcfce7', color: '#166534', borderColor: '#bbf7d0', fontWeight: 700 }}
+                          style={{ fontSize: 11.5, background: 'var(--ok-bg)', color: 'var(--ok-fg)', borderColor: 'var(--ok-border)', fontWeight: 700 }}
                         >
                           ✓ Verify
                         </button>
@@ -1004,7 +798,7 @@ export default function ActivitiesMonitor(p: {
                             setFlaggingId(flaggingId === act.id ? null : act.id);
                             setFlagReason('');
                           }}
-                          style={{ fontSize: 11.5, color: '#b91c1c' }}
+                          style={{ fontSize: 11.5, color: 'var(--danger)' }}
                         >
                           ⚠ Flag
                         </button>
@@ -1082,274 +876,50 @@ export default function ActivitiesMonitor(p: {
 
       {/* TAB 2: DISPATCHED JOB ORDERS */}
       {tab === 'job-orders' && (
-        <div style={{ display: 'grid', gap: 12 }}>
-          <div className="card" style={{ padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {(['open', 'completed', 'all'] as const).map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  className={`btn ${joFilter === f ? 'btn-primary' : ''}`}
-                  onClick={() => setJoFilter(f)}
-                  style={{ fontSize: 12.5, fontWeight: 700, textTransform: 'capitalize' }}
-                >
-                  {f}
-                </button>
-              ))}
-            </div>
-            {canManageJo && (
-              <button type="button" className="btn btn-primary" onClick={() => setJoModalOpen(true)} style={{ fontWeight: 700 }}>
-                + Dispatch Job Order
-              </button>
-            )}
-          </div>
-
-          {filteredJobOrders.length === 0 ? (
-            <div className="card" style={{ padding: 28, textAlign: 'center', color: 'var(--text-secondary)' }}>
-              No job orders in this filter.
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))', gap: 12 }}>
-              {filteredJobOrders.map((jo) => {
-                const area = jo.area_code_id ? areaBy.get(jo.area_code_id) : undefined;
-                const crew = (jo.assigned_operator_ids ?? []).map((id) => opBy.get(id)?.full_name).filter(Boolean);
-                const isOverdue = Boolean(jo.deadline && jo.status !== 'completed' && jo.status !== 'cancelled' && new Date(jo.deadline).getTime() < Date.now());
-                const tatHours =
-                  jo.completed_at && jo.created_at
-                    ? ((new Date(jo.completed_at).getTime() - new Date(jo.created_at).getTime()) / (1000 * 60 * 60)).toFixed(1)
-                    : null;
-
-                return (
-                  <div
-                    key={jo.id}
-                    className="card"
-                    style={{
-                      padding: 14,
-                      display: 'grid',
-                      gap: 8,
-                      borderLeft: `4px solid ${jo.priority === 'high' ? '#dc2626' : jo.priority === 'medium' ? '#f59e0b' : '#0284c7'}`,
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                      <strong style={{ fontSize: 13.5 }}>{jo.jo_number}</strong>
-                      <div style={{ display: 'flex', gap: 5 }}>
-                        <span
-                          style={{
-                            padding: '2px 8px',
-                            borderRadius: 999,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            textTransform: 'uppercase',
-                            background: jo.priority === 'high' ? '#fee2e2' : jo.priority === 'medium' ? '#fef3c7' : '#e0f2fe',
-                            color: jo.priority === 'high' ? '#991b1b' : jo.priority === 'medium' ? '#92400e' : '#0369a1',
-                          }}
-                        >
-                          {jo.priority}
-                        </span>
-                        <span
-                          style={{
-                            padding: '2px 8px',
-                            borderRadius: 999,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            textTransform: 'uppercase',
-                            background: jo.status === 'completed' ? '#dcfce7' : isOverdue ? '#ffe4e6' : 'var(--surface-muted)',
-                            color: jo.status === 'completed' ? '#166534' : isOverdue ? '#9f1239' : 'var(--text)',
-                          }}
-                        >
-                          {isOverdue ? 'SLA Breach' : jo.status.replace('_', ' ')}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div style={{ fontSize: 14.5, fontWeight: 700 }}>{jo.title}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                      {area ? `${area.code}${area.name ? ` · ${area.name}` : ''}` : 'General'}
-                      {jo.site_or_well ? ` · ${jo.site_or_well}` : ''}
-                      {jo.block_lot ? ` · ${jo.block_lot}` : ''}
-                    </div>
-                    {(jo.account_number || jo.account_name) && (
-                      <div style={{ fontSize: 12 }}>
-                        Customer: <b>{[jo.account_number, jo.account_name].filter(Boolean).join(' · ')}</b>
-                      </div>
-                    )}
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                      Assigned: <b>{crew.length > 0 ? crew.join(', ') : 'Unassigned'}</b>
-                    </div>
-                    {jo.description && <div style={{ fontSize: 12.5 }}>{jo.description}</div>}
-                    <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-                      <span>Deadline: {jo.deadline ? fmtDateTimeManila(jo.deadline) : 'None'}</span>
-                      {tatHours && <span>TAT: <b>{tatHours} hrs</b></span>}
-                    </div>
-
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', borderTop: '1px solid var(--border-light)', paddingTop: 8 }}>
-                      {p.canLogActivity && (jo.status === 'pending' || jo.status === 'in_progress') && (
-                        <button
-                          type="button"
-                          className="btn btn-primary"
-                          onClick={() => {
-                            setLinkedJoForLog(jo);
-                            setLoggerLeadOpId(jo.assigned_operator_ids?.[0] ?? p.operatorId);
-                            setLoggerOpen(true);
-                          }}
-                          style={{ fontSize: 12, fontWeight: 700 }}
-                        >
-                          Fulfill &amp; Log Activity
-                        </button>
-                      )}
-                      {jo.status === 'pending' && (
-                        <button type="button" className="btn" onClick={() => void updateJobOrderStatus(jo, 'in_progress')} style={{ fontSize: 12 }}>
-                          Start Work
-                        </button>
-                      )}
-                      <button type="button" className="btn" onClick={() => setPrintState({ mode: 'activity', jobOrder: jo })} style={{ fontSize: 12 }}>
-                        🖨 Print JO
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+        <JobOrdersTab
+          orgId={p.orgId}
+          userId={p.userId}
+          canManageJo={canManageJo}
+          canLogActivity={p.canLogActivity}
+          joFilter={joFilter}
+          onChangeJoFilter={setJoFilter}
+          filteredJobOrders={filteredJobOrders}
+          operators={p.operators}
+          stationAreas={stationAreas}
+          opBy={opBy}
+          areaBy={areaBy}
+          onJobOrderCreated={(jo) => setJobOrders((prev) => [jo, ...prev])}
+          onJobOrderUpdated={(jo) => setJobOrders((prev) => prev.map((x) => (x.id === jo.id ? jo : x)))}
+          onFulfillJobOrder={(jo) => {
+            setLinkedJoForLog(jo);
+            setLoggerLeadOpId(jo.assigned_operator_ids?.[0] ?? p.operatorId);
+            setLoggerOpen(true);
+          }}
+          onPrintJobOrder={(jo) => setPrintState({ mode: 'activity', jobOrder: jo })}
+          onBannerMsg={setBannerMsg}
+        />
       )}
 
       {/* TAB 3: SHIFT HANDOVER & DAILY HUDDLE */}
       {tab === 'handovers' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14, alignItems: 'start' }}>
-          <div style={{ display: 'grid', gap: 12 }}>
-            {/* Daily Huddle Brief Card */}
-            <div className="card" style={{ padding: 14, display: 'grid', gap: 10 }}>
-              <strong style={{ fontSize: 15 }}>Daily Operations Huddle Brief ({p.date})</strong>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <div style={{ padding: 10, borderRadius: 8, background: 'var(--surface-muted)' }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Field Activities Today</div>
-                  <div style={{ fontSize: 20, fontWeight: 800 }}>
-                    {dateActivities.length}{' '}
-                    <span style={{ fontSize: 12, fontWeight: 600, color: '#16a34a' }}>
-                      ({dateActivities.filter((a) => a.status === 'verified').length} verified)
-                    </span>
-                  </div>
-                </div>
-                <div style={{ padding: 10, borderRadius: 8, background: 'var(--surface-muted)' }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Open Alerts</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, marginTop: 4 }}>
-                    <div>{idleOnDutyCount} idle on-duty ops</div>
-                    <div>{openHighJos} high-prio JO · {overduePms} overdue PM</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {canLogHandover && (
-              <form className="card" onSubmit={handleSaveHandover} style={{ padding: 14, display: 'grid', gap: 10 }}>
-                <strong style={{ fontSize: 14.5 }}>Log Shift Handover Note</strong>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
-                    Station / Area
-                    <select className="input" value={hoAreaId} onChange={(e) => setHoAreaId(e.target.value)}>
-                      <option value="">All / General</option>
-                      {stationAreas.map((a) => (
-                        <option key={a.id} value={a.id}>{a.code}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
-                    Plant Status
-                    <select className="input" value={hoPlantStatus} onChange={(e) => setHoPlantStatus(e.target.value as 'normal' | 'watch' | 'critical')}>
-                      <option value="normal">Normal</option>
-                      <option value="watch">Watch / Caution</option>
-                      <option value="critical">Critical Alert</option>
-                    </select>
-                  </label>
-                  <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
-                    Outgoing Operator
-                    <select className="input" value={hoOutOpId} onChange={(e) => setHoOutOpId(e.target.value)}>
-                      <option value="">— Select —</option>
-                      {p.operators.map((o) => (
-                        <option key={o.id} value={o.id}>{o.full_name}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
-                    Incoming Operator
-                    <select className="input" value={hoInOpId} onChange={(e) => setHoInOpId(e.target.value)}>
-                      <option value="">— Select —</option>
-                      {p.operators.map((o) => (
-                        <option key={o.id} value={o.id}>{o.full_name}</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
-                  Shift Summary *
-                  <textarea
-                    className="input"
-                    required
-                    rows={2}
-                    placeholder="Pump run status, tank levels, major actions completed…"
-                    value={hoSummary}
-                    onChange={(e) => setHoSummary(e.target.value)}
-                    style={{ minHeight: 56 }}
-                  />
-                </label>
-                <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
-                  Pending / Follow-up Items
-                  <input className="input" value={hoPending} onChange={(e) => setHoPending(e.target.value)} placeholder="Items for incoming shift" />
-                </label>
-                <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
-                  Chemical / Fuel Notes
-                  <input className="input" value={hoChemFuel} onChange={(e) => setHoChemFuel(e.target.value)} placeholder="Chlorine stock, diesel level, etc." />
-                </label>
-                <button type="submit" className="btn btn-primary" disabled={savingHo}>
-                  {savingHo ? 'Saving Handover…' : 'Save Handover Entry'}
-                </button>
-              </form>
-            )}
-          </div>
-
-          <div className="card" style={{ padding: 14, display: 'grid', gap: 10 }}>
-            <strong style={{ fontSize: 14.5 }}>Recent Shift Handovers (Last 14 Days)</strong>
-            {handovers.length === 0 ? (
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>No handover entries logged yet.</div>
-            ) : (
-              handovers.map((h) => {
-                const area = h.area_code_id ? areaBy.get(h.area_code_id) : undefined;
-                const outOp = h.outgoing_operator_id ? opBy.get(h.outgoing_operator_id) : undefined;
-                const inOp = h.incoming_operator_id ? opBy.get(h.incoming_operator_id) : undefined;
-                return (
-                  <div
-                    key={h.id}
-                    style={{
-                      padding: 10,
-                      borderRadius: 8,
-                      border: '1px solid var(--border)',
-                      borderLeft: `4px solid ${h.plant_status === 'critical' ? '#dc2626' : h.plant_status === 'watch' ? '#f59e0b' : '#16a34a'}`,
-                      display: 'grid',
-                      gap: 4,
-                      fontSize: 12.5,
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <b>{h.handover_date} · {area ? area.code : 'All Stations'}</b>
-                      <span style={{ textTransform: 'uppercase', fontSize: 11, fontWeight: 800, color: h.plant_status === 'critical' ? '#dc2626' : h.plant_status === 'watch' ? '#b45309' : '#166534' }}>
-                        {h.plant_status}
-                      </span>
-                    </div>
-                    {(outOp || inOp) && (
-                      <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                        {outOp?.full_name ?? 'Outgoing'} → {inOp?.full_name ?? 'Incoming'}
-                      </div>
-                    )}
-                    <div>{h.summary}</div>
-                    {h.pending_items && <div style={{ color: '#b45309' }}><b>Pending:</b> {h.pending_items}</div>}
-                    {h.chemical_fuel_notes && <div style={{ color: 'var(--text-secondary)' }}><b>Chem/Fuel:</b> {h.chemical_fuel_notes}</div>}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
+        <ShiftHandoversTab
+          orgId={p.orgId}
+          userId={p.userId}
+          operatorId={p.operatorId}
+          date={p.date}
+          canLogHandover={canLogHandover}
+          dateActivities={dateActivities}
+          idleOnDutyCount={idleOnDutyCount}
+          openHighJos={openHighJos}
+          overduePms={overduePms}
+          handovers={handovers}
+          operators={p.operators}
+          stationAreas={stationAreas}
+          opBy={opBy}
+          areaBy={areaBy}
+          onHandoverCreated={(ho) => setHandovers((prev) => [ho, ...prev])}
+          onBannerMsg={setBannerMsg}
+        />
       )}
 
       {/* TAB 4: EMPLOYEE KPIs & FUEL TELEMETRY (Supervisors only) */}
@@ -1409,122 +979,6 @@ export default function ActivitiesMonitor(p: {
           linkedJobOrder={linkedJoForLog}
           editingActivity={editingActivity}
         />
-      )}
-
-      {/* Dispatch Job Order Modal */}
-      {joModalOpen && (
-        <div className="modal-overlay no-print" role="dialog" aria-modal="true" onClick={() => !savingJo && setJoModalOpen(false)}>
-          <form className="modal-sheet" onClick={(e) => e.stopPropagation()} onSubmit={handleCreateJobOrder} style={{ maxWidth: 580, display: 'grid', gap: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ margin: 0, fontSize: 17 }}>Dispatch Field Job Order</h2>
-              <button type="button" className="btn" onClick={() => setJoModalOpen(false)}>✕</button>
-            </div>
-            <label style={{ display: 'grid', gap: 3, fontSize: 12.5, fontWeight: 600 }}>
-              Job Title *
-              <input className="input" required value={joTitle} onChange={(e) => setJoTitle(e.target.value)} placeholder="e.g. Service line leak repair at Block 4 Lot 9" />
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
-                Linked Activity Type
-                <select className="input" value={joActivityType} onChange={(e) => setJoActivityType(e.target.value)}>
-                  {ACTIVITY_CATEGORIES.map((cat: ActivityCategory) => (
-                    <optgroup key={cat} label={ACTIVITY_CATEGORY_LABELS[cat]}>
-                      {ACTIVITY_TYPES.filter((a) => a.category === cat).map((a) => (
-                        <option key={a.id} value={a.id}>{a.label}</option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
-                Priority
-                <select className="input" value={joPriority} onChange={(e) => setJoPriority(e.target.value as 'low' | 'medium' | 'high')}>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High (Urgent)</option>
-                </select>
-              </label>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
-                Account # (12-char auto-parse)
-                <input
-                  className="input"
-                  value={joAccountNo}
-                  onChange={(e) => {
-                    setJoAccountNo(e.target.value);
-                    const parsed = parse12DigitAccount(e.target.value);
-                    if (parsed) {
-                      if (!joBlockLot) setJoBlockLot(parsed.blockLotFormatted);
-                      if (!joSite) setJoSite(`Phase ${parsed.phaseCode}`);
-                    }
-                  }}
-                  placeholder="Optional 12-char account #"
-                />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
-                Account Name
-                <input className="input" value={joAccountName} onChange={(e) => setJoAccountName(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
-                Area / Station
-                <select className="input" value={joAreaId} onChange={(e) => setJoAreaId(e.target.value)}>
-                  <option value="">— Select Station —</option>
-                  {stationAreas.map((a) => (
-                    <option key={a.id} value={a.id}>{a.code}{a.name ? ` · ${a.name}` : ''}</option>
-                  ))}
-                </select>
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
-                Block &amp; Lot / Site
-                <input className="input" value={joBlockLot} onChange={(e) => setJoBlockLot(e.target.value)} placeholder="e.g. Block 004 Lot 009" />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
-                Deadline (Manila Time)
-                <input className="input" type="datetime-local" value={joDeadline} onChange={(e) => setJoDeadline(e.target.value)} />
-              </label>
-              <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
-                Est. SLA Hours
-                <input className="input" type="number" step="0.5" value={joEstHours} onChange={(e) => setJoEstHours(e.target.value)} />
-              </label>
-            </div>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Assign Crew Operators:</div>
-              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', maxHeight: 110, overflow: 'auto' }}>
-                {p.operators.map((op) => {
-                  const sel = joAssignedOps.includes(op.id);
-                  return (
-                    <button
-                      key={op.id}
-                      type="button"
-                      onClick={() => setJoAssignedOps((prev) => (sel ? prev.filter((x) => x !== op.id) : [...prev, op.id]))}
-                      style={{
-                        padding: '3px 9px',
-                        borderRadius: 999,
-                        fontSize: 11.5,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        border: sel ? '1.5px solid var(--primary)' : '1px solid var(--border)',
-                        background: sel ? 'var(--primary)' : 'var(--surface-muted)',
-                        color: sel ? 'var(--primary-fg)' : 'var(--text)',
-                      }}
-                    >
-                      {sel ? '✓ ' : '+ '}{op.full_name}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
-              Instructions / Description
-              <textarea className="input" rows={2} value={joDesc} onChange={(e) => setJoDesc(e.target.value)} style={{ minHeight: 54 }} />
-            </label>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button type="button" className="btn" onClick={() => setJoModalOpen(false)} disabled={savingJo}>Cancel</button>
-              <button type="submit" className="btn btn-primary" disabled={savingJo}>{savingJo ? 'Dispatching…' : 'Dispatch JO'}</button>
-            </div>
-          </form>
-        </div>
       )}
 
       {/* Printable Certificate / Report Preview */}

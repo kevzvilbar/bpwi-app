@@ -2,11 +2,38 @@
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import type { ChangeRequestItem, ChangeRequestOriginalState } from '@/lib/profile';
 import { getErrorMessage } from '@/lib/error-utils';
+import {
+  buildRosterCsv,
+  buildRosterPendingMap,
+  cellKey,
+  friendlyError,
+  isLeaveArea,
+  isRestArea,
+  MONTHS_FULL,
+  persistDirectShiftChanges,
+  persistDirectStandbyChanges,
+  replaceProposedDraftItems,
+  WEEKDAYS,
+  type Area,
+  type HistoryEntry,
+  type HolidayItem,
+  type Op,
+  type PendingCellEntry,
+  type PmMarkTask,
+  type ProposedChangeInput,
+  type RosterDragBatch,
+  type Row,
+  type Shift,
+  type ShiftHistoryItem,
+  type Standby,
+  type ToolMode,
+} from '@/lib/roster-helpers';
 import RosterMobileViews from '@/components/RosterMobileViews';
+import RosterToolbar from '@/components/RosterToolbar';
+import RosterGrid from '@/components/RosterGrid';
 import {
   RosterContextMenu,
   RosterFillConfirmModal,
@@ -14,82 +41,6 @@ import {
   RosterProposeBar,
   RosterSubmitProposalModal,
 } from '@/components/RosterModals';
-
-type Op = { id: string; full_name: string; position: string | null };
-type Shift = {
-  id: string;
-  code: string;
-  description: string | null;
-  duration_hours: number;
-  background_color: string;
-  text_color: string;
-  is_off: boolean;
-};
-type Area = {
-  id: string;
-  code: string;
-  name: string | null;
-  category: string;
-  background_color: string;
-  text_color: string;
-};
-type Row = {
-  operator_id: string;
-  schedule_date: string;
-  shift_type_id: string | null;
-  area_code_id: string | null;
-};
-type Standby = {
-  operator_id: string;
-  schedule_date: string;
-  standby_type: string;
-};
-type PmMarkTask = {
-  scheduled_date: string;
-  assigned_operator_ids: string[];
-  status: string;
-  title: string;
-};
-
-type ShiftHistoryItem = { kind: 'shift'; opId: string; date: string; prev: Row | null; next: Row | null };
-type StandbyHistoryItem = { kind: 'standby'; opId: string; date: string; prev: Standby | null; next: Standby | null };
-type HistoryEntry = (ShiftHistoryItem | StandbyHistoryItem)[];
-
-type ToolMode = 'paint' | 'erase' | 'standby';
-
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MONTHS_FULL = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
-
-function cellKey(opId: string, date: string) {
-  return `${opId}:${date}`;
-}
-
-function isRestArea(a?: Area) {
-  return Boolean(a && (a.category === 'rest' || a.code.toUpperCase() === 'RD'));
-}
-
-function isLeaveArea(a?: Area) {
-  return Boolean(a && a.category === 'leave' && a.code.toUpperCase() !== 'RD');
-}
-
-function csvEscape(v: string) {
-  return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
-}
-
-function friendlyError(raw: string, role?: string) {
-  if (/permission denied|row-level security|42501/i.test(raw)) {
-    return role === 'manager'
-      ? 'Not saved: your edit window has ended, or this date is outside the dates an admin allowed.'
-      : 'You do not have permission to modify this schedule.';
-  }
-  if (/network|fetch|timeout/i.test(raw)) {
-    return 'Connection issue — your change was reverted. Please try again.';
-  }
-  return 'Could not save change — reverted to previous value.';
-}
 
 export default function Roster(p: {
   month: string;
@@ -100,7 +51,7 @@ export default function Roster(p: {
   rows: Row[];
   standby: Standby[];
   pmTasks: PmMarkTask[];
-  holidays?: Array<{ holiday_date: string; name: string; holiday_type: string }>;
+  holidays?: HolidayItem[];
   orgId: string;
   operatorId?: string | null;
   role: string;
@@ -139,34 +90,10 @@ export default function Roster(p: {
   const [submitNote, setSubmitNote] = useState('');
   const [isSubmittingDraft, setIsSubmittingDraft] = useState(false);
 
-  const pendingMap = useMemo(() => {
-    const map = new Map<string, { shift_type_id?: string | null; area_code_id?: string | null; standby_type?: string | null; status: string; isDraft?: boolean; action?: string }>();
-    for (const item of (p.pendingItems ?? [])) {
-      if (item.operator_id && item.schedule_date) {
-        map.set(cellKey(item.operator_id, item.schedule_date), {
-          shift_type_id: item.shift_type_id,
-          area_code_id: item.area_code_id,
-          standby_type: item.standby_type,
-          status: item.status,
-          action: item.action,
-          isDraft: false,
-        });
-      }
-    }
-    for (const item of draftItems) {
-      if (item.operator_id && item.schedule_date) {
-        map.set(cellKey(item.operator_id, item.schedule_date), {
-          shift_type_id: item.shift_type_id,
-          area_code_id: item.area_code_id,
-          standby_type: item.standby_type,
-          status: 'draft',
-          action: item.action,
-          isDraft: true,
-        });
-      }
-    }
-    return map;
-  }, [p.pendingItems, draftItems]);
+  const pendingMap = useMemo(
+    () => buildRosterPendingMap(p.pendingItems ?? [], draftItems),
+    [p.pendingItems, draftItems],
+  );
 
   async function ensureDraftRequestId(): Promise<string> {
     if (draftReqId) return draftReqId;
@@ -186,6 +113,29 @@ export default function Roster(p: {
     return data.id;
   }
 
+  function mergeDraftItems(inserted: ChangeRequestItem[]) {
+    if (inserted.length === 0) return;
+    const keys = new Set(inserted.map((x) => `${x.operator_id ?? ''}:${x.schedule_date ?? ''}`));
+    setDraftItems((prev) => [
+      ...prev.filter((x) => !keys.has(`${x.operator_id ?? ''}:${x.schedule_date ?? ''}`)),
+      ...inserted,
+    ]);
+  }
+
+  async function saveDraftProposal(items: ProposedChangeInput[], onErrorRollback: () => void) {
+    try {
+      const reqId = await ensureDraftRequestId();
+      const inserted = await replaceProposedDraftItems(supabaseBrowser(), reqId, p.orgId, items);
+      mergeDraftItems(inserted);
+    } catch (err: unknown) {
+      onErrorRollback();
+      setSaveState('error');
+      setMsg(friendlyError(getErrorMessage(err), p.role));
+    } finally {
+      setSavingCount((c) => c - 1);
+    }
+  }
+
   async function submitDraftBatch() {
     if (!draftReqId || draftItems.length === 0) return;
     setIsSubmittingDraft(true);
@@ -193,7 +143,7 @@ export default function Roster(p: {
     const sb = supabaseBrowser();
 
     try {
-      const { data, error } = await sb.rpc('submit_change_request', {
+      const { error } = await sb.rpc('submit_change_request', {
         p_request_id: draftReqId,
         p_note: submitNote.trim() || null,
       });
@@ -251,19 +201,9 @@ export default function Roster(p: {
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; opId: string; opName: string; date: string } | null>(null);
   const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
-  const [focused, setFocused] = useState<{ r: number; c: number }>({ r: 0, c: 0 });
   const [clipboard, setClipboard] = useState<{ shift_type_id: string | null; area_code_id: string | null } | null>(null);
 
-  // Drag-to-paint state
-  const dragRef = useRef<{
-    active: boolean;
-    visited: Set<string>;
-    entries: ShiftHistoryItem[];
-    upserts: Row[];
-    deletes: { opId: string; date: string }[];
-  } | null>(null);
-  const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const gridRef = useRef<HTMLTableElement | null>(null);
+  const dragRef = useRef<RosterDragBatch | null>(null);
 
   useEffect(() => {
     setRows(p.rows);
@@ -465,9 +405,7 @@ export default function Roster(p: {
       }
     }
 
-    if (skippedConcurrent > 0) {
-      setMsg(`Skipped undo on ${skippedConcurrent} cell(s) modified by another user.`);
-    }
+    if (skippedConcurrent > 0) setMsg(`Skipped undo on ${skippedConcurrent} cell(s) modified by another user.`);
     if (shiftAffected.size === 0 && sbAffected.size === 0) return;
 
     if (shiftAffected.size > 0) {
@@ -479,29 +417,9 @@ export default function Roster(p: {
 
     setSavingCount((c) => c + 1);
     const sb = supabaseBrowser();
-    let errMsg = '';
-
-    if (shiftUpserts.length > 0) {
-      const { error } = await sb
-        .from('schedule_assignments')
-        .upsert(shiftUpserts.map((u) => ({ ...u, organization_id: p.orgId })), { onConflict: 'operator_id,schedule_date' });
-      if (error) errMsg = error.message;
-    }
-    for (const d of shiftDeletes) {
-      const { error } = await sb.from('schedule_assignments').delete().eq('operator_id', d.opId).eq('schedule_date', d.date);
-      if (error && !errMsg) errMsg = error.message;
-    }
-
-    if (sbUpserts.length > 0) {
-      const { error } = await sb
-        .from('standby_assignments')
-        .upsert(sbUpserts.map((u) => ({ ...u, organization_id: p.orgId })), { onConflict: 'operator_id,schedule_date' });
-      if (error && !errMsg) errMsg = error.message;
-    }
-    for (const d of sbDeletes) {
-      const { error } = await sb.from('standby_assignments').delete().eq('operator_id', d.opId).eq('schedule_date', d.date);
-      if (error && !errMsg) errMsg = error.message;
-    }
+    const shiftErr = await persistDirectShiftChanges(sb, p.orgId, shiftUpserts, shiftDeletes);
+    const sbErr = await persistDirectStandbyChanges(sb, p.orgId, sbUpserts, sbDeletes);
+    const errMsg = shiftErr || sbErr;
 
     setSavingCount((c) => c - 1);
     if (errMsg) {
@@ -561,6 +479,48 @@ export default function Roster(p: {
     return () => window.removeEventListener('keydown', onKeyDown);
   });
 
+  async function saveShiftCell(opId: string, date: string, nextRow: Row | null, prevCell: Row | null) {
+    if (nextRow) {
+      setRows((r) => [...r.filter((x) => !(x.operator_id === opId && x.schedule_date === date)), nextRow]);
+    } else {
+      setRows((r) => r.filter((x) => cellKey(x.operator_id, x.schedule_date) !== cellKey(opId, date)));
+    }
+    setUndoStack((s) => [...s.slice(-29), [{ kind: 'shift', opId, date, prev: prevCell, next: nextRow }]]);
+    setRedoStack([]);
+    setSavingCount((c) => c + 1);
+
+    const rollback = () => rollbackShiftKeys([{ opId, date, prev: prevCell }]);
+    if (isPropose) {
+      await saveDraftProposal(
+        [
+          {
+            target_table: 'schedule_assignments',
+            action: nextRow ? 'upsert' : 'delete',
+            operator_id: opId,
+            schedule_date: date,
+            ...(nextRow ? { shift_type_id: nextRow.shift_type_id, area_code_id: nextRow.area_code_id } : {}),
+            original_state: prevCell ? { shift_type_id: prevCell.shift_type_id, area_code_id: prevCell.area_code_id } : null,
+          },
+        ],
+        rollback,
+      );
+      return;
+    }
+
+    const errMsg = await persistDirectShiftChanges(
+      supabaseBrowser(),
+      p.orgId,
+      nextRow ? [nextRow] : [],
+      nextRow ? [] : [{ opId, date }],
+    );
+    setSavingCount((c) => c - 1);
+    if (errMsg) {
+      rollback();
+      setSaveState('error');
+      setMsg(friendlyError(errMsg, p.role));
+    }
+  }
+
   async function setStandbyValue(opId: string, date: string, nextType: string | null) {
     if (!canOperate) return;
     setMsg('');
@@ -577,101 +537,44 @@ export default function Roster(p: {
     setRedoStack([]);
     setSavingCount((c) => c + 1);
 
+    const rollback = () => rollbackStandbyKeys([{ opId, date, prev: prevSb }]);
     if (isPropose) {
-      try {
-        const reqId = await ensureDraftRequestId();
-        const sb = supabaseBrowser();
-        await sb.from('change_request_items').delete().eq('request_id', reqId).eq('operator_id', opId).eq('schedule_date', date);
-        const { data, error } = await sb.from('change_request_items').insert({
-          request_id: reqId,
-          organization_id: p.orgId,
-          target_table: 'standby_assignments',
-          action: nextType === null ? 'delete' : 'upsert',
-          operator_id: opId,
-          schedule_date: date,
-          standby_type: nextType,
-          original_state: prevSb ? { standby_type: prevSb.standby_type } : null,
-          status: 'pending',
-        }).select();
-        if (error) throw error;
-        if (data) {
-          setDraftItems((prevItems) => [...prevItems.filter((x) => !(x.operator_id === opId && x.schedule_date === date)), data[0]]);
-        }
-      } catch (err: unknown) {
-        rollbackStandbyKeys([{ opId, date, prev: prevSb }]);
-        setSaveState('error');
-        setMsg(friendlyError(getErrorMessage(err), p.role));
-      } finally {
-        setSavingCount((c) => c - 1);
-      }
+      await saveDraftProposal(
+        [
+          {
+            target_table: 'standby_assignments',
+            action: nextType === null ? 'delete' : 'upsert',
+            operator_id: opId,
+            schedule_date: date,
+            standby_type: nextType,
+            original_state: prevSb ? { standby_type: prevSb.standby_type } : null,
+          },
+        ],
+        rollback,
+      );
       return;
     }
 
-    const query =
-      nextType === null
-        ? supabaseBrowser().from('standby_assignments').delete().eq('operator_id', opId).eq('schedule_date', date)
-        : supabaseBrowser()
-            .from('standby_assignments')
-            .upsert(
-              { organization_id: p.orgId, operator_id: opId, schedule_date: date, standby_type: nextType },
-              { onConflict: 'operator_id,schedule_date' },
-            );
-    const { error } = await query;
+    const errMsg = await persistDirectStandbyChanges(
+      supabaseBrowser(),
+      p.orgId,
+      nextSb ? [nextSb] : [],
+      nextSb ? [] : [{ opId, date }],
+    );
     setSavingCount((c) => c - 1);
-    if (error) {
-      rollbackStandbyKeys([{ opId, date, prev: prevSb }]);
+    if (errMsg) {
+      rollback();
       setSaveState('error');
-      setMsg(friendlyError(error.message, p.role));
+      setMsg(friendlyError(errMsg, p.role));
     }
   }
 
   async function clearCell(opId: string, date: string) {
     if (!canOperate) return;
     setMsg('');
-    const k = cellKey(opId, date);
-    const existing = cell.get(k) ?? null;
+    const existing = cell.get(cellKey(opId, date)) ?? null;
     if (!existing) return;
-    setRows((r) => r.filter((x) => cellKey(x.operator_id, x.schedule_date) !== k));
-    setUndoStack((s) => [...s.slice(-29), [{ kind: 'shift', opId, date, prev: existing, next: null }]]);
-    setRedoStack([]);
-    setSavingCount((c) => c + 1);
-
-    if (isPropose) {
-      try {
-        const reqId = await ensureDraftRequestId();
-        const sb = supabaseBrowser();
-        await sb.from('change_request_items').delete().eq('request_id', reqId).eq('operator_id', opId).eq('schedule_date', date);
-        const { data, error } = await sb.from('change_request_items').insert({
-          request_id: reqId,
-          organization_id: p.orgId,
-          target_table: 'schedule_assignments',
-          action: 'delete',
-          operator_id: opId,
-          schedule_date: date,
-          original_state: existing ? { shift_type_id: existing.shift_type_id, area_code_id: existing.area_code_id } : null,
-          status: 'pending',
-        }).select();
-        if (error) throw error;
-        if (data) {
-          setDraftItems((prevItems) => [...prevItems.filter((x) => !(x.operator_id === opId && x.schedule_date === date)), data[0]]);
-        }
-      } catch (err: unknown) {
-        rollbackShiftKeys([{ opId, date, prev: existing }]);
-        setSaveState('error');
-        setMsg(friendlyError(getErrorMessage(err), p.role));
-      } finally {
-        setSavingCount((c) => c - 1);
-      }
-      return;
-    }
-
-    const { error } = await supabaseBrowser().from('schedule_assignments').delete().eq('operator_id', opId).eq('schedule_date', date);
-    setSavingCount((c) => c - 1);
-    if (error) {
-      rollbackShiftKeys([{ opId, date, prev: existing }]);
-      setSaveState('error');
-      setMsg(friendlyError(error.message, p.role));
-    }
+    await saveShiftCell(opId, date, null, existing);
   }
 
   async function fillRight(opId: string, fromDate: string) {
@@ -682,77 +585,43 @@ export default function Roster(p: {
       return;
     }
     const targets = days.filter((d) => d.date >= fromDate).map((d) => d.date);
-    const history: HistoryEntry = targets.map((date) => ({
+    const history: ShiftHistoryItem[] = targets.map((date) => ({
       kind: 'shift',
       opId,
       date,
       prev: cell.get(cellKey(opId, date)) ?? null,
       next: { operator_id: opId, schedule_date: date, shift_type_id: source.shift_type_id, area_code_id: source.area_code_id },
     }));
-    const payload = targets.map((date) => ({
-      organization_id: p.orgId,
-      operator_id: opId,
-      schedule_date: date,
-      shift_type_id: source.shift_type_id,
-      area_code_id: source.area_code_id,
-    }));
+    const upserts: Row[] = history.map((h) => h.next!);
     const targetSet = new Set(targets);
-    setRows((r) => [
-      ...r.filter((x) => !(x.operator_id === opId && targetSet.has(x.schedule_date))),
-      ...payload.map(({ operator_id, schedule_date, shift_type_id, area_code_id }) => ({
-        operator_id,
-        schedule_date,
-        shift_type_id,
-        area_code_id,
-      })),
-    ]);
+    setRows((r) => [...r.filter((x) => !(x.operator_id === opId && targetSet.has(x.schedule_date))), ...upserts]);
     setUndoStack((s) => [...s.slice(-29), history]);
     setRedoStack([]);
     setSavingCount((c) => c + 1);
 
+    const rollback = () => rollbackShiftKeys(history.map((h) => ({ opId: h.opId, date: h.date, prev: h.prev })));
     if (isPropose) {
-      try {
-        const reqId = await ensureDraftRequestId();
-        const sb = supabaseBrowser();
-        const newDraftList = [...draftItems];
-        for (const item of history) {
-          const h = item as ShiftHistoryItem;
-          await sb.from('change_request_items').delete().eq('request_id', reqId).eq('operator_id', h.opId).eq('schedule_date', h.date);
-          const { data } = await sb.from('change_request_items').insert({
-            request_id: reqId,
-            organization_id: p.orgId,
-            target_table: 'schedule_assignments',
-            action: 'upsert',
-            operator_id: h.opId,
-            schedule_date: h.date,
-            shift_type_id: source.shift_type_id,
-            area_code_id: source.area_code_id,
-            original_state: h.prev ? { shift_type_id: h.prev.shift_type_id, area_code_id: h.prev.area_code_id } : null,
-            status: 'pending',
-          }).select();
-          if (data) {
-            newDraftList.push(data[0]);
-          }
-        }
-        setDraftItems(newDraftList);
-      } catch (err: unknown) {
-        rollbackShiftKeys(history.map((h) => ({ opId: h.opId, date: h.date, prev: (h as ShiftHistoryItem).prev })));
-        setSaveState('error');
-        setMsg(friendlyError(getErrorMessage(err), p.role));
-      } finally {
-        setSavingCount((c) => c - 1);
-      }
+      await saveDraftProposal(
+        history.map((h) => ({
+          target_table: 'schedule_assignments',
+          action: 'upsert',
+          operator_id: h.opId,
+          schedule_date: h.date,
+          shift_type_id: source.shift_type_id,
+          area_code_id: source.area_code_id,
+          original_state: h.prev ? { shift_type_id: h.prev.shift_type_id, area_code_id: h.prev.area_code_id } : null,
+        })),
+        rollback,
+      );
       return;
     }
 
-    const { error } = await supabaseBrowser()
-      .from('schedule_assignments')
-      .upsert(payload, { onConflict: 'operator_id,schedule_date' });
+    const errMsg = await persistDirectShiftChanges(supabaseBrowser(), p.orgId, upserts, []);
     setSavingCount((c) => c - 1);
-    if (error) {
-      rollbackShiftKeys(history.map((h) => ({ opId: h.opId, date: h.date, prev: (h as ShiftHistoryItem).prev })));
+    if (errMsg) {
+      rollback();
       setSaveState('error');
-      setMsg(friendlyError(error.message, p.role));
+      setMsg(friendlyError(errMsg, p.role));
     }
   }
 
@@ -788,74 +657,40 @@ export default function Roster(p: {
     setRedoStack([]);
     setSavingCount((c) => c + 1);
 
+    const rollback = () => rollbackShiftKeys(batch.entries.map((e) => ({ opId: e.opId, date: e.date, prev: e.prev })));
     if (isPropose) {
-      try {
-        const reqId = await ensureDraftRequestId();
-        const sb = supabaseBrowser();
-        const newDraftList = [...draftItems];
-        for (const u of batch.upserts) {
+      const proposalItems: ProposedChangeInput[] = [
+        ...batch.upserts.map((u) => {
           const prevEntry = batch.entries.find((e) => e.opId === u.operator_id && e.date === u.schedule_date);
-          await sb.from('change_request_items').delete().eq('request_id', reqId).eq('operator_id', u.operator_id).eq('schedule_date', u.schedule_date);
-          const { data } = await sb.from('change_request_items').insert({
-            request_id: reqId,
-            organization_id: p.orgId,
-            target_table: 'schedule_assignments',
-            action: 'upsert',
+          return {
+            target_table: 'schedule_assignments' as const,
+            action: 'upsert' as const,
             operator_id: u.operator_id,
             schedule_date: u.schedule_date,
             shift_type_id: u.shift_type_id,
             area_code_id: u.area_code_id,
             original_state: prevEntry?.prev ? { shift_type_id: prevEntry.prev.shift_type_id, area_code_id: prevEntry.prev.area_code_id } : null,
-            status: 'pending',
-          }).select();
-          if (data) {
-            newDraftList.push(data[0]);
-          }
-        }
-        for (const d of batch.deletes) {
+          };
+        }),
+        ...batch.deletes.map((d) => {
           const prevEntry = batch.entries.find((e) => e.opId === d.opId && e.date === d.date);
-          await sb.from('change_request_items').delete().eq('request_id', reqId).eq('operator_id', d.opId).eq('schedule_date', d.date);
-          const { data } = await sb.from('change_request_items').insert({
-            request_id: reqId,
-            organization_id: p.orgId,
-            target_table: 'schedule_assignments',
-            action: 'delete',
+          return {
+            target_table: 'schedule_assignments' as const,
+            action: 'delete' as const,
             operator_id: d.opId,
             schedule_date: d.date,
             original_state: prevEntry?.prev ? { shift_type_id: prevEntry.prev.shift_type_id, area_code_id: prevEntry.prev.area_code_id } : null,
-            status: 'pending',
-          }).select();
-          if (data) {
-            newDraftList.push(data[0]);
-          }
-        }
-        setDraftItems(newDraftList);
-      } catch (err: unknown) {
-        rollbackShiftKeys(batch.entries.map((e) => ({ opId: e.opId, date: e.date, prev: e.prev })));
-        setSaveState('error');
-        setMsg(friendlyError(getErrorMessage(err), p.role));
-      } finally {
-        setSavingCount((c) => c - 1);
-      }
+          };
+        }),
+      ];
+      await saveDraftProposal(proposalItems, rollback);
       return;
     }
 
-    const sb = supabaseBrowser();
-    let errMsg = '';
-    if (batch.upserts.length > 0) {
-      const { error } = await sb
-        .from('schedule_assignments')
-        .upsert(batch.upserts.map((u) => ({ ...u, organization_id: p.orgId })), { onConflict: 'operator_id,schedule_date' });
-      if (error) errMsg = error.message;
-    }
-    for (const d of batch.deletes) {
-      const { error } = await sb.from('schedule_assignments').delete().eq('operator_id', d.opId).eq('schedule_date', d.date);
-      if (error && !errMsg) errMsg = error.message;
-    }
-
+    const errMsg = await persistDirectShiftChanges(supabaseBrowser(), p.orgId, batch.upserts, batch.deletes);
     setSavingCount((c) => c - 1);
     if (errMsg) {
-      rollbackShiftKeys(batch.entries.map((e) => ({ opId: e.opId, date: e.date, prev: e.prev })));
+      rollback();
       setSaveState('error');
       setMsg(friendlyError(errMsg, p.role));
     }
@@ -883,180 +718,27 @@ export default function Roster(p: {
     }
     if (!shiftId) return;
     const prevCell = cell.get(cellKey(opId, date)) ?? null;
-    const row: Row = { operator_id: opId, schedule_date: date, shift_type_id: shiftId, area_code_id: areaId };
-    setRows((r) => [...r.filter((x) => !(x.operator_id === opId && x.schedule_date === date)), row]);
-    setUndoStack((s) => [...s.slice(-29), [{ kind: 'shift', opId, date, prev: prevCell, next: row }]]);
-    setRedoStack([]);
-    setSavingCount((c) => c + 1);
-
-    if (isPropose) {
-      try {
-        const reqId = await ensureDraftRequestId();
-        const sb = supabaseBrowser();
-        await sb.from('change_request_items').delete().eq('request_id', reqId).eq('operator_id', opId).eq('schedule_date', date);
-        const { data, error } = await sb.from('change_request_items').insert({
-          request_id: reqId,
-          organization_id: p.orgId,
-          target_table: 'schedule_assignments',
-          action: 'upsert',
-          operator_id: opId,
-          schedule_date: date,
-          shift_type_id: shiftId,
-          area_code_id: areaId,
-          original_state: prevCell ? { shift_type_id: prevCell.shift_type_id, area_code_id: prevCell.area_code_id } : null,
-          status: 'pending',
-        }).select();
-        if (error) throw error;
-        if (data) {
-          setDraftItems((prevItems) => [...prevItems.filter((x) => !(x.operator_id === opId && x.schedule_date === date)), data[0]]);
-        }
-      } catch (err: unknown) {
-        rollbackShiftKeys([{ opId, date, prev: prevCell }]);
-        setSaveState('error');
-        setMsg(friendlyError(getErrorMessage(err), p.role));
-      } finally {
-        setSavingCount((c) => c - 1);
-      }
-      return;
-    }
-
-    const { error } = await supabaseBrowser()
-      .from('schedule_assignments')
-      .upsert({ ...row, organization_id: p.orgId }, { onConflict: 'operator_id,schedule_date' });
-    setSavingCount((c) => c - 1);
-    if (error) {
-      rollbackShiftKeys([{ opId, date, prev: prevCell }]);
-      setSaveState('error');
-      setMsg(friendlyError(error.message, p.role));
-    }
+    await saveShiftCell(opId, date, { operator_id: opId, schedule_date: date, shift_type_id: shiftId, area_code_id: areaId }, prevCell);
   }
 
-  function handleCellKeyDown(e: React.KeyboardEvent<HTMLTableCellElement>, rIdx: number, cIdx: number, op: Op, date: string) {
-    const maxR = filteredOperators.length - 1;
-    const maxC = days.length - 1;
-    let nr = rIdx;
-    let nc = cIdx;
-    if (e.key === 'ArrowRight') nc = Math.min(maxC, cIdx + 1);
-    else if (e.key === 'ArrowLeft') nc = Math.max(0, cIdx - 1);
-    else if (e.key === 'ArrowDown') nr = Math.min(maxR, rIdx + 1);
-    else if (e.key === 'ArrowUp') nr = Math.max(0, rIdx - 1);
-    else if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      void activateCell(op.id, date);
-      return;
-    } else if (e.key === 'Delete' || e.key === 'Backspace') {
-      e.preventDefault();
-      void clearCell(op.id, date);
-      return;
-    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
-      const existing = cell.get(cellKey(op.id, date));
-      setClipboard(existing ? { shift_type_id: existing.shift_type_id, area_code_id: existing.area_code_id } : { shift_type_id: null, area_code_id: null });
-      return;
-    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
-      e.preventDefault();
-      if (!clipboard || !canOperate) return;
-      if (!clipboard.shift_type_id && !clipboard.area_code_id) {
-        void clearCell(op.id, date);
-        return;
-      }
-      const prevCell = cell.get(cellKey(op.id, date)) ?? null;
-      const nextRow: Row = { operator_id: op.id, schedule_date: date, shift_type_id: clipboard.shift_type_id, area_code_id: clipboard.area_code_id };
-      setRows((r) => [...r.filter((x) => !(x.operator_id === op.id && x.schedule_date === date)), nextRow]);
-      setUndoStack((s) => [...s.slice(-29), [{ kind: 'shift', opId: op.id, date, prev: prevCell, next: nextRow }]]);
-      setRedoStack([]);
-      setSavingCount((c) => c + 1);
+  function copyCell(opId: string, date: string) {
+    const existing = cell.get(cellKey(opId, date));
+    setClipboard(existing ? { shift_type_id: existing.shift_type_id, area_code_id: existing.area_code_id } : { shift_type_id: null, area_code_id: null });
+  }
 
-      if (isPropose) {
-        void (async () => {
-          try {
-            const reqId = await ensureDraftRequestId();
-            const sb = supabaseBrowser();
-            await sb.from('change_request_items').delete().eq('request_id', reqId).eq('operator_id', op.id).eq('schedule_date', date);
-            const { data, error } = await sb.from('change_request_items').insert({
-              request_id: reqId,
-              organization_id: p.orgId,
-              target_table: 'schedule_assignments',
-              action: 'upsert',
-              operator_id: op.id,
-              schedule_date: date,
-              shift_type_id: clipboard.shift_type_id,
-              area_code_id: clipboard.area_code_id,
-              original_state: prevCell ? { shift_type_id: prevCell.shift_type_id, area_code_id: prevCell.area_code_id } : null,
-              status: 'pending',
-            }).select();
-            if (error) throw error;
-            if (data) {
-              setDraftItems((prevItems) => [...prevItems.filter((x) => !(x.operator_id === op.id && x.schedule_date === date)), data[0]]);
-            }
-          } catch (err: unknown) {
-            rollbackShiftKeys([{ opId: op.id, date, prev: prevCell }]);
-            setSaveState('error');
-            setMsg(friendlyError(getErrorMessage(err), p.role));
-          } finally {
-            setSavingCount((c) => c - 1);
-          }
-        })();
-        return;
-      }
-
-      void supabaseBrowser()
-        .from('schedule_assignments')
-        .upsert({ ...nextRow, organization_id: p.orgId }, { onConflict: 'operator_id,schedule_date' })
-        .then(({ error }) => {
-          setSavingCount((c) => c - 1);
-          if (error) {
-            rollbackShiftKeys([{ opId: op.id, date, prev: prevCell }]);
-            setSaveState('error');
-            setMsg(friendlyError(error.message, p.role));
-          }
-        });
-      return;
-    } else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
-      e.preventDefault();
-      const rect = e.currentTarget.getBoundingClientRect();
-      setCtxMenu({ x: rect.left, y: rect.bottom + 2, opId: op.id, opName: op.full_name, date });
-      return;
-    } else {
+  function pasteCell(opId: string, date: string) {
+    if (!clipboard || !canOperate) return;
+    if (!clipboard.shift_type_id && !clipboard.area_code_id) {
+      void clearCell(opId, date);
       return;
     }
-
-    e.preventDefault();
-    setFocused({ r: nr, c: nc });
-    const nextTd = gridRef.current?.querySelector<HTMLTableCellElement>(`td[data-rc="${nr}-${nc}"]`);
-    nextTd?.focus();
+    const prevCell = cell.get(cellKey(opId, date)) ?? null;
+    void saveShiftCell(opId, date, { operator_id: opId, schedule_date: date, shift_type_id: clipboard.shift_type_id, area_code_id: clipboard.area_code_id }, prevCell);
   }
 
   function exportCsv() {
-    const header = ['Operator', 'Position', ...days.map((d) => d.date), 'Duty', 'OC', 'Hours', 'Off', 'Leaves'];
-    const lines = [header.map(csvEscape).join(',')];
-
-    for (const o of filteredOperators) {
-      let duty = 0;
-      let ocCount = 0;
-      let off = 0;
-      let leaves = 0;
-      let hrs = 0;
-      const cols = days.map((d) => {
-        const k = cellKey(o.id, d.date);
-        const r = cell.get(k);
-        const s = r?.shift_type_id ? shiftBy.get(r.shift_type_id) : undefined;
-        const a = r?.area_code_id ? areaBy.get(r.area_code_id) : undefined;
-        const sb = standbyMap.get(k);
-        if (sb) ocCount += 1;
-        if (isLeaveArea(a)) leaves += 1;
-        if (isRestArea(a) || s?.is_off) off += 1;
-        else if (s && !isLeaveArea(a)) duty += 1;
-        if (s) hrs += Number(s.duration_hours ?? 0);
-        return [s?.code ?? '', a?.code ?? (s && !s.is_off ? 'PW' : ''), sb ? `(${sb.standby_type})` : ''].filter(Boolean).join(' ');
-      });
-      lines.push(
-        [o.full_name, o.position ?? '', ...cols, String(duty), String(ocCount), String(hrs), String(off), String(leaves)]
-          .map(csvEscape)
-          .join(','),
-      );
-    }
-
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const csv = buildRosterCsv({ days, operators: filteredOperators, cell, shiftBy, areaBy, standbyMap });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -1137,468 +819,58 @@ export default function Roster(p: {
 
   return (
     <div style={{ padding: '10px 14px 16px', maxWidth: '100%' }}>
-      {/* Action & Filter Bar */}
-      <div
-        className="no-print card"
-        style={{
-          display: 'flex',
-          gap: 8,
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          marginBottom: 8,
-          padding: '8px 12px',
+      <RosterToolbar
+        month={p.month}
+        today={p.today}
+        orgId={p.orgId}
+        role={p.role}
+        canEdit={p.canEdit}
+        canOperate={canOperate}
+        isPropose={isPropose}
+        hasLinkedOp={hasLinkedOp}
+        onlyMe={onlyMe}
+        onToggleOnlyMe={() => setOnlyMe((v) => !v)}
+        search={search}
+        onSearchChange={setSearch}
+        isPending={isPending}
+        onGoMonth={go}
+        onSelectMonth={(m) => startTransition(() => router.push(`/?m=${m}`))}
+        onGoToday={() => startTransition(() => router.push(`/?m=${p.today.slice(0, 7)}`))}
+        todayCoverage={todayCoverage}
+        saveState={saveState}
+        msg={msg}
+        mobileToolsOpen={mobileToolsOpen}
+        onToggleMobileTools={() => setMobileToolsOpen((o) => !o)}
+        brushLabel={brushLabel}
+        onExportCsv={exportCsv}
+        onPrint={() => window.print()}
+        onOpenImport={() => {
+          setImportStatus('');
+          setImportOpen(true);
         }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <button className="btn" onClick={() => go(-1)} aria-label="Previous month">
-            ‹
-          </button>
-          <input
-            type="month"
-            aria-label="Select month"
-            value={p.month}
-            onChange={(e) => e.target.value && startTransition(() => router.push(`/?m=${e.target.value}`))}
-            className="input"
-            style={{ width: 'auto', minHeight: 36, padding: '4px 8px', fontSize: 12.5, fontWeight: 600 }}
-          />
-          <button className="btn" onClick={() => go(1)} aria-label="Next month">
-            ›
-          </button>
-          <button className="btn" onClick={() => startTransition(() => router.push(`/?m=${p.today.slice(0, 7)}`))}>
-            {isPending ? 'Loading…' : 'Today'}
-          </button>
-        </div>
+        showHint={showHint}
+        onDismissHint={() => {
+          localStorage.setItem('bpwi-roster-hint-dismissed', '1');
+          setShowHint(false);
+        }}
+        shifts={p.shifts}
+        areas={p.areas}
+        mode={mode}
+        setMode={setMode}
+        shiftId={shiftId}
+        setShiftId={setShiftId}
+        areaId={areaId}
+        setAreaId={setAreaId}
+        standbyType={standbyType}
+        setStandbyType={setStandbyType}
+        canUndo={undoStack.length > 0}
+        canRedo={redoStack.length > 0}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        draftItems={draftItems}
+        onDiscardDrafts={() => void discardDraftBatch()}
+      />
 
-        <input
-          id="filterInput"
-          type="search"
-          aria-label="Filter operators"
-          placeholder="Filter operator…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="input"
-          style={{ width: 170, minHeight: 36, padding: '5px 10px', fontSize: 12.5 }}
-        />
-
-        {hasLinkedOp && (
-          <button
-            type="button"
-            className={`btn ${onlyMe ? 'btn-primary' : ''}`}
-            aria-pressed={onlyMe}
-            onClick={() => setOnlyMe((v) => !v)}
-            style={{ fontSize: 12.5, fontWeight: 700 }}
-          >
-            My Schedule
-          </button>
-        )}
-
-        <div className="desktop-only" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', fontSize: 11.5 }}>
-          <strong style={{ color: 'var(--text)' }}>Today ({p.today}):</strong>
-          <span style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
-            {todayCoverage.duty} On Duty
-          </span>
-          <span style={{ background: 'rgba(124, 58, 237, 0.14)', color: 'var(--violet)', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
-            {todayCoverage.sb} Standby
-          </span>
-          <span style={{ background: 'var(--surface-muted)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>
-            {todayCoverage.off} Off
-          </span>
-          <span style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
-            {todayCoverage.leave} Leave
-          </span>
-        </div>
-
-        <span
-          aria-live="polite"
-          style={{
-            minWidth: 96,
-            fontSize: 12,
-            color: saveState === 'error' ? 'var(--danger)' : saveState === 'saved' ? '#15803d' : 'var(--accent)',
-            fontWeight: 600,
-            visibility: saveState === 'idle' ? 'hidden' : 'visible',
-          }}
-        >
-          {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved ✓' : saveState === 'error' ? 'Not saved' : ''}
-        </span>
-
-        {msg && (
-          <span role="alert" style={{ fontSize: 12, color: '#b91c1c', fontWeight: 500 }}>
-            {msg}
-          </span>
-        )}
-
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <button
-            className="btn mobile-only-block"
-            style={{ display: undefined }}
-            onClick={() => setMobileToolsOpen((o) => !o)}
-            aria-expanded={mobileToolsOpen}
-          >
-            {mobileToolsOpen ? 'Hide Brush & Legend' : `Brush: ${brushLabel}`}
-          </button>
-          <button className="btn desktop-only" onClick={exportCsv}>
-            Export CSV
-          </button>
-          <button className="btn desktop-only" onClick={() => window.print()}>
-            Print
-          </button>
-          {p.role === 'admin' && (
-            <button
-              className="btn desktop-only"
-              onClick={() => {
-                setImportStatus('');
-                setImportOpen(true);
-              }}
-            >
-              Import JSON
-            </button>
-          )}
-        </div>
-      </div>
-
-      {!p.orgId && (
-        <div
-          className="no-print"
-          role="status"
-          style={{
-            marginBottom: 8,
-            padding: '10px 14px',
-            borderRadius: 8,
-            background: 'var(--warn-bg)',
-            border: '1px solid var(--warn-border)',
-            color: 'var(--warn-fg)',
-            fontSize: 12.5,
-          }}
-        >
-          Your account is signed in and pending administrator activation / organization assignment.
-        </div>
-      )}
-
-      {showHint && canOperate && (
-        <div
-          className="no-print"
-          role="note"
-          style={{
-            marginBottom: 8,
-            padding: '8px 12px',
-            borderRadius: 8,
-            background: 'var(--info-bg)',
-            border: '1px solid var(--border)',
-            color: 'var(--info-fg)',
-            fontSize: 12.5,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: 10,
-            flexWrap: 'wrap',
-          }}
-        >
-          <span>
-            <b>Quick tips:</b> Click or drag across cells to paint. Use arrow keys + Enter for keyboard editing, <code>Ctrl+Z</code> to undo, and right-click (or long-press on mobile) for standby &amp; bulk fill actions.
-          </span>
-          <button
-            className="btn"
-            style={{ padding: '3px 10px', minHeight: 30, fontSize: 12 }}
-            onClick={() => {
-              localStorage.setItem('bpwi-roster-hint-dismissed', '1');
-              setShowHint(false);
-            }}
-          >
-            Got it
-          </button>
-        </div>
-      )}
-
-      {/* Shift Legend (for viewers, print, or mobile drawer toggle) */}
-      {(!canOperate || mobileToolsOpen) && (
-        <div
-          className="card"
-          style={{
-            display: 'flex',
-            gap: 10,
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            marginBottom: 8,
-            padding: '6px 12px',
-            fontSize: 11.5,
-          }}
-        >
-          <strong style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: 10.5 }}>Shift Legend:</strong>
-          {p.shifts.map((s) => (
-            <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-              <span
-                style={{
-                  background: s.background_color,
-                  color: s.text_color,
-                  border: '1px solid var(--border)',
-                  borderRadius: 4,
-                  padding: '1px 6px',
-                  fontWeight: 700,
-                  fontSize: 11,
-                }}
-              >
-                {s.code}
-              </span>
-              <span style={{ color: 'var(--text-secondary)' }}>{s.description ?? (s.is_off ? 'Off' : 'Duty')}</span>
-            </span>
-          ))}
-          <span style={{ color: 'var(--text-secondary)' }}>· Duty cells without an area code show <b>PW</b></span>
-        </div>
-      )}
-
-      {/* Paint Palette Bar (Editors and Proposers; collapsible on mobile) */}
-      {canOperate && (
-        <div
-          className={`no-print card ${mobileToolsOpen ? '' : 'desktop-only'}`}
-          style={{
-            display: 'flex',
-            gap: 5,
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            marginBottom: 8,
-            padding: '7px 12px',
-          }}
-        >
-          {isPropose ? (
-            <span
-              style={{
-                padding: '3px 8px',
-                borderRadius: 4,
-                background: 'var(--warn-bg)',
-                color: 'var(--warn-fg)',
-                fontSize: 11,
-                fontWeight: 700,
-                border: '1px solid var(--warn-border)',
-                marginRight: 2,
-              }}
-              title="Edits save as draft change requests for admin approval"
-            >
-              Propose Mode · Draft → Approval
-            </span>
-          ) : p.canEdit && p.role === 'manager' ? (
-            <span
-              style={{
-                padding: '3px 8px',
-                borderRadius: 4,
-                background: 'var(--ok-bg)',
-                color: 'var(--ok-fg)',
-                fontSize: 11,
-                fontWeight: 700,
-                border: '1px solid var(--ok-fg)',
-                marginRight: 2,
-              }}
-              title="Admin edit window is active — changes save directly to the live schedule"
-            >
-              Direct Edit Mode · Live Window
-            </span>
-          ) : p.canEdit ? (
-            <span
-              style={{
-                padding: '3px 8px',
-                borderRadius: 4,
-                background: 'var(--info-bg)',
-                color: 'var(--info-fg)',
-                fontSize: 11,
-                fontWeight: 700,
-                border: '1px solid var(--border)',
-                marginRight: 2,
-              }}
-              title="Changes save directly to the live schedule"
-            >
-              Direct Edit Mode
-            </span>
-          ) : null}
-          <span
-            style={{
-              padding: '3px 9px',
-              borderRadius: 999,
-              background: 'var(--primary)',
-              color: 'var(--primary-fg)',
-              fontSize: 11.5,
-              fontWeight: 700,
-              marginRight: 4,
-            }}
-          >
-            Brush: {brushLabel}
-          </span>
-
-          <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Shifts:</span>
-          {p.shifts.map((s, i) => (
-            <button
-              key={s.id}
-              onClick={() => {
-                setMode('paint');
-                setShiftId(s.id);
-              }}
-              title={i < 9 ? `${s.description ?? s.code} (Key ${i + 1})` : (s.description ?? '')}
-              style={{
-                padding: '3px 8px',
-                borderRadius: 5,
-                fontSize: 11.5,
-                fontWeight: 700,
-                cursor: 'pointer',
-                background: s.background_color,
-                color: s.text_color,
-                border: mode === 'paint' && shiftId === s.id ? '2px solid #2563eb' : '1px solid var(--border)',
-              }}
-            >
-              {s.code}
-            </button>
-          ))}
-
-          <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 3px' }} />
-          <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Area / Leave:</span>
-          <button
-            onClick={() => {
-              setMode('paint');
-              setAreaId(null);
-            }}
-            style={{
-              padding: '3px 8px',
-              borderRadius: 5,
-              fontSize: 11.5,
-              fontWeight: 600,
-              cursor: 'pointer',
-              background: 'var(--surface-muted)',
-              color: 'var(--text)',
-              border: mode === 'paint' && areaId === null ? '2px solid #2563eb' : '1px solid var(--border)',
-            }}
-          >
-            PW (default)
-          </button>
-          {p.areas.map((a) => (
-            <button
-              key={a.id}
-              onClick={() => {
-                setMode('paint');
-                setAreaId(a.id);
-              }}
-              title={a.name ?? ''}
-              className={isLeaveArea(a) || isRestArea(a) ? 'cell-leave' : undefined}
-              style={{
-                padding: '3px 7px',
-                borderRadius: 5,
-                fontSize: 11.5,
-                fontWeight: 700,
-                cursor: 'pointer',
-                background: a.background_color,
-                color: a.text_color,
-                border: mode === 'paint' && areaId === a.id ? '2px solid #2563eb' : '1px solid #cbd5e1',
-              }}
-            >
-              {a.code}
-            </button>
-          ))}
-
-          <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 3px' }} />
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <button
-              className="btn"
-              onClick={() => setMode(mode === 'standby' ? 'paint' : 'standby')}
-              style={{
-                padding: '3px 9px',
-                fontSize: 11.5,
-                border: mode === 'standby' ? '2px solid #7c3aed' : '1px solid var(--border)',
-                background: mode === 'standby' ? 'rgba(124, 58, 237, 0.16)' : 'var(--surface-muted)',
-                color: mode === 'standby' ? 'var(--violet)' : 'var(--text)',
-                fontWeight: 700,
-              }}
-            >
-              Standby ({standbyType})
-            </button>
-            {mode === 'standby' && (
-              <select
-                aria-label="Standby type"
-                value={standbyType}
-                onChange={(e) => setStandbyType(e.target.value as 'OC' | 'DWP' | 'ERP')}
-                style={{
-                  padding: '3px 6px',
-                  borderRadius: 5,
-                  border: '1px solid var(--violet)',
-                  fontSize: 11.5,
-                  fontWeight: 600,
-                  color: 'var(--violet)',
-                  background: 'var(--surface-muted)',
-                }}
-              >
-                <option value="OC">OC · General</option>
-                <option value="DWP">DWP · Deep Well</option>
-                <option value="ERP">ERP · Electro-Mech</option>
-              </select>
-            )}
-          </div>
-
-          <button
-            className="btn"
-            onClick={() => setMode(mode === 'erase' ? 'paint' : 'erase')}
-            style={{
-              padding: '3px 9px',
-              fontSize: 11.5,
-              border: mode === 'erase' ? '2px solid #dc2626' : '1px solid var(--border)',
-              background: mode === 'erase' ? 'rgba(220, 38, 38, 0.16)' : 'var(--surface-muted)',
-              color: mode === 'erase' ? 'var(--danger)' : 'var(--text)',
-              fontWeight: 600,
-            }}
-          >
-            Clear Cell
-          </button>
-
-          <span style={{ width: 1, height: 18, background: '#e2e8f0', margin: '0 3px' }} />
-          <button className="btn" onClick={handleUndo} disabled={undoStack.length === 0} style={{ padding: '3px 8px', fontSize: 11.5 }} title="Undo (Ctrl+Z)">
-            Undo
-          </button>
-          <button className="btn" onClick={handleRedo} disabled={redoStack.length === 0} style={{ padding: '3px 8px', fontSize: 11.5 }} title="Redo (Ctrl+Y)">
-            Redo
-          </button>
-          <div style={{ width: '100%', fontSize: 11.5, color: 'var(--text-secondary)', paddingTop: 2 }}>
-            {mode === 'paint'
-              ? `Paint mode: click or drag across cells to apply ${brushLabel}.`
-              : mode === 'standby'
-                ? `Standby mode: click a cell to toggle ${standbyType} standby status.`
-                : 'Erase mode: click or drag across cells to clear shift assignments.'}
-          </div>
-        </div>
-      )}
-
-      {p.canEdit && p.role === 'manager' && draftItems.length > 0 && (
-        <div
-          className="no-print card"
-          role="status"
-          style={{
-            marginBottom: 8,
-            padding: '8px 12px',
-            borderLeft: '4px solid #f59e0b',
-            background: 'var(--warn-bg)',
-            color: 'var(--warn-fg)',
-            fontSize: 12.5,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: 10,
-            flexWrap: 'wrap',
-          }}
-        >
-          <span>
-            <strong>Active Edit Window:</strong> edits now apply directly to the live schedule. You still have{' '}
-            <b>{draftItems.length}</b> unsubmitted draft proposal item{draftItems.length === 1 ? '' : 's'} saved from before this window.
-          </span>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <Link href="/requests" className="btn" style={{ padding: '3px 10px', minHeight: 30, fontSize: 12, textDecoration: 'none' }}>
-              View Requests
-            </Link>
-            <button
-              type="button"
-              className="btn"
-              style={{ padding: '3px 10px', minHeight: 30, fontSize: 12, color: '#b91c1c' }}
-              onClick={() => void discardDraftBatch()}
-            >
-              Discard Drafts
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Mobile & Tablet Views (<= 1024px, defaults to Day View) */}
       <RosterMobileViews
         month={p.month}
         today={p.today}
@@ -1622,357 +894,32 @@ export default function Roster(p: {
         }
       />
 
-      {/* Print-only header */}
-      <div
-        className="print-only"
-        style={{
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 8,
-          paddingBottom: 6,
-          borderBottom: '1px solid #475569',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/bpwi-logo.svg" alt="BPWI Logo" style={{ width: 34, height: 26, objectFit: 'contain' }} />
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>
-              BP Waterworks, Inc. — Operations &amp; Plant Schedule
-            </div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#334155' }}>
-              {monthLabel}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Desktop Spreadsheet Schedule Table (> 1024px only) */}
-      <div
-        className="schedule-container desktop-only-grid"
-        style={{
-          overflow: 'auto',
-          maxHeight: '78vh',
-          background: '#ffffff',
-          borderRadius: 10,
-          border: '1px solid #cbd5e1',
-          boxShadow: '0 1px 4px rgba(15, 23, 42, 0.05)',
-          touchAction: 'pan-x pan-y pinch-zoom',
-        }}
-      >
-        <table ref={gridRef} className="schedule-table" role="grid" aria-label={`Monthly schedule for ${monthLabel}`}>
-          <thead>
-            <tr style={{ height: 26 }}>
-              <th rowSpan={2} className="sticky-corner-idx" style={{ background: '#0f172a', color: '#cbd5e1', width: 36, minWidth: 36, textAlign: 'center', fontSize: 10 }}>
-                #
-              </th>
-              <th rowSpan={2} className="sticky-corner-name" style={{ background: '#0f172a', color: '#ffffff', minWidth: 165, padding: '4px 8px', textAlign: 'left' }}>
-                Operator ({filteredOperators.length})
-              </th>
-              <th
-                colSpan={days.length}
-                className="sticky-header-month"
-                style={{ background: '#0f172a', color: '#f1f5f9', padding: '4px 8px', textAlign: 'center', fontSize: 11.5, letterSpacing: '0.03em', textTransform: 'uppercase' }}
-              >
-                {monthLabel}
-              </th>
-              <th rowSpan={2} className="sticky-corner-stat sticky-col-duty" style={{ background: '#0f172a', color: '#ffffff', width: 42, minWidth: 42, textAlign: 'center' }}>
-                Duty
-              </th>
-              <th rowSpan={2} className="sticky-corner-stat sticky-col-oc" style={{ background: '#4c1d95', color: '#f5f3ff', width: 42, minWidth: 42, textAlign: 'center' }}>
-                OC
-              </th>
-              <th rowSpan={2} className="sticky-corner-stat sticky-col-hours" style={{ background: '#0f172a', color: '#ffffff', width: 42, minWidth: 42, textAlign: 'center' }}>
-                Hrs
-              </th>
-              <th rowSpan={2} className="sticky-corner-stat sticky-col-off" style={{ background: '#0f172a', color: '#cbd5e1', width: 42, minWidth: 42, textAlign: 'center' }}>
-                Off
-              </th>
-              <th rowSpan={2} className="sticky-corner-stat sticky-col-leaves" style={{ background: '#0f172a', color: '#fde68a', width: 42, minWidth: 42, textAlign: 'center' }}>
-                Lvs
-              </th>
-            </tr>
-
-            <tr>
-              {days.map((d) => {
-                const isToday = d.date === p.today;
-                const hol = holidayByDate.get(d.date);
-                return (
-                  <th
-                    key={d.date}
-                    className="sticky-header-days"
-                    title={hol ? `${hol.name} (${hol.holiday_type.replace(/_/g, ' ')})` : undefined}
-                    style={{
-                      background: isToday
-                        ? '#0369a1'
-                        : hol
-                          ? hol.holiday_type === 'regular'
-                            ? '#9f1239'
-                            : '#92400e'
-                          : d.isWeekend
-                            ? '#1e293b'
-                            : '#0f172a',
-                      color: '#ffffff',
-                      minWidth: 58,
-                      padding: '3px 4px',
-                      textAlign: 'center',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    <div style={{ lineHeight: 1.1 }}>
-                      {d.dayNum}
-                      {hol && <span style={{ marginLeft: 2, color: '#fde68a' }} aria-label="Holiday">★</span>}
-                    </div>
-                    <div style={{ fontSize: 10, fontWeight: 400, opacity: 0.9 }}>{d.dowLabel}</div>
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-
-          <tbody>
-            {filteredOperators.length === 0 ? (
-              <tr>
-                <td colSpan={days.length + 7} style={{ padding: 28, textAlign: 'center', color: '#475569', background: '#fff' }}>
-                  No operators found{p.operators.length === 0 ? '. Import data or add operators under Operators & Setup.' : '.'}
-                </td>
-              </tr>
-            ) : (
-              filteredOperators.map((o, rIdx) => {
-                let duty = 0;
-                let ocCount = 0;
-                let hrs = 0;
-                let off = 0;
-                let leaves = 0;
-
-                return (
-                  <tr key={o.id} className="operator-row">
-                    <td className="sticky-col-idx tabular-nums" style={{ background: 'var(--surface-muted)', color: 'var(--text-secondary)', textAlign: 'center', fontSize: 10.5, fontWeight: 600 }}>
-                      {rIdx + 1}
-                    </td>
-                    <td className="sticky-col-name" style={{ background: o.id === p.operatorId ? 'rgba(3, 105, 161, 0.08)' : 'var(--surface)', padding: '3px 8px', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                      <div style={{ color: 'var(--text)' }}>
-                        {o.full_name}
-                        {o.id === p.operatorId && (
-                          <span style={{ marginLeft: 5, fontSize: 10.5, fontWeight: 700, color: 'var(--accent)' }}>(Me)</span>
-                        )}
-                      </div>
-                      {o.position && <div style={{ fontSize: 10.5, fontWeight: 400, color: 'var(--text-secondary)' }}>{o.position}</div>}
-                    </td>
-
-                    {days.map((d, cIdx) => {
-                      const k = cellKey(o.id, d.date);
-                      const r = cell.get(k);
-                      const pending = pendingMap.get(k);
-
-                      // If there is a pending proposal, override display shift and area
-                      const effShiftId = pending ? (pending.action === 'delete' ? null : (pending.shift_type_id ?? r?.shift_type_id)) : r?.shift_type_id;
-                      const effAreaId = pending ? (pending.action === 'delete' ? null : (pending.area_code_id ?? r?.area_code_id)) : r?.area_code_id;
-                      const s = effShiftId ? shiftBy.get(effShiftId) : undefined;
-                      const a = effAreaId ? areaBy.get(effAreaId) : undefined;
-
-                      const liveSb = standbyMap.get(k);
-                      const sb = pending && pending.standby_type !== undefined
-                        ? (pending.standby_type ? { standby_type: pending.standby_type } : undefined)
-                        : liveSb;
-
-                      const pm = pmByCell.get(k);
-
-                      const isLeave = isLeaveArea(a);
-                      const isRest = isRestArea(a);
-                      if (sb) ocCount += 1;
-                      if (isLeave) leaves += 1;
-                      if (isRest || s?.is_off) off += 1;
-                      else if (s && !isLeave) duty += 1;
-                      if (s) hrs += Number(s.duration_hours ?? 0);
-
-                      const bg =
-                        a && a.background_color !== '#f1f5f9' && (s?.is_off || !s)
-                          ? a.background_color
-                          : s?.background_color ?? (sb ? '#f5f3ff' : d.isWeekend ? '#f8fafc' : '#ffffff');
-                      const fg = a && (s?.is_off || !s) ? a.text_color : s?.text_color ?? (sb ? '#5b21b6' : '#64748b');
-                      const cellText =
-                        s && !s.is_off
-                          ? `${s.code}·${a?.code ?? 'PW'}`
-                          : a?.code ?? s?.code ?? '';
-                      const classes = [
-                        isLeave || isRest ? 'cell-leave' : '',
-                        sb ? 'cell-oncall-active' : '',
-                        pending ? 'cell-pending' : '',
-                      ].filter(Boolean).join(' ');
-                      const isFocused = focused.r === rIdx && focused.c === cIdx;
-
-                      return (
-                        <td
-                          key={d.date}
-                          data-rc={`${rIdx}-${cIdx}`}
-                          tabIndex={isFocused ? 0 : -1}
-                          role="gridcell"
-                          aria-label={`${o.full_name}, ${d.date}, ${s ? s.code : 'No shift'}, ${cellText || 'none'}${sb ? `, Standby ${sb.standby_type}` : ''}${pending ? ' (Pending proposal)' : ''}`}
-                          className={classes || undefined}
-                          onFocus={() => setFocused({ r: rIdx, c: cIdx })}
-                          onKeyDown={(e) => handleCellKeyDown(e, rIdx, cIdx, o, d.date)}
-                          onPointerDown={(e) => {
-                            if (!canOperate || e.button !== 0) return;
-                            setFocused({ r: rIdx, c: cIdx });
-                            if (mode === 'standby') {
-                              void activateCell(o.id, d.date);
-                              return;
-                            }
-                            dragRef.current = { active: true, visited: new Set(), entries: [], upserts: [], deletes: [] };
-                            applyBrushLocal(o.id, d.date);
-                          }}
-                          onPointerEnter={() => {
-                            if (dragRef.current?.active && canOperate && mode !== 'standby') {
-                              applyBrushLocal(o.id, d.date);
-                            }
-                          }}
-                          onTouchStart={(e) => {
-                            if (!canOperate) return;
-                            const touch = e.touches[0];
-                            longPressRef.current = setTimeout(() => {
-                              setCtxMenu({ x: touch.clientX, y: touch.clientY, opId: o.id, opName: o.full_name, date: d.date });
-                            }, 500);
-                          }}
-                          onTouchEnd={() => {
-                            if (longPressRef.current) clearTimeout(longPressRef.current);
-                          }}
-                          onTouchMove={() => {
-                            if (longPressRef.current) clearTimeout(longPressRef.current);
-                          }}
-                          onContextMenu={(e) => {
-                            if (!canOperate) return;
-                            e.preventDefault();
-                            setCtxMenu({ x: e.clientX, y: e.clientY, opId: o.id, opName: o.full_name, date: d.date });
-                          }}
-                          title={[
-                            `${o.full_name} • ${d.date}`,
-                            pending ? `[Proposed: ${pending.isDraft ? 'Draft' : 'Pending Review'}]` : null,
-                            s ? `${s.code}${s.description ? ` (${s.description})` : ''}` : null,
-                            cellText ? `Area: ${a?.name ?? cellText}` : null,
-                            sb ? `Standby: ${sb.standby_type}` : null,
-                            pm ? `PM: ${pm.titles.join(', ')}` : null,
-                          ]
-                            .filter(Boolean)
-                            .join('\n')}
-                          style={{
-                            position: 'relative',
-                            textAlign: 'center',
-                            cursor: canOperate ? 'pointer' : 'default',
-                            height: 28,
-                            padding: '0 4px',
-                            whiteSpace: 'nowrap',
-                            fontSize: 10.5,
-                            background: bg,
-                            color: fg,
-                            fontWeight: 800,
-                            outline: d.date === p.today ? '1.5px solid #0369a1' : undefined,
-                            outlineOffset: -1.5,
-                          }}
-                        >
-                          {pending && <span className="pending-corner-mark" title="Pending proposed change" />}
-                          {cellText}
-                          {sb && (
-                            <>
-                              <span className="oncall-corner-triangle" />
-                              <span className="oncall-icon-mark">{sb.standby_type === 'OC' ? 'OC' : sb.standby_type[0]}</span>
-                            </>
-                          )}
-                          {pm && <span className={`pm-mark${pm.warn ? ' warn' : ''}`} />}
-                        </td>
-                      );
-                    })}
-
-                    <td className="sticky-col-duty tabular-nums" style={{ background: 'var(--surface)', color: 'var(--text)', textAlign: 'center', fontWeight: 700 }}>
-                      {duty}
-                    </td>
-                    <td
-                      className="sticky-col-oc tabular-nums"
-                      style={{
-                        background: 'var(--surface)',
-                        boxShadow: ocCount ? 'inset 0 0 0 999px rgba(124, 58, 237, 0.14)' : undefined,
-                        color: ocCount ? 'var(--violet)' : 'var(--text-muted)',
-                        textAlign: 'center',
-                        fontWeight: 700,
-                      }}
-                    >
-                      {ocCount}
-                    </td>
-                    <td className="sticky-col-hours tabular-nums" style={{ background: 'var(--surface)', color: 'var(--text)', textAlign: 'center', fontWeight: 600 }}>
-                      {hrs}
-                    </td>
-                    <td className="sticky-col-off tabular-nums" style={{ background: 'var(--surface)', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                      {off}
-                    </td>
-                    <td
-                      className="sticky-col-leaves tabular-nums"
-                      style={{
-                        background: 'var(--surface)',
-                        boxShadow: leaves ? 'inset 0 0 0 999px rgba(234, 179, 8, 0.16)' : undefined,
-                        color: leaves ? '#ca8a04' : 'var(--text-muted)',
-                        textAlign: 'center',
-                        fontWeight: 700,
-                      }}
-                    >
-                      {leaves}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-
-          {filteredOperators.length > 0 && (
-            <tfoot>
-              <tr>
-                <td colSpan={2} className="sticky-col-idx" style={{ position: 'sticky', bottom: 0, zIndex: 30, background: 'var(--surface-muted)', color: 'var(--text)', padding: '5px 8px', fontWeight: 700, borderTop: '2px solid var(--border)' }}>
-                  On Duty Count
-                </td>
-                {dailyWorkingCounts.map((cnt, idx) => (
-                  <td
-                    key={days[idx].date}
-                    className="tabular-nums"
-                    style={{
-                      position: 'sticky',
-                      bottom: 0,
-                      zIndex: 20,
-                      background: 'var(--surface-muted)',
-                      textAlign: 'center',
-                      fontWeight: 700,
-                      color: cnt === 0 ? 'var(--text-muted)' : 'var(--text)',
-                      borderTop: '2px solid var(--border)',
-                      padding: '5px 2px',
-                    }}
-                  >
-                    {cnt}
-                  </td>
-                ))}
-                <td colSpan={5} style={{ position: 'sticky', bottom: 0, zIndex: 20, background: 'var(--surface-muted)', borderTop: '2px solid var(--border)' }} />
-              </tr>
-            </tfoot>
-          )}
-        </table>
-      </div>
-
-      {/* Legend Strip */}
-      <div className="no-print" style={{ marginTop: 8, display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-          <span style={{ width: 14, height: 14, borderRadius: 3, background: '#f5f3ff', boxShadow: 'inset 0 0 0 2px #7c3aed', display: 'inline-block' }} />
-          Violet ring + corner = Standby (OC/DWP/ERP)
-        </span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-          <span className="cell-leave" style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: '#fef3c7', border: '1px solid #cbd5e1', display: 'inline-block' }} />
-          Diagonal stripe = Leave day
-        </span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: '#0f766e', display: 'inline-block' }} />
-          Teal / Rose dot = PM scheduled / overdue
-        </span>
-        <span>
-          <b>PW</b> Plant Works · <b>OC</b> On-Call · <b>DWP</b> Deep Well · <b>ERP</b> Electro-Mech · <b>Lvs</b> Leaves
-        </span>
-        {p.canEdit && <span>Tip: drag across cells to paint, arrow keys + Enter for keyboard, right-click or long-press for menu.</span>}
-      </div>
+      <RosterGrid
+        monthLabel={monthLabel}
+        today={p.today}
+        days={days}
+        operators={filteredOperators}
+        totalOperatorsCount={p.operators.length}
+        operatorId={p.operatorId}
+        canEdit={p.canEdit}
+        canOperate={canOperate}
+        mode={mode}
+        cell={cell}
+        pendingMap={pendingMap}
+        standbyMap={standbyMap}
+        shiftBy={shiftBy}
+        areaBy={areaBy}
+        pmByCell={pmByCell}
+        holidayByDate={holidayByDate}
+        dailyWorkingCounts={dailyWorkingCounts}
+        dragRef={dragRef}
+        onApplyBrushLocal={applyBrushLocal}
+        onActivateCell={(opId, date) => void activateCell(opId, date)}
+        onClearCell={(opId, date) => void clearCell(opId, date)}
+        onCopyCell={copyCell}
+        onPasteCell={pasteCell}
+        onOpenContextMenu={setCtxMenu}
+      />
 
       {ctxMenu && (
         <RosterContextMenu

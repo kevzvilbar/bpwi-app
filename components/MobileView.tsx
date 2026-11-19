@@ -4,22 +4,17 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import ActivityLoggerModal, { type LinkedPmTask } from '@/components/ActivityLoggerModal';
+import MobileActivitiesAndSchedule, {
+  type MobileArea,
+  type MobileOp,
+  type MobileShift,
+} from '@/components/MobileActivitiesAndSchedule';
 import { ACTIVITY_BY_ID, type DailyActivityRow } from '@/lib/activity-types';
-import { resolveActivityPhotoUrl } from '@/lib/activity-media';
 import { enqueueOfflineActivity, flushOfflineQueue, getOfflineQueue, type PendingOfflineActivity } from '@/lib/offline-queue';
 
-type Op = { id: string; full_name: string; position: string | null; phone_number: string | null; default_station: string | null };
-type Shift = {
-  id: string;
-  code: string;
-  description: string | null;
-  start_time: string | null;
-  end_time: string | null;
-  background_color: string;
-  text_color: string;
-  is_off: boolean;
-};
-type Area = { id: string; code: string; name: string | null; category: string; sub_sites?: string[] };
+type Op = MobileOp;
+type Shift = MobileShift;
+type Area = MobileArea;
 type Asg = { operator_id: string; shift_type_id: string | null; area_code_id: string | null };
 type Standby = { operator_id: string; standby_type: string };
 type Task = {
@@ -43,12 +38,6 @@ const PRESET_COLOR: Record<string, string> = {
   THERM: '#ea580c',
   LEVEL: '#ca8a04',
 };
-
-function addDays(d: string, n: number) {
-  const t = new Date(d + 'T00:00:00Z');
-  t.setUTCDate(t.getUTCDate() + n);
-  return t.toISOString().slice(0, 10);
-}
 
 function toMinutes(t: string | null) {
   if (!t) return null;
@@ -377,7 +366,7 @@ export default function MobileView(p: {
           padding: 12,
           display: 'grid',
           gap: 8,
-          border: isOverdue ? '1.5px solid #e11d48' : '1px solid var(--border)',
+          border: isOverdue ? '1.5px solid var(--danger)' : '1px solid var(--border)',
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
@@ -399,8 +388,8 @@ export default function MobileView(p: {
               fontWeight: 700,
               padding: '2px 8px',
               borderRadius: 999,
-              background: isDone ? '#dcfce7' : isOverdue ? '#ffe4e6' : isToday ? '#dbeafe' : 'var(--surface-muted)',
-              color: isDone ? '#166534' : isOverdue ? '#9f1239' : isToday ? '#1e40af' : 'var(--text-secondary)',
+              background: isDone ? 'var(--ok-bg)' : isOverdue ? 'var(--danger-bg)' : isToday ? 'var(--info-bg)' : 'var(--surface-muted)',
+              color: isDone ? 'var(--ok-fg)' : isOverdue ? 'var(--danger-fg)' : isToday ? 'var(--info-fg)' : 'var(--text-secondary)',
             }}
           >
             {isDone ? `Done${t.completed_at ? ` · ${t.completed_at}` : ''}` : isOverdue ? `Delayed · ${t.scheduled_date}` : isToday ? 'Today' : t.scheduled_date}
@@ -599,9 +588,9 @@ export default function MobileView(p: {
             marginBottom: 10,
             padding: '10px 12px',
             borderRadius: 8,
-            background: '#fef2f2',
-            border: '1px solid #fecaca',
-            color: '#991b1b',
+            background: 'var(--danger-bg)',
+            border: '1px solid var(--danger-border)',
+            color: 'var(--danger-fg)',
             fontSize: 13,
           }}
         >
@@ -615,9 +604,9 @@ export default function MobileView(p: {
           style={{
             marginBottom: 10,
             padding: '8px 12px',
-            background: '#fffbeb',
-            border: '1px solid #fde68a',
-            color: '#92400e',
+            background: 'var(--warn-bg)',
+            border: '1px solid var(--warn-border)',
+            color: 'var(--warn-fg)',
             fontSize: 12.5,
             display: 'flex',
             justifyContent: 'space-between',
@@ -650,16 +639,16 @@ export default function MobileView(p: {
         <>
           {/* KPI Summary Chips */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, fontSize: 12.5, fontWeight: 700 }}>
-            <span style={{ background: '#ffe4e6', color: '#9f1239', padding: '4px 10px', borderRadius: 999 }}>
+            <span style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)', padding: '4px 10px', borderRadius: 999 }}>
               Delayed: {delayedTasks.length}
             </span>
-            <span style={{ background: '#dbeafe', color: '#1e40af', padding: '4px 10px', borderRadius: 999 }}>
+            <span style={{ background: 'var(--info-bg)', color: 'var(--info-fg)', padding: '4px 10px', borderRadius: 999 }}>
               Due Today: {dueTodayCount}
             </span>
-            <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '4px 10px', borderRadius: 999 }}>
+            <span style={{ background: 'var(--info-bg)', color: 'var(--info-fg)', padding: '4px 10px', borderRadius: 999 }}>
               Upcoming: {upcomingTasks.length}
             </span>
-            <span style={{ background: '#dcfce7', color: '#166534', padding: '4px 10px', borderRadius: 999 }}>
+            <span style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)', padding: '4px 10px', borderRadius: 999 }}>
               Completed: {completedTasks.length}
             </span>
           </div>
@@ -683,8 +672,8 @@ export default function MobileView(p: {
           <div className="kanban-board desktop-only-kanban">
             <section className="kanban-col" aria-label="Delayed tasks">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px' }}>
-                <strong style={{ fontSize: 14, color: '#e11d48' }}>Delayed / Overdue</strong>
-                <span style={{ background: '#ffe4e6', color: '#9f1239', borderRadius: 999, padding: '2px 8px', fontSize: 12, fontWeight: 700 }}>
+                <strong style={{ fontSize: 14, color: 'var(--danger)' }}>Delayed / Overdue</strong>
+                <span style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)', borderRadius: 999, padding: '2px 8px', fontSize: 12, fontWeight: 700 }}>
                   {delayedTasks.length}
                 </span>
               </div>
@@ -700,7 +689,7 @@ export default function MobileView(p: {
             <section className="kanban-col" aria-label="Upcoming tasks">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px' }}>
                 <strong style={{ fontSize: 14, color: 'var(--accent)' }}>Today &amp; Upcoming</strong>
-                <span style={{ background: '#dbeafe', color: '#1e40af', borderRadius: 999, padding: '2px 8px', fontSize: 12, fontWeight: 700 }}>
+                <span style={{ background: 'var(--info-bg)', color: 'var(--info-fg)', borderRadius: 999, padding: '2px 8px', fontSize: 12, fontWeight: 700 }}>
                   {upcomingTasks.length}
                 </span>
               </div>
@@ -715,8 +704,8 @@ export default function MobileView(p: {
 
             <section className="kanban-col" aria-label="Completed tasks">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px' }}>
-                <strong style={{ fontSize: 14, color: '#16a34a' }}>Completed</strong>
-                <span style={{ background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '2px 8px', fontSize: 12, fontWeight: 700 }}>
+                <strong style={{ fontSize: 14, color: 'var(--ok-fg)' }}>Completed</strong>
+                <span style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)', borderRadius: 999, padding: '2px 8px', fontSize: 12, fontWeight: 700 }}>
                   {completedTasks.length}
                 </span>
               </div>
@@ -761,233 +750,27 @@ export default function MobileView(p: {
         </>
       )}
 
-      {tab === 'activities' && (
-        <div style={{ display: 'grid', gap: 10 }}>
-          {!p.canLogActivity && (
-            <div className="card" style={{ padding: '8px 12px', fontSize: 12.5, color: 'var(--text-secondary)' }}>
-              Only active <b>operator</b> and <b>admin</b> accounts can submit daily activity logs.
-            </div>
-          )}
-
-          {scopedActivities.length === 0 ? (
-            <div className="card" style={{ padding: 24, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13.5 }}>
-              No field activities logged yet for <b>{p.date}</b>.
-            </div>
-          ) : (
-            <div className="schedule-cards-grid">
-              {scopedActivities.map((act) => {
-                const def = ACTIVITY_BY_ID[act.activity_type];
-                const area = act.area_code_id ? areaBy.get(act.area_code_id) : undefined;
-                const lead = act.lead_operator_id ? opBy.get(act.lead_operator_id) : undefined;
-                const crewNames = (act.crew_operator_ids ?? []).map((id) => opBy.get(id)?.full_name).filter(Boolean);
-                const statusColors: Record<string, { bg: string; fg: string }> = {
-                  verified: { bg: '#dcfce7', fg: '#166534' },
-                  flagged: { bg: '#fee2e2', fg: '#991b1b' },
-                  submitted: { bg: '#dbeafe', fg: '#1e40af' },
-                  draft: { bg: 'var(--surface-muted)', fg: 'var(--text-secondary)' },
-                };
-                const sc = statusColors[act.status] ?? statusColors.submitted;
-                return (
-                  <div
-                    key={act.id}
-                    className="card"
-                    style={{
-                      padding: 12,
-                      display: 'grid',
-                      gap: 6,
-                      borderLeft: `4px solid ${def?.color ?? 'var(--accent)'}`,
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                      <span
-                        style={{
-                          background: def?.color ?? 'var(--primary)',
-                          color: '#ffffff',
-                          padding: '2px 9px',
-                          borderRadius: 999,
-                          fontSize: 11.5,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {def?.label ?? act.activity_type}
-                      </span>
-                      <span style={{ background: sc.bg, color: sc.fg, padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>
-                        {act.status}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: 13.5, fontWeight: 700 }}>
-                      {area ? `${area.code}${area.name ? ` · ${area.name}` : ''}` : 'Unassigned Station'}
-                      {act.site_or_well ? ` — ${act.site_or_well}` : ''}
-                    </div>
-                    {act.block_lot && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Location: {act.block_lot}</div>}
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                      Lead: <b>{lead?.full_name ?? 'Unspecified'}</b>
-                      {crewNames.length > 0 && <> · Crew: {crewNames.join(', ')}</>}
-                    </div>
-                    {act.details && act.details.avgErr !== undefined && act.details.avgErr !== null && (
-                      <div style={{ fontSize: 12, fontWeight: 600, color: act.details.verdict === 'Passed' ? '#166534' : '#b91c1c' }}>
-                        Meter Test: {act.details.avgErr}% ({act.details.verdict} · {act.details.recommendation})
-                      </div>
-                    )}
-                    {act.notes && <div style={{ fontSize: 12.5, color: 'var(--text)' }}>{act.notes}</div>}
-                    {Array.isArray(act.photo_urls) && act.photo_urls.length > 0 && !act.photos_purged_at && (
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
-                        {act.photo_urls.map((u, i) => (
-                          <img
-                            key={i}
-                            src={resolveActivityPhotoUrl(u, act.photo_storage_paths?.[i])}
-                            alt={`Activity photo ${i + 1}`}
-                            style={{ width: 52, height: 52, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }}
-                          />
-                        ))}
-                      </div>
-                    )}
-                    {(p.role === 'admin' || (p.userId && act.logged_by === p.userId)) && act.status !== 'verified' && (
-                      <div style={{ display: 'flex', gap: 6, marginTop: 4, borderTop: '1px solid var(--border-light)', paddingTop: 6 }}>
-                        <button
-                          type="button"
-                          className="btn"
-                          style={{ minHeight: 32, padding: '2px 10px', fontSize: 12 }}
-                          onClick={() => {
-                            setLinkedPmForLog(null);
-                            setEditingActivity(act);
-                            setLoggerOpen(true);
-                          }}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="btn"
-                          style={{ minHeight: 32, padding: '2px 10px', fontSize: 12, color: 'var(--danger)' }}
-                          onClick={async () => {
-                            if (!window.confirm('Delete this activity log?')) return;
-                            const { error } = await supabaseBrowser().from('daily_activities').delete().eq('id', act.id);
-                            if (error) {
-                              setMsg(error.message);
-                              return;
-                            }
-                            setActivities((prev) => prev.filter((x) => x.id !== act.id));
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {tab === 'schedule' && (
-        <div style={{ display: 'grid', gap: 12 }}>
-          <div className="card" style={{ padding: 8, display: 'flex', gap: 6, alignItems: 'center', maxWidth: 420 }}>
-            <button className="btn" onClick={() => router.push(`/mobile?d=${addDays(p.date, -1)}`)}>
-              ‹
-            </button>
-            <input
-              type="date"
-              className="input"
-              value={p.date}
-              onChange={(e) => e.target.value && router.push(`/mobile?d=${e.target.value}`)}
-              style={{ flex: 1 }}
-            />
-            <button className="btn" onClick={() => router.push(`/mobile?d=${addDays(p.date, 1)}`)}>
-              ›
-            </button>
-            {p.date !== p.today && (
-              <button className="btn btn-primary" onClick={() => router.push(`/mobile?d=${p.today}`)}>
-                Today
-              </button>
-            )}
-          </div>
-
-          <div className="schedule-cards-grid">
-            {scheduleList.map(({ op, shift, area, standbyType, isLeave, isRestDay, isOnDuty, isNow }) => (
-              <div
-                key={op.id}
-                className="card"
-                style={{
-                  padding: 12,
-                  display: 'grid',
-                  gap: 6,
-                  borderLeft: standbyType ? '4px solid var(--violet)' : undefined,
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8 }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 15 }}>{op.full_name}</div>
-                    {op.position && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{op.position}</div>}
-                  </div>
-                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                    {standbyType && (
-                      <span style={{ background: '#6d28d9', color: '#fff', padding: '3px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700 }}>
-                        STANDBY · {standbyType}
-                      </span>
-                    )}
-                    {isLeave ? (
-                      <span style={{ background: '#ffe4e6', color: '#9f1239', padding: '3px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700 }}>
-                        LEAVE · {area?.code}
-                      </span>
-                    ) : isRestDay ? (
-                      <span style={{ background: 'var(--surface-muted)', color: 'var(--text-secondary)', border: '1px solid var(--border)', padding: '3px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600 }}>
-                        REST · {area?.code}
-                      </span>
-                    ) : isOnDuty && shift ? (
-                      <span
-                        style={{
-                          background: shift.background_color,
-                          color: shift.text_color,
-                          padding: '3px 8px',
-                          borderRadius: 6,
-                          fontSize: 11,
-                          fontWeight: 700,
-                          border: '1px solid var(--border)',
-                        }}
-                      >
-                        {isNow ? 'ON DUTY NOW' : 'DUTY'} · {shift.code}
-                      </span>
-                    ) : shift?.is_off ? (
-                      <span style={{ background: 'var(--surface-muted)', color: 'var(--text-secondary)', padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>
-                        OFF · {shift.code}
-                      </span>
-                    ) : (
-                      <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>Unassigned</span>
-                    )}
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12.5, color: 'var(--text-secondary)' }}>
-                  <span>Station: <b>{area?.code ?? (isOnDuty ? 'PW' : op.default_station ?? '—')}</b></span>
-                  {op.phone_number && (
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <a
-                        href={`tel:${op.phone_number}`}
-                        style={{
-                          padding: '6px 12px',
-                          borderRadius: 8,
-                          background: '#0369a1',
-                          color: '#ffffff',
-                          textDecoration: 'none',
-                          fontWeight: 700,
-                          fontSize: 12.5,
-                        }}
-                      >
-                        Call
-                      </a>
-                      <a href={`sms:${op.phone_number}`} className="btn" style={{ textDecoration: 'none', fontWeight: 700 }}>
-                        SMS
-                      </a>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      {(tab === 'activities' || tab === 'schedule') && (
+        <MobileActivitiesAndSchedule
+          tab={tab}
+          date={p.date}
+          today={p.today}
+          role={p.role}
+          userId={p.userId}
+          canLogActivity={p.canLogActivity}
+          scopedActivities={scopedActivities}
+          scheduleList={scheduleList}
+          opBy={opBy}
+          areaBy={areaBy}
+          onEditActivity={(act) => {
+            setLinkedPmForLog(null);
+            setEditingActivity(act);
+            setLoggerOpen(true);
+          }}
+          onActivityDeleted={(actId) => setActivities((prev) => prev.filter((x) => x.id !== actId))}
+          onNavigateDate={(nextDate) => router.push(`/mobile?d=${nextDate}`)}
+          onError={setMsg}
+        />
       )}
 
       {undoToast && (

@@ -46,7 +46,15 @@ export default function PrintableActivityReport(p: {
 
   const act = p.activity ?? null;
   const jo = p.jobOrder ?? null;
-  const det = (act?.details ?? {}) as Record<string, any>;
+  const det: Record<string, unknown> = act?.details ?? {};
+  const detPrim = (k: string): string | number | null => {
+    const v = det[k];
+    return typeof v === 'string' || typeof v === 'number' ? v : null;
+  };
+  const detStr = (k: string, fallback = ''): string => {
+    const v = det[k];
+    return typeof v === 'string' && v ? v : fallback;
+  };
 
   const areaObj = (act?.area_code_id ? areaBy.get(act.area_code_id) : undefined) ??
     (jo?.area_code_id ? areaBy.get(jo.area_code_id) : undefined);
@@ -147,14 +155,14 @@ export default function PrintableActivityReport(p: {
           /* Official Water Meter Volumetric Test Certificate Layout */
           <div style={{ display: 'grid', gap: 16, fontSize: 12.5 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, border: '1px solid #334155', padding: 12 }}>
-              <div><b>Customer Account #:</b> {det.accountNumber ?? jo?.account_number ?? 'N/A'}</div>
-              <div><b>Account Name:</b> {det.accountName ?? jo?.account_name ?? 'N/A'}</div>
+              <div><b>Customer Account #:</b> {detPrim('accountNumber') ?? jo?.account_number ?? 'N/A'}</div>
+              <div><b>Account Name:</b> {detPrim('accountName') ?? jo?.account_name ?? 'N/A'}</div>
               <div><b>Area / Station:</b> {areaObj ? `${areaObj.code}${areaObj.name ? ` (${areaObj.name})` : ''}` : 'N/A'}</div>
               <div><b>Block &amp; Lot / Site:</b> {act?.block_lot ?? jo?.block_lot ?? act?.site_or_well ?? 'N/A'}</div>
-              <div><b>Meter Brand:</b> {det.meterBrand ?? 'N/A'}</div>
-              <div><b>Meter Serial #:</b> {det.meterSerialNumber ?? 'N/A'}</div>
-              <div><b>Meter Size:</b> {det.meterSize ?? '1/2"'} ({det.meterNature ?? 'Old'})</div>
-              <div><b>Test Type:</b> {det.testNature ?? 'Re-testing'} (Ref: {det.refVolumeM3 ?? 0.01} m³)</div>
+              <div><b>Meter Brand:</b> {detPrim('meterBrand') ?? 'N/A'}</div>
+              <div><b>Meter Serial #:</b> {detPrim('meterSerialNumber') ?? 'N/A'}</div>
+              <div><b>Meter Size:</b> {detPrim('meterSize') ?? '1/2"'} ({detPrim('meterNature') ?? 'Old'})</div>
+              <div><b>Test Type:</b> {detPrim('testNature') ?? 'Re-testing'} (Ref: {detPrim('refVolumeM3') ?? 0.01} m³)</div>
             </div>
 
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -168,28 +176,28 @@ export default function PrintableActivityReport(p: {
               <tbody>
                 <tr>
                   <td style={{ border: '1px solid #334155', padding: '6px 8px' }}>Initial Reading</td>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right' }}>{det.initialReading ?? '—'}</td>
+                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right' }}>{detPrim('initialReading') ?? '—'}</td>
                   <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right' }}>—</td>
                 </tr>
                 <tr>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px' }}>Trial 1 ({det.refVolumeM3 ?? 0.01} m³)</td>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right' }}>{det.reading1 ?? '—'}</td>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>{det.err1 !== null && det.err1 !== undefined ? `${det.err1}%` : '—'}</td>
+                  <td style={{ border: '1px solid #334155', padding: '6px 8px' }}>Trial 1 ({detPrim('refVolumeM3') ?? 0.01} m³)</td>
+                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right' }}>{detPrim('reading1') ?? '—'}</td>
+                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>{detPrim('err1') !== null ? `${detPrim('err1')}%` : '—'}</td>
                 </tr>
                 <tr>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px' }}>Trial 2 ({det.refVolumeM3 ?? 0.01} m³)</td>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right' }}>{det.reading2 ?? '—'}</td>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>{det.err2 !== null && det.err2 !== undefined ? `${det.err2}%` : '—'}</td>
+                  <td style={{ border: '1px solid #334155', padding: '6px 8px' }}>Trial 2 ({detPrim('refVolumeM3') ?? 0.01} m³)</td>
+                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right' }}>{detPrim('reading2') ?? '—'}</td>
+                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>{detPrim('err2') !== null ? `${detPrim('err2')}%` : '—'}</td>
                 </tr>
                 <tr>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px' }}>Trial 3 ({det.refVolumeM3 ?? 0.01} m³)</td>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right' }}>{det.reading3 ?? '—'}</td>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>{det.err3 !== null && det.err3 !== undefined ? `${det.err3}%` : '—'}</td>
+                  <td style={{ border: '1px solid #334155', padding: '6px 8px' }}>Trial 3 ({detPrim('refVolumeM3') ?? 0.01} m³)</td>
+                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right' }}>{detPrim('reading3') ?? '—'}</td>
+                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>{detPrim('err3') !== null ? `${detPrim('err3')}%` : '—'}</td>
                 </tr>
                 <tr style={{ background: '#f8fafc', fontWeight: 800 }}>
                   <td colSpan={2} style={{ border: '1px solid #334155', padding: '8px' }}>Average Volumetric Error &amp; Verdict</td>
                   <td style={{ border: '1px solid #334155', padding: '8px', textAlign: 'right' }}>
-                    {det.avgErr !== null && det.avgErr !== undefined ? `${det.avgErr}% — ${(det.verdict ?? '').toUpperCase()} (${(det.recommendation ?? '').toUpperCase()})` : 'Incomplete'}
+                    {detPrim('avgErr') !== null ? `${detPrim('avgErr')}% — ${detStr('verdict').toUpperCase()} (${detStr('recommendation').toUpperCase()})` : 'Incomplete'}
                   </td>
                 </tr>
               </tbody>
@@ -217,7 +225,7 @@ export default function PrintableActivityReport(p: {
                     <span style={{ fontSize: 11, color: '#94a3b8' }}>No signature captured</span>
                   )}
                 </div>
-                <b>Witnessed By: {det.witnessedBy || 'Customer Representative'}</b>
+                <b>Witnessed By: {detStr('witnessedBy', 'Customer Representative')}</b>
                 <div style={{ fontSize: 11, color: '#475569' }}>Signature over Printed Name</div>
               </div>
               <div>
@@ -269,7 +277,7 @@ export default function PrintableActivityReport(p: {
                     {Object.entries(det).map(([key, val]) => {
                       if (val === null || val === undefined || val === '') return null;
                       const formattedVal = Array.isArray(val)
-                        ? val.map((item) => (typeof item === 'object' ? Object.values(item).filter(Boolean).join(' · ') : String(item))).join('; ')
+                        ? val.map((item) => (typeof item === 'object' && item !== null ? Object.values(item).filter(Boolean).join(' · ') : String(item))).join('; ')
                         : typeof val === 'object'
                           ? JSON.stringify(val)
                           : String(val);

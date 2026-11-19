@@ -254,7 +254,7 @@ export type DailyActivityRow = {
   gps_lat: number | null;
   gps_lng: number | null;
   notes: string | null;
-  details: Record<string, any>;
+  details: Record<string, unknown>;
   photo_urls: string[];
   photo_storage_paths: string[];
   photos_expires_at: string | null;

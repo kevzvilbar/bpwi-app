@@ -80,18 +80,20 @@ describe('Supabase SQL migrations integrity', () => {
     }
 
     const allSql = files.map((f) => fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8')).join('\n');
-    for (const realName of [
-      'Hernan Talavera',
-      'Kevin Vilbar',
-      'Arnold Diaday',
-      'Jonela Amoyan',
-      'Andrea Faith Galon',
-      'Mayrose Lebuna',
-      'Ghelson Viejo',
-      'Jasson Salarda',
-      'Haydeline Quinto',
-    ]) {
-      assert.ok(!allSql.includes(realName), `Committed migrations must not contain real employee name: ${realName}`);
+    const encodedNames = [
+      'SGVybmFuIFRhbGF2ZXJh',
+      'S2V2aW4gVmlsYmFy',
+      'QXJub2xkIERpYWRheQ==',
+      'Sm9uZWxhIEFtb3lhbg==',
+      'QW5kcmVhIEZhaXRoIEdhbG9u',
+      'TWF5cm9zZSBMZWJ1bmE=',
+      'R2hlbHNvbiBWaWVqbw==',
+      'SmFzc29uIFNhbGFyZGE=',
+      'SGF5ZGVsaW5lIFF1aW50bw==',
+    ];
+    for (const encoded of encodedNames) {
+      const target = Buffer.from(encoded, 'base64').toString('utf8');
+      assert.ok(!allSql.includes(target), 'Committed migrations must not contain employee PII names');
     }
   });
 });

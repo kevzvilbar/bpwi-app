@@ -195,19 +195,24 @@ export default function ActivitiesKpiTab(p: {
 
   // Genset Fuel Telemetry logs
   const gensetLogs = useMemo(() => {
+    const prim = (v: unknown): string | number | null =>
+      typeof v === 'string' || typeof v === 'number' ? v : null;
     return periodActs
       .filter((a) => a.activity_type === 'genset_monitoring')
       .slice(0, 12)
-      .map((a) => ({
-        id: a.id,
-        date: a.activity_date,
-        station: a.area_code_id ? (areaBy.get(a.area_code_id)?.code ?? '—') : '—',
-        site: a.site_or_well ?? 'Main Genset',
-        initialFuel: a.details?.gensetInitialFuel,
-        finalFuel: a.details?.gensetFinalFuel,
-        runningHours: a.details?.runningHours,
-        cause: a.details?.gensetCause ?? 'Routine',
-      }));
+      .map((a) => {
+        const d = a.details ?? {};
+        return {
+          id: a.id,
+          date: a.activity_date,
+          station: a.area_code_id ? (areaBy.get(a.area_code_id)?.code ?? '—') : '—',
+          site: a.site_or_well ?? 'Main Genset',
+          initialFuel: prim(d.gensetInitialFuel),
+          finalFuel: prim(d.gensetFinalFuel),
+          runningHours: prim(d.runningHours),
+          cause: typeof d.gensetCause === 'string' ? d.gensetCause : 'Routine',
+        };
+      });
   }, [periodActs, areaBy]);
 
   return (

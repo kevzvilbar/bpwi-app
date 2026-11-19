@@ -40,11 +40,11 @@ interface Props {
 
 const THEME_STYLES: Record<OrgColorTheme, { bg: string; fg: string; border: string; badgeBg: string; badgeFg: string }> = {
   navy: { bg: '#0f2744', fg: '#ffffff', border: '#0f2744', badgeBg: '#1e3a5f', badgeFg: '#e2e8f0' },
-  blue: { bg: '#0284c7', fg: '#ffffff', border: '#0369a1', badgeBg: '#e0f2fe', badgeFg: '#0369a1' },
-  teal: { bg: '#0f766e', fg: '#ffffff', border: '#115e59', badgeBg: '#ccfbf1', badgeFg: '#0f766e' },
-  purple: { bg: '#5b21b6', fg: '#ffffff', border: '#4c1d95', badgeBg: '#ede9fe', badgeFg: '#5b21b6' },
-  amber: { bg: '#fef3c7', fg: '#78350f', border: '#f59e0b', badgeBg: '#fde68a', badgeFg: '#92400e' },
-  slate: { bg: '#ffffff', fg: '#0f172a', border: '#cbd5e1', badgeBg: '#e0f2fe', badgeFg: '#0369a1' },
+  blue: { bg: '#0284c7', fg: '#ffffff', border: '#0369a1', badgeBg: 'var(--info-bg)', badgeFg: 'var(--info-fg)' },
+  teal: { bg: '#0f766e', fg: '#ffffff', border: '#115e59', badgeBg: 'var(--ok-bg)', badgeFg: 'var(--ok-fg)' },
+  purple: { bg: '#5b21b6', fg: '#ffffff', border: '#4c1d95', badgeBg: 'var(--violet-bg)', badgeFg: 'var(--violet-fg)' },
+  amber: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)', border: 'var(--warn-border)', badgeBg: 'var(--warn-bg)', badgeFg: 'var(--warn-fg)' },
+  slate: { bg: 'var(--surface)', fg: 'var(--text)', border: 'var(--border)', badgeBg: 'var(--info-bg)', badgeFg: 'var(--info-fg)' },
 };
 
 export default function OrgChart(p: Props) {
@@ -300,9 +300,9 @@ export default function OrgChart(p: Props) {
     const theme = THEME_STYLES[pos.color_theme] ?? THEME_STYLES.slate;
     const isSolidHeader = pos.tier === 'executive' || pos.tier === 'head';
     const isNightCard = pos.color_theme === 'amber' && !isSolidHeader;
-    const bg = pos.is_vacant ? '#fffbeb' : isSolidHeader ? theme.bg : isNightCard ? '#fef9c3' : '#ffffff';
-    const fg = pos.is_vacant ? '#92400e' : isSolidHeader ? theme.fg : '#0f172a';
-    const border = pos.is_vacant ? '2px dashed #f59e0b' : `1px solid ${theme.border}`;
+    const bg = pos.is_vacant ? 'var(--warn-bg)' : isSolidHeader ? theme.bg : isNightCard ? 'var(--warn-bg)' : 'var(--surface)';
+    const fg = pos.is_vacant ? 'var(--warn-fg)' : isSolidHeader ? theme.fg : isNightCard ? 'var(--warn-fg)' : 'var(--text)';
+    const border = pos.is_vacant ? '2px dashed var(--warn-border)' : `1px solid ${theme.border}`;
 
     return (
       <div
@@ -345,8 +345,9 @@ export default function OrgChart(p: Props) {
         {pos.shift_badge && (
           <span
             style={{
-              background: pos.color_theme === 'amber' ? '#fde68a' : theme.badgeBg,
-              color: pos.color_theme === 'amber' ? '#92400e' : theme.badgeFg,
+              background: pos.color_theme === 'amber' ? 'var(--warn-bg)' : theme.badgeBg,
+              color: pos.color_theme === 'amber' ? 'var(--warn-fg)' : theme.badgeFg,
+              border: pos.color_theme === 'amber' ? '1px solid var(--warn-border)' : undefined,
               fontSize: 10,
               fontWeight: 700,
               padding: '2px 7px',
@@ -444,7 +445,7 @@ export default function OrgChart(p: Props) {
       </div>
 
       {p.migrationMissing && (
-        <div className="no-print card" style={{ padding: 12, borderLeft: '4px solid #d97706', fontSize: 12.5 }}>
+        <div className="no-print card" style={{ padding: 12, borderLeft: '4px solid var(--warn-border)', fontSize: 12.5 }}>
           Run migration <code>supabase/migrations/015_org_chart.sql</code> in Supabase SQL Editor to enable and seed the editable Organizational Chart.
         </div>
       )}
@@ -456,8 +457,8 @@ export default function OrgChart(p: Props) {
           style={{
             padding: '8px 12px',
             fontSize: 12.5,
-            borderLeft: `4px solid ${msg.kind === 'err' ? '#dc2626' : '#16a34a'}`,
-            color: msg.kind === 'err' ? '#b91c1c' : '#15803d',
+            borderLeft: `4px solid ${msg.kind === 'err' ? 'var(--danger)' : 'var(--ok-fg)'}`,
+            color: msg.kind === 'err' ? 'var(--danger-fg)' : 'var(--ok-fg)',
           }}
         >
           {msg.text}
@@ -474,9 +475,9 @@ export default function OrgChart(p: Props) {
       <div
         className="org-canvas"
         style={{
-          background: '#f8fafc',
-          color: '#0f172a',
-          border: '1px solid #cbd5e1',
+          background: 'var(--surface-muted)',
+          color: 'var(--text)',
+          border: '1px solid var(--border)',
           borderRadius: 10,
           padding: '16px 18px 20px',
           display: 'grid',
@@ -498,7 +499,7 @@ export default function OrgChart(p: Props) {
             alignItems: 'center',
             flexWrap: 'wrap',
             gap: 12,
-            borderBottom: '1px solid #e2e8f0',
+            borderBottom: '1px solid var(--border-light)',
             paddingBottom: 12,
             marginBottom: 16,
             cursor: editMode && p.canEdit ? 'pointer' : 'default',
@@ -510,7 +511,7 @@ export default function OrgChart(p: Props) {
             <img src="/bpwi-logo.svg" alt="BPWI Logo" style={{ width: 48, height: 36, objectFit: 'contain' }} />
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{meta.title}</span>
+                <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>{meta.title}</span>
                 {p.canEdit && (
                   <button
                     type="button"
@@ -521,9 +522,9 @@ export default function OrgChart(p: Props) {
                       setEditingHeader(true);
                     }}
                     style={{
-                      border: '1px solid #cbd5e1',
-                      background: '#ffffff',
-                      color: '#475569',
+                      border: '1px solid var(--border)',
+                      background: 'var(--surface)',
+                      color: 'var(--text-secondary)',
                       borderRadius: 5,
                       padding: '2px 7px',
                       fontSize: 11,
@@ -535,18 +536,18 @@ export default function OrgChart(p: Props) {
                   </button>
                 )}
               </div>
-              <div style={{ fontSize: 12.5, color: '#475569' }}>{meta.subtitle}</div>
+              <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>{meta.subtitle}</div>
             </div>
           </div>
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {meta.legend1 && (
-              <span style={{ background: '#dbeafe', color: '#1e40af', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6 }}>
+              <span style={{ background: 'var(--info-bg)', color: 'var(--info-fg)', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6 }}>
                 {meta.legend1}
               </span>
             )}
             {meta.legend2 && (
-              <span style={{ background: '#fef3c7', color: '#92400e', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6 }}>
+              <span style={{ background: 'var(--warn-bg)', color: 'var(--warn-fg)', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6 }}>
                 {meta.legend2}
               </span>
             )}
@@ -559,16 +560,16 @@ export default function OrgChart(p: Props) {
           {/* Center: Managing Head */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <div style={{ minWidth: 270 }}>{executives.map((ex) => renderPersonCard(ex, false, true))}</div>
-            <div style={{ width: 2, height: 22, background: '#94a3b8' }} />
+            <div style={{ width: 2, height: 22, background: 'var(--border)' }} />
           </div>
 
           {/* Right: Dashed Connector + Support Group + Gardener */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start', paddingLeft: 0 }}>
             {supportGroup.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center' }}>
-                <div style={{ width: 20, borderTop: '2px dashed #94a3b8' }} />
-                <div style={{ border: '1.5px dashed #94a3b8', borderRadius: 8, padding: 8, background: '#ffffff' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9.5, fontWeight: 700, color: '#475569', marginBottom: 5, gap: 12 }}>
+                <div style={{ width: 20, borderTop: '2px dashed var(--border)' }} />
+                <div style={{ border: '1.5px dashed var(--border)', borderRadius: 8, padding: 8, background: 'var(--surface)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9.5, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 5, gap: 12 }}>
                     <span>SUPPORT GROUP</span>
                     <span style={{ fontStyle: 'italic', fontWeight: 500 }}>Advisory &amp; Control</span>
                   </div>
@@ -598,7 +599,7 @@ export default function OrgChart(p: Props) {
                   left: idx === 0 ? '50%' : -6,
                   right: idx === headColumns.length - 1 ? '50%' : -6,
                   height: 2,
-                  background: '#94a3b8',
+                  background: 'var(--border)',
                 }}
               />
               {/* Vertical drop touching Head card */}
@@ -609,7 +610,7 @@ export default function OrgChart(p: Props) {
                   left: '50%',
                   width: 2,
                   height: 20,
-                  background: '#94a3b8',
+                  background: 'var(--border)',
                   transform: 'translateX(-50%)',
                 }}
               />
@@ -629,7 +630,7 @@ export default function OrgChart(p: Props) {
                 {headLeadmen.length > 0 && (
                   <>
                     <div style={{ display: 'flex', justifyContent: 'center', height: 14 }}>
-                      <div style={{ width: 2, height: '100%', background: '#94a3b8' }} />
+                      <div style={{ width: 2, height: '100%', background: 'var(--border)' }} />
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
                       {headLeadmen.map((lm) => (
@@ -645,7 +646,7 @@ export default function OrgChart(p: Props) {
                   <>
                     {/* Stem down from Head / Leadman */}
                     <div style={{ display: 'flex', justifyContent: 'center', height: 14 }}>
-                      <div style={{ width: 2, height: '100%', background: '#94a3b8' }} />
+                      <div style={{ width: 2, height: '100%', background: 'var(--border)' }} />
                     </div>
 
                     {/* Branching horizontal line when Head has 2+ team columns */}
@@ -660,7 +661,7 @@ export default function OrgChart(p: Props) {
                                 left: gIdx === 0 ? '50%' : -6,
                                 right: gIdx === teamCols.length - 1 ? '50%' : -6,
                                 height: 2,
-                                background: '#94a3b8',
+                                background: 'var(--border)',
                               }}
                             />
                             <div
@@ -670,7 +671,7 @@ export default function OrgChart(p: Props) {
                                 left: '50%',
                                 width: 2,
                                 height: 14,
-                                background: '#94a3b8',
+                                background: 'var(--border)',
                                 transform: 'translateX(-50%)',
                               }}
                             />
@@ -685,15 +686,15 @@ export default function OrgChart(p: Props) {
                         <div
                           key={`${head.id}-${groupName}`}
                           style={{
-                            background: '#ffffff',
-                            border: '1px solid #cbd5e1',
+                            background: 'var(--surface)',
+                            border: '1px solid var(--border)',
                             borderRadius: 8,
                             padding: 10,
                             display: 'grid',
                             gap: 7,
                           }}
                         >
-                          <div style={{ fontSize: 10.5, fontWeight: 800, color: '#0369a1', letterSpacing: '0.03em' }}>
+                          <div style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--accent)', letterSpacing: '0.03em' }}>
                             {groupName}
                           </div>
                           {members.map((m) => renderPersonCard(m, true))}
@@ -704,16 +705,16 @@ export default function OrgChart(p: Props) {
                 ) : (
                   <>
                     <div style={{ display: 'flex', justifyContent: 'center', height: 14 }}>
-                      <div style={{ width: 2, height: '100%', background: '#94a3b8' }} />
+                      <div style={{ width: 2, height: '100%', background: 'var(--border)' }} />
                     </div>
                     <div
                       style={{
-                        background: '#ffffff',
-                        border: '1px dashed #cbd5e1',
+                        background: 'var(--surface)',
+                        border: '1px dashed var(--border)',
                         borderRadius: 8,
                         padding: 10,
                         fontSize: 11.5,
-                        color: '#64748b',
+                        color: 'var(--text-muted)',
                         textAlign: 'center',
                       }}
                     >
@@ -727,8 +728,8 @@ export default function OrgChart(p: Props) {
         </div>
 
         {orphanStaff.length > 0 && (
-          <div style={{ border: '1px dashed #94a3b8', borderRadius: 8, padding: 10, background: '#ffffff', marginTop: 12 }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>
+          <div style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 10, background: 'var(--surface)', marginTop: 12 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6 }}>
               UNASSIGNED / OTHER NODES
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
