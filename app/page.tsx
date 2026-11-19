@@ -1,4 +1,4 @@
-import { getProfile } from '@/lib/profile';
+import { getProfile, type ChangeRequestItem } from '@/lib/profile';
 import { manilaToday } from '@/lib/date';
 import Roster from '@/components/Roster';
 
@@ -45,10 +45,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
       .lte('holiday_date', last),
   ]);
 
-  // Load draft items if this user is a department head in propose mode
-  let draftItems: any[] = [];
+  // Load draft items if this user is a department head (including when an edit window opened mid-draft)
+  let draftItems: ChangeRequestItem[] = [];
   let initialDraftRequestId: string | null = null;
-  if (canPropose && user) {
+  if ((canPropose || role === 'manager') && user) {
     const { data: draftReq } = await sb
       .from('change_requests')
       .select('id')
@@ -62,7 +62,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
         .from('change_request_items')
         .select('*')
         .eq('request_id', draftReq.id);
-      draftItems = items ?? [];
+      draftItems = (items ?? []) as ChangeRequestItem[];
     }
   }
 

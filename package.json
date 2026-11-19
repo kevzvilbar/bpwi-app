@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --test lib/__tests__/activity-types.test.ts lib/__tests__/accomplishment-form.test.ts lib/__tests__/org-chart.test.ts lib/__tests__/permissions.test.ts lib/__tests__/migrations.test.ts"
+    "lint": "next lint",
+    "test": "node --test lib/__tests__/activity-types.test.ts lib/__tests__/accomplishment-form.test.ts lib/__tests__/org-chart.test.ts lib/__tests__/permissions.test.ts lib/__tests__/migrations.test.ts lib/__tests__/middleware-rules.test.ts lib/__tests__/sql-integration.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
@@ -17,9 +18,12 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16",
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^15.5.29",
     "typescript": "^5.5.0"
   }
 }

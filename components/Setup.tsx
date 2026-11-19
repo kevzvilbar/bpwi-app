@@ -49,8 +49,8 @@ type AuditLog = {
   action: string | null;
   table_name: string | null;
   record_id: string | null;
-  old_value: Record<string, any> | null;
-  new_value: Record<string, any> | null;
+  old_value: Record<string, unknown> | null;
+  new_value: Record<string, unknown> | null;
   created_at: string;
 };
 
@@ -168,22 +168,25 @@ function summarizeAudit(
   areaCode: Map<string, string>,
 ) {
   const rec = log.new_value ?? log.old_value ?? {};
+  const str = (key: string) => (typeof rec[key] === 'string' ? rec[key] : '');
   if (log.table_name === 'schedule_assignments') {
-    const who = opName.get(rec.operator_id) ?? 'Operator';
-    const shift = rec.shift_type_id ? shiftCode.get(rec.shift_type_id) ?? 'Shift' : '—';
-    const area = rec.area_code_id ? areaCode.get(rec.area_code_id) ?? 'Area' : '';
-    return `${who} · ${rec.schedule_date ?? ''} → ${shift}${area ? ` · ${area}` : ''}`;
+    const who = opName.get(str('operator_id')) ?? 'Operator';
+    const shiftId = str('shift_type_id');
+    const areaId = str('area_code_id');
+    const shift = shiftId ? shiftCode.get(shiftId) ?? 'Shift' : '—';
+    const area = areaId ? areaCode.get(areaId) ?? 'Area' : '';
+    return `${who} · ${str('schedule_date')} → ${shift}${area ? ` · ${area}` : ''}`;
   }
   if (log.table_name === 'standby_assignments') {
-    const who = opName.get(rec.operator_id) ?? 'Operator';
-    return `${who} · ${rec.schedule_date ?? ''} · Standby ${rec.standby_type ?? 'OC'}`;
+    const who = opName.get(str('operator_id')) ?? 'Operator';
+    return `${who} · ${str('schedule_date')} · Standby ${str('standby_type') || 'OC'}`;
   }
   if (log.table_name === 'pm_tasks') {
-    return `${rec.title ?? 'PM Task'} · ${rec.scheduled_date ?? ''} (${rec.status ?? 'planned'})`;
+    return `${str('title') || 'PM Task'} · ${str('scheduled_date')} (${str('status') || 'planned'})`;
   }
   if (log.table_name === 'leave_records') {
-    const who = opName.get(rec.operator_id) ?? 'Operator';
-    return `${who} · ${rec.leave_code ?? 'Leave'} (${rec.start_date ?? ''}–${rec.end_date ?? ''})`;
+    const who = opName.get(str('operator_id')) ?? 'Operator';
+    return `${who} · ${str('leave_code') || 'Leave'} (${str('start_date')}–${str('end_date')})`;
   }
   return log.record_id ?? 'Record updated';
 }
@@ -300,7 +303,13 @@ export default function Setup(p: {
     else if (table === 'area_codes') setAreas((x) => x.filter((_, i) => i !== idx));
   }
 
-  function requestDelete(table: string, id: string | undefined, idx: number, label: string, setter: (fn: (x: any[]) => any[]) => void) {
+  function requestDelete<T extends { id?: string }>(
+    table: string,
+    id: string | undefined,
+    idx: number,
+    label: string,
+    setter: React.Dispatch<React.SetStateAction<T[]>>,
+  ) {
     if (!id) {
       setter((x) => x.filter((_, i) => i !== idx));
       return;
@@ -437,7 +446,7 @@ export default function Setup(p: {
                     <button className="btn btn-primary" disabled={!o.full_name.trim() || busy === `o${i}`} onClick={() => saveRow('operators', o, i, `o${i}`, setOps)}>
                       {saveLabel(`o${i}`)}
                     </button>
-                    <button className="btn" style={{ color: 'var(--danger)' }} onClick={() => requestDelete('operators', o.id, i, o.full_name || 'this operator', setOps as any)}>
+                    <button className="btn" style={{ color: 'var(--danger)' }} onClick={() => requestDelete('operators', o.id, i, o.full_name || 'this operator', setOps)}>
                       Delete
                     </button>
                   </div>
@@ -500,7 +509,7 @@ export default function Setup(p: {
                     <button className="btn btn-primary" disabled={!s.code.trim() || busy === `s${i}`} onClick={() => saveRow('shift_types', s, i, `s${i}`, setShifts)}>
                       {saveLabel(`s${i}`)}
                     </button>
-                    <button className="btn" style={{ color: 'var(--danger)' }} onClick={() => requestDelete('shift_types', s.id, i, s.code || 'this shift', setShifts as any)}>
+                    <button className="btn" style={{ color: 'var(--danger)' }} onClick={() => requestDelete('shift_types', s.id, i, s.code || 'this shift', setShifts)}>
                       Delete
                     </button>
                   </div>
@@ -548,7 +557,7 @@ export default function Setup(p: {
                     <button className="btn btn-primary" disabled={!a.code.trim() || busy === `a${i}`} onClick={() => saveRow('area_codes', a, i, `a${i}`, setAreas)}>
                       {saveLabel(`a${i}`)}
                     </button>
-                    <button className="btn" style={{ color: 'var(--danger)' }} onClick={() => requestDelete('area_codes', a.id, i, a.code || 'this area code', setAreas as any)}>
+                    <button className="btn" style={{ color: 'var(--danger)' }} onClick={() => requestDelete('area_codes', a.id, i, a.code || 'this area code', setAreas)}>
                       Delete
                     </button>
                   </div>
@@ -771,7 +780,7 @@ export default function Setup(p: {
                     <button
                       className="btn"
                       style={{ padding: '4px 9px', color: '#b91c1c' }}
-                      onClick={() => requestDelete('operators', o.id, i, o.full_name || 'this operator', setOps as any)}
+                      onClick={() => requestDelete('operators', o.id, i, o.full_name || 'this operator', setOps)}
                     >
                       Delete
                     </button>
@@ -865,7 +874,7 @@ export default function Setup(p: {
                     <button
                       className="btn"
                       style={{ padding: '4px 9px', color: '#b91c1c' }}
-                      onClick={() => requestDelete('shift_types', s.id, i, s.code || 'this shift', setShifts as any)}
+                      onClick={() => requestDelete('shift_types', s.id, i, s.code || 'this shift', setShifts)}
                     >
                       Delete
                     </button>
@@ -969,7 +978,7 @@ export default function Setup(p: {
                     <button
                       className="btn"
                       style={{ padding: '4px 9px', color: '#b91c1c' }}
-                      onClick={() => requestDelete('area_codes', a.id, i, a.code || 'this area code', setAreas as any)}
+                      onClick={() => requestDelete('area_codes', a.id, i, a.code || 'this area code', setAreas)}
                     >
                       Delete
                     </button>

@@ -12,6 +12,7 @@ import {
   type ActivityCategory,
   type DailyActivityRow,
 } from '@/lib/activity-types';
+import { getErrorMessage } from '@/lib/error-utils';
 import { compressImageFile, uploadActivityPhoto } from '@/lib/image-compress';
 
 export type LoggerOperator = {
@@ -105,7 +106,7 @@ export default function ActivityLoggerModal(p: {
   pmActivityTypes?: Array<{ code: string; label: string; short_label?: string }>;
   linkedJobOrder?: LinkedJobOrder | null;
   editingActivity?: DailyActivityRow | null;
-  onQueuedOffline?: (payload: Record<string, any>) => Promise<void> | void;
+  onQueuedOffline?: (payload: Record<string, unknown>) => Promise<void> | void;
 }) {
   const stationAreas = useMemo(() => {
     const onlyStations = p.areas.filter((a) => a.category === 'station');
@@ -291,7 +292,7 @@ export default function ActivityLoggerModal(p: {
 
     if (p.editingActivity) {
       const ea = p.editingActivity;
-      const d = (ea.details ?? {}) as Record<string, any>;
+      const d = (ea.details ?? {}) as Record<string, unknown>;
       setActivityType(ea.activity_type);
       setLeadOpId(ea.lead_operator_id ?? '');
       setCrewOpIds(ea.crew_operator_ids ?? []);
@@ -323,7 +324,9 @@ export default function ActivityLoggerModal(p: {
       if (d.gensetInitialFuel != null) setGensetInitialFuel(String(d.gensetInitialFuel));
       if (d.gensetFinalFuel != null) setGensetFinalFuel(String(d.gensetFinalFuel));
       if (d.runningHours != null) setRunningHours(String(d.runningHours));
-      if (d.gensetCause) setGensetCause(d.gensetCause);
+      if (d.gensetCause === 'Routine' || d.gensetCause === 'Power Outage' || d.gensetCause === 'PMS') {
+        setGensetCause(d.gensetCause);
+      }
       if (d.pressurePsi != null) setPressurePsi(String(d.pressurePsi));
       if (d.flowLps != null) setFlowLps(String(d.flowLps));
       if (d.totalizerReading != null) setTotalizerReading(String(d.totalizerReading));
@@ -331,15 +334,23 @@ export default function ActivityLoggerModal(p: {
       if (d.flushingInitialRead != null) setFlushingInitialRead(String(d.flushingInitialRead));
       if (d.flushingFinalRead != null) setFlushingFinalRead(String(d.flushingFinalRead));
       if (Array.isArray(d.blowOffs) && d.blowOffs.length > 0) {
-        setBlowOffs(d.blowOffs.map((b: any) => ({ name: b.name ?? '', initialRead: b.initialRead != null ? String(b.initialRead) : '', finalRead: b.finalRead != null ? String(b.finalRead) : '' })));
+        setBlowOffs(
+          d.blowOffs
+            .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+            .map((b) => ({
+              name: typeof b.name === 'string' ? b.name : '',
+              initialRead: b.initialRead != null ? String(b.initialRead) : '',
+              finalRead: b.finalRead != null ? String(b.finalRead) : '',
+            })),
+        );
       }
       if (d.accountNumber) setAccountNumber(String(d.accountNumber));
       if (d.accountName) setAccountName(String(d.accountName));
       if (d.meterBrand) setMeterBrand(String(d.meterBrand));
       if (d.meterSerialNumber) setMeterSerialNumber(String(d.meterSerialNumber));
       if (d.meterSize) setMeterSize(String(d.meterSize));
-      if (d.meterNature) setMeterNature(d.meterNature);
-      if (d.testNature) setTestNature(d.testNature);
+      if (d.meterNature === 'Old' || d.meterNature === 'New') setMeterNature(d.meterNature);
+      if (d.testNature === 'Re-testing' || d.testNature === 'Initial') setTestNature(d.testNature);
       if (d.refVolumeM3 != null) setRefVolumeM3(String(d.refVolumeM3));
       if (d.initialReading != null) setInitialReading(String(d.initialReading));
       if (d.reading1 != null) setReading1(String(d.reading1));
@@ -350,24 +361,44 @@ export default function ActivityLoggerModal(p: {
       if (d.oldMeterReading != null) setOldMeterReading(String(d.oldMeterReading));
       if (d.newMeterSerial) setNewMeterSerial(String(d.newMeterSerial));
       if (d.newMeterReading != null) setNewMeterReading(String(d.newMeterReading));
-      if (d.isMeterRunning) setIsMeterRunning(d.isMeterRunning);
-      if (d.needsDeclogging) setNeedsDeclogging(d.needsDeclogging);
+      if (d.isMeterRunning === 'Yes' || d.isMeterRunning === 'No') setIsMeterRunning(d.isMeterRunning);
+      if (d.needsDeclogging === 'No' || d.needsDeclogging === 'Yes') setNeedsDeclogging(d.needsDeclogging);
       if (d.pipeSize) setPipeSize(String(d.pipeSize));
       if (d.leakType) setLeakType(String(d.leakType));
-      if (Array.isArray(d.usedMaterials)) setUsedMaterials(d.usedMaterials.map((m: any) => ({ item: String(m.item ?? ''), qty: String(m.qty ?? '1') })));
+      if (Array.isArray(d.usedMaterials)) {
+        setUsedMaterials(
+          d.usedMaterials
+            .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+            .map((m) => ({ item: String(m.item ?? ''), qty: String(m.qty ?? '1') })),
+        );
+      }
       if (d.vehicleType) setVehicleType(String(d.vehicleType));
       if (d.plateNumber) setPlateNumber(String(d.plateNumber));
       if (d.driverName) setDriverName(String(d.driverName));
-      if (Array.isArray(d.haulingCycles) && d.haulingCycles.length > 0) setHaulingCycles(d.haulingCycles);
+      if (Array.isArray(d.haulingCycles) && d.haulingCycles.length > 0) {
+        setHaulingCycles(
+          d.haulingCycles
+            .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+            .map((c) => ({
+              sourceLocation: typeof c.sourceLocation === 'string' ? c.sourceLocation : '',
+              deliveryLocation: typeof c.deliveryLocation === 'string' ? c.deliveryLocation : '',
+              volumeM3: c.volumeM3 != null ? String(c.volumeM3) : '',
+              loadingTime: typeof c.loadingTime === 'string' ? c.loadingTime : '',
+              injectionTime: typeof c.injectionTime === 'string' ? c.injectionTime : '',
+            })),
+        );
+      }
       if (d.turbidityNtu != null) setTurbidityNtu(String(d.turbidityNtu));
       if (d.phLevel != null) setPhLevel(String(d.phLevel));
       if (d.samplePoint) setSamplePoint(String(d.samplePoint));
       if (d.filterUnit) setFilterUnit(String(d.filterUnit));
       if (d.backwashDurationMin != null) setBackwashDurationMin(String(d.backwashDurationMin));
-      if (d.waterClarity) setWaterClarity(d.waterClarity);
+      if (d.waterClarity === 'Clear' || d.waterClarity === 'Slightly Turbid' || d.waterClarity === 'Turbid') {
+        setWaterClarity(d.waterClarity);
+      }
       if (d.scannedEquipment) setScannedEquipment(String(d.scannedEquipment));
       if (d.maxTempC != null) setMaxTempC(String(d.maxTempC));
-      if (d.hotspotFound) setHotspotFound(d.hotspotFound);
+      if (d.hotspotFound === 'No' || d.hotspotFound === 'Yes') setHotspotFound(d.hotspotFound);
       if (d.swlMeters != null) setSwlMeters(String(d.swlMeters));
       if (d.pwlMeters != null) setPwlMeters(String(d.pwlMeters));
       return;
@@ -548,8 +579,8 @@ export default function ActivityLoggerModal(p: {
           added.push({ url: compact.dataUrl, storagePath: null, preview: compact.dataUrl });
           totalSaved += compact.savedBytes;
         }
-      } catch (err: any) {
-        setErrMsg(`Photo processing error: ${err?.message ?? 'unknown'}`);
+      } catch (err: unknown) {
+        setErrMsg(`Photo processing error: ${getErrorMessage(err, 'unknown')}`);
       }
     }
 
@@ -575,7 +606,7 @@ export default function ActivityLoggerModal(p: {
     };
   }
 
-  function buildDetails(): Record<string, any> {
+  function buildDetails(): Record<string, unknown> {
     if (activityType === 'genset_monitoring') {
       return {
         gensetInitialFuel: gensetInitialFuel ? Number(gensetInitialFuel) : null,
@@ -706,7 +737,11 @@ export default function ActivityLoggerModal(p: {
         : null;
 
     const expiresIso = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-    const payload: Record<string, any> = {
+    type ActivitySubmitPayload = Omit<
+      DailyActivityRow,
+      'id' | 'verified_by' | 'verified_at' | 'review_note' | 'photos_purged_at' | 'created_at' | 'updated_at'
+    >;
+    const payload: ActivitySubmitPayload = {
       organization_id: p.orgId,
       activity_date: p.date,
       logged_by: p.userId,
@@ -729,28 +764,24 @@ export default function ActivityLoggerModal(p: {
       photo_storage_paths: photos.map((ph) => ph.storagePath).filter((sp): sp is string => Boolean(sp)),
       photos_expires_at: photos.length > 0 ? expiresIso : null,
       signature_data: sigData,
+      ...(p.linkedJobOrder?.id ? { job_order_id: p.linkedJobOrder.id } : {}),
     };
 
-    if (p.linkedJobOrder?.id) {
-      payload.job_order_id = p.linkedJobOrder.id;
-    }
+    const buildOfflineActivityRow = (): DailyActivityRow => ({
+      id: `offline-${Date.now()}`,
+      ...payload,
+      verified_by: null,
+      verified_at: null,
+      review_note: null,
+      photos_purged_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
 
     if (!navigator.onLine && p.onQueuedOffline) {
       await p.onQueuedOffline(payload);
       setSubmitting(false);
-      p.onSaved(
-        {
-          id: `offline-${Date.now()}`,
-          ...(payload as any),
-          verified_by: null,
-          verified_at: null,
-          review_note: null,
-          photos_purged_at: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        { offline: true },
-      );
+      p.onSaved(buildOfflineActivityRow(), { offline: true });
       p.onClose();
       return;
     }
@@ -758,7 +789,7 @@ export default function ActivityLoggerModal(p: {
     try {
       const sb = supabaseBrowser();
       if (p.editingActivity?.id) {
-        const updatePayload: Record<string, any> = {
+        const updatePayload: Partial<ActivitySubmitPayload> = {
           lead_operator_id: payload.lead_operator_id,
           crew_operator_ids: payload.crew_operator_ids,
           shift_type_id: payload.shift_type_id,
@@ -818,26 +849,14 @@ export default function ActivityLoggerModal(p: {
       setSubmitting(false);
       p.onSaved(data as DailyActivityRow);
       p.onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Fall back to offline queue if network failure and callback available
-      const message = String(err?.message ?? 'Save failed');
+      const message = getErrorMessage(err, 'Save failed');
       const looksOffline = !navigator.onLine || /fetch|network|failed to load/i.test(message);
       if (looksOffline && p.onQueuedOffline) {
         await p.onQueuedOffline(payload);
         setSubmitting(false);
-        p.onSaved(
-          {
-            id: `offline-${Date.now()}`,
-            ...(payload as any),
-            verified_by: null,
-            verified_at: null,
-            review_note: null,
-            photos_purged_at: null,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-          { offline: true },
-        );
+        p.onSaved(buildOfflineActivityRow(), { offline: true });
         p.onClose();
         return;
       }
@@ -1135,7 +1154,7 @@ export default function ActivityLoggerModal(p: {
               </label>
               <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
                 Run Cause
-                <select className="input" value={gensetCause} onChange={(e) => setGensetCause(e.target.value as any)}>
+                <select className="input" value={gensetCause} onChange={(e) => setGensetCause(e.target.value as 'Routine' | 'Power Outage' | 'PMS')}>
                   <option value="Routine">Routine Test</option>
                   <option value="Power Outage">Power Outage</option>
                   <option value="PMS">PMS</option>
@@ -1384,14 +1403,14 @@ export default function ActivityLoggerModal(p: {
               </label>
               <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
                 Meter Running?
-                <select className="input" value={isMeterRunning} onChange={(e) => setIsMeterRunning(e.target.value as any)}>
+                <select className="input" value={isMeterRunning} onChange={(e) => setIsMeterRunning(e.target.value as 'Yes' | 'No')}>
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
                 </select>
               </label>
               <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
                 Needs Declogging?
-                <select className="input" value={needsDeclogging} onChange={(e) => setNeedsDeclogging(e.target.value as any)}>
+                <select className="input" value={needsDeclogging} onChange={(e) => setNeedsDeclogging(e.target.value as 'No' | 'Yes')}>
                   <option value="No">No</option>
                   <option value="Yes">Yes</option>
                 </select>
@@ -1570,7 +1589,7 @@ export default function ActivityLoggerModal(p: {
               </label>
               <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
                 Discharge Clarity
-                <select className="input" value={waterClarity} onChange={(e) => setWaterClarity(e.target.value as any)}>
+                <select className="input" value={waterClarity} onChange={(e) => setWaterClarity(e.target.value as 'Clear' | 'Slightly Turbid' | 'Turbid')}>
                   <option value="Clear">Clear</option>
                   <option value="Slightly Turbid">Slightly Turbid</option>
                   <option value="Turbid">Turbid</option>
@@ -1594,7 +1613,7 @@ export default function ActivityLoggerModal(p: {
               </label>
               <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
                 Hotspot Detected?
-                <select className="input" value={hotspotFound} onChange={(e) => setHotspotFound(e.target.value as any)}>
+                <select className="input" value={hotspotFound} onChange={(e) => setHotspotFound(e.target.value as 'No' | 'Yes')}>
                   <option value="No">No (Normal)</option>
                   <option value="Yes">Yes (Needs Attention)</option>
                 </select>

@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { enqueueOfflineReport } from '@/lib/offline-queue';
+import { getErrorMessage } from '@/lib/error-utils';
 import type { DailyActivityRow } from '@/lib/activity-types';
 import {
   activityToAccomplishmentEntry,
@@ -315,8 +316,8 @@ export default function AccomplishmentReports(p: Props) {
             ? `Report sent to ${headById.get(assignedHeadId)?.full_name ?? 'Assigned Head'}.`
             : 'Draft saved.',
       });
-    } catch (err: any) {
-      const errText = String(err?.message ?? 'Failed to save report.');
+    } catch (err: unknown) {
+      const errText = getErrorMessage(err, 'Failed to save report.');
       if (!navigator.onLine || /fetch|network|failed to load/i.test(errText)) {
         await enqueueOfflineReport(editingId, payload);
         setBusy(false);

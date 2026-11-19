@@ -1,9 +1,13 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getSupabaseEnv } from '@/lib/supabase/env';
+import { shouldBypassSessionAuth } from '@/lib/middleware-rules';
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  if (shouldBypassSessionAuth(pathname, req.method)) {
+    return NextResponse.next({ request: req });
+  }
   const isLoginRoute = pathname.startsWith('/login');
   const isApiRoute = pathname.startsWith('/api/');
   const { url, key, isConfigured } = getSupabaseEnv();

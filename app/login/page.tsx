@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { getSupabaseEnv } from '@/lib/supabase/env';
+import { getErrorMessage } from '@/lib/error-utils';
 
 function LoginForm() {
   const params = useSearchParams();
@@ -115,17 +116,16 @@ function LoginForm() {
         setConfirmPassword('');
         setLoading(false);
       }
-    } catch (e: any) {
-      setErr(
-        e?.message ??
-          (mode === 'signin'
-            ? 'Sign in failed'
-            : mode === 'forgot'
-              ? 'Could not send reset email'
-              : mode === 'reset'
-                ? 'Could not update password'
-                : 'Sign up failed'),
-      );
+    } catch (e: unknown) {
+      const fallback =
+        mode === 'signin'
+          ? 'Sign in failed'
+          : mode === 'forgot'
+            ? 'Could not send reset email'
+            : mode === 'reset'
+              ? 'Could not update password'
+              : 'Sign up failed';
+      setErr(getErrorMessage(e, fallback));
       setLoading(false);
     }
   }

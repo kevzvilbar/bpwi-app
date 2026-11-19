@@ -2,8 +2,18 @@
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import type { ChangeRequestItem, ChangeRequestOriginalState } from '@/lib/profile';
+import { getErrorMessage } from '@/lib/error-utils';
 import RosterMobileViews from '@/components/RosterMobileViews';
+import {
+  RosterContextMenu,
+  RosterFillConfirmModal,
+  RosterImportJsonModal,
+  RosterProposeBar,
+  RosterSubmitProposalModal,
+} from '@/components/RosterModals';
 
 type Op = { id: string; full_name: string; position: string | null };
 type Shift = {
@@ -109,10 +119,10 @@ export default function Roster(p: {
     area_code_id?: string | null;
     standby_type?: string | null;
     status: string;
-    original_state?: any;
+    original_state?: ChangeRequestOriginalState | null;
   }>;
   initialDraftRequestId?: string | null;
-  initialDraftItems?: any[];
+  initialDraftItems?: ChangeRequestItem[];
   initialError?: string;
 }) {
   const router = useRouter();
@@ -124,7 +134,7 @@ export default function Roster(p: {
   );
 
   const [draftReqId, setDraftReqId] = useState<string | null>(p.initialDraftRequestId ?? null);
-  const [draftItems, setDraftItems] = useState<any[]>(p.initialDraftItems ?? []);
+  const [draftItems, setDraftItems] = useState<ChangeRequestItem[]>(p.initialDraftItems ?? []);
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
   const [submitNote, setSubmitNote] = useState('');
   const [isSubmittingDraft, setIsSubmittingDraft] = useState(false);
@@ -199,8 +209,8 @@ export default function Roster(p: {
         setMsg(`✓ Successfully submitted ${count} change(s) for admin approval.`);
         startTransition(() => router.refresh());
       }
-    } catch (e: any) {
-      setMsg(e?.message ?? 'Network error while submitting changes');
+    } catch (e: unknown) {
+      setMsg(getErrorMessage(e, 'Network error while submitting changes'));
     } finally {
       setIsSubmittingDraft(false);
     }
@@ -587,10 +597,10 @@ export default function Roster(p: {
         if (data) {
           setDraftItems((prevItems) => [...prevItems.filter((x) => !(x.operator_id === opId && x.schedule_date === date)), data[0]]);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         rollbackStandbyKeys([{ opId, date, prev: prevSb }]);
         setSaveState('error');
-        setMsg(friendlyError(err.message, p.role));
+        setMsg(friendlyError(getErrorMessage(err), p.role));
       } finally {
         setSavingCount((c) => c - 1);
       }
@@ -645,10 +655,10 @@ export default function Roster(p: {
         if (data) {
           setDraftItems((prevItems) => [...prevItems.filter((x) => !(x.operator_id === opId && x.schedule_date === date)), data[0]]);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         rollbackShiftKeys([{ opId, date, prev: existing }]);
         setSaveState('error');
-        setMsg(friendlyError(err.message, p.role));
+        setMsg(friendlyError(getErrorMessage(err), p.role));
       } finally {
         setSavingCount((c) => c - 1);
       }
@@ -725,10 +735,10 @@ export default function Roster(p: {
           }
         }
         setDraftItems(newDraftList);
-      } catch (err: any) {
+      } catch (err: unknown) {
         rollbackShiftKeys(history.map((h) => ({ opId: h.opId, date: h.date, prev: (h as ShiftHistoryItem).prev })));
         setSaveState('error');
-        setMsg(friendlyError(err.message, p.role));
+        setMsg(friendlyError(getErrorMessage(err), p.role));
       } finally {
         setSavingCount((c) => c - 1);
       }
@@ -820,10 +830,10 @@ export default function Roster(p: {
           }
         }
         setDraftItems(newDraftList);
-      } catch (err: any) {
+      } catch (err: unknown) {
         rollbackShiftKeys(batch.entries.map((e) => ({ opId: e.opId, date: e.date, prev: e.prev })));
         setSaveState('error');
-        setMsg(friendlyError(err.message, p.role));
+        setMsg(friendlyError(getErrorMessage(err), p.role));
       } finally {
         setSavingCount((c) => c - 1);
       }
@@ -900,10 +910,10 @@ export default function Roster(p: {
         if (data) {
           setDraftItems((prevItems) => [...prevItems.filter((x) => !(x.operator_id === opId && x.schedule_date === date)), data[0]]);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         rollbackShiftKeys([{ opId, date, prev: prevCell }]);
         setSaveState('error');
-        setMsg(friendlyError(err.message, p.role));
+        setMsg(friendlyError(getErrorMessage(err), p.role));
       } finally {
         setSavingCount((c) => c - 1);
       }
@@ -978,10 +988,10 @@ export default function Roster(p: {
             if (data) {
               setDraftItems((prevItems) => [...prevItems.filter((x) => !(x.operator_id === op.id && x.schedule_date === date)), data[0]]);
             }
-          } catch (err: any) {
+          } catch (err: unknown) {
             rollbackShiftKeys([{ opId: op.id, date, prev: prevCell }]);
             setSaveState('error');
-            setMsg(friendlyError(err.message, p.role));
+            setMsg(friendlyError(getErrorMessage(err), p.role));
           } finally {
             setSavingCount((c) => c - 1);
           }
@@ -1076,8 +1086,8 @@ export default function Roster(p: {
         );
         router.refresh();
       }
-    } catch (err: any) {
-      setImportStatus(`Error: ${err?.message ?? 'Failed to import file'}`);
+    } catch (err: unknown) {
+      setImportStatus(`Error: ${getErrorMessage(err, 'Failed to import file')}`);
     } finally {
       setImporting(false);
     }
@@ -1254,9 +1264,9 @@ export default function Roster(p: {
             marginBottom: 8,
             padding: '10px 14px',
             borderRadius: 8,
-            background: '#fffbeb',
-            border: '1px solid #fde68a',
-            color: '#92400e',
+            background: 'var(--warn-bg)',
+            border: '1px solid var(--warn-border)',
+            color: 'var(--warn-fg)',
             fontSize: 12.5,
           }}
         >
@@ -1272,9 +1282,9 @@ export default function Roster(p: {
             marginBottom: 8,
             padding: '8px 12px',
             borderRadius: 8,
-            background: '#eff6ff',
-            border: '1px solid #bfdbfe',
-            color: '#1e3a8a',
+            background: 'var(--info-bg)',
+            border: '1px solid var(--border)',
+            color: 'var(--info-fg)',
             fontSize: 12.5,
             display: 'flex',
             justifyContent: 'space-between',
@@ -1349,22 +1359,55 @@ export default function Roster(p: {
             padding: '7px 12px',
           }}
         >
-          {isPropose && (
+          {isPropose ? (
             <span
               style={{
                 padding: '3px 8px',
                 borderRadius: 4,
-                background: '#fef3c7',
-                color: '#92400e',
+                background: 'var(--warn-bg)',
+                color: 'var(--warn-fg)',
                 fontSize: 11,
                 fontWeight: 700,
-                border: '1px solid #fde68a',
+                border: '1px solid var(--warn-border)',
                 marginRight: 2,
               }}
+              title="Edits save as draft change requests for admin approval"
             >
-              Propose Mode
+              Propose Mode · Draft → Approval
             </span>
-          )}
+          ) : p.canEdit && p.role === 'manager' ? (
+            <span
+              style={{
+                padding: '3px 8px',
+                borderRadius: 4,
+                background: 'var(--ok-bg)',
+                color: 'var(--ok-fg)',
+                fontSize: 11,
+                fontWeight: 700,
+                border: '1px solid var(--ok-fg)',
+                marginRight: 2,
+              }}
+              title="Admin edit window is active — changes save directly to the live schedule"
+            >
+              Direct Edit Mode · Live Window
+            </span>
+          ) : p.canEdit ? (
+            <span
+              style={{
+                padding: '3px 8px',
+                borderRadius: 4,
+                background: 'var(--info-bg)',
+                color: 'var(--info-fg)',
+                fontSize: 11,
+                fontWeight: 700,
+                border: '1px solid var(--border)',
+                marginRight: 2,
+              }}
+              title="Changes save directly to the live schedule"
+            >
+              Direct Edit Mode
+            </span>
+          ) : null}
           <span
             style={{
               padding: '3px 9px',
@@ -1513,6 +1556,44 @@ export default function Roster(p: {
               : mode === 'standby'
                 ? `Standby mode: click a cell to toggle ${standbyType} standby status.`
                 : 'Erase mode: click or drag across cells to clear shift assignments.'}
+          </div>
+        </div>
+      )}
+
+      {p.canEdit && p.role === 'manager' && draftItems.length > 0 && (
+        <div
+          className="no-print card"
+          role="status"
+          style={{
+            marginBottom: 8,
+            padding: '8px 12px',
+            borderLeft: '4px solid #f59e0b',
+            background: 'var(--warn-bg)',
+            color: 'var(--warn-fg)',
+            fontSize: 12.5,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 10,
+            flexWrap: 'wrap',
+          }}
+        >
+          <span>
+            <strong>Active Edit Window:</strong> edits now apply directly to the live schedule. You still have{' '}
+            <b>{draftItems.length}</b> unsubmitted draft proposal item{draftItems.length === 1 ? '' : 's'} saved from before this window.
+          </span>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <Link href="/requests" className="btn" style={{ padding: '3px 10px', minHeight: 30, fontSize: 12, textDecoration: 'none' }}>
+              View Requests
+            </Link>
+            <button
+              type="button"
+              className="btn"
+              style={{ padding: '3px 10px', minHeight: 30, fontSize: 12, color: '#b91c1c' }}
+              onClick={() => void discardDraftBatch()}
+            >
+              Discard Drafts
+            </button>
           </div>
         </div>
       )}
@@ -1893,243 +1974,58 @@ export default function Roster(p: {
         {p.canEdit && <span>Tip: drag across cells to paint, arrow keys + Enter for keyboard, right-click or long-press for menu.</span>}
       </div>
 
-      {/* Cell Actions Context Menu */}
       {ctxMenu && (
-        <div
-          className="no-print"
-          role="menu"
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            position: 'fixed',
-            top: Math.min(ctxMenu.y, window.innerHeight - 250),
-            left: Math.min(ctxMenu.x, window.innerWidth - 240),
-            zIndex: 60,
-            width: 230,
-            background: 'var(--surface)',
-            color: 'var(--text)',
-            border: '1px solid var(--border)',
-            borderRadius: 8,
-            boxShadow: '0 10px 25px rgba(15, 23, 42, 0.25)',
-            padding: '4px 0',
-            fontSize: 12.5,
+        <RosterContextMenu
+          ctxMenu={ctxMenu}
+          onClose={() => setCtxMenu(null)}
+          onSetStandby={setStandbyValue}
+          onRequestFillRight={(opId, opName, date) => {
+            const count = days.filter((d) => d.date >= date).length;
+            setConfirmFill({ opId, opName, date, count });
           }}
-        >
-          <div style={{ padding: '5px 10px', borderBottom: '1px solid var(--border-light)', fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
-            <span>CELL ACTIONS</span>
-            <span style={{ color: 'var(--accent)' }}>
-              {ctxMenu.opName.split(' ')[0]} · {ctxMenu.date.slice(5)}
-            </span>
-          </div>
-          {[
-            { label: 'Set General On-Call (OC)', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, 'OC'), color: 'var(--violet)' },
-            { label: 'Deep Well Standby (DWP)', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, 'DWP'), color: 'var(--violet)' },
-            { label: 'Electro-Mech Repair (ERP)', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, 'ERP'), color: 'var(--violet)' },
-            { label: 'Remove Standby', fn: () => setStandbyValue(ctxMenu.opId, ctxMenu.date, null), color: 'var(--text-secondary)' },
-            {
-              label: 'Fill Right to Month End',
-              fn: () => {
-                const count = days.filter((d) => d.date >= ctxMenu.date).length;
-                setConfirmFill({ opId: ctxMenu.opId, opName: ctxMenu.opName, date: ctxMenu.date, count });
-              },
-              color: 'var(--text)',
-            },
-            { label: 'Clear Shift (No Duty)', fn: () => clearCell(ctxMenu.opId, ctxMenu.date), color: 'var(--danger)' },
-          ].map((item) => (
-            <button
-              key={item.label}
-              role="menuitem"
-              onClick={() => {
-                setCtxMenu(null);
-                void item.fn();
-              }}
-              style={{
-                display: 'block',
-                width: '100%',
-                textAlign: 'left',
-                padding: '7px 12px',
-                border: 'none',
-                background: 'transparent',
-                color: item.color,
-                cursor: 'pointer',
-                fontWeight: 500,
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+          onClearCell={clearCell}
+        />
       )}
 
-      {/* Fill Right Confirmation Dialog */}
       {confirmFill && (
-        <div
-          className="no-print modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="fill-dialog-title"
-          onClick={() => setConfirmFill(null)}
-        >
-          <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420, display: 'grid', gap: 12 }}>
-            <h2 id="fill-dialog-title" style={{ margin: 0, fontSize: 17 }}>
-              Fill schedule to month end?
-            </h2>
-            <p style={{ margin: 0, fontSize: 13.5, color: 'var(--text-secondary)' }}>
-              This will copy <b>{confirmFill.opName}</b>&apos;s assignment from <b>{confirmFill.date}</b> across{' '}
-              <b>{confirmFill.count}</b> days through the end of {monthLabel}. You can undo this with <code>Ctrl+Z</code>.
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button className="btn" onClick={() => setConfirmFill(null)}>
-                Cancel
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={() => {
-                  const target = confirmFill;
-                  setConfirmFill(null);
-                  void fillRight(target.opId, target.date);
-                }}
-              >
-                Fill {confirmFill.count} days
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Import JSON Modal (Bottom Sheet on mobile, Dialog on desktop) */}
-      {importOpen && (
-        <div
-          className="no-print modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="import-dialog-title"
-          onClick={() => !importing && setImportOpen(false)}
-        >
-          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
-            <h2 id="import-dialog-title" style={{ margin: '0 0 6px', fontSize: 17 }}>
-              Import Legacy JSON Backup
-            </h2>
-            <p style={{ margin: '0 0 14px', fontSize: 13, color: '#475569' }}>
-              Select a JSON backup exported from the standalone HTML app. Existing records are safely upserted.
-            </p>
-            <input type="file" accept=".json,application/json" onChange={handleImportFile} disabled={importing} />
-            {importing && <p style={{ fontSize: 13, color: '#0369a1', margin: '10px 0 0' }}>Importing…</p>}
-            {importStatus && (
-              <p style={{ fontSize: 13, margin: '10px 0 0', color: importStatus.startsWith('Error:') ? '#b91c1c' : '#166534' }}>
-                {importStatus}
-              </p>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
-              <button className="btn" onClick={() => setImportOpen(false)} disabled={importing}>
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Floating Propose Mode Action Bar */}
-      {isPropose && draftItems.length > 0 && (
-        <aside
-          className="no-print"
-          aria-label="Pending proposal submission bar"
-          style={{
-            position: 'fixed',
-            bottom: 24,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 40,
-            background: 'var(--surface)',
-            border: '2px solid #f59e0b',
-            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2)',
-            borderRadius: 12,
-            padding: '10px 20px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 16,
+        <RosterFillConfirmModal
+          confirmFill={confirmFill}
+          monthLabel={monthLabel}
+          onCancel={() => setConfirmFill(null)}
+          onConfirm={() => {
+            const target = confirmFill;
+            setConfirmFill(null);
+            void fillRight(target.opId, target.date);
           }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#d97706', display: 'inline-block' }} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
-              Propose Mode: {draftItems.length} change{draftItems.length === 1 ? '' : 's'} queued
-            </span>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => setSubmitModalOpen(true)}
-              style={{ padding: '6px 14px', fontSize: 12.5 }}
-            >
-              Submit for Approval
-            </button>
-            <button
-              type="button"
-              className="btn btn-outline"
-              onClick={() => void discardDraftBatch()}
-              style={{ padding: '6px 12px', fontSize: 12.5, color: '#dc2626' }}
-            >
-              Discard
-            </button>
-          </div>
-        </aside>
+        />
       )}
 
-      {/* Submit Proposal Dialog Modal */}
+      {importOpen && (
+        <RosterImportJsonModal
+          importing={importing}
+          importStatus={importStatus}
+          onFileChange={handleImportFile}
+          onClose={() => setImportOpen(false)}
+        />
+      )}
+
+      {isPropose && draftItems.length > 0 && (
+        <RosterProposeBar
+          count={draftItems.length}
+          onOpenSubmit={() => setSubmitModalOpen(true)}
+          onDiscard={() => void discardDraftBatch()}
+        />
+      )}
+
       {submitModalOpen && (
-        <div
-          className="no-print modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="submit-proposal-title"
-          onClick={() => !isSubmittingDraft && setSubmitModalOpen(false)}
-        >
-          <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440, display: 'grid', gap: 12 }}>
-            <h2 id="submit-proposal-title" style={{ margin: 0, fontSize: 17 }}>
-              Submit Schedule Proposal
-            </h2>
-            <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
-              You have queued <strong>{draftItems.length}</strong> change{draftItems.length === 1 ? '' : 's'}. Admins and delegated approvers will review and approve them before they take effect on the live schedule.
-            </p>
-            <div>
-              <label htmlFor="submit-note-input" style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4, color: 'var(--text)' }}>
-                Optional Note / Reason:
-              </label>
-              <textarea
-                id="submit-note-input"
-                className="input"
-                rows={3}
-                placeholder="e.g. Schedule adjustments for pump maintenance coverage"
-                value={submitNote}
-                onChange={(e) => setSubmitNote(e.target.value)}
-                style={{ width: '100%', fontSize: 12.5 }}
-              />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
-              <button
-                type="button"
-                className="btn btn-outline"
-                disabled={isSubmittingDraft}
-                onClick={() => setSubmitModalOpen(false)}
-                style={{ padding: '6px 14px', fontSize: 12.5 }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={isSubmittingDraft}
-                onClick={() => void submitDraftBatch()}
-                style={{ padding: '6px 16px', fontSize: 12.5 }}
-              >
-                {isSubmittingDraft ? 'Submitting...' : `Submit ${draftItems.length} Change${draftItems.length === 1 ? '' : 's'}`}
-              </button>
-            </div>
-          </div>
-        </div>
+        <RosterSubmitProposalModal
+          count={draftItems.length}
+          submitNote={submitNote}
+          isSubmitting={isSubmittingDraft}
+          onChangeNote={setSubmitNote}
+          onCancel={() => setSubmitModalOpen(false)}
+          onSubmit={() => void submitDraftBatch()}
+        />
       )}
     </div>
   );

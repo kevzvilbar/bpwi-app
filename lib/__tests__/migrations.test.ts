@@ -12,7 +12,7 @@ describe('Supabase SQL migrations integrity', () => {
     .sort();
 
   it('has strictly sequential 3-digit prefixes with no gaps or duplicates', () => {
-    assert.ok(files.length >= 18, `Expected at least 18 migrations, found ${files.length}`);
+    assert.ok(files.length >= 20, `Expected at least 20 migrations, found ${files.length}`);
     const nums = files.map((f) => {
       const m = f.match(/^(\d{3})_/);
       assert.ok(m, `Migration filename must start with 3-digit prefix: ${f}`);
@@ -45,6 +45,25 @@ describe('Supabase SQL migrations integrity', () => {
       const rlsPattern = new RegExp(`alter\\s+table\\s+(?:public\\.)?${tbl}\\s+enable\\s+row\\s+level\\s+security`, 'i');
       const hasRls = rlsPattern.test(allSql) || dynamicRlsTables.has(tbl);
       assert.ok(hasRls, `Table "${tbl}" is missing ENABLE ROW LEVEL SECURITY in migrations`);
+    }
+  });
+
+  it('documents 019 and 020 in supabase/migrations/README.md', () => {
+    const readme = fs.readFileSync(path.join(MIGRATIONS_DIR, 'README.md'), 'utf8');
+    assert.match(readme, /\b019\b/);
+    assert.match(readme, /\b020\b/);
+  });
+
+  it('hardens change requests in 020_change_requests_hardening.sql', () => {
+    const sql20 = fs.readFileSync(path.join(MIGRATIONS_DIR, '020_change_requests_hardening.sql'), 'utf8');
+    for (const required of [
+      'drop function if exists approve_change_request',
+      'p_allow_self_override',
+      'partially_approved',
+      'trg_validate_change_request_item_org',
+      'trg_guard_change_request_transition',
+    ]) {
+      assert.ok(sql20.includes(required), `020_change_requests_hardening.sql missing required construct: ${required}`);
     }
   });
 });

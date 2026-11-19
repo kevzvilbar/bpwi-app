@@ -171,6 +171,7 @@ export default async function RequestsPage() {
         shifts={shiftsRes.data ?? []}
         areas={areasRes.data ?? []}
         canApprove={canApprove}
+        isAdmin={profile.isAdmin}
         isManager={isManager}
         currentUserId={user.id}
       />

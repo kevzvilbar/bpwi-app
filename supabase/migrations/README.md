@@ -1,6 +1,6 @@
 # Supabase Migrations (`bpwi-app`)
 
-Migrations in this folder are strictly numbered (`001`–`018`) and verified by `npm test` (`lib/__tests__/migrations.test.ts`), which checks:
+Migrations in this folder are strictly numbered (`001`–`020`) and verified by `npm test` (`lib/__tests__/migrations.test.ts`), which checks:
 - Sequential numbering with no gaps or duplicates.
 - Every newly created table enables Row Level Security (`ENABLE ROW LEVEL SECURITY`).
 
@@ -13,7 +13,7 @@ supabase db push
 ```
 
 ### Option B — Supabase SQL Editor (Manual)
-Run each file in ascending numeric order (`001_init.sql` → `018_notifications.sql`). All migrations are written idempotently (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
+Run each file in ascending numeric order (`001_init.sql` → `020_change_requests_hardening.sql`). All migrations are written idempotently (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
 
 ## Migration Index
 - `001`–`006`: Core schema (`organizations`, `operators`, `shift_types`, `area_codes`, `schedule_assignments`, `pm_tasks`, `audit_logs`, `app_title`, `user_profiles`).
@@ -25,3 +25,5 @@ Run each file in ascending numeric order (`001_init.sql` → `018_notifications.
 - `015`–`016`: Editable Organizational Chart (`org_positions`, auto-vacate & auto-sync triggers, `organizations.org_chart_meta`).
 - `017`: Department Head RPC for chart header (`update_org_chart_meta`) and single-node operator head sync trigger.
 - `018`: In-app `notifications` table and triggers for Accomplishment Reports & Change Requests.
+- `019`: Enforce admin approval on new sign-ups (`user_profiles.is_active = false`, `handle_new_user()` — supersedes the earlier in-place edit to `002_auto_profile.sql`) and backfill missing profiles.
+- `020`: Change-request hardening (`trg_validate_change_request_item_org`, `trg_guard_change_request_transition`, self-approval prevention with `p_allow_self_override`, partial-approval status & follow-up approvals, multi-table conflict checks, leave overlap checks, and `partially_approved` notifications).

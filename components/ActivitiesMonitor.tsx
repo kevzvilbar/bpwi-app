@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import { getErrorMessage } from '@/lib/error-utils';
 import {
   ACTIVITY_BY_ID,
   ACTIVITY_TYPES,
@@ -96,12 +97,14 @@ function formatTelemetrySummary(act: DailyActivityRow): string[] {
     if (d.pipeSize) parts.push(`Pipe: ${d.pipeSize}`);
     if (d.leakType) parts.push(`Cause: ${d.leakType}`);
     if (Array.isArray(d.usedMaterials) && d.usedMaterials.length > 0) {
-      parts.push(`Materials: ${d.usedMaterials.map((m: any) => `${m.item} (${m.qty})`).join(', ')}`);
+      const mats = d.usedMaterials as Array<{ item?: unknown; qty?: unknown }>;
+      parts.push(`Materials: ${mats.map((m) => `${String(m.item ?? '')} (${String(m.qty ?? '')})`).join(', ')}`);
     }
   }
   if (act.activity_type === 'tankering' && Array.isArray(d.haulingCycles)) {
-    const totalVol = d.haulingCycles.reduce((acc: number, c: any) => acc + (Number(c.volumeM3) || 0), 0);
-    parts.push(`${d.haulingCycles.length} trip(s) · ${totalVol} m³`);
+    const cycles = d.haulingCycles as Array<{ volumeM3?: unknown }>;
+    const totalVol = cycles.reduce((acc: number, c) => acc + (Number(c.volumeM3) || 0), 0);
+    parts.push(`${cycles.length} trip(s) · ${totalVol} m³`);
     if (d.plateNumber) parts.push(`Plate: ${d.plateNumber}`);
   }
   if (act.activity_type === 'water_sampling') {
@@ -404,8 +407,8 @@ export default function ActivitiesMonitor(p: {
         setBannerMsg(`✓ Purged expired photos from ${json.purgedCount} record(s) (${json.filesRemoved} file(s) removed).`);
         if (json.purgedCount > 0) router.refresh();
       }
-    } catch (err: any) {
-      setBannerMsg(`Purge error: ${err?.message ?? 'failed'}`);
+    } catch (err: unknown) {
+      setBannerMsg(`Purge error: ${getErrorMessage(err, 'failed')}`);
     } finally {
       setPurging(false);
     }
@@ -499,7 +502,7 @@ export default function ActivitiesMonitor(p: {
 
   async function updateJobOrderStatus(jo: JobOrderRow, nextStatus: JobOrderRow['status']) {
     const sb = supabaseBrowser();
-    const updates: Record<string, any> = {
+    const updates: Record<string, unknown> = {
       status: nextStatus,
       completed_at: nextStatus === 'completed' ? new Date().toISOString() : null,
     };
@@ -835,7 +838,7 @@ export default function ActivitiesMonitor(p: {
                 ))}
               </select>
             )}
-            <select className="input" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as any)} style={{ width: 'auto', minWidth: 130 }}>
+            <select className="input" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as 'all' | 'submitted' | 'verified' | 'flagged')} style={{ width: 'auto', minWidth: 130 }}>
               <option value="all">All Statuses</option>
               <option value="submitted">Submitted</option>
               <option value="verified">Verified</option>
@@ -1249,7 +1252,7 @@ export default function ActivitiesMonitor(p: {
                   </label>
                   <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
                     Plant Status
-                    <select className="input" value={hoPlantStatus} onChange={(e) => setHoPlantStatus(e.target.value as any)}>
+                    <select className="input" value={hoPlantStatus} onChange={(e) => setHoPlantStatus(e.target.value as 'normal' | 'watch' | 'critical')}>
                       <option value="normal">Normal</option>
                       <option value="watch">Watch / Caution</option>
                       <option value="critical">Critical Alert</option>
@@ -1431,7 +1434,7 @@ export default function ActivitiesMonitor(p: {
               </label>
               <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
                 Priority
-                <select className="input" value={joPriority} onChange={(e) => setJoPriority(e.target.value as any)}>
+                <select className="input" value={joPriority} onChange={(e) => setJoPriority(e.target.value as 'low' | 'medium' | 'high')}>
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High (Urgent)</option>

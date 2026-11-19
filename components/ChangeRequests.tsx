@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { formatManila, formatDateOnly } from '@/lib/date';
 import type { ChangeRequest, ChangeRequestItem } from '@/lib/profile';
+import { getErrorMessage } from '@/lib/error-utils';
 
 type Shift = { id: string; code: string; description?: string | null; background_color: string; text_color: string };
 type Area = { id: string; code: string; name?: string | null; background_color: string; text_color: string };
@@ -16,9 +17,18 @@ type Props = {
   shifts: Shift[];
   areas: Area[];
   canApprove: boolean;
+  isAdmin?: boolean;
   isManager: boolean;
   currentUserId: string;
 };
+
+function hasOpenItems(r: ChangeRequest): boolean {
+  return (r.items ?? []).some((i) => i.status === 'pending' || i.status === 'conflict');
+}
+
+function getOpenItems(r: ChangeRequest): ChangeRequestItem[] {
+  return (r.items ?? []).filter((i) => i.status === 'pending' || i.status === 'conflict');
+}
 
 export default function ChangeRequests(p: Props) {
   const router = useRouter();
@@ -35,14 +45,14 @@ export default function ChangeRequests(p: Props) {
   const areaMap = new Map(p.areas.map((a) => [a.id, a]));
 
   const filteredRequests = p.requests.filter((r) => {
-    if (tab === 'pending') return r.status === 'pending';
-    if (tab === 'approved') return r.status === 'approved' || r.status === 'partially_approved';
+    if (tab === 'pending') return r.status === 'pending' || (r.status === 'partially_approved' && hasOpenItems(r));
+    if (tab === 'approved') return r.status === 'approved' || (r.status === 'partially_approved' && !hasOpenItems(r));
     if (tab === 'rejected') return r.status === 'rejected';
     return true;
   });
 
-  const pendingCount = p.requests.filter((r) => r.status === 'pending').length;
-  const approvedCount = p.requests.filter((r) => r.status === 'approved' || r.status === 'partially_approved').length;
+  const pendingCount = p.requests.filter((r) => r.status === 'pending' || (r.status === 'partially_approved' && hasOpenItems(r))).length;
+  const approvedCount = p.requests.filter((r) => r.status === 'approved' || (r.status === 'partially_approved' && !hasOpenItems(r))).length;
   const rejectedCount = p.requests.filter((r) => r.status === 'rejected').length;
 
   function toggleItemSelection(requestId: string, itemId: string) {
@@ -58,13 +68,13 @@ export default function ChangeRequests(p: Props) {
   }
 
   function toggleAllItemsForRequest(request: ChangeRequest) {
-    const items = request.items ?? [];
+    const openItems = getOpenItems(request);
     setSelectedItems((prev) => {
       const current = prev[request.id] ?? new Set();
-      if (current.size === items.length) {
+      if (current.size === openItems.length && openItems.length > 0) {
         return { ...prev, [request.id]: new Set() };
       }
-      return { ...prev, [request.id]: new Set(items.map((i) => i.id)) };
+      return { ...prev, [request.id]: new Set(openItems.map((i) => i.id)) };
     });
   }
 
@@ -73,28 +83,31 @@ export default function ChangeRequests(p: Props) {
     setActionMsg(null);
     const sb = supabaseBrowser();
 
+    const openItems = getOpenItems(request);
+    const openIdSet = new Set(openItems.map((i) => i.id));
     const selectedSet = selectedItems[request.id];
-    const itemsToApprove = onlySelected && selectedSet && selectedSet.size > 0
-      ? Array.from(selectedSet)
-      : (request.items ?? []).map((i) => i.id);
+    const selectedOpen = selectedSet ? Array.from(selectedSet).filter((id) => openIdSet.has(id)) : [];
+    const itemsToApprove = onlySelected && selectedOpen.length > 0 ? selectedOpen : openItems.map((i) => i.id);
+    const allowSelfOverride = request.requester_id === p.currentUserId && Boolean(p.isAdmin);
 
     try {
       const { data, error } = await sb.rpc('approve_change_request', {
         p_request_id: request.id,
         p_item_ids: itemsToApprove,
         p_reject_item_ids: null,
-        p_review_notes: 'Approved by admin',
+        p_review_notes: allowSelfOverride ? 'Approved by admin (self-override)' : 'Approved by admin',
         p_force_conflicts: forceConflicts,
+        p_allow_self_override: allowSelfOverride,
       });
 
       if (error) {
         setActionMsg({ type: 'err', text: `Approval failed: ${error.message}` });
       } else {
-        const res = data as any;
-        if (res?.conflict_count > 0 && !forceConflicts) {
+        const res = data as { conflict_count?: number; approved_count?: number } | null;
+        if ((res?.conflict_count ?? 0) > 0 && !forceConflicts) {
           setActionMsg({
             type: 'err',
-            text: `${res.conflict_count} item(s) had conflicts with recent schedule updates. Review conflicts below or click Override.`,
+            text: `${res?.conflict_count} item(s) had conflicts with recent schedule updates. Review conflicts below or click Override.`,
           });
         } else {
           setActionMsg({
@@ -104,8 +117,8 @@ export default function ChangeRequests(p: Props) {
         }
         startTransition(() => router.refresh());
       }
-    } catch (err: any) {
-      setActionMsg({ type: 'err', text: err?.message ?? 'Network error during approval' });
+    } catch (err: unknown) {
+      setActionMsg({ type: 'err', text: getErrorMessage(err, 'Network error during approval') });
     } finally {
       setProcessingId(null);
     }
@@ -131,8 +144,8 @@ export default function ChangeRequests(p: Props) {
         setRejectReason('');
         startTransition(() => router.refresh());
       }
-    } catch (err: any) {
-      setActionMsg({ type: 'err', text: err?.message ?? 'Network error during rejection' });
+    } catch (err: unknown) {
+      setActionMsg({ type: 'err', text: getErrorMessage(err, 'Network error during rejection') });
     } finally {
       setProcessingId(null);
     }
@@ -304,8 +317,13 @@ export default function ChangeRequests(p: Props) {
         <div style={{ display: 'grid', gap: 16 }}>
           {filteredRequests.map((req) => {
             const items = req.items ?? [];
+            const openItems = getOpenItems(req);
+            const isOpenRequest = req.status === 'pending' || (req.status === 'partially_approved' && openItems.length > 0);
+            const isSelfRequest = req.requester_id === p.currentUserId;
+            const canActOnSelf = !isSelfRequest || Boolean(p.isAdmin);
             const isProcessing = processingId === req.id;
             const selected = selectedItems[req.id] ?? new Set();
+            const openSelectedCount = Array.from(selected).filter((id) => openItems.some((o) => o.id === id)).length;
             const hasConflicts = items.some((i) => i.status === 'conflict');
 
             return (
@@ -313,7 +331,7 @@ export default function ChangeRequests(p: Props) {
                 key={req.id}
                 className="card"
                 style={{
-                  border: req.status === 'pending' ? '1px solid var(--accent)' : '1px solid var(--border)',
+                  border: isOpenRequest ? '1px solid var(--accent)' : '1px solid var(--border)',
                   borderRadius: 8,
                   padding: 16,
                   background: 'var(--surface)',
@@ -351,16 +369,16 @@ export default function ChangeRequests(p: Props) {
                               : req.status === 'rejected'
                                 ? 'var(--warn-bg)'
                                 : req.status === 'partially_approved'
-                                  ? '#e0f2fe'
-                                  : '#fef3c7',
+                                  ? 'var(--info-bg)'
+                                  : 'var(--warn-bg)',
                           color:
                             req.status === 'approved'
                               ? 'var(--ok-fg)'
                               : req.status === 'rejected'
                                 ? 'var(--warn-fg)'
                                 : req.status === 'partially_approved'
-                                  ? '#0369a1'
-                                  : '#b45309',
+                                  ? 'var(--info-fg)'
+                                  : 'var(--warn-fg)',
                           textTransform: 'uppercase',
                         }}
                       >
@@ -387,7 +405,23 @@ export default function ChangeRequests(p: Props) {
                   </div>
 
                   {/* Approver Actions */}
-                  {p.canApprove && req.status === 'pending' && (
+                  {p.canApprove && isOpenRequest && !canActOnSelf && (
+                    <span
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: 6,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        background: 'var(--surface-muted)',
+                        color: 'var(--text-secondary)',
+                        border: '1px solid var(--border)',
+                      }}
+                    >
+                      Submitted by you — requires another approver
+                    </span>
+                  )}
+
+                  {p.canApprove && isOpenRequest && canActOnSelf && (
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       <button
                         type="button"
@@ -395,11 +429,16 @@ export default function ChangeRequests(p: Props) {
                         style={{ background: '#16a34a', color: '#ffffff', fontWeight: 700 }}
                         onClick={() => handleApprove(req, false)}
                         disabled={isProcessing}
+                        title={isSelfRequest ? 'Explicit admin override to approve your own change request' : undefined}
                       >
-                        {isProcessing ? 'Processing…' : `Approve All (${items.length})`}
+                        {isProcessing
+                          ? 'Processing…'
+                          : isSelfRequest
+                            ? `Admin Override & Approve (${openItems.length})`
+                            : `Approve All (${openItems.length})`}
                       </button>
 
-                      {selected.size > 0 && selected.size < items.length && (
+                      {openSelectedCount > 0 && openSelectedCount < openItems.length && (
                         <button
                           type="button"
                           className="btn"
@@ -407,7 +446,7 @@ export default function ChangeRequests(p: Props) {
                           onClick={() => handleApprove(req, true)}
                           disabled={isProcessing}
                         >
-                          Approve Selected ({selected.size})
+                          Approve Selected ({openSelectedCount})
                         </button>
                       )}
 
@@ -442,12 +481,12 @@ export default function ChangeRequests(p: Props) {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, textAlign: 'left' }}>
                     <thead>
                       <tr style={{ background: 'var(--surface-muted)', borderBottom: '1px solid var(--border)' }}>
-                        {p.canApprove && req.status === 'pending' && (
+                        {p.canApprove && isOpenRequest && canActOnSelf && (
                           <th style={{ padding: '6px 8px', width: 32 }}>
                             <input
                               type="checkbox"
-                              aria-label="Select all items"
-                              checked={items.length > 0 && selected.size === items.length}
+                              aria-label="Select all open items"
+                              checked={openItems.length > 0 && openSelectedCount === openItems.length}
                               onChange={() => toggleAllItemsForRequest(req)}
                             />
                           </th>
@@ -466,7 +505,8 @@ export default function ChangeRequests(p: Props) {
                         const origShift = item.original_state?.shift_type_id;
                         const origArea = item.original_state?.area_code_id;
                         const isConflict = item.status === 'conflict';
-                        const isSelected = selected.has(item.id);
+                        const isItemOpen = item.status === 'pending' || item.status === 'conflict';
+                        const isSelected = isItemOpen && selected.has(item.id);
 
                         return (
                           <tr
@@ -474,20 +514,22 @@ export default function ChangeRequests(p: Props) {
                             style={{
                               borderBottom: '1px solid var(--border-light)',
                               background: isConflict
-                                ? '#fef3c7'
+                                ? 'var(--warn-bg)'
                                 : isSelected
                                   ? 'rgba(59, 130, 246, 0.08)'
                                   : undefined,
                             }}
                           >
-                            {p.canApprove && req.status === 'pending' && (
+                            {p.canApprove && isOpenRequest && canActOnSelf && (
                               <td style={{ padding: '6px 8px' }}>
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => toggleItemSelection(req.id, item.id)}
-                                  aria-label={`Select item for ${opName} on ${item.schedule_date}`}
-                                />
+                                {isItemOpen ? (
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => toggleItemSelection(req.id, item.id)}
+                                    aria-label={`Select item for ${opName} on ${item.schedule_date}`}
+                                  />
+                                ) : null}
                               </td>
                             )}
                             <td style={{ padding: '6px 8px', fontWeight: 600 }}>
@@ -523,7 +565,7 @@ export default function ChangeRequests(p: Props) {
                             </td>
                             <td style={{ padding: '6px 8px' }}>
                               {isConflict ? (
-                                <span style={{ color: '#b45309', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ color: 'var(--warn-fg)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                                   ⚠️ Live Conflict
                                 </span>
                               ) : item.status === 'approved' ? (

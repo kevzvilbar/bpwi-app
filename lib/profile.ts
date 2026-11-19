@@ -32,6 +32,19 @@ export type ChangeRequest = {
   items_count?: number;
 };
 
+export type ChangeRequestOriginalState = {
+  shift_type_id?: string | null;
+  area_code_id?: string | null;
+  standby_type?: string | null;
+  title?: string | null;
+  status?: string | null;
+  scheduled_date?: string | null;
+  assigned_operator_ids?: string[] | null;
+  leave_code?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+};
+
 /** Individual change item within a change request. */
 export type ChangeRequestItem = {
   id: string;
@@ -56,8 +69,8 @@ export type ChangeRequestItem = {
   leave_start_date?: string | null;
   leave_end_date?: string | null;
   notes?: string | null;
-  original_state?: any;
-  payload?: any;
+  original_state?: ChangeRequestOriginalState | null;
+  payload?: Record<string, unknown> | null;
   status: 'pending' | 'approved' | 'rejected' | 'conflict';
   rejection_reason?: string | null;
   applied_at?: string | null;
