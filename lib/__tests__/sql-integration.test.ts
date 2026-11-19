@@ -508,6 +508,22 @@ describe('PGlite SQL migrations 001–022 execution & security invariants', () =
     await db.query(`select consolidate_station_codes_for_org($1)`, [orgId]);
     await db.query(`select consolidate_station_codes_for_org($1)`, [orgId]);
 
+    // 022 safety net: retired codes are archived and every rewritten row records old -> new area id
+    const archived = await db.query<{ code: string }>(
+      `select original->>'code' as code from area_code_archive where organization_id = $1 and original ? 'code' order by 1`,
+      [orgId],
+    );
+    assert.deepEqual(archived.rows.map((r) => r.code), ['LD', 'MR', 'PW', 'RM', 'WM'].filter((c) => archived.rows.some((r) => r.code === c)));
+    assert.ok(archived.rows.some((r) => r.code === 'PW') && archived.rows.some((r) => r.code === 'RM'));
+    const remapped = await db.query<{ n: number }>(
+      `select count(*)::int as n from area_code_remap where organization_id = $1 and source_table = 'schedule_assignments'`,
+      [orgId],
+    );
+    assert.ok(remapped.rows[0].n >= 1);
+    // second (idempotent) run must not duplicate the archive
+    const archivedAgain = await db.query<{ n: number }>(`select count(*)::int as n from area_code_archive where organization_id = $1 and original ? 'code'`, [orgId]);
+    assert.equal(archivedAgain.rows[0].n, archived.rows.length);
+
     const postAreas = await db.query<{ id: string; code: string; name: string; category: string; sub_sites: string[] }>(
       `select id, code, name, category, sub_sites from area_codes where organization_id = $1 order by category, code`,
       [orgId],

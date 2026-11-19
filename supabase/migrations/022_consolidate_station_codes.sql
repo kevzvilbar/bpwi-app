@@ -4,6 +4,35 @@
 --   WD = Water Delivery   (kept distinct)
 -- Existing leave/rest/holiday codes (RD, AL, VL, SL, H) are preserved untouched.
 
+-- Safety net: this migration is lossy (it merges and deletes area codes and rewrites history).
+-- Before touching anything it records (a) every retired area_codes row and (b) the old -> new
+-- area id of every rewritten row, so the consolidation can be audited or reversed.
+create table if not exists area_code_archive (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id) on delete cascade,
+  archived_at timestamptz not null default now(),
+  merged_into uuid,
+  original jsonb not null
+);
+create table if not exists area_code_remap (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id) on delete cascade,
+  recorded_at timestamptz not null default now(),
+  source_table text not null,
+  row_id uuid not null,
+  old_area_code_id uuid not null,
+  new_area_code_id uuid not null
+);
+create index if not exists area_code_remap_org_idx on area_code_remap (organization_id, source_table);
+alter table area_code_archive enable row level security;
+alter table area_code_remap enable row level security;
+drop policy if exists "area_code_archive admin read" on area_code_archive;
+create policy "area_code_archive admin read" on area_code_archive
+  for select using (organization_id = current_org() and current_role_name() = 'admin');
+drop policy if exists "area_code_remap admin read" on area_code_remap;
+create policy "area_code_remap admin read" on area_code_remap
+  for select using (organization_id = current_org() and current_role_name() = 'admin');
+
 create or replace function consolidate_station_codes_for_org(p_org_id uuid) returns void
 language plpgsql security definer set search_path = public as $$
 declare
@@ -17,7 +46,10 @@ declare
   v_has_station boolean;
   v_has_area_codes boolean;
 begin
-  if auth.uid() is not null
+  -- The admin check is skipped only for a database owner running without an end user (the
+  -- migration itself). A null auth.uid() alone is NOT enough: it also describes unauthenticated
+  -- API requests, so the caller must also be the database owner session.
+  if not (auth.uid() is null and session_user in ('postgres', 'supabase_admin'))
      and (p_org_id is distinct from current_org() or current_role_name() is distinct from 'admin'::app_role) then
     raise exception 'Only organization admins can consolidate station codes';
   end if;
@@ -42,6 +74,10 @@ begin
   order by id limit 1;
 
   if v_pw_id is not null and v_pl_id is null then
+    -- PW is renamed in place (same id); keep its original code/name for the record
+    insert into area_code_archive (organization_id, merged_into, original)
+    select p_org_id, v_pw_id, to_jsonb(ac) from area_codes ac where ac.id = v_pw_id;
+
     update area_codes
     set code = 'PL', name = 'Plant Operations', category = 'station'
     where id = v_pw_id;
@@ -59,8 +95,16 @@ begin
     set name = 'Plant Operations', category = 'station', sub_sites = v_merged_sites
     where id = v_pl_id;
 
+    insert into area_code_remap (organization_id, source_table, row_id, old_area_code_id, new_area_code_id)
+    select p_org_id, 'schedule_assignments', id, area_code_id, v_pl_id from schedule_assignments
+    where organization_id = p_org_id and area_code_id = v_pw_id;
+
     update schedule_assignments
     set area_code_id = v_pl_id
+    where organization_id = p_org_id and area_code_id = v_pw_id;
+
+    insert into area_code_remap (organization_id, source_table, row_id, old_area_code_id, new_area_code_id)
+    select p_org_id, 'change_request_items', id, area_code_id, v_pl_id from change_request_items
     where organization_id = p_org_id and area_code_id = v_pw_id;
 
     update change_request_items
@@ -73,17 +117,32 @@ begin
       and original_state is not null
       and original_state ->> 'area_code_id' = v_pw_id::text;
 
+    insert into area_code_remap (organization_id, source_table, row_id, old_area_code_id, new_area_code_id)
+    select p_org_id, 'daily_activities', id, area_code_id, v_pl_id from daily_activities
+    where organization_id = p_org_id and area_code_id = v_pw_id;
+
     update daily_activities
     set area_code_id = v_pl_id
+    where organization_id = p_org_id and area_code_id = v_pw_id;
+
+    insert into area_code_remap (organization_id, source_table, row_id, old_area_code_id, new_area_code_id)
+    select p_org_id, 'job_orders', id, area_code_id, v_pl_id from job_orders
     where organization_id = p_org_id and area_code_id = v_pw_id;
 
     update job_orders
     set area_code_id = v_pl_id
     where organization_id = p_org_id and area_code_id = v_pw_id;
 
+    insert into area_code_remap (organization_id, source_table, row_id, old_area_code_id, new_area_code_id)
+    select p_org_id, 'shift_handovers', id, area_code_id, v_pl_id from shift_handovers
+    where organization_id = p_org_id and area_code_id = v_pw_id;
+
     update shift_handovers
     set area_code_id = v_pl_id
     where organization_id = p_org_id and area_code_id = v_pw_id;
+
+    insert into area_code_archive (organization_id, merged_into, original)
+    select p_org_id, v_pl_id, to_jsonb(ac) from area_codes ac where ac.id = v_pw_id;
 
     delete from area_codes where id = v_pw_id;
   elsif v_pl_id is not null then
@@ -136,8 +195,16 @@ begin
     set sub_sites = v_merged_sites
     where id = v_fd_id;
 
+    insert into area_code_remap (organization_id, source_table, row_id, old_area_code_id, new_area_code_id)
+    select p_org_id, 'schedule_assignments', id, area_code_id, v_fd_id from schedule_assignments
+    where organization_id = p_org_id and area_code_id = any(v_retired_ids);
+
     update schedule_assignments
     set area_code_id = v_fd_id
+    where organization_id = p_org_id and area_code_id = any(v_retired_ids);
+
+    insert into area_code_remap (organization_id, source_table, row_id, old_area_code_id, new_area_code_id)
+    select p_org_id, 'change_request_items', id, area_code_id, v_fd_id from change_request_items
     where organization_id = p_org_id and area_code_id = any(v_retired_ids);
 
     update change_request_items
@@ -150,17 +217,32 @@ begin
       and original_state is not null
       and original_state ->> 'area_code_id' = any(v_retired_texts);
 
+    insert into area_code_remap (organization_id, source_table, row_id, old_area_code_id, new_area_code_id)
+    select p_org_id, 'daily_activities', id, area_code_id, v_fd_id from daily_activities
+    where organization_id = p_org_id and area_code_id = any(v_retired_ids);
+
     update daily_activities
     set area_code_id = v_fd_id
+    where organization_id = p_org_id and area_code_id = any(v_retired_ids);
+
+    insert into area_code_remap (organization_id, source_table, row_id, old_area_code_id, new_area_code_id)
+    select p_org_id, 'job_orders', id, area_code_id, v_fd_id from job_orders
     where organization_id = p_org_id and area_code_id = any(v_retired_ids);
 
     update job_orders
     set area_code_id = v_fd_id
     where organization_id = p_org_id and area_code_id = any(v_retired_ids);
 
+    insert into area_code_remap (organization_id, source_table, row_id, old_area_code_id, new_area_code_id)
+    select p_org_id, 'shift_handovers', id, area_code_id, v_fd_id from shift_handovers
+    where organization_id = p_org_id and area_code_id = any(v_retired_ids);
+
     update shift_handovers
     set area_code_id = v_fd_id
     where organization_id = p_org_id and area_code_id = any(v_retired_ids);
+
+    insert into area_code_archive (organization_id, merged_into, original)
+    select p_org_id, v_fd_id, to_jsonb(ac) from area_codes ac where ac.id = any(v_retired_ids);
 
     delete from area_codes where id = any(v_retired_ids);
   end if;
@@ -183,7 +265,14 @@ begin
     values (p_org_id, 'WD', 'Water Delivery', 'station', '#f1f5f9', '#1e293b');
   end if;
 
-  -- 4. Update operator default_station references
+  -- 4. Update operator default_station references (old values are kept in area_code_archive/remap context;
+  --    operators.default_station is a short code, so also snapshot it)
+  insert into area_code_archive (organization_id, merged_into, original)
+  select p_org_id, null, jsonb_build_object('operator_id', id, 'default_station', default_station)
+  from operators
+  where organization_id = p_org_id
+    and upper(trim(coalesce(default_station, ''))) in ('PW', 'RM', 'LD', 'MR', 'WM');
+
   update operators
   set default_station = 'PL'
   where organization_id = p_org_id

@@ -174,6 +174,7 @@ export default function WellPulloutReportSheet({
               Ref: ACT-{activity.id.slice(0, 8).toUpperCase()}
             </div>
           </div>
+          {/* eslint-disable-next-line @next/next/no-img-element -- static logo / data-URL signature in a print sheet; next/image adds nothing here */}
           <img
             src="/bpwi-logo.png"
             alt="BP Waterworks Inc."
@@ -573,6 +574,7 @@ export default function WellPulloutReportSheet({
             }}
           >
             {signatureDataUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={signatureDataUrl}
                 alt="Contractor signature"
