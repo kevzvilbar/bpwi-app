@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import EscalationContacts, { type EscalationContact } from '@/components/EscalationContacts';
+import { DEFAULT_STATION_CODE } from '@/lib/roster-helpers';
 
 type Op = { id: string; full_name: string; position: string | null; phone_number: string | null; default_station: string | null };
 type Shift = {
@@ -181,12 +182,14 @@ export default function CallSheet(p: {
       </div>
 
       <details className="no-print card" style={{ padding: '7px 12px', marginBottom: 10, fontSize: 12, color: 'var(--text-secondary)' }}>
-        <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Code Glossary (OC, DWP, ERP, PW, RD)</summary>
+        <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Code Glossary (PL, FD, WD, OC, DWP, ERP, RD)</summary>
         <div style={{ marginTop: 6, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          <span><b>PL</b> = Plant Operations (default station)</span>
+          <span><b>FD</b> = Field Operations</span>
+          <span><b>WD</b> = Water Delivery</span>
           <span><b>OC</b> = General On-Call</span>
           <span><b>DWP</b> = Deep Well Pull-out Standby</span>
           <span><b>ERP</b> = Electro-Mechanical Repair Standby</span>
-          <span><b>PW</b> = Plant Works (default station)</span>
           <span><b>RD</b> = Rest Day</span>
         </div>
       </details>
@@ -259,7 +262,7 @@ export default function CallSheet(p: {
                   </div>
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  Station: <b>{area?.code ?? (isOnDuty ? 'PW' : op.default_station ?? '—')}</b>
+                  Station: <b>{area?.code ?? (isOnDuty ? DEFAULT_STATION_CODE : op.default_station ?? '—')}</b>
                 </div>
                 {op.phone_number && (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6 }}>
@@ -397,7 +400,7 @@ export default function CallSheet(p: {
                     </div>
                   </td>
                   <td style={{ padding: '8px 10px', color: 'var(--text)', fontWeight: 500 }}>
-                    {area?.code ?? (isOnDuty ? 'PW' : op.default_station ?? '—')}
+                    {area?.code ?? (isOnDuty ? DEFAULT_STATION_CODE : op.default_station ?? '—')}
                   </td>
                   <td style={{ padding: '8px 10px' }}>
                     {op.phone_number ? (
@@ -493,7 +496,7 @@ export default function CallSheet(p: {
               </span>
               <span>·</span>
               <span>
-                Station: <b>{area?.code ?? (isOnDuty ? 'PW' : op.default_station ?? '—')}</b>
+                Station: <b>{area?.code ?? (isOnDuty ? DEFAULT_STATION_CODE : op.default_station ?? '—')}</b>
               </span>
             </div>
 

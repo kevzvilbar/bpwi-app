@@ -65,8 +65,8 @@ async function setAuthUid(db: PGlite, uid: string | null) {
   await db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [uid ?? '']);
 }
 
-describe('PGlite SQL migrations 001–021 execution & security invariants', () => {
-  it('executes all 001–021 migrations cleanly and enforces sign-up, change-request, storage, and org-seed hardening', async () => {
+describe('PGlite SQL migrations 001–022 execution & security invariants', () => {
+  it('executes all 001–022 migrations cleanly and enforces sign-up, change-request, storage, org-seed, and station-code hardening', async () => {
     const db = new PGlite({ extensions: { pgcrypto } });
     await initSupabaseShim(db);
 
@@ -75,7 +75,7 @@ describe('PGlite SQL migrations 001–021 execution & security invariants', () =
       .filter((f) => f.endsWith('.sql'))
       .sort();
 
-    assert.ok(files.length >= 21, `Expected >= 21 migrations, found ${files.length}`);
+    assert.ok(files.length >= 22, `Expected >= 22 migrations, found ${files.length}`);
 
     for (const f of files) {
       const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8');
@@ -420,5 +420,142 @@ describe('PGlite SQL migrations 001–021 execution & security invariants', () =
     assert.ok(seededRes.rows[0].total >= 20);
     assert.equal(seededRes.rows[0].named, 0);
     assert.equal(seededRes.rows[0].vacant, seededRes.rows[0].total);
+
+    // 11. 022 Consolidate 6 station codes (PW, RM, LD, MR, WM, WD) -> 3 (PL, FD, WD) idempotently & admin-only
+    await setAuthUid(db, mgr1Id);
+    await assert.rejects(
+      () => db.query(`select consolidate_station_codes_for_org($1)`, [orgId]),
+      /only organization admins/i,
+    );
+
+    await setAuthUid(db, adminId);
+    await assert.rejects(
+      () => db.query(`select consolidate_station_codes_for_org($1)`, [org2Id]),
+      /only organization admins/i,
+    );
+
+    const pwRes = await db.query<{ id: string }>(
+      `insert into area_codes (organization_id, code, name, category) values ($1, 'PW', 'Plant Works', 'station') returning id`,
+      [orgId],
+    );
+    const rmRes = await db.query<{ id: string }>(
+      `insert into area_codes (organization_id, code, name, category, sub_sites) values ($1, 'RM', 'Repair & Maintenance', 'station', array['Pump A', 'Valve 1']) returning id`,
+      [orgId],
+    );
+    const ldRes = await db.query<{ id: string }>(
+      `insert into area_codes (organization_id, code, name, category, sub_sites) values ($1, 'LD', 'Leak Detection', 'station', array['Zone 1', 'Valve 1']) returning id`,
+      [orgId],
+    );
+    const mrRes = await db.query<{ id: string }>(
+      `insert into area_codes (organization_id, code, name, category) values ($1, 'MR', 'Meter Reading', 'station') returning id`,
+      [orgId],
+    );
+    const wmRes = await db.query<{ id: string }>(
+      `insert into area_codes (organization_id, code, name, category) values ($1, 'WM', 'Well Monitoring', 'station') returning id`,
+      [orgId],
+    );
+    await db.query(
+      `insert into area_codes (organization_id, code, name, category) values
+       ($1, 'WD', 'Water Delivery', 'station'),
+       ($1, 'RD', 'Rest Day', 'rest'),
+       ($1, 'AL', 'Annual Leave', 'leave')`,
+      [orgId],
+    );
+
+    const pwId = pwRes.rows[0].id;
+    const rmId = rmRes.rows[0].id;
+    const ldId = ldRes.rows[0].id;
+    const mrId = mrRes.rows[0].id;
+    const wmId = wmRes.rows[0].id;
+
+    await db.query(
+      `insert into operators (organization_id, full_name, default_station) values
+       ($1, 'Legacy PW Op', 'PW'),
+       ($1, 'Legacy RM Op', 'RM'),
+       ($1, 'Legacy LD Op', 'LD')`,
+      [orgId],
+    );
+
+    await db.query(
+      `insert into schedule_assignments (organization_id, operator_id, schedule_date, shift_type_id, area_code_id) values
+       ($1, $2, '2026-12-10', $3, $4),
+       ($1, $2, '2026-12-11', $3, $5)`,
+      [orgId, opId, shift1Id, pwId, rmId],
+    );
+    const actRes = await db.query<{ id: string }>(
+      `insert into daily_activities (organization_id, lead_operator_id, area_code_id, activity_type) values ($1, $2, $3, 'leak_detection') returning id`,
+      [orgId, opId, ldId],
+    );
+    const joRes = await db.query<{ id: string }>(
+      `insert into job_orders (organization_id, jo_number, title, area_code_id) values ($1, 'JO-TEST-001', 'Meter Check', $2) returning id`,
+      [orgId, mrId],
+    );
+    const hoRes = await db.query<{ id: string }>(
+      `insert into shift_handovers (organization_id, area_code_id, summary) values ($1, $2, 'Well check complete') returning id`,
+      [orgId, wmId],
+    );
+    const crRes = await db.query<{ id: string }>(
+      `insert into change_requests (organization_id, requester_id, title, status) values ($1, $2, 'Legacy Area Req', 'draft') returning id`,
+      [orgId, adminId],
+    );
+    const criRes = await db.query<{ id: string }>(
+      `insert into change_request_items (request_id, organization_id, target_table, action, operator_id, schedule_date, shift_type_id, area_code_id, original_state)
+       values ($1, $2, 'schedule_assignments', 'upsert', $3, '2026-12-12', $4, $5, $6::jsonb) returning id`,
+      [crRes.rows[0].id, orgId, opId, shift1Id, rmId, JSON.stringify({ shift_type_id: shift1Id, area_code_id: pwId })],
+    );
+
+    // Run consolidation twice to assert idempotency
+    await db.query(`select consolidate_station_codes_for_org($1)`, [orgId]);
+    await db.query(`select consolidate_station_codes_for_org($1)`, [orgId]);
+
+    const postAreas = await db.query<{ id: string; code: string; name: string; category: string; sub_sites: string[] }>(
+      `select id, code, name, category, sub_sites from area_codes where organization_id = $1 order by category, code`,
+      [orgId],
+    );
+    const stationAreas = postAreas.rows.filter((a) => a.category === 'station');
+    assert.deepEqual(
+      stationAreas.map((a) => a.code),
+      ['FD', 'PL', 'WD'],
+    );
+    assert.deepEqual(
+      postAreas.rows.filter((a) => a.category !== 'station').map((a) => a.code),
+      ['AL', 'RD'],
+    );
+
+    const plArea = stationAreas.find((a) => a.code === 'PL')!;
+    const fdArea = stationAreas.find((a) => a.code === 'FD')!;
+    assert.equal(plArea.name, 'Plant Operations');
+    assert.equal(fdArea.name, 'Field Operations');
+    assert.deepEqual(fdArea.sub_sites, ['Pump A', 'Valve 1', 'Zone 1']);
+
+    const postAsgs = await db.query<{ schedule_date: string; area_code_id: string }>(
+      `select schedule_date::text, area_code_id from schedule_assignments where operator_id = $1 and schedule_date in ('2026-12-10', '2026-12-11') order by schedule_date`,
+      [opId],
+    );
+    assert.equal(postAsgs.rows[0]?.area_code_id, plArea.id);
+    assert.equal(postAsgs.rows[1]?.area_code_id, fdArea.id);
+
+    const postAct = await db.query<{ area_code_id: string }>(`select area_code_id from daily_activities where id = $1`, [actRes.rows[0].id]);
+    const postJo = await db.query<{ area_code_id: string }>(`select area_code_id from job_orders where id = $1`, [joRes.rows[0].id]);
+    const postHo = await db.query<{ area_code_id: string }>(`select area_code_id from shift_handovers where id = $1`, [hoRes.rows[0].id]);
+    const postCri = await db.query<{ area_code_id: string; orig_area: string }>(
+      `select area_code_id, original_state->>'area_code_id' as orig_area from change_request_items where id = $1`,
+      [criRes.rows[0].id],
+    );
+    assert.equal(postAct.rows[0]?.area_code_id, fdArea.id);
+    assert.equal(postJo.rows[0]?.area_code_id, fdArea.id);
+    assert.equal(postHo.rows[0]?.area_code_id, fdArea.id);
+    assert.equal(postCri.rows[0]?.area_code_id, fdArea.id);
+    assert.equal(postCri.rows[0]?.orig_area, plArea.id);
+
+    const postOps = await db.query<{ full_name: string; default_station: string }>(
+      `select full_name, default_station from operators where organization_id = $1 and full_name like 'Legacy %' order by full_name`,
+      [orgId],
+    );
+    assert.deepEqual(postOps.rows, [
+      { full_name: 'Legacy LD Op', default_station: 'FD' },
+      { full_name: 'Legacy PW Op', default_station: 'PL' },
+      { full_name: 'Legacy RM Op', default_station: 'FD' },
+    ]);
   });
 });

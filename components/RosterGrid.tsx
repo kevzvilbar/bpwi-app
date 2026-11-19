@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState, type MutableRefObject } from 'react';
 import {
   cellKey,
+  DEFAULT_STATION_CODE,
   findOffShift,
   isHolidayArea,
   isLeaveArea,
@@ -267,7 +268,7 @@ export default function RosterGrid(p: RosterGridProps) {
                         : (a && (s?.is_off || !s) ? a.text_color : s?.text_color ?? (sb ? 'var(--violet-fg)' : 'var(--text-muted)'));
                       const cellText =
                         !isOffArea && effShift && !effShift.is_off
-                          ? `${effShift.code}·${a?.code ?? 'PW'}`
+                          ? `${effShift.code}·${a?.code ?? DEFAULT_STATION_CODE}`
                           : a?.code ?? effShift?.code ?? '';
                       const classes = [
                         isOffArea ? 'cell-leave' : '',
@@ -436,14 +437,14 @@ export default function RosterGrid(p: RosterGridProps) {
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
           <span className="cell-leave" style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: 'var(--warn-bg)', border: '1px solid var(--border)', display: 'inline-block' }} />
-          Diagonal stripe = Leave day
+          Diagonal stripe = Leave / Rest / Holiday
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
           <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--teal)', display: 'inline-block' }} />
           Teal / Rose dot = PM scheduled / overdue
         </span>
         <span>
-          <b>PW</b> Plant Works · <b>OC</b> On-Call · <b>DWP</b> Deep Well · <b>ERP</b> Electro-Mech · <b>Lvs</b> Leaves
+          <b>PL</b> Plant Ops · <b>FD</b> Field Ops · <b>WD</b> Water Delivery · <b>OC</b> On-Call · <b>DWP</b> Deep Well · <b>ERP</b> Electro-Mech · <b>Lvs</b> Leaves
         </span>
         {p.canEdit && <span>Tip: drag across cells to paint, arrow keys + Enter for keyboard, right-click or long-press for menu.</span>}
       </div>

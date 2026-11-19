@@ -10,6 +10,7 @@ import {
   buildRosterPendingMap,
   cellKey,
   computeHistoryTransition,
+  DEFAULT_STATION_CODE,
   findOffShift,
   friendlyError,
   isHolidayArea,
@@ -817,7 +818,7 @@ export default function Roster(p: {
       ? 'Clear Cell'
       : mode === 'standby'
         ? `Standby (${standbyType})`
-        : `${selectedShift?.code ?? '—'} + ${selectedArea?.code ?? (selectedShift?.is_off ? 'none' : 'PW')}`;
+        : `${selectedShift?.code ?? '—'} + ${selectedArea?.code ?? (selectedShift?.is_off ? 'none' : DEFAULT_STATION_CODE)}`;
 
   return (
     <div style={{ padding: '10px 14px 16px', maxWidth: '100%' }}>

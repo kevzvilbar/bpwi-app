@@ -18,6 +18,7 @@ import PrintableActivityReport from '@/components/PrintableActivityReport';
 import ActivitiesKpiTab from '@/components/ActivitiesKpiTab';
 import JobOrdersTab from '@/components/JobOrdersTab';
 import ShiftHandoversTab from '@/components/ShiftHandoversTab';
+import { DEFAULT_STATION_CODE } from '@/lib/roster-helpers';
 import { enqueueOfflineActivity, flushOfflineQueue, getOfflineQueue, type PendingOfflineActivity } from '@/lib/offline-queue';
 
 type MonOp = { id: string; full_name: string; position: string | null; phone_number: string | null; default_station: string | null };
@@ -188,10 +189,7 @@ export default function ActivitiesMonitor(p: {
     return st.length > 0 ? st : p.areas.filter((a) => a.category !== 'leave' && a.category !== 'rest' && a.category !== 'holiday');
   }, [p.areas]);
 
-  const dateAssignments = useMemo(
-    () => p.assignments.filter((a) => a.schedule_date === p.date),
-    [p.assignments, p.date],
-  );
+  const dateAssignments = useMemo(() => p.assignments.filter((a) => a.schedule_date === p.date), [p.assignments, p.date]);
   const dateAsgByOp = useMemo(() => new Map(dateAssignments.map((a) => [a.operator_id, a])), [dateAssignments]);
 
   const dateActivities = useMemo(() => {
@@ -552,7 +550,7 @@ export default function ActivitiesMonitor(p: {
                         <div>
                           <div style={{ fontWeight: 700, fontSize: 13.5 }}>{row.op.full_name}</div>
                           <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                            {row.shift ? `${row.shift.code}` : 'Unscheduled'} · {row.area ? row.area.code : row.isOnDuty ? 'PW' : '—'}
+                            {row.shift ? `${row.shift.code}` : 'Unscheduled'} · {row.area ? row.area.code : row.isOnDuty ? DEFAULT_STATION_CODE : '—'}
                             {row.standbyType && (
                               <span style={{ marginLeft: 5, color: 'var(--violet)', fontWeight: 700 }}>· {row.standbyType}</span>
                             )}

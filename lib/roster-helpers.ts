@@ -100,6 +100,21 @@ export const MONTHS_FULL = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
+export const DEFAULT_STATION_CODE = 'PL';
+
+const LEGACY_STATION_MAP: Record<string, string> = {
+  PW: 'PL',
+  RM: 'FD',
+  LD: 'FD',
+  MR: 'FD',
+  WM: 'FD',
+};
+
+export function normalizeLegacyStationCode(code: string): string {
+  const trimmed = code.trim();
+  return LEGACY_STATION_MAP[trimmed.toUpperCase()] ?? trimmed;
+}
+
 export function cellKey(opId: string, date: string) {
   return `${opId}:${date}`;
 }
@@ -226,7 +241,7 @@ export function buildRosterCsv(params: {
       if (effShift && !isOffArea) hrs += Number(effShift.duration_hours ?? 0);
       const label =
         !isOffArea && effShift && !effShift.is_off
-          ? [effShift.code, a?.code ?? 'PW']
+          ? [effShift.code, a?.code ?? DEFAULT_STATION_CODE]
           : [a?.code ?? effShift?.code ?? ''];
       return [...label, sb ? `(${sb.standby_type})` : ''].filter(Boolean).join(' ');
     });

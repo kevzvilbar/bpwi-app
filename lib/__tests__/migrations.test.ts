@@ -12,7 +12,7 @@ describe('Supabase SQL migrations integrity', () => {
     .sort();
 
   it('has strictly sequential 3-digit prefixes with no gaps or duplicates', () => {
-    assert.ok(files.length >= 21, `Expected at least 21 migrations, found ${files.length}`);
+    assert.ok(files.length >= 22, `Expected at least 22 migrations, found ${files.length}`);
     const nums = files.map((f) => {
       const m = f.match(/^(\d{3})_/);
       assert.ok(m, `Migration filename must start with 3-digit prefix: ${f}`);
@@ -48,11 +48,25 @@ describe('Supabase SQL migrations integrity', () => {
     }
   });
 
-  it('documents 019, 020, and 021 in supabase/migrations/README.md', () => {
+  it('documents 019, 020, 021, and 022 in supabase/migrations/README.md', () => {
     const readme = fs.readFileSync(path.join(MIGRATIONS_DIR, 'README.md'), 'utf8');
     assert.match(readme, /\b019\b/);
     assert.match(readme, /\b020\b/);
     assert.match(readme, /\b021\b/);
+    assert.match(readme, /\b022\b/);
+  });
+
+  it('consolidates station codes cleanly in 022_consolidate_station_codes.sql', () => {
+    const sql22 = fs.readFileSync(path.join(MIGRATIONS_DIR, '022_consolidate_station_codes.sql'), 'utf8');
+    for (const required of [
+      'consolidate_station_codes_for_org',
+      'revoke all on function consolidate_station_codes_for_org',
+      'Plant Operations',
+      'Field Operations',
+      'Water Delivery',
+    ]) {
+      assert.ok(sql22.includes(required), `022_consolidate_station_codes.sql missing required construct: ${required}`);
+    }
   });
 
   it('hardens change requests in 020_change_requests_hardening.sql', () => {

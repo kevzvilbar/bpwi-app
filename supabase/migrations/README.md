@@ -1,6 +1,6 @@
 # Supabase Migrations (`bpwi-app`)
 
-Migrations in this folder are strictly numbered (`001`–`021`) and verified by `npm test` (`lib/__tests__/migrations.test.ts`), which checks:
+Migrations in this folder are strictly numbered (`001`–`022`) and verified by `npm test` (`lib/__tests__/migrations.test.ts`), which checks:
 - Sequential numbering with no gaps or duplicates.
 - Every newly created table enables Row Level Security (`ENABLE ROW LEVEL SECURITY`).
 
@@ -13,7 +13,7 @@ supabase db push
 ```
 
 ### Option B — Supabase SQL Editor (Manual)
-Run each file in ascending numeric order (`001_init.sql` → `021_security_hardening.sql`). All migrations are written idempotently (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
+Run each file in ascending numeric order (`001_init.sql` → `022_consolidate_station_codes.sql`). All migrations are written idempotently (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
 
 ## Optional Local Seeds
 Org-chart structural templates do not commit employee names in migrations. To assign local directory names outside version control, copy `supabase/seeds/org_chart.example.sql` to `supabase/seeds/org_chart.local.sql` (gitignored) or assign holders in `/org-chart`.
@@ -31,3 +31,4 @@ Org-chart structural templates do not commit employee names in migrations. To as
 - `019`: Enforce admin approval on new sign-ups (`user_profiles.is_active = false`, `handle_new_user()` — supersedes the earlier in-place edit to `002_auto_profile.sql`) and backfill missing profiles.
 - `020`: Change-request hardening (`trg_validate_change_request_item_org`, `trg_guard_change_request_transition`, self-approval prevention with `p_allow_self_override`, partial-approval status & follow-up approvals, multi-table conflict checks, leave overlap checks, and `partially_approved` notifications).
 - `021`: Phase 3 security hardening (RPC-only `change_requests` / `change_request_items` update RLS & requester guard regardless of `is_approver()`, private `activity-media` bucket + org-scoped policies, and admin-only `seed_bpwi_iloilo_org_chart` without hardcoded employee names).
+- `022`: Consolidate 6 station codes (`PW`, `RM`, `LD`, `MR`, `WM`, `WD`) down to 3 (`PL` Plant Operations, `FD` Field Operations, `WD` Water Delivery) via `consolidate_station_codes_for_org`, preserving `RD`, `AL`, `VL`, `SL`, `H`.

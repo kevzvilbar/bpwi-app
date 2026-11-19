@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import { findOffShift, isOffPartnerArea } from '@/lib/roster-helpers';
+import { DEFAULT_STATION_CODE, findOffShift, isOffPartnerArea } from '@/lib/roster-helpers';
 
 type Op = { id: string; full_name: string; position: string | null };
 type Shift = {
@@ -187,7 +187,7 @@ export default function RosterMobileViews(p: {
             const a = r?.area_code_id ? p.areaBy.get(r.area_code_id) : undefined;
             const sb = p.standbyMap.get(k);
             const { effShift, isOffArea, bg, fg } = resolveMobileCellVisual(s, a);
-            const areaLabel = a?.code ?? (effShift && !effShift.is_off ? 'PW' : '');
+            const areaLabel = a?.code ?? (effShift && !effShift.is_off ? DEFAULT_STATION_CODE : '');
 
             return (
               <div
@@ -315,7 +315,7 @@ export default function RosterMobileViews(p: {
                       }}
                     >
                       <span style={{ fontSize: 9.5, opacity: 0.8 }}>{d.dowLabel} {d.dayNum}</span>
-                      <span>{a?.code ?? (effShift && !effShift.is_off ? 'PW' : effShift?.code ?? '—')}</span>
+                      <span>{a?.code ?? (effShift && !effShift.is_off ? DEFAULT_STATION_CODE : effShift?.code ?? '—')}</span>
                     </button>
                   );
                 })}
@@ -418,7 +418,7 @@ export default function RosterMobileViews(p: {
                       fontWeight: 700,
                     }}
                   >
-                    {effShift ? `${effShift.code} · ${a?.code ?? (effShift.is_off ? 'OFF' : 'PW')}` : a?.code ?? '—'}
+                    {effShift ? `${effShift.code} · ${a?.code ?? (effShift.is_off ? 'OFF' : DEFAULT_STATION_CODE)}` : a?.code ?? '—'}
                   </span>
                 </span>
               </div>
@@ -488,7 +488,7 @@ export default function RosterMobileViews(p: {
                           fontWeight: 700,
                         }}
                       >
-                        {effShift ? `${effShift.code} · ${a?.code ?? (effShift.is_off ? 'OFF' : 'PW')}` : a?.code ?? 'Assign'}
+                        {effShift ? `${effShift.code} · ${a?.code ?? (effShift.is_off ? 'OFF' : DEFAULT_STATION_CODE)}` : a?.code ?? 'Assign'}
                       </button>
                       {p.canEdit && op && (
                         <button className="btn" onClick={(e) => p.onCellMenu(op, d.date, { clientX: e.clientX, clientY: e.clientY })}>

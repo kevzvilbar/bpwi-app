@@ -3,6 +3,7 @@
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { ACTIVITY_BY_ID, type DailyActivityRow } from '@/lib/activity-types';
 import { resolveActivityPhotoUrl } from '@/lib/activity-media';
+import { DEFAULT_STATION_CODE } from '@/lib/roster-helpers';
 
 export type MobileOp = {
   id: string;
@@ -284,7 +285,7 @@ export default function MobileActivitiesAndSchedule({
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12.5, color: 'var(--text-secondary)' }}>
-              <span>Station: <b>{area?.code ?? (isOnDuty ? 'PW' : op.default_station ?? '—')}</b></span>
+              <span>Station: <b>{area?.code ?? (isOnDuty ? DEFAULT_STATION_CODE : op.default_station ?? '—')}</b></span>
               {op.phone_number && (
                 <div style={{ display: 'flex', gap: 6 }}>
                   <a

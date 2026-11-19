@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { supabaseServer } from '@/lib/supabase/server';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 import { getErrorMessage } from '@/lib/error-utils';
+import { normalizeLegacyStationCode } from '@/lib/roster-helpers';
 
 interface LegacyOperator {
   id: string;
@@ -157,7 +158,7 @@ export async function POST(req: Request) {
             full_name: o.name,
             position: o.role,
             phone_number: o.phone,
-            default_station: o.defaultStation,
+            default_station: o.defaultStation ? normalizeLegacyStationCode(o.defaultStation) : o.defaultStation,
             sort_order: i,
           })),
           { onConflict: 'organization_id,legacy_key' },
@@ -188,15 +189,39 @@ export async function POST(req: Request) {
       if (/holiday/i.test(a.name ?? '') || code === 'H') return 'holiday';
       return a.isLeave ? 'leave' : 'station';
     };
-    const areaPayload = (allowRest: boolean) =>
-      (st.areaLeaves ?? []).map((a) => ({
-        organization_id: org,
-        code: a.code,
-        name: a.name,
-        category: mapAreaCategory(a, allowRest),
-        background_color: a.bg,
-        text_color: a.text,
-      }));
+    const CANONICAL_STATION_NAMES: Record<string, string> = {
+      PL: 'Plant Operations',
+      FD: 'Field Operations',
+      WD: 'Water Delivery',
+    };
+    const areaPayload = (allowRest: boolean) => {
+      const deduped = new Map<
+        string,
+        {
+          organization_id: string;
+          code: string;
+          name: string | null | undefined;
+          category: string;
+          background_color: string | null | undefined;
+          text_color: string | null | undefined;
+        }
+      >();
+      for (const a of st.areaLeaves ?? []) {
+        const code = normalizeLegacyStationCode(a.code ?? '');
+        if (!code) continue;
+        const key = code.toUpperCase();
+        const cat = mapAreaCategory({ ...a, code }, allowRest);
+        deduped.set(key, {
+          organization_id: org,
+          code,
+          name: CANONICAL_STATION_NAMES[key] ?? a.name,
+          category: cat,
+          background_color: a.bg,
+          text_color: a.text,
+        });
+      }
+      return Array.from(deduped.values());
+    };
     let areaRes = await db.from('area_codes').upsert(areaPayload(true), { onConflict: 'organization_id,code' }).select('id, code');
     if (areaRes.error && /area_codes_category_check/i.test(areaRes.error.message)) {
       areaRes = await db.from('area_codes').upsert(areaPayload(false), { onConflict: 'organization_id,code' }).select('id, code');
@@ -219,7 +244,7 @@ export async function POST(req: Request) {
           operator_id,
           schedule_date: date,
           shift_type_id: c.shift ? shiftId.get(c.shift) ?? null : null,
-          area_code_id: c.text ? areaId.get(c.text) ?? null : null,
+          area_code_id: c.text ? areaId.get(normalizeLegacyStationCode(c.text)) ?? null : null,
         });
         if (c.onCall) standby.push({ organization_id: org, operator_id, schedule_date: date, standby_type: c.onCall });
       }

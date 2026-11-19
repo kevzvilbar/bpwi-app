@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import type { ChangeRequestItem } from '@/lib/profile';
 import {
+  DEFAULT_STATION_CODE,
   findOffShift,
   isOffPartnerArea,
   type Area,
@@ -252,7 +253,7 @@ export default function RosterToolbar(p: RosterToolbarProps) {
               <span style={{ color: 'var(--text-secondary)' }}>{s.description ?? (s.is_off ? 'Off' : 'Duty')}</span>
             </span>
           ))}
-          <span style={{ color: 'var(--text-secondary)' }}>· Duty cells without an area code show <b>PW</b></span>
+          <span style={{ color: 'var(--text-secondary)' }}>· Duty cells without an area code show <b>{DEFAULT_STATION_CODE}</b></span>
         </div>
       )}
 
@@ -375,7 +376,7 @@ export default function RosterToolbar(p: RosterToolbarProps) {
               border: p.mode === 'paint' && p.areaId === null ? '2px solid var(--primary)' : '1px solid var(--border)',
             }}
           >
-            PW (default)
+            {DEFAULT_STATION_CODE} (default)
           </button>
           {p.areas.map((a) => {
             const isOffPartner = isOffPartnerArea(a);
