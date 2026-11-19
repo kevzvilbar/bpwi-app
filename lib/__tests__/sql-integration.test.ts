@@ -65,8 +65,8 @@ async function setAuthUid(db: PGlite, uid: string | null) {
   await db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [uid ?? '']);
 }
 
-describe('PGlite SQL migrations 001–020 execution & security invariants', () => {
-  it('executes all 001–020 migrations cleanly and enforces sign-up + change-request hardening', async () => {
+describe('PGlite SQL migrations 001–021 execution & security invariants', () => {
+  it('executes all 001–021 migrations cleanly and enforces sign-up, change-request, storage, and org-seed hardening', async () => {
     const db = new PGlite({ extensions: { pgcrypto } });
     await initSupabaseShim(db);
 
@@ -75,7 +75,7 @@ describe('PGlite SQL migrations 001–020 execution & security invariants', () =
       .filter((f) => f.endsWith('.sql'))
       .sort();
 
-    assert.ok(files.length >= 20, `Expected >= 20 migrations, found ${files.length}`);
+    assert.ok(files.length >= 21, `Expected >= 21 migrations, found ${files.length}`);
 
     for (const f of files) {
       const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8');
@@ -89,16 +89,16 @@ describe('PGlite SQL migrations 001–020 execution & security invariants', () =
 
     // 1. 019 Sign-up approval: first user -> active admin; second user -> inactive viewer + admin notification
     const adminId = '11111111-1111-4111-8111-111111111111';
-    const arnoldId = '22222222-2222-4222-8222-222222222222';
+    const mgr1Id = '22222222-2222-4222-8222-222222222222';
     const mgrApproverId = '33333333-3333-4333-8333-333333333333';
 
     await db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, 'admin@bpwi.test', $2::jsonb)`, [
       adminId,
       JSON.stringify({ full_name: 'Admin User' }),
     ]);
-    await db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, 'arnold@bpwi.test', $2::jsonb)`, [
-      arnoldId,
-      JSON.stringify({ full_name: 'Arnold Diaday' }),
+    await db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, 'manager1@bpwi.test', $2::jsonb)`, [
+      mgr1Id,
+      JSON.stringify({ full_name: 'Pending Manager' }),
     ]);
 
     const p1 = await db.query<{ role: string; is_active: boolean; organization_id: string }>(
@@ -111,7 +111,7 @@ describe('PGlite SQL migrations 001–020 execution & security invariants', () =
 
     const p2 = await db.query<{ role: string; is_active: boolean }>(
       `select role::text, is_active from user_profiles where id = $1`,
-      [arnoldId],
+      [mgr1Id],
     );
     assert.equal(p2.rows[0]?.role, 'viewer');
     assert.equal(p2.rows[0]?.is_active, false);
@@ -128,7 +128,7 @@ describe('PGlite SQL migrations 001–020 execution & security invariants', () =
       JSON.stringify({ full_name: 'Other Head' }),
     ]);
     await db.query(`update user_profiles set role = 'manager', is_active = true, can_approve = true where id in ($1, $2)`, [
-      arnoldId,
+      mgr1Id,
       mgrApproverId,
     ]);
 
@@ -158,11 +158,20 @@ describe('PGlite SQL migrations 001–020 execution & security invariants', () =
     );
     const foreignOpId = foreignOpRes.rows[0].id;
 
-    // 2. 020 Cross-org validation on change_request_items
-    await setAuthUid(db, arnoldId);
+    // 2. 020 Cross-org validation on change_request_items (plus 021 direct-insert guard)
+    await setAuthUid(db, mgr1Id);
+    await assert.rejects(
+      () =>
+        db.query(
+          `insert into change_requests (organization_id, requester_id, title, status) values ($1, $2, 'Sneaky Preapproved', 'approved')`,
+          [orgId, mgr1Id],
+        ),
+      /must start in draft or pending/i,
+    );
+
     const reqCrossRes = await db.query<{ id: string }>(
       `insert into change_requests (organization_id, requester_id, title) values ($1, $2, 'Test Req') returning id`,
-      [orgId, arnoldId],
+      [orgId, mgr1Id],
     );
     const reqId = reqCrossRes.rows[0].id;
 
@@ -192,11 +201,32 @@ describe('PGlite SQL migrations 001–020 execution & security invariants', () =
 
     await db.query(`select submit_change_request($1, 'Please review')`, [reqId]);
 
-    // 3. 020 Pending -> Draft rollback is blocked
+    // 3. 020 Pending -> Draft rollback + 021 direct table approval/title-tamper bypasses blocked for delegated approvers & admins
     await assert.rejects(
       () => db.query(`update change_requests set status = 'draft' where id = $1`, [reqId]),
       /cannot be moved back to draft/i,
     );
+    await assert.rejects(
+      () => db.query(`update change_requests set status = 'approved' where id = $1`, [reqId]),
+      /only be changed through approve_change_request/i,
+    );
+    await assert.rejects(
+      () => db.query(`update change_requests set title = 'Tampered Pending Title' where id = $1`, [reqId]),
+      /Pending requests cannot be edited by the requester/i,
+    );
+
+    // Non-requester approver and admin also cannot directly flip status without RPC
+    await setAuthUid(db, mgrApproverId);
+    await assert.rejects(
+      () => db.query(`update change_requests set status = 'approved' where id = $1`, [reqId]),
+      /only be changed through approve_change_request/i,
+    );
+    await setAuthUid(db, adminId);
+    await assert.rejects(
+      () => db.query(`update change_requests set status = 'rejected' where id = $1`, [reqId]),
+      /only be changed through approve_change_request/i,
+    );
+    await setAuthUid(db, mgr1Id);
 
     // 4. 020 No self-approval by delegated manager or by admin without p_allow_self_override
     await assert.rejects(
@@ -240,7 +270,7 @@ describe('PGlite SQL migrations 001–020 execution & security invariants', () =
 
     const partialNotif = await db.query<{ kind: string; title: string }>(
       `select kind, title from notifications where user_id = $1 and kind = 'request_partially_approved'`,
-      [arnoldId],
+      [mgr1Id],
     );
     assert.equal(partialNotif.rows.length, 1);
     assert.equal(partialNotif.rows[0].title, 'Change Request Partially Approved');
@@ -269,10 +299,10 @@ describe('PGlite SQL migrations 001–020 execution & security invariants', () =
     );
     const leaveId = leaveRowRes.rows[0].id;
 
-    await setAuthUid(db, arnoldId);
+    await setAuthUid(db, mgr1Id);
     const conflictReqRes = await db.query<{ id: string }>(
       `insert into change_requests (organization_id, requester_id, title) values ($1, $2, 'Conflict & Leave') returning id`,
-      [orgId, arnoldId],
+      [orgId, mgr1Id],
     );
     const cReqId = conflictReqRes.rows[0].id;
 
@@ -325,5 +355,70 @@ describe('PGlite SQL migrations 001–020 execution & security invariants', () =
     assert.equal(leavesLive.rows.length, 1); // Updated in place, no duplicate!
     assert.equal(leavesLive.rows[0].id, leaveId);
     assert.equal(leavesLive.rows[0].end_date, '2026-12-03');
+
+    // 8. 021 RLS policies lock out direct approver updates on change_requests and change_request_items
+    const crPolicies = await db.query<{ tablename: string; policyname: string; qual: string | null; with_check: string | null }>(
+      `select tablename::text, policyname::text, qual, with_check
+       from pg_policies
+       where schemaname = 'public'
+         and tablename in ('change_requests', 'change_request_items')
+         and policyname in ('change_requests update', 'change_request_items update')`,
+    );
+    assert.equal(crPolicies.rows.length, 2);
+    for (const pol of crPolicies.rows) {
+      assert.ok(!(pol.qual ?? '').includes('is_approver'), `${pol.policyname} qual should not allow is_approver`);
+      assert.ok(!(pol.with_check ?? '').includes('is_approver'), `${pol.policyname} with_check should not allow is_approver`);
+    }
+
+    // 9. 021 activity-media storage bucket is private with org-scoped read policy
+    const bucketRes = await db.query<{ public: boolean }>(
+      `select public from storage.buckets where id = 'activity-media'`,
+    );
+    assert.equal(bucketRes.rows[0]?.public, false);
+
+    const storagePols = await db.query<{ policyname: string }>(
+      `select policyname::text from pg_policies where schemaname = 'storage' and tablename = 'objects'`,
+    );
+    const storagePolNames = storagePols.rows.map((r) => r.policyname);
+    assert.ok(!storagePolNames.includes('activity-media public read'));
+    assert.ok(storagePolNames.includes('activity-media org read'));
+
+    // 10. 021 seed_bpwi_iloilo_org_chart is admin-only, revoked from public/anon, and name-free
+    const privRes = await db.query<{ pub: boolean; anon: boolean; auth: boolean }>(
+      `select
+         has_function_privilege('public', 'seed_bpwi_iloilo_org_chart(uuid)', 'EXECUTE') as pub,
+         has_function_privilege('anon', 'seed_bpwi_iloilo_org_chart(uuid)', 'EXECUTE') as anon,
+         has_function_privilege('authenticated', 'seed_bpwi_iloilo_org_chart(uuid)', 'EXECUTE') as auth`,
+    );
+    assert.equal(privRes.rows[0]?.pub, false);
+    assert.equal(privRes.rows[0]?.anon, false);
+    assert.equal(privRes.rows[0]?.auth, true);
+
+    await setAuthUid(db, mgr1Id);
+    await assert.rejects(
+      () => db.query(`select seed_bpwi_iloilo_org_chart($1)`, [orgId]),
+      /only organization admins/i,
+    );
+
+    await setAuthUid(db, adminId);
+    await assert.rejects(
+      () => db.query(`select seed_bpwi_iloilo_org_chart($1)`, [org2Id]),
+      /only organization admins/i,
+    );
+
+    await db.query(`delete from org_positions where organization_id = $1`, [orgId]);
+    await db.query(`select seed_bpwi_iloilo_org_chart($1)`, [orgId]);
+    const seededRes = await db.query<{ total: number; named: number; vacant: number }>(
+      `select
+         count(*)::int as total,
+         count(*) filter (where fallback_name is not null)::int as named,
+         count(*) filter (where is_vacant = true)::int as vacant
+       from org_positions
+       where organization_id = $1`,
+      [orgId],
+    );
+    assert.ok(seededRes.rows[0].total >= 20);
+    assert.equal(seededRes.rows[0].named, 0);
+    assert.equal(seededRes.rows[0].vacant, seededRes.rows[0].total);
   });
 });

@@ -1,0 +1,28 @@
+-- Example local-only seed template for assigning real employee names / links to org_positions.
+-- Copy this file to `supabase/seeds/org_chart.local.sql` (gitignored) and run it in your
+-- Supabase SQL Editor or via `psql`, OR assign holders directly in the in-app Org Chart page (/org-chart).
+
+-- Example: update vacant structural slots for your organization by sort_order or title:
+-- update org_positions
+-- set fallback_name = 'Business Unit Head Name',
+--     is_vacant = false
+-- where organization_id = '<your-org-uuid>'
+--   and sort_order = 1;
+
+-- Example: auto-link seeded positions to existing operators and active user_profiles by name:
+-- update org_positions p
+-- set holder_operator_id = o.id
+-- from operators o
+-- where p.organization_id = '<your-org-uuid>'
+--   and o.organization_id = '<your-org-uuid>'
+--   and p.fallback_name is not null
+--   and lower(trim(o.full_name)) = lower(trim(p.fallback_name));
+--
+-- update org_positions p
+-- set holder_user_id = u.id
+-- from user_profiles u
+-- where p.organization_id = '<your-org-uuid>'
+--   and u.organization_id = '<your-org-uuid>'
+--   and u.is_active = true
+--   and p.fallback_name is not null
+--   and lower(trim(u.full_name)) = lower(trim(p.fallback_name));

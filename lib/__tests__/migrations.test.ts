@@ -12,7 +12,7 @@ describe('Supabase SQL migrations integrity', () => {
     .sort();
 
   it('has strictly sequential 3-digit prefixes with no gaps or duplicates', () => {
-    assert.ok(files.length >= 20, `Expected at least 20 migrations, found ${files.length}`);
+    assert.ok(files.length >= 21, `Expected at least 21 migrations, found ${files.length}`);
     const nums = files.map((f) => {
       const m = f.match(/^(\d{3})_/);
       assert.ok(m, `Migration filename must start with 3-digit prefix: ${f}`);
@@ -48,10 +48,11 @@ describe('Supabase SQL migrations integrity', () => {
     }
   });
 
-  it('documents 019 and 020 in supabase/migrations/README.md', () => {
+  it('documents 019, 020, and 021 in supabase/migrations/README.md', () => {
     const readme = fs.readFileSync(path.join(MIGRATIONS_DIR, 'README.md'), 'utf8');
     assert.match(readme, /\b019\b/);
     assert.match(readme, /\b020\b/);
+    assert.match(readme, /\b021\b/);
   });
 
   it('hardens change requests in 020_change_requests_hardening.sql', () => {
@@ -64,6 +65,33 @@ describe('Supabase SQL migrations integrity', () => {
       'trg_guard_change_request_transition',
     ]) {
       assert.ok(sql20.includes(required), `020_change_requests_hardening.sql missing required construct: ${required}`);
+    }
+  });
+
+  it('applies Phase 3 security hardening in 021_security_hardening.sql without committed employee names', () => {
+    const sql21 = fs.readFileSync(path.join(MIGRATIONS_DIR, '021_security_hardening.sql'), 'utf8');
+    for (const required of [
+      'app.change_request_rpc',
+      'set public = false',
+      'activity-media org read',
+      'revoke all on function seed_bpwi_iloilo_org_chart',
+    ]) {
+      assert.ok(sql21.includes(required), `021_security_hardening.sql missing required construct: ${required}`);
+    }
+
+    const allSql = files.map((f) => fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8')).join('\n');
+    for (const realName of [
+      'Hernan Talavera',
+      'Kevin Vilbar',
+      'Arnold Diaday',
+      'Jonela Amoyan',
+      'Andrea Faith Galon',
+      'Mayrose Lebuna',
+      'Ghelson Viejo',
+      'Jasson Salarda',
+      'Haydeline Quinto',
+    ]) {
+      assert.ok(!allSql.includes(realName), `Committed migrations must not contain real employee name: ${realName}`);
     }
   });
 });

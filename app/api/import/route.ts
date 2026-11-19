@@ -3,6 +3,104 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { supabaseServer } from '@/lib/supabase/server';
 import { getSupabaseEnv } from '@/lib/supabase/env';
+import { getErrorMessage } from '@/lib/error-utils';
+
+interface LegacyOperator {
+  id: string;
+  name: string;
+  role?: string | null;
+  phone?: string | null;
+  defaultStation?: string | null;
+}
+
+interface LegacyShift {
+  id: string;
+  label: string;
+  name?: string | null;
+  hours?: number | null;
+  isOff?: boolean;
+  bg?: string | null;
+  text?: string | null;
+}
+
+interface LegacyArea {
+  code: string;
+  name?: string | null;
+  isLeave?: boolean;
+  bg?: string | null;
+  text?: string | null;
+}
+
+interface LegacyScheduleCell {
+  shift?: string;
+  text?: string | null;
+  onCall?: string | null;
+}
+
+interface LegacyPmCustomType {
+  id?: string;
+  label?: string;
+  short?: string;
+  color?: string;
+}
+
+interface LegacyPmTypeOverride {
+  label?: string;
+  short?: string;
+  color?: string;
+}
+
+interface LegacyPmTask {
+  id: string;
+  type: string;
+  sites?: string[];
+  site?: string | null;
+  asset?: string | null;
+  assignees?: string[];
+  date: string;
+  status?: string;
+  doneOn?: string | null;
+  notes?: string | null;
+}
+
+interface LegacyImportPayload {
+  operators?: LegacyOperator[];
+  shifts?: Record<string, LegacyShift>;
+  areaLeaves?: LegacyArea[];
+  schedule?: Record<string, Record<string, LegacyScheduleCell>>;
+  pmTypeOverrides?: Record<string, LegacyPmTypeOverride>;
+  pmCustomTypes?: LegacyPmCustomType[];
+  pmTasks?: LegacyPmTask[];
+}
+
+interface KeyedIdRow {
+  id: string;
+  legacy_key: string;
+}
+
+interface AssignmentInsertRow {
+  organization_id: string;
+  operator_id: string;
+  schedule_date: string;
+  shift_type_id: string | null;
+  area_code_id: string | null;
+}
+
+interface StandbyInsertRow {
+  organization_id: string;
+  operator_id: string;
+  schedule_date: string;
+  standby_type: string;
+}
+
+interface ActivityTypeInsertRow {
+  organization_id: string;
+  code: string;
+  label: string;
+  short_label: string;
+  color: string;
+  sort_order: number;
+}
 
 const DEFAULT_PM_META: Record<string, { label: string; short: string; color: string }> = {
   FLUSH: { label: 'Line Flushing', short: 'Flushing', color: '#0284c7' },
@@ -22,10 +120,12 @@ export async function POST(req: Request) {
 
     const { data: prof } = await me
       .from('user_profiles')
-      .select('role, organization_id')
+      .select('role, organization_id, is_active')
       .eq('id', user.id)
       .maybeSingle();
-    if (prof?.role !== 'admin') return NextResponse.json({ error: 'Admins only' }, { status: 403 });
+    if (!prof || prof.is_active === false || prof.role !== 'admin') {
+      return NextResponse.json({ error: 'Admins only' }, { status: 403 });
+    }
 
     const { url } = getSupabaseEnv();
     const secretKey = (process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? '').trim();
@@ -33,10 +133,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Server secret key (SUPABASE_SECRET_KEY) is not configured' }, { status: 503 });
     }
 
-    const st = await req.json();
-    if (!st || typeof st !== 'object') {
+    const rawBody: unknown = await req.json();
+    if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
       return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
     }
+    const st = rawBody as LegacyImportPayload;
 
     const org = prof.organization_id as string;
     const db = createClient(url, secretKey, { auth: { persistSession: false } });
@@ -46,11 +147,11 @@ export async function POST(req: Request) {
       return data as T;
     };
 
-    const ops = await must(
+    const ops = await must<KeyedIdRow[]>(
       db
         .from('operators')
         .upsert(
-          (st.operators ?? []).map((o: any, i: number) => ({
+          (st.operators ?? []).map((o, i) => ({
             organization_id: org,
             legacy_key: o.id,
             full_name: o.name,
@@ -63,11 +164,11 @@ export async function POST(req: Request) {
         )
         .select('id, legacy_key'),
     );
-    const shifts = await must(
+    const shifts = await must<KeyedIdRow[]>(
       db
         .from('shift_types')
         .upsert(
-          Object.values(st.shifts ?? {}).map((s: any) => ({
+          Object.values(st.shifts ?? {}).map((s) => ({
             organization_id: org,
             legacy_key: s.id,
             code: s.label,
@@ -81,14 +182,14 @@ export async function POST(req: Request) {
         )
         .select('id, legacy_key'),
     );
-    const mapAreaCategory = (a: any, allowRest: boolean) => {
+    const mapAreaCategory = (a: LegacyArea, allowRest: boolean) => {
       const code = String(a.code ?? '').trim().toUpperCase();
       if (code === 'RD' || /rest\s*day/i.test(a.name ?? '')) return allowRest ? 'rest' : 'leave';
       if (/holiday/i.test(a.name ?? '') || code === 'H') return 'holiday';
       return a.isLeave ? 'leave' : 'station';
     };
     const areaPayload = (allowRest: boolean) =>
-      (st.areaLeaves ?? []).map((a: any) => ({
+      (st.areaLeaves ?? []).map((a) => ({
         organization_id: org,
         code: a.code,
         name: a.name,
@@ -101,23 +202,23 @@ export async function POST(req: Request) {
       areaRes = await db.from('area_codes').upsert(areaPayload(false), { onConflict: 'organization_id,code' }).select('id, code');
     }
     if (areaRes.error) throw new Error(areaRes.error.message);
-    const areas = areaRes.data ?? [];
-    const opId = new Map(ops.map((o: any) => [o.legacy_key, o.id]));
-    const shiftId = new Map(shifts.map((s: any) => [s.legacy_key, s.id]));
-    const areaId = new Map(areas.map((a: any) => [a.code, a.id]));
+    const areas = (areaRes.data ?? []) as Array<{ id: string; code: string }>;
+    const opId = new Map(ops.map((o) => [o.legacy_key, o.id]));
+    const shiftId = new Map(shifts.map((s) => [s.legacy_key, s.id]));
+    const areaId = new Map(areas.map((a) => [a.code, a.id]));
 
-    const asg: any[] = [];
-    const standby: any[] = [];
-    for (const [legacy, days] of Object.entries<any>(st.schedule ?? {})) {
+    const asg: AssignmentInsertRow[] = [];
+    const standby: StandbyInsertRow[] = [];
+    for (const [legacy, days] of Object.entries(st.schedule ?? {})) {
       const operator_id = opId.get(legacy);
       if (!operator_id) continue;
-      for (const [date, c] of Object.entries<any>(days)) {
+      for (const [date, c] of Object.entries(days ?? {})) {
         if (!c || (c.shift === 'white' && !c.text && !c.onCall)) continue;
         asg.push({
           organization_id: org,
           operator_id,
           schedule_date: date,
-          shift_type_id: shiftId.get(c.shift) ?? null,
+          shift_type_id: c.shift ? shiftId.get(c.shift) ?? null : null,
           area_code_id: c.text ? areaId.get(c.text) ?? null : null,
         });
         if (c.onCall) standby.push({ organization_id: org, operator_id, schedule_date: date, standby_type: c.onCall });
@@ -131,9 +232,9 @@ export async function POST(req: Request) {
     }
 
     const typeLabel = (k: string) =>
-      st.pmTypeOverrides?.[k]?.label ?? st.pmCustomTypes?.find((c: any) => c.id === k)?.label ?? DEFAULT_PM_META[k]?.label ?? k;
+      st.pmTypeOverrides?.[k]?.label ?? st.pmCustomTypes?.find((c) => c.id === k)?.label ?? DEFAULT_PM_META[k]?.label ?? k;
 
-    const activityRows: any[] = [];
+    const activityRows: ActivityTypeInsertRow[] = [];
     const seenCodes = new Set<string>();
     let sortIdx = 0;
     for (const [code, meta] of Object.entries(DEFAULT_PM_META)) {
@@ -165,14 +266,14 @@ export async function POST(req: Request) {
       await db.from('pm_activity_types').upsert(activityRows, { onConflict: 'organization_id,code' });
     }
 
-    const pm = (st.pmTasks ?? []).map((t: any) => ({
+    const pm = (st.pmTasks ?? []).map((t) => ({
       organization_id: org,
       legacy_key: t.id,
       activity_type: t.type,
       title: typeLabel(t.type),
       locations: t.sites ?? (t.site ? [t.site] : []),
       asset: t.asset ?? null,
-      assigned_operator_ids: (t.assignees ?? []).map((a: string) => opId.get(a)).filter(Boolean),
+      assigned_operator_ids: (t.assignees ?? []).map((a) => opId.get(a)).filter((id): id is string => Boolean(id)),
       scheduled_date: t.date,
       status: t.status ?? 'planned',
       completed_at: t.doneOn ?? null,
@@ -189,7 +290,7 @@ export async function POST(req: Request) {
       standby: standby.length,
       pm_tasks: pm.length,
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? 'Import failed' }, { status: 500 });
+  } catch (e: unknown) {
+    return NextResponse.json({ error: getErrorMessage(e, 'Import failed') }, { status: 500 });
   }
 }

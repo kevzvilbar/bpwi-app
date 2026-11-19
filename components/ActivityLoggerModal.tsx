@@ -13,6 +13,7 @@ import {
   type DailyActivityRow,
 } from '@/lib/activity-types';
 import { getErrorMessage } from '@/lib/error-utils';
+import { resolveActivityPhotoUrl } from '@/lib/activity-media';
 import { compressImageFile, uploadActivityPhoto } from '@/lib/image-compress';
 
 export type LoggerOperator = {
@@ -305,11 +306,15 @@ export default function ActivityLoggerModal(p: {
       setGpsLat(ea.gps_lat);
       setGpsLng(ea.gps_lng);
       setPhotos(
-        (ea.photo_urls ?? []).map((u, idx) => ({
-          url: u,
-          storagePath: ea.photo_storage_paths?.[idx] ?? null,
-          preview: u,
-        })),
+        (ea.photo_urls ?? []).map((u, idx) => {
+          const sp = ea.photo_storage_paths?.[idx] ?? null;
+          const resolved = resolveActivityPhotoUrl(u, sp);
+          return {
+            url: resolved,
+            storagePath: sp,
+            preview: resolved,
+          };
+        }),
       );
       const toHHMM = (iso: string | null) => {
         if (!iso) return '';

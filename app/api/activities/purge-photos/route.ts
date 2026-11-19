@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { supabaseServer } from '@/lib/supabase/server';
 import { getSupabaseEnv } from '@/lib/supabase/env';
+import { getErrorMessage } from '@/lib/error-utils';
 
 async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
   const nowIso = new Date().toISOString();
@@ -96,8 +97,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: res.error }, { status: res.status });
     }
     return NextResponse.json({ purgedCount: res.purgedCount, filesRemoved: res.filesRemoved });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? 'Cron purge failed' }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ error: getErrorMessage(err, 'Cron purge failed') }, { status: 500 });
   }
 }
 
@@ -137,7 +138,7 @@ export async function POST() {
       return NextResponse.json({ error: res.error }, { status: res.status });
     }
     return NextResponse.json({ purgedCount: res.purgedCount, filesRemoved: res.filesRemoved });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? 'Purge failed' }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ error: getErrorMessage(err, 'Purge failed') }, { status: 500 });
   }
 }

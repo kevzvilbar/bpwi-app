@@ -35,13 +35,13 @@ describe('org-chart helpers', () => {
       ['u2', { id: 'u2', full_name: 'Resigned Head', role: 'manager', is_active: false }],
     ]);
     const ops = new Map<string, OrgOperatorLite>([
-      ['op1', { id: 'op1', full_name: 'Jasson Salarda', position: 'Leak Detection Spec.', is_active: true }],
+      ['op1', { id: 'op1', full_name: 'Operator Alpha', position: 'Leak Detection Spec.', is_active: true }],
     ]);
 
     assert.equal(resolvePositionDisplayName(makePos({ id: 'p1', title: 'Tech Head', is_vacant: true, fallback_name: 'Old' }), users, ops).source, 'vacant');
     assert.equal(resolvePositionDisplayName(makePos({ id: 'p2', title: 'Tech Head', holder_user_id: 'u1', fallback_name: 'Old' }), users, ops).name, 'New Tech Head');
-    assert.equal(resolvePositionDisplayName(makePos({ id: 'p3', title: 'Tech Head', holder_user_id: 'u2', holder_operator_id: 'op1' }), users, ops).name, 'Jasson Salarda');
-    assert.equal(resolvePositionDisplayName(makePos({ id: 'p4', title: 'Customer Service', fallback_name: 'Haydeline Quinto' }), users, ops).source, 'directory');
+    assert.equal(resolvePositionDisplayName(makePos({ id: 'p3', title: 'Tech Head', holder_user_id: 'u2', holder_operator_id: 'op1' }), users, ops).name, 'Operator Alpha');
+    assert.equal(resolvePositionDisplayName(makePos({ id: 'p4', title: 'Customer Service', fallback_name: 'Staff Beta' }), users, ops).source, 'directory');
   });
 
   it('detects circular reporting lines before saving restructuring', () => {

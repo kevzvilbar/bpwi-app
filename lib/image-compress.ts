@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { ACTIVITY_MEDIA_BUCKET, buildActivityPhotoUrl } from './activity-media';
 
 export interface CompressedImageResult {
   blob: Blob;
@@ -93,7 +94,7 @@ export async function uploadActivityPhoto(
 
   try {
     const { error } = await sb.storage
-      .from('activity-media')
+      .from(ACTIVITY_MEDIA_BUCKET)
       .upload(storagePath, compressed.blob, {
         contentType: compressed.mimeType,
         cacheControl: '3600',
@@ -101,14 +102,11 @@ export async function uploadActivityPhoto(
       });
 
     if (!error) {
-      const { data: pub } = sb.storage.from('activity-media').getPublicUrl(storagePath);
-      if (pub?.publicUrl) {
-        return {
-          url: pub.publicUrl,
-          storagePath,
-          savedBytes: compressed.savedBytes,
-        };
-      }
+      return {
+        url: buildActivityPhotoUrl(storagePath),
+        storagePath,
+        savedBytes: compressed.savedBytes,
+      };
     }
   } catch {
     /* Bucket missing or offline — use compact fallback */
@@ -144,7 +142,7 @@ export async function uploadDataUrlPhoto(
     const storagePath = `${orgId}/${dateFolder}/${Date.now()}-${rand}.${ext}`;
 
     const { error } = await sb.storage
-      .from('activity-media')
+      .from(ACTIVITY_MEDIA_BUCKET)
       .upload(storagePath, blob, {
         contentType: mimeType,
         cacheControl: '3600',
@@ -152,10 +150,7 @@ export async function uploadDataUrlPhoto(
       });
 
     if (!error) {
-      const { data: pub } = sb.storage.from('activity-media').getPublicUrl(storagePath);
-      if (pub?.publicUrl) {
-        return { url: pub.publicUrl, storagePath };
-      }
+      return { url: buildActivityPhotoUrl(storagePath), storagePath };
     }
   } catch {
     /* keep dataUrl fallback if storage is still unreachable */

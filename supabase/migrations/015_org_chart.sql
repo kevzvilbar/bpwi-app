@@ -144,88 +144,72 @@ begin
   end if;
 
   -- Executive
-  insert into org_positions (organization_id, title, department_group, tier, fallback_name, color_theme, sort_order)
-  values (p_org_id, 'Business Unit Head', 'MANAGING HEAD', 'executive', 'Hernan Talavera', 'navy', 1)
+  insert into org_positions (organization_id, title, department_group, tier, fallback_name, is_vacant, color_theme, sort_order)
+  values (p_org_id, 'Business Unit Head', 'MANAGING HEAD', 'executive', null, true, 'navy', 1)
   returning id into v_exec;
 
   -- Support Group (Advisory & Control)
-  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, color_theme, sort_order) values
-    (p_org_id, 'HR Assist./GS/SO', 'SUPPORT GROUP', 'support', v_exec, 'Jonela Amoyan', 'slate', 10),
-    (p_org_id, 'Proc/Warehouse Man', 'SUPPORT GROUP', 'support', v_exec, 'John Paul Valencia', 'slate', 11),
-    (p_org_id, 'Data Analyst', 'SUPPORT GROUP', 'support', v_exec, 'Hanna Igon-Igon', 'slate', 12);
+  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, is_vacant, color_theme, sort_order) values
+    (p_org_id, 'HR Assist./GS/SO', 'SUPPORT GROUP', 'support', v_exec, null, true, 'slate', 10),
+    (p_org_id, 'Proc/Warehouse Man', 'SUPPORT GROUP', 'support', v_exec, null, true, 'slate', 11),
+    (p_org_id, 'Data Analyst', 'SUPPORT GROUP', 'support', v_exec, null, true, 'slate', 12);
 
   -- Gardener directly under Managing Head
-  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, shift_badge, color_theme, sort_order) values
-    (p_org_id, 'Gardener', 'SUPPORT STAFF', 'staff', v_exec, 'Jerome Pagsuguiron', '7AM–4PM', 'slate', 15);
+  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, is_vacant, shift_badge, color_theme, sort_order) values
+    (p_org_id, 'Gardener', 'SUPPORT STAFF', 'staff', v_exec, null, true, '7AM–4PM', 'slate', 15);
 
   -- 4 Department Heads
-  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, color_theme, sort_order)
-  values (p_org_id, 'Plant Operations Head', 'WATER SUPPLY • PAVIA', 'head', v_exec, 'Kevin Vilbar', 'blue', 20)
+  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, is_vacant, color_theme, sort_order)
+  values (p_org_id, 'Plant Operations Head', 'WATER SUPPLY • PAVIA', 'head', v_exec, null, true, 'blue', 20)
   returning id into v_plant_head;
 
-  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, color_theme, sort_order)
-  values (p_org_id, 'Technical Head', 'TECHNICAL', 'head', v_exec, 'Arnold Diaday Jr.', 'blue', 21)
+  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, is_vacant, color_theme, sort_order)
+  values (p_org_id, 'Technical Head', 'TECHNICAL', 'head', v_exec, null, true, 'blue', 21)
   returning id into v_tech_head;
 
-  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, color_theme, sort_order)
-  values (p_org_id, 'Project Head', 'PROJECT SPECIALISTS', 'head', v_exec, 'Andrea Faith Galon', 'teal', 22)
+  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, is_vacant, color_theme, sort_order)
+  values (p_org_id, 'Project Head', 'PROJECT SPECIALISTS', 'head', v_exec, null, true, 'teal', 22)
   returning id into v_proj_head;
 
-  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, color_theme, sort_order)
-  values (p_org_id, 'Commercial Head', 'COMMERCIAL OPERATIONS', 'head', v_exec, 'Mayrose Lebuna', 'purple', 23)
+  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, is_vacant, color_theme, sort_order)
+  values (p_org_id, 'Commercial Head', 'COMMERCIAL OPERATIONS', 'head', v_exec, null, true, 'purple', 23)
   returning id into v_comm_head;
 
   -- Leadman bridging Plant Ops & Technical
-  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, secondary_parent_id, fallback_name, shift_badge, color_theme, sort_order)
-  values (p_org_id, 'Technical Leadman • Electro-Mech', 'LEADMAN', 'leadman', v_tech_head, v_plant_head, 'Ghelson Viejo', '7AM–4PM', 'blue', 30)
+  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, secondary_parent_id, fallback_name, is_vacant, shift_badge, color_theme, sort_order)
+  values (p_org_id, 'Technical Leadman • Electro-Mech', 'LEADMAN', 'leadman', v_tech_head, v_plant_head, null, true, '7AM–4PM', 'blue', 30)
   returning id into v_leadman;
 
   -- WATER SUPPLY • PAVIA
-  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, shift_badge, color_theme, sort_order) values
-    (p_org_id, 'Water Supply Specialist', 'WATER SUPPLY • PAVIA', 'staff', v_plant_head, 'Jose Marie Alipala Jr', 'Shifting', 'slate', 40),
-    (p_org_id, 'Water Supply Specialist', 'WATER SUPPLY • PAVIA', 'staff', v_plant_head, 'Rheynante Toledo', 'Shifting', 'slate', 41),
-    (p_org_id, 'Water Supply Specialist', 'WATER SUPPLY • PAVIA', 'staff', v_plant_head, 'Exo John Rogador', 'Shifting', 'slate', 42),
-    (p_org_id, 'Water Supply Specialist / Meter Reader', 'WATER SUPPLY • PAVIA', 'staff', v_plant_head, 'Franz Justin Grajo', 'Shifting', 'purple', 43);
+  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, is_vacant, shift_badge, color_theme, sort_order) values
+    (p_org_id, 'Water Supply Specialist', 'WATER SUPPLY • PAVIA', 'staff', v_plant_head, null, true, 'Shifting', 'slate', 40),
+    (p_org_id, 'Water Supply Specialist', 'WATER SUPPLY • PAVIA', 'staff', v_plant_head, null, true, 'Shifting', 'slate', 41),
+    (p_org_id, 'Water Supply Specialist', 'WATER SUPPLY • PAVIA', 'staff', v_plant_head, null, true, 'Shifting', 'slate', 42),
+    (p_org_id, 'Water Supply Specialist / Meter Reader', 'WATER SUPPLY • PAVIA', 'staff', v_plant_head, null, true, 'Shifting', 'purple', 43);
 
   -- LEAK DETECTION & NIGHT SHIFT
-  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, shift_badge, color_theme, sort_order) values
-    (p_org_id, 'Leak Detection Spec.', 'LEAK DETECTION & NIGHT SHIFT', 'staff', v_tech_head, 'Jasson Salarda', '7AM–4PM', 'slate', 50),
-    (p_org_id, 'Leak Detection Spec.', 'LEAK DETECTION & NIGHT SHIFT', 'staff', v_tech_head, 'Gerald Romaldon', '7AM–4PM', 'slate', 51);
+  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, is_vacant, shift_badge, color_theme, sort_order) values
+    (p_org_id, 'Leak Detection Spec.', 'LEAK DETECTION & NIGHT SHIFT', 'staff', v_tech_head, null, true, '7AM–4PM', 'slate', 50),
+    (p_org_id, 'Leak Detection Spec.', 'LEAK DETECTION & NIGHT SHIFT', 'staff', v_tech_head, null, true, '7AM–4PM', 'slate', 51);
 
   -- TECHNICAL MAINTENANCE
-  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, shift_badge, color_theme, sort_order) values
-    (p_org_id, 'Tech Maint. / Driver', 'TECHNICAL MAINTENANCE', 'staff', v_tech_head, 'Aladen Pareño', '7AM–4PM', 'blue', 60),
-    (p_org_id, 'Tech Maint. / Driver', 'TECHNICAL MAINTENANCE', 'staff', v_tech_head, 'L Alave', '7AM–4PM', 'blue', 61),
-    (p_org_id, 'Tech Maintenance', 'TECHNICAL MAINTENANCE', 'staff', v_tech_head, 'Armandico Honorio', '7AM–4PM', 'slate', 62),
-    (p_org_id, 'Night Maintenance', 'TECHNICAL MAINTENANCE', 'staff', v_tech_head, 'Charel Culasino', '10PM–7AM', 'amber', 63);
+  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, is_vacant, shift_badge, color_theme, sort_order) values
+    (p_org_id, 'Tech Maint. / Driver', 'TECHNICAL MAINTENANCE', 'staff', v_tech_head, null, true, '7AM–4PM', 'blue', 60),
+    (p_org_id, 'Tech Maint. / Driver', 'TECHNICAL MAINTENANCE', 'staff', v_tech_head, null, true, '7AM–4PM', 'blue', 61),
+    (p_org_id, 'Tech Maintenance', 'TECHNICAL MAINTENANCE', 'staff', v_tech_head, null, true, '7AM–4PM', 'slate', 62),
+    (p_org_id, 'Night Maintenance', 'TECHNICAL MAINTENANCE', 'staff', v_tech_head, null, true, '10PM–7AM', 'amber', 63);
 
   -- PROJECT SPECIALISTS
-  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, shift_badge, color_theme, sort_order) values
-    (p_org_id, 'Project Specialist', 'PROJECT SPECIALISTS', 'staff', v_proj_head, 'Leonardo Enanoria', '7AM–4PM', 'slate', 70),
-    (p_org_id, 'Project Specialist', 'PROJECT SPECIALISTS', 'staff', v_proj_head, 'Vincent Rocamora', '7AM–4PM', 'slate', 71),
-    (p_org_id, 'Project Specialist', 'PROJECT SPECIALISTS', 'staff', v_proj_head, 'Jeiel Villanueva', '7AM–4PM', 'slate', 72);
+  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, is_vacant, shift_badge, color_theme, sort_order) values
+    (p_org_id, 'Project Specialist', 'PROJECT SPECIALISTS', 'staff', v_proj_head, null, true, '7AM–4PM', 'slate', 70),
+    (p_org_id, 'Project Specialist', 'PROJECT SPECIALISTS', 'staff', v_proj_head, null, true, '7AM–4PM', 'slate', 71),
+    (p_org_id, 'Project Specialist', 'PROJECT SPECIALISTS', 'staff', v_proj_head, null, true, '7AM–4PM', 'slate', 72);
 
   -- COMMERCIAL OPERATIONS
-  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, shift_badge, color_theme, sort_order) values
-    (p_org_id, 'Customer Service', 'COMMERCIAL OPERATIONS', 'staff', v_comm_head, 'Haydeline Quinto', null, 'slate', 80),
-    (p_org_id, 'Commercial (Billing) Specialist', 'COMMERCIAL OPERATIONS', 'staff', v_comm_head, 'Jene Liza Macaya', null, 'slate', 81),
-    (p_org_id, 'Meter Reader', 'COMMERCIAL OPERATIONS', 'staff', v_comm_head, 'Joseph Magbanua', '7AM–4PM', 'slate', 82);
-
-  -- Auto-link matching operators and user_profiles by name
-  update org_positions p
-    set holder_operator_id = o.id
-    from operators o
-    where p.organization_id = p_org_id
-      and o.organization_id = p_org_id
-      and lower(trim(o.full_name)) = lower(trim(p.fallback_name));
-
-  update org_positions p
-    set holder_user_id = u.id
-    from user_profiles u
-    where p.organization_id = p_org_id
-      and u.organization_id = p_org_id
-      and u.is_active = true
-      and lower(trim(u.full_name)) = lower(trim(p.fallback_name));
+  insert into org_positions (organization_id, title, department_group, tier, parent_position_id, fallback_name, is_vacant, shift_badge, color_theme, sort_order) values
+    (p_org_id, 'Customer Service', 'COMMERCIAL OPERATIONS', 'staff', v_comm_head, null, true, null, 'slate', 80),
+    (p_org_id, 'Commercial (Billing) Specialist', 'COMMERCIAL OPERATIONS', 'staff', v_comm_head, null, true, null, 'slate', 81),
+    (p_org_id, 'Meter Reader', 'COMMERCIAL OPERATIONS', 'staff', v_comm_head, null, true, '7AM–4PM', 'slate', 82);
 end $$;
 
 -- Seed for all existing organizations on migration

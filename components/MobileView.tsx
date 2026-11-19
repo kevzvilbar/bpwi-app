@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import ActivityLoggerModal, { type LinkedPmTask } from '@/components/ActivityLoggerModal';
 import { ACTIVITY_BY_ID, type DailyActivityRow } from '@/lib/activity-types';
+import { resolveActivityPhotoUrl } from '@/lib/activity-media';
 import { enqueueOfflineActivity, flushOfflineQueue, getOfflineQueue, type PendingOfflineActivity } from '@/lib/offline-queue';
 
 type Op = { id: string; full_name: string; position: string | null; phone_number: string | null; default_station: string | null };
@@ -834,7 +835,7 @@ export default function MobileView(p: {
                         {act.photo_urls.map((u, i) => (
                           <img
                             key={i}
-                            src={u}
+                            src={resolveActivityPhotoUrl(u, act.photo_storage_paths?.[i])}
                             alt={`Activity photo ${i + 1}`}
                             style={{ width: 52, height: 52, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }}
                           />

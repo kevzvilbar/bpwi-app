@@ -10,14 +10,14 @@ const REPORT_STORE_NAME = 'pending_reports';
 export type PendingOfflineActivity = {
   queueId: string;
   queuedAt: string;
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
 };
 
 export type PendingOfflineReport = {
   queueId: string;
   queuedAt: string;
   editingId: string | null;
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
 };
 
 function notifyQueueChanged() {
@@ -47,7 +47,7 @@ function openSyncDb(): Promise<IDBDatabase> {
   });
 }
 
-export async function enqueueOfflineActivity(payload: Record<string, any>): Promise<PendingOfflineActivity> {
+export async function enqueueOfflineActivity(payload: Record<string, unknown>): Promise<PendingOfflineActivity> {
   const item: PendingOfflineActivity = {
     queueId: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     queuedAt: new Date().toISOString(),
@@ -107,19 +107,20 @@ export async function flushOfflineQueue(sb: SupabaseClient): Promise<{
 
   for (const item of items) {
     try {
-      const payloadToInsert = { ...item.payload };
+      const payloadToInsert: Record<string, unknown> = { ...item.payload };
+      const orgId = typeof payloadToInsert.organization_id === 'string' ? payloadToInsert.organization_id : '';
       if (
         Array.isArray(payloadToInsert.photo_urls) &&
         payloadToInsert.photo_urls.length > 0 &&
-        payloadToInsert.organization_id
+        orgId
       ) {
         const uploadedUrls: string[] = [];
         const uploadedPaths: string[] = Array.isArray(payloadToInsert.photo_storage_paths)
-          ? [...payloadToInsert.photo_storage_paths]
+          ? payloadToInsert.photo_storage_paths.filter((p): p is string => typeof p === 'string')
           : [];
         for (const rawUrl of payloadToInsert.photo_urls) {
           if (typeof rawUrl === 'string' && rawUrl.startsWith('data:image/')) {
-            const up = await uploadDataUrlPhoto(sb, payloadToInsert.organization_id, rawUrl);
+            const up = await uploadDataUrlPhoto(sb, orgId, rawUrl);
             uploadedUrls.push(up.url);
             if (up.storagePath) uploadedPaths.push(up.storagePath);
           } else if (typeof rawUrl === 'string') {
@@ -140,25 +141,31 @@ export async function flushOfflineQueue(sb: SupabaseClient): Promise<{
         continue;
       }
 
-      if (item.payload.pm_task_id) {
+      const pmTaskId = typeof item.payload.pm_task_id === 'string' ? item.payload.pm_task_id : null;
+      const activityDate = typeof item.payload.activity_date === 'string' ? item.payload.activity_date : null;
+      const activityNotes = typeof item.payload.notes === 'string' ? item.payload.notes : '';
+      const activityType = typeof item.payload.activity_type === 'string' ? item.payload.activity_type : 'activity';
+      const jobOrderId = typeof item.payload.job_order_id === 'string' ? item.payload.job_order_id : null;
+
+      if (pmTaskId) {
         await sb
           .from('pm_tasks')
           .update({
             status: 'done',
-            completed_at: item.payload.activity_date,
-            remarks: item.payload.notes || `Synced from offline activity (${item.payload.activity_type})`,
+            completed_at: activityDate,
+            remarks: activityNotes || `Synced from offline activity (${activityType})`,
           })
-          .eq('id', item.payload.pm_task_id);
+          .eq('id', pmTaskId);
       }
 
-      if (item.payload.job_order_id) {
+      if (jobOrderId) {
         await sb
           .from('job_orders')
           .update({
             status: 'completed',
             completed_at: new Date().toISOString(),
           })
-          .eq('id', item.payload.job_order_id);
+          .eq('id', jobOrderId);
       }
 
       await removeOfflineItem(item.queueId);
@@ -173,7 +180,7 @@ export async function flushOfflineQueue(sb: SupabaseClient): Promise<{
 
 export async function enqueueOfflineReport(
   editingId: string | null,
-  payload: Record<string, any>,
+  payload: Record<string, unknown>,
 ): Promise<PendingOfflineReport> {
   const item: PendingOfflineReport = {
     queueId: `rep-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,

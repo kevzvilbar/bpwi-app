@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { getErrorMessage } from '@/lib/error-utils';
+import { resolveActivityPhotoUrl } from '@/lib/activity-media';
 import {
   ACTIVITY_BY_ID,
   ACTIVITY_TYPES,
@@ -962,15 +963,18 @@ export default function ActivitiesMonitor(p: {
                     ) : Array.isArray(act.photo_urls) && act.photo_urls.length > 0 ? (
                       <div style={{ display: 'grid', gap: 4 }}>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          {act.photo_urls.map((u, idx) => (
-                            <a key={idx} href={u} target="_blank" rel="noreferrer">
-                              <img
-                                src={u}
-                                alt={`Photo ${idx + 1}`}
-                                style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }}
-                              />
-                            </a>
-                          ))}
+                          {act.photo_urls.map((u, idx) => {
+                            const photoSrc = resolveActivityPhotoUrl(u, act.photo_storage_paths?.[idx]);
+                            return (
+                              <a key={idx} href={photoSrc} target="_blank" rel="noreferrer">
+                                <img
+                                  src={photoSrc}
+                                  alt={`Photo ${idx + 1}`}
+                                  style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }}
+                                />
+                              </a>
+                            );
+                          })}
                         </div>
                         {expDays !== null && (
                           <span style={{ fontSize: 10.5, color: expDays <= 5 ? '#b45309' : 'var(--text-secondary)' }}>
