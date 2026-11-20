@@ -750,7 +750,7 @@ export default function ActivitiesMonitor(p: {
                       </div>
                     )}
 
-                    {act.gps_lat !== null && act.gps_lng !== null && (
+                    {act.gps_lat != null && act.gps_lng != null && (
                       <div style={{ fontSize: 11.5 }}>
                         <a
                           href={`https://maps.google.com/?q=${act.gps_lat},${act.gps_lng}`}

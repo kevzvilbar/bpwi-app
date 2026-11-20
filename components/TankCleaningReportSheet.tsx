@@ -140,7 +140,7 @@ export default function TankCleaningReportSheet({
   const reportNo = formatTankReportNumber(activity.activity_date, activity.id, tc.reportNo);
   const facilityName = activity.site_or_well || areaLabel || 'N/A';
   const gpsDisplay =
-    activity.gps_lat !== null && activity.gps_lng !== null
+    activity.gps_lat != null && activity.gps_lng != null
       ? `${activity.gps_lat}, ${activity.gps_lng}`
       : 'N/A';
   const capacityDisplay = tc.tankCapacity.trim()

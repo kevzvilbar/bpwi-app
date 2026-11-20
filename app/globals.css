@@ -789,3 +789,34 @@ a:focus-visible {
     height: 18px;
   }
 }
+
+/* Official report forms on phones: keep the designed width and scroll sideways instead of collapsing */
+.report-scroll-hint {
+  display: none;
+}
+@media screen and (max-width: 820px) {
+  .report-scroll-hint {
+    display: block;
+    margin: 0 0 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .report-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .report-sheet {
+    min-width: 780px;
+  }
+}
+@media print {
+  .report-scroll {
+    overflow: visible;
+    border: 0;
+  }
+  .report-sheet {
+    min-width: 0;
+  }
+}

@@ -31,6 +31,22 @@ function calcTatHours(startIso?: string | null, endIso?: string | null) {
   return ((e - s) / (1000 * 60 * 60)).toFixed(1) + ' hrs';
 }
 
+/**
+ * The official forms are fixed-layout A4 documents. On a phone they used to collapse into
+ * overlapping text, so on small screens they keep their designed width inside a sideways-scrolling
+ * frame. Printing is unaffected (see .report-scroll in globals.css).
+ */
+function ReportViewport({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      <p className="report-scroll-hint no-print">Swipe sideways to see the whole form. Print / Save PDF gives the full page.</p>
+      <div className="report-scroll">
+        <div className="report-sheet">{children}</div>
+      </div>
+    </>
+  );
+}
+
 export default function PrintableActivityReport(p: {
   mode: 'activity' | 'meter_test' | 'well_pull_out' | 'tank_cleaning';
   orgName: string;
@@ -215,21 +231,25 @@ export default function PrintableActivityReport(p: {
         )}
 
         {showPulloutSheet && act ? (
-          <WellPulloutReportSheet
-            activity={act}
-            orgName={p.orgName}
-            areaLabel={areaLabel}
-            leadOpName={leadOp?.full_name ?? ''}
-            crewNames={crewOps}
-          />
+          <ReportViewport>
+            <WellPulloutReportSheet
+              activity={act}
+              orgName={p.orgName}
+              areaLabel={areaLabel}
+              leadOpName={leadOp?.full_name ?? ''}
+              crewNames={crewOps}
+            />
+          </ReportViewport>
         ) : showTankCleaningSheet && act ? (
-          <TankCleaningReportSheet
-            activity={act}
-            orgName={p.orgName}
-            areaLabel={areaLabel}
-            leadOp={leadOp ?? null}
-            crewOps={crewOpObjects}
-          />
+          <ReportViewport>
+            <TankCleaningReportSheet
+              activity={act}
+              orgName={p.orgName}
+              areaLabel={areaLabel}
+              leadOp={leadOp ?? null}
+              crewOps={crewOpObjects}
+            />
+          </ReportViewport>
         ) : p.mode === 'meter_test' ? (
           /* Official Water Meter Volumetric Test Certificate Layout */
           <div style={{ display: 'grid', gap: 16, fontSize: 12.5 }}>
