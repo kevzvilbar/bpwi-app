@@ -54,6 +54,9 @@ export default async function RequestsPage() {
   });
   if (reqRes.error) console.error('Error fetching change requests:', reqRes.error);
   const rawRequests = reqRes.data;
+  // Set when the request list or any batch of items failed to load. The screen then refuses to act: a request
+  // shown without its items looks empty, and the reject RPC acts on every pending item regardless of what loaded.
+  let loadFailed = Boolean(reqRes.error);
 
   // Load user profiles to get requester and reviewer names
   const { data: userProfiles } = await sb.from('user_profiles').select('id, full_name, role');
@@ -70,8 +73,12 @@ export default async function RequestsPage() {
     ),
   );
   for (const r of itemResults) {
-    if (r.error) console.error('Error fetching change request items:', r.error);
-    else rawItems.push(...r.data);
+    if (r.error) {
+      console.error('Error fetching change request items:', r.error);
+      loadFailed = true;
+    } else {
+      rawItems.push(...r.data);
+    }
   }
 
   // Live conflict detection for open items (schedule, standby, PM, leave), same rules as the RPC.
@@ -212,6 +219,7 @@ export default async function RequestsPage() {
         isManager={isManager}
         currentUserId={user.id}
         liveCheckFailed={liveCheckFailed}
+        loadFailed={loadFailed}
       />
     </div>
   );

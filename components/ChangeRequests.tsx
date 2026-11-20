@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
@@ -9,6 +9,7 @@ import type { ChangeRequest, ChangeRequestItem } from '@/lib/profile';
 import { getErrorMessage } from '@/lib/error-utils';
 
 import { findOffShift, isOffPartnerArea } from '@/lib/roster-helpers';
+import { conflictLabel, describeReviewResult, overrideExplanation, toggleAllSelection, type ReviewRpcResult } from '@/lib/change-request-conflicts';
 
 type Shift = { id: string; code: string; description?: string | null; background_color: string; text_color: string; is_off?: boolean };
 type Area = { id: string; code: string; name?: string | null; category?: string; background_color: string; text_color: string };
@@ -25,6 +26,8 @@ type Props = {
   currentUserId: string;
   /** True when the page could not load live data to check for conflicts (the server still checks on approval). */
   liveCheckFailed?: boolean;
+  /** True when the request list or some items failed to load. Review actions are disabled rather than run against an incomplete list. */
+  loadFailed?: boolean;
 };
 
 type Tab = 'pending' | 'approved' | 'rejected' | 'all';
@@ -67,6 +70,17 @@ export default function ChangeRequests(p: Props) {
   const [isPending, startTransition] = useTransition();
   const busy = processingId !== null;
 
+  // Results land in a banner at the top of the page, which is off-screen when the approver acted on a card further
+  // down. Bring each new message into view, unless a dialog is open (it shows errors itself and covers the page).
+  const msgRef = useRef<HTMLDivElement>(null);
+  const lastShownMsg = useRef<Msg | null>(null);
+  const dialogOpen = rejectDialog !== null || overrideDialog !== null;
+  useEffect(() => {
+    if (!actionMsg || dialogOpen || lastShownMsg.current === actionMsg) return;
+    lastShownMsg.current = actionMsg;
+    msgRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [actionMsg, dialogOpen]);
+
   const opMap = new Map(p.operators.map((o) => [o.id, o.full_name]));
   const shiftMap = new Map(p.shifts.map((s) => [s.id, s]));
   const areaMap = new Map(p.areas.map((a) => [a.id, a]));
@@ -99,11 +113,10 @@ export default function ChangeRequests(p: Props) {
 
   function toggleAllItemsForRequest(request: ChangeRequest) {
     const open = getOpenItems(request);
-    setSelectedItems((prev) => {
-      const current = prev[request.id] ?? new Set<string>();
-      const all = current.size === open.length && open.length > 0;
-      return { ...prev, [request.id]: all ? new Set<string>() : new Set(open.map((i) => i.id)) };
-    });
+    setSelectedItems((prev) => ({
+      ...prev,
+      [request.id]: toggleAllSelection(prev[request.id], open.map((i) => i.id)),
+    }));
   }
 
   /**
@@ -136,17 +149,11 @@ export default function ChangeRequests(p: Props) {
       if (error) {
         setActionMsg({ type: 'err', text: `Review failed: ${error.message}` });
       } else {
-        const res = data as { approved_count?: number; rejected_count?: number; conflict_count?: number } | null;
-        const a = res?.approved_count ?? 0;
-        const r = res?.rejected_count ?? 0;
-        const c = res?.conflict_count ?? 0;
-        const parts = [
-          a > 0 ? `${a} applied` : null,
-          r > 0 ? `${r} rejected` : null,
-          c > 0 ? `${c} skipped: changed since proposed (see ⚠️ rows)` : null,
-        ].filter(Boolean);
-        setActionMsg({ type: c > 0 ? 'warn' : 'ok', text: parts.length ? parts.join(' · ') : 'Nothing was changed.' });
+        setActionMsg(describeReviewResult(data as ReviewRpcResult | null));
         setSelectedItems((prev) => ({ ...prev, [request.id]: new Set<string>() }));
+        // The note field was saved with this review; clearing it stops the next batch re-appending it to the
+        // request's notes. Reject-selected passes its own dialog reason instead, so a typed note is left alone.
+        if (opts.note === notes[request.id]) setNotes((prev) => ({ ...prev, [request.id]: '' }));
         ok = true;
         startTransition(() => router.refresh());
       }
@@ -304,6 +311,24 @@ export default function ChangeRequests(p: Props) {
 
   const dlgText: CSSProperties = { fontSize: 13, color: 'var(--text-secondary)', margin: 0 };
 
+  // A failed action leaves its dialog open, and the page banner sits behind the overlay: show the error in the dialog.
+  const dialogError =
+    actionMsg?.type === 'err' ? (
+      <div role="alert" style={{ padding: '8px 10px', borderRadius: 6, fontSize: 12.5, fontWeight: 600, background: 'var(--danger-bg)', color: 'var(--danger-fg)', border: '1px solid var(--danger-border)' }}>
+        {actionMsg.text}
+      </div>
+    ) : null;
+
+  // Opening a dialog starts clean, so it never shows an error from an earlier action.
+  const openRejectDialog = (d: RejectDialog) => {
+    setActionMsg(null);
+    setRejectDialog(d);
+  };
+  const openOverrideDialog = (d: OverrideDialog) => {
+    setActionMsg(null);
+    setOverrideDialog(d);
+  };
+
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '16px 12px' }}>
       {/* Header */}
@@ -334,8 +359,15 @@ export default function ChangeRequests(p: Props) {
         </div>
       )}
 
+      {p.loadFailed && (
+        <div role="alert" style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 6, fontSize: 12.5, fontWeight: 600, background: 'var(--danger-bg)', color: 'var(--danger-fg)', border: '1px solid var(--danger-border)' }}>
+          Some change requests or their items could not be loaded, so review actions are turned off to avoid acting on an incomplete list. Use Refresh to try again.
+        </div>
+      )}
+
       {actionMsg && (
         <div
+          ref={msgRef}
           role="alert"
           style={{
             marginBottom: 16,
@@ -400,7 +432,7 @@ export default function ChangeRequests(p: Props) {
             const open = isOpenRequest(req);
             const isSelfRequest = req.requester_id === p.currentUserId;
             const canActOnSelf = !isSelfRequest || Boolean(p.isAdmin);
-            const canAct = p.canApprove && open && canActOnSelf;
+            const canAct = p.canApprove && open && canActOnSelf && !p.loadFailed;
             const isProcessing = processingId === req.id;
             const selected = selectedItems[req.id] ?? new Set<string>();
             const selectedOpenIds = openItems.filter((i) => selected.has(i.id)).map((i) => i.id);
@@ -486,7 +518,7 @@ export default function ChangeRequests(p: Props) {
                             type="button"
                             className="btn"
                             style={{ background: 'transparent', color: 'var(--danger)', borderColor: 'var(--danger-border)' }}
-                            onClick={() => setRejectDialog({ request: req, itemIds: selectedOpenIds, count: selectedOpenIds.length })}
+                            onClick={() => openRejectDialog({ request: req, itemIds: selectedOpenIds, count: selectedOpenIds.length })}
                             disabled={busy}
                           >
                             Reject selected ({selectedOpenIds.length})…
@@ -498,7 +530,7 @@ export default function ChangeRequests(p: Props) {
                         type="button"
                         className="btn"
                         style={{ background: 'transparent', color: 'var(--danger)', borderColor: 'var(--danger-border)' }}
-                        onClick={() => setRejectDialog({ request: req, itemIds: null, count: openItems.length })}
+                        onClick={() => openRejectDialog({ request: req, itemIds: null, count: openItems.length })}
                         disabled={busy}
                       >
                         {req.status === 'partially_approved' ? 'Reject remaining' : 'Reject all'} ({openItems.length})…
@@ -582,11 +614,11 @@ export default function ChangeRequests(p: Props) {
                               {isConflict ? (
                                 <div style={{ display: 'grid', gap: 4, justifyItems: 'start' }}>
                                   <span style={{ color: 'var(--warn-fg)', fontWeight: 700 }}>
-                                    ⚠️ {item.conflict_reason === 'target_missing' ? 'Target no longer exists' : item.conflict_reason === 'changed' ? 'Changed since proposed' : 'Conflict flagged'}
+                                    ⚠️ {conflictLabel(item.conflict_reason)}
                                   </span>
                                   {item.conflict_reason && <span style={{ fontSize: 11.5 }}>Now: {renderLive(item)}</span>}
                                   {canAct && (
-                                    <button type="button" className="btn" style={{ fontSize: 11.5, padding: '2px 8px' }} disabled={busy} onClick={() => setOverrideDialog({ request: req, item })}>
+                                    <button type="button" className="btn" style={{ fontSize: 11.5, padding: '2px 8px' }} disabled={busy} onClick={() => openOverrideDialog({ request: req, item })}>
                                       {item.conflict_reason === 'target_missing' ? 'Discard…' : 'Review & override…'}
                                     </button>
                                   )}
@@ -643,6 +675,7 @@ export default function ChangeRequests(p: Props) {
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
             />
+            {dialogError}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button
                 type="button"
@@ -685,13 +718,10 @@ export default function ChangeRequests(p: Props) {
                     <strong>{categoryLabel(item.target_table)}</strong> · {item.operator_id ? (opMap.get(item.operator_id) ?? 'Unknown Operator') : 'PM task'} · {renderDate(item)}
                   </p>
                   {row('When proposed', renderSnapshot(item, item.original_state as Snap | null, 'Empty cell'))}
-                  {row('Now (live)', renderLive(item))}
+                  {item.conflict_reason && row('Now (live)', renderLive(item))}
                   {row(missing ? 'Requested' : 'Will be applied', renderProposed(item))}
-                  <p style={dlgText}>
-                    {missing
-                      ? 'The original record was deleted after this was proposed, and a deleted record cannot be recreated by approval. Confirming rejects this item and records the reason.'
-                      : 'The live value above was changed after this was proposed. Confirming replaces it with the requested change.'}
-                  </p>
+                  <p style={dlgText}>{overrideExplanation(item.conflict_reason)}</p>
+                  {dialogError}
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                     <button type="button" className="btn" disabled={busy} onClick={() => setOverrideDialog(null)}>
                       Cancel

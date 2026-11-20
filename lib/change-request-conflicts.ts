@@ -54,6 +54,52 @@ const sameList = (a: string[] | null | undefined, b: unknown) => {
   return x.length === y.length && x.every((v, i) => v === y[i]); // order-sensitive, like the SQL array compare
 };
 
+/**
+ * "Select all" toggle for one request. Only ticks on items that are still open count, so ticks left over
+ * from items another approver has since closed cannot make a partial selection look complete.
+ */
+export function toggleAllSelection(current: ReadonlySet<string> | undefined, openIds: readonly string[]): Set<string> {
+  const allSelected = openIds.length > 0 && openIds.every((id) => current?.has(id));
+  return allSelected ? new Set<string>() : new Set(openIds);
+}
+
+export type ReviewRpcResult = { approved_count?: number; rejected_count?: number; conflict_count?: number };
+
+/** Banner text for an approve_change_request result. Nothing changing is a warning, never a success. */
+export function describeReviewResult(res: ReviewRpcResult | null | undefined): { type: 'ok' | 'warn'; text: string } {
+  const a = res?.approved_count ?? 0;
+  const r = res?.rejected_count ?? 0;
+  const c = res?.conflict_count ?? 0;
+  const parts = [
+    a > 0 ? `${a} applied` : null,
+    r > 0 ? `${r} rejected` : null,
+    // Not "changed since proposed": leave-overlap conflicts are flagged without anything having changed.
+    c > 0 ? `${c} skipped: conflict with live data (see ⚠️ rows)` : null,
+  ].filter(Boolean);
+  if (parts.length === 0) {
+    return { type: 'warn', text: 'Nothing was changed. These items may already have been reviewed by someone else; refresh to see the latest.' };
+  }
+  return { type: c > 0 ? 'warn' : 'ok', text: parts.join(' · ') };
+}
+
+/** Row label for a conflicting item. `reason` is undefined when only the server knows why (e.g. overlapping leave). */
+export function conflictLabel(reason: ConflictReason | null | undefined): string {
+  if (reason === 'target_missing') return 'Target no longer exists';
+  if (reason === 'changed') return 'Changed since proposed';
+  return 'Conflict flagged by server';
+}
+
+/** Explanation shown in the override dialog, matched to why the item conflicts. */
+export function overrideExplanation(reason: ConflictReason | null | undefined): string {
+  if (reason === 'target_missing') {
+    return 'The original record was deleted after this was proposed, and a deleted record cannot be recreated by approval. Confirming rejects this item and records the reason.';
+  }
+  if (reason === 'changed') {
+    return 'The live value above was changed after this was proposed. Confirming replaces it with the requested change.';
+  }
+  return 'The server flagged this item when approval was last attempted (for example, leave dates that overlap another leave record). This page cannot show the live value for it. Confirming applies the requested change anyway.';
+}
+
 export function evaluateItem(item: ConflictItem, snap: LiveSnapshot): ConflictResult {
   const orig = item.original_state ?? null;
 

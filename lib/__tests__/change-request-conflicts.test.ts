@@ -1,6 +1,15 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluateItem, emptySnapshot, cellKey, chunk } from '../change-request-conflicts.ts';
+import {
+  evaluateItem,
+  emptySnapshot,
+  cellKey,
+  chunk,
+  conflictLabel,
+  describeReviewResult,
+  overrideExplanation,
+  toggleAllSelection,
+} from '../change-request-conflicts.ts';
 
 describe('change-request conflict evaluation (mirrors approve_change_request)', () => {
   const base = { target_table: 'schedule_assignments' as const, operator_id: 'op1', schedule_date: '2026-12-01' };
@@ -54,5 +63,63 @@ describe('change-request conflict evaluation (mirrors approve_change_request)', 
 
   it('chunk splits evenly', () => {
     assert.deepEqual(chunk([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]]);
+  });
+});
+
+describe('toggleAllSelection', () => {
+  it('selects every open item, then clears on the next toggle', () => {
+    const open = ['a', 'b', 'c'];
+    const selected = toggleAllSelection(undefined, open);
+    assert.deepEqual([...selected].sort(), open);
+    assert.equal(toggleAllSelection(selected, open).size, 0);
+  });
+
+  it('is not fooled by leftover ticks on items that are no longer open', () => {
+    // 2 of 3 open items ticked + 1 stale id: the raw set size (3) equals the open count, but the selection is partial.
+    const current = new Set(['a', 'b', 'closed-earlier']);
+    assert.deepEqual([...toggleAllSelection(current, ['a', 'b', 'c'])].sort(), ['a', 'b', 'c']);
+  });
+
+  it('does nothing useful with no open items', () => {
+    assert.equal(toggleAllSelection(new Set(['x']), []).size, 0);
+  });
+});
+
+describe('describeReviewResult', () => {
+  it('reports what was applied, rejected and skipped', () => {
+    assert.deepEqual(describeReviewResult({ approved_count: 2 }), { type: 'ok', text: '2 applied' });
+    assert.deepEqual(describeReviewResult({ approved_count: 1, rejected_count: 1 }), { type: 'ok', text: '1 applied · 1 rejected' });
+    const mixed = describeReviewResult({ approved_count: 3, conflict_count: 1 });
+    assert.equal(mixed.type, 'warn');
+    assert.match(mixed.text, /^3 applied · 1 skipped: conflict with live data/);
+  });
+
+  it('does not describe a skipped conflict as "changed since proposed" (leave overlaps have no change)', () => {
+    assert.doesNotMatch(describeReviewResult({ conflict_count: 1 }).text, /changed since proposed/i);
+  });
+
+  it('treats a no-op as a warning, e.g. a stale screen after another approver already reviewed the items', () => {
+    for (const res of [null, undefined, {}, { approved_count: 0, rejected_count: 0, conflict_count: 0 }]) {
+      const out = describeReviewResult(res);
+      assert.equal(out.type, 'warn');
+      assert.match(out.text, /^Nothing was changed/);
+    }
+  });
+});
+
+describe('conflict wording', () => {
+  it('labels each known reason, and says so when only the server knows why', () => {
+    assert.equal(conflictLabel('target_missing'), 'Target no longer exists');
+    assert.equal(conflictLabel('changed'), 'Changed since proposed');
+    assert.equal(conflictLabel(undefined), 'Conflict flagged by server');
+    assert.equal(conflictLabel(null), 'Conflict flagged by server');
+  });
+
+  it('override explanation matches the reason, and does not claim a live value changed when it is unknown', () => {
+    assert.match(overrideExplanation('target_missing'), /cannot be recreated/);
+    assert.match(overrideExplanation('changed'), /was changed after this was proposed/);
+    const unknown = overrideExplanation(undefined);
+    assert.match(unknown, /overlap/i);
+    assert.doesNotMatch(unknown, /was changed after this was proposed/);
   });
 });
