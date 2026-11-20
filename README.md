@@ -18,8 +18,9 @@ Run `007_manager_role.sql` **on its own first** (PostgreSQL cannot use a new enu
   2. **Propose Mode (Default outside windows):** Edits made outside a window queue into a draft change request. On the monthly roster, proposed edits appear as dashed cells (`.cell-pending`) with amber corner markers. Department heads see a floating bar showing queued changes and click **Submit for Approval** with an optional note.
 - **Review & Approval Queue (`/requests`):**
   - Admins and delegated approvers (`can_approve = true`) review proposals before-and-after diffs with conflict detection.
-  - If a cell changed after a proposal was drafted, it is flagged with a warning (`⚠️ Live conflict`) instead of being silently overwritten.
-  - Approvers can **Approve All**, **Approve Selected**, or **Reject** with a recorded reason. Approval applies atomically in a single Postgres transaction (`approve_change_request`).
+  - If a target changed after a proposal was drafted (schedule, standby, PM task or leave), the row is flagged `⚠️ Changed since proposed` and shows the **live value**. A proposal on a previously empty cell conflicts if someone filled it meanwhile. If a PM task / leave record was deleted, the row reads `Target no longer exists`.
+  - **Approve all / non-conflicting** applies everything that is safe and leaves conflicts open. **Review & override…** on a conflict row shows original vs. live vs. proposed and requires confirmation; overriding a deleted target discards the item (it is never recreated).
+  - Partial flow: **Approve selected**, **Reject selected**, or **Reject remaining**, each with an optional note/reason; notes accumulate across batches and the requester is notified of each. Each call is one Postgres transaction (`approve_change_request`, row-locked so two approvers cannot double-apply), and the screen always sends explicit item ids.
 - **Escalation Contacts:** Department heads appear on the **Call Sheet** under *Management escalation* with direct call and SMS buttons.
 
 ## Daily Employee Activity Monitoring (migrations 010 & 011)

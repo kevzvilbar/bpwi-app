@@ -72,6 +72,9 @@ export type ChangeRequestItem = {
   original_state?: ChangeRequestOriginalState | null;
   payload?: Record<string, unknown> | null;
   status: 'pending' | 'approved' | 'rejected' | 'conflict';
+  /** Display-only, computed on the requests page: why the item is flagged and what the target looks like now. */
+  conflict_reason?: 'changed' | 'target_missing' | null;
+  live_state?: Record<string, unknown> | null;
   rejection_reason?: string | null;
   applied_at?: string | null;
   created_at: string;

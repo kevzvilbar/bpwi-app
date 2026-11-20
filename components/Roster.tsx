@@ -498,7 +498,7 @@ export default function Roster(p: {
             operator_id: opId,
             schedule_date: date,
             ...(nextRow ? { shift_type_id: nextRow.shift_type_id, area_code_id: nextRow.area_code_id } : {}),
-            original_state: prevCell ? { shift_type_id: prevCell.shift_type_id, area_code_id: prevCell.area_code_id } : null,
+            original_state: prevCell ? { shift_type_id: prevCell.shift_type_id, area_code_id: prevCell.area_code_id } : { shift_type_id: null, area_code_id: null },
           },
         ],
         rollback,
@@ -546,7 +546,7 @@ export default function Roster(p: {
             operator_id: opId,
             schedule_date: date,
             standby_type: nextType,
-            original_state: prevSb ? { standby_type: prevSb.standby_type } : null,
+            original_state: prevSb ? { standby_type: prevSb.standby_type } : { standby_type: null },
           },
         ],
         rollback,
@@ -609,7 +609,7 @@ export default function Roster(p: {
           schedule_date: h.date,
           shift_type_id: normalizedShiftId,
           area_code_id: source.area_code_id,
-          original_state: h.prev ? { shift_type_id: h.prev.shift_type_id, area_code_id: h.prev.area_code_id } : null,
+          original_state: h.prev ? { shift_type_id: h.prev.shift_type_id, area_code_id: h.prev.area_code_id } : { shift_type_id: null, area_code_id: null },
         })),
         rollback,
       );
@@ -670,7 +670,7 @@ export default function Roster(p: {
             schedule_date: u.schedule_date,
             shift_type_id: u.shift_type_id,
             area_code_id: u.area_code_id,
-            original_state: prevEntry?.prev ? { shift_type_id: prevEntry.prev.shift_type_id, area_code_id: prevEntry.prev.area_code_id } : null,
+            original_state: prevEntry?.prev ? { shift_type_id: prevEntry.prev.shift_type_id, area_code_id: prevEntry.prev.area_code_id } : { shift_type_id: null, area_code_id: null },
           };
         }),
         ...batch.deletes.map((d) => {
@@ -680,7 +680,7 @@ export default function Roster(p: {
             action: 'delete' as const,
             operator_id: d.opId,
             schedule_date: d.date,
-            original_state: prevEntry?.prev ? { shift_type_id: prevEntry.prev.shift_type_id, area_code_id: prevEntry.prev.area_code_id } : null,
+            original_state: prevEntry?.prev ? { shift_type_id: prevEntry.prev.shift_type_id, area_code_id: prevEntry.prev.area_code_id } : { shift_type_id: null, area_code_id: null },
           };
         }),
       ];
