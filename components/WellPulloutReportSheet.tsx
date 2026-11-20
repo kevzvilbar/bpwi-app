@@ -20,6 +20,8 @@ const B = '1px solid #1e293b';
 const TB = '1.5px solid #0f172a';
 const MIDDLE_W = '196px';
 const IR_COL_W = '64px';
+const PHASE_ROW_GRID = '116px repeat(3, minmax(0, 1fr))';
+const PHASE_SLOT_GRID = 'minmax(0, 1fr) 38px';
 
 const HDR_BAR: React.CSSProperties = {
   background: '#e2e8f0',
@@ -81,20 +83,43 @@ function UnderlinedRow({
   value,
   suffix = '',
   uppercase = false,
-  labelWidth = '42%',
+  labelWidth = '118px',
+  unitWidth = '24px',
+  indent = false,
 }: {
   label: string;
   value: string;
   suffix?: string;
   uppercase?: boolean;
   labelWidth?: string;
+  unitWidth?: string;
+  indent?: boolean;
 }) {
+  const showUnitCol = unitWidth !== '0px';
   return (
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, fontSize: 8.5, lineHeight: 1.35 }}>
-      <span style={{ minWidth: labelWidth, color: '#334155', fontWeight: 600, flexShrink: 0 }}>{label}</span>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: showUnitCol
+          ? `${labelWidth} minmax(0, 1fr) ${unitWidth}`
+          : `${labelWidth} minmax(0, 1fr)`,
+        alignItems: 'baseline',
+        gap: 4,
+        fontSize: 8.5,
+        lineHeight: 1.35,
+      }}
+    >
       <span
         style={{
-          flex: 1,
+          color: '#334155',
+          fontWeight: 600,
+          paddingLeft: indent ? 10 : 0,
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
           borderBottom: '1px solid #475569',
           textAlign: 'center',
           fontWeight: 700,
@@ -106,7 +131,7 @@ function UnderlinedRow({
       >
         {value || ''}
       </span>
-      {suffix && <span style={{ fontSize: 8, color: '#334155', width: 22, flexShrink: 0 }}>{suffix}</span>}
+      {showUnitCol && <span style={{ fontSize: 8, color: '#334155' }}>{suffix}</span>}
     </div>
   );
 }
@@ -119,13 +144,28 @@ function PhaseLineRow({
   slots: ReadonlyArray<{ val: string; unit: string }>;
 }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '112px repeat(3, minmax(0, 1fr))', gap: 6, alignItems: 'baseline', fontSize: 8.5 }}>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: PHASE_ROW_GRID,
+        gap: 6,
+        alignItems: 'baseline',
+        fontSize: 8.5,
+      }}
+    >
       <span style={{ fontWeight: 600, color: '#334155' }}>{label}</span>
       {slots.map((s) => (
-        <div key={s.unit} style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
+        <div
+          key={s.unit}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: PHASE_SLOT_GRID,
+            alignItems: 'baseline',
+            gap: 3,
+          }}
+        >
           <span
             style={{
-              flex: 1,
               borderBottom: '1px solid #475569',
               textAlign: 'center',
               fontWeight: 700,
@@ -155,10 +195,18 @@ function VerticalIrColumn({
       <div style={{ fontSize: 8.2, fontWeight: 700, color: '#0f172a', lineHeight: 1.25 }}>{title}</div>
       <div style={{ display: 'grid', gap: 2, paddingTop: 2 }}>
         {(['L1', 'L2', 'L3'] as const).map((phase, idx) => (
-          <div key={phase} style={{ display: 'flex', alignItems: 'baseline', gap: 4, fontSize: 8.5 }}>
+          <div
+            key={phase}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '108px 38px',
+              alignItems: 'baseline',
+              gap: 4,
+              fontSize: 8.5,
+            }}
+          >
             <span
               style={{
-                width: 96,
                 borderBottom: '1px solid #475569',
                 textAlign: 'center',
                 fontWeight: 700,
@@ -167,7 +215,7 @@ function VerticalIrColumn({
             >
               {vals[idx] || ''}
             </span>
-            <span style={{ fontSize: 8, color: '#334155' }}>
+            <span style={{ fontSize: 8, color: '#334155', whiteSpace: 'nowrap' }}>
               ({phase}) {unit}
             </span>
           </div>
@@ -277,16 +325,16 @@ export default function WellPulloutReportSheet({
             <div style={HDR_BAR}>1. TO BE FILLED UP BY CONTRACTOR / SITE COORDINATOR</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 1fr', gap: 12, padding: '3px 6px' }}>
               <div style={{ display: 'grid', gap: 2 }}>
-                <UnderlinedRow label="Contractor / Site Coordinator:" value={w.contractorCoordinator} labelWidth="46%" />
-                <UnderlinedRow label="Time Reported to Engineer:" value={formatPulloutTimeDisplay(w.timeReportedToEngineer)} labelWidth="46%" />
-                <UnderlinedRow label="Arrival Time at Site:" value={formatPulloutTimeDisplay(w.arrivalTimeAtSite)} labelWidth="46%" />
-                <UnderlinedRow label="Time of Set-up:" value={formatPulloutTimeDisplay(w.timeOfSetUp)} labelWidth="46%" />
+                <UnderlinedRow label="Contractor / Site Coordinator:" value={w.contractorCoordinator} labelWidth="130px" unitWidth="0px" />
+                <UnderlinedRow label="Time Reported to Engineer:" value={formatPulloutTimeDisplay(w.timeReportedToEngineer)} labelWidth="130px" unitWidth="0px" />
+                <UnderlinedRow label="Arrival Time at Site:" value={formatPulloutTimeDisplay(w.arrivalTimeAtSite)} labelWidth="130px" unitWidth="0px" />
+                <UnderlinedRow label="Time of Set-up:" value={formatPulloutTimeDisplay(w.timeOfSetUp)} labelWidth="130px" unitWidth="0px" />
               </div>
               <div style={{ display: 'grid', gap: 2 }}>
-                <UnderlinedRow label="Date Started:" value={startDateDisplay} labelWidth="38%" />
-                <UnderlinedRow label="Time Started:" value={startTimeDisplay} labelWidth="38%" />
-                <UnderlinedRow label="Date Finished:" value={endDateDisplay} labelWidth="38%" />
-                <UnderlinedRow label="Time Finished:" value={endTimeDisplay} labelWidth="38%" />
+                <UnderlinedRow label="Date Started:" value={startDateDisplay} labelWidth="82px" unitWidth="0px" />
+                <UnderlinedRow label="Time Started:" value={startTimeDisplay} labelWidth="82px" unitWidth="0px" />
+                <UnderlinedRow label="Date Finished:" value={endDateDisplay} labelWidth="82px" unitWidth="0px" />
+                <UnderlinedRow label="Time Finished:" value={endTimeDisplay} labelWidth="82px" unitWidth="0px" />
               </div>
             </div>
           </div>
@@ -318,9 +366,31 @@ export default function WellPulloutReportSheet({
                 <div style={HDR_BAR}>2. BEFORE PULL OUT OF PUMP AND MOTOR</div>
                 <div style={{ ...PAD_CELL, display: 'grid', gap: 3 }}>
                   <div style={{ fontSize: 8, fontWeight: 700, color: '#334155' }}>Get the following before Pull Out</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                    <UnderlinedRow label="Flowrate:" value={w.beforePulloutFlowrateLps} suffix="lps" labelWidth="36%" />
-                    <UnderlinedRow label="Pressure at Source:" value={w.beforePulloutPressurePsi} suffix="psi" labelWidth="48%" />
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: PHASE_ROW_GRID,
+                      gap: 6,
+                      alignItems: 'baseline',
+                      fontSize: 8.5,
+                    }}
+                  >
+                    <span style={{ fontWeight: 600, color: '#334155' }}>Flowrate:</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: PHASE_SLOT_GRID, alignItems: 'baseline', gap: 3 }}>
+                      <span style={{ borderBottom: '1px solid #475569', textAlign: 'center', fontWeight: 700, minHeight: 12 }}>
+                        {w.beforePulloutFlowrateLps || ''}
+                      </span>
+                      <span style={{ fontSize: 7.8, color: '#334155' }}>lps</span>
+                    </div>
+                    <span style={{ fontWeight: 600, color: '#334155', textAlign: 'right', paddingRight: 4 }}>
+                      Pressure at Source:
+                    </span>
+                    <div style={{ display: 'grid', gridTemplateColumns: PHASE_SLOT_GRID, alignItems: 'baseline', gap: 3 }}>
+                      <span style={{ borderBottom: '1px solid #475569', textAlign: 'center', fontWeight: 700, minHeight: 12 }}>
+                        {w.beforePulloutPressurePsi || ''}
+                      </span>
+                      <span style={{ fontSize: 7.8, color: '#334155' }}>psi</span>
+                    </div>
                   </div>
                   <PhaseLineRow
                     label="Insulation Resistance"
@@ -366,39 +436,39 @@ export default function WellPulloutReportSheet({
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: B }}>
                   <div style={{ ...PAD_CELL, borderRight: B, display: 'grid', gap: 2 }}>
                     <div style={{ fontWeight: 800, fontSize: 8.5, textDecoration: 'underline' }}>PUMP DETAILS</div>
-                    <UnderlinedRow label="Brand" value={w.pulledPumpBrand} uppercase labelWidth="30%" />
-                    <UnderlinedRow label="Model" value={w.pulledPumpModel} uppercase labelWidth="30%" />
-                    <UnderlinedRow label="Stock No.:" value={w.pulledPumpStockNo} uppercase labelWidth="30%" />
+                    <UnderlinedRow label="Brand" value={w.pulledPumpBrand} uppercase labelWidth="64px" unitWidth="0px" />
+                    <UnderlinedRow label="Model" value={w.pulledPumpModel} uppercase labelWidth="64px" unitWidth="0px" />
+                    <UnderlinedRow label="Stock No.:" value={w.pulledPumpStockNo} uppercase labelWidth="64px" unitWidth="0px" />
                   </div>
                   <div style={{ ...PAD_CELL, display: 'grid', gap: 2 }}>
                     <div style={{ fontWeight: 800, fontSize: 8.5, textDecoration: 'underline' }}>MOTOR DETAILS</div>
-                    <UnderlinedRow label="Brand" value={w.pulledMotorBrand} uppercase labelWidth="42%" />
-                    <UnderlinedRow label="HP / Voltage / Phase" value={w.pulledMotorHpVoltPhase} uppercase labelWidth="42%" />
-                    <UnderlinedRow label="Serial No. / Stock No.:" value={w.pulledMotorSerialNo} uppercase labelWidth="42%" />
+                    <UnderlinedRow label="Brand" value={w.pulledMotorBrand} uppercase labelWidth="108px" unitWidth="0px" />
+                    <UnderlinedRow label="HP / Voltage / Phase" value={w.pulledMotorHpVoltPhase} uppercase labelWidth="108px" unitWidth="0px" />
+                    <UnderlinedRow label="Serial No. / Stock No.:" value={w.pulledMotorSerialNo} uppercase labelWidth="108px" unitWidth="0px" />
                   </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                   <div style={{ ...PAD_CELL, borderRight: B, display: 'grid', gap: 2 }}>
                     <div style={{ fontWeight: 800, fontSize: 8.5, textDecoration: 'underline' }}>DEEPWELL DETAILS</div>
-                    <UnderlinedRow label="Size of Riser Pipes" value={w.pulledRiserPipeSizeMm} suffix="mm" labelWidth="48%" />
-                    <UnderlinedRow label="Type of Riser Material:" value={w.pulledRiserPipeMaterial} labelWidth="48%" />
-                    <UnderlinedRow label="No. of Riser Pipes" value={w.pulledRiserPipeCount} suffix="pcs" labelWidth="48%" />
-                    <UnderlinedRow label="Well Casing Diameter" value={w.wellCasingDiameterMm} suffix="mm" labelWidth="48%" />
-                    <UnderlinedRow label="Well Depth" value={w.wellDepthM} suffix="m" labelWidth="48%" />
-                    <UnderlinedRow label="Pump Setting" value={w.pumpSettingM} suffix="m" labelWidth="48%" />
-                    <UnderlinedRow label="Static Water Level" value={w.swlMeters} suffix="m" labelWidth="48%" />
-                    <UnderlinedRow label="Pumping Water Level" value={w.pwlMeters} suffix="m" labelWidth="48%" />
-                    <UnderlinedRow label="Motor Control Type:" value={w.motorControlType} uppercase labelWidth="48%" />
+                    <UnderlinedRow label="Size of Riser Pipes" value={w.pulledRiserPipeSizeMm} suffix="mm" labelWidth="118px" unitWidth="24px" />
+                    <UnderlinedRow label="Type of Riser Material:" value={w.pulledRiserPipeMaterial} labelWidth="118px" unitWidth="24px" />
+                    <UnderlinedRow label="No. of Riser Pipes" value={w.pulledRiserPipeCount} suffix="pcs" labelWidth="118px" unitWidth="24px" />
+                    <UnderlinedRow label="Well Casing Diameter" value={w.wellCasingDiameterMm} suffix="mm" labelWidth="118px" unitWidth="24px" />
+                    <UnderlinedRow label="Well Depth" value={w.wellDepthM} suffix="m" labelWidth="118px" unitWidth="24px" />
+                    <UnderlinedRow label="Pump Setting" value={w.pumpSettingM} suffix="m" labelWidth="118px" unitWidth="24px" />
+                    <UnderlinedRow label="Static Water Level" value={w.swlMeters} suffix="m" labelWidth="118px" unitWidth="24px" />
+                    <UnderlinedRow label="Pumping Water Level" value={w.pwlMeters} suffix="m" labelWidth="118px" unitWidth="24px" />
+                    <UnderlinedRow label="Motor Control Type:" value={w.motorControlType} uppercase labelWidth="118px" unitWidth="24px" />
                   </div>
                   <div style={{ ...PAD_CELL, display: 'grid', gap: 2, alignContent: 'start' }}>
                     <div style={{ fontWeight: 800, fontSize: 8.5, textDecoration: 'underline' }}>Motor Control Details</div>
-                    <UnderlinedRow label="Cable Size" value={w.pulledCableSizeMm2} suffix="mm²" labelWidth="46%" />
-                    <UnderlinedRow label="Cable Length" value={w.pulledCableLengthM} suffix="m" labelWidth="46%" />
-                    <UnderlinedRow label="# of Splicing (ex. pigtail)" value={w.pulledCableSplicingCount} labelWidth="52%" />
+                    <UnderlinedRow label="Cable Size" value={w.pulledCableSizeMm2} suffix="mm²" labelWidth="132px" unitWidth="24px" />
+                    <UnderlinedRow label="Cable Length" value={w.pulledCableLengthM} suffix="m" labelWidth="132px" unitWidth="24px" />
+                    <UnderlinedRow label="# of Splicing (ex. pigtail)" value={w.pulledCableSplicingCount} labelWidth="132px" unitWidth="24px" />
                     <div style={{ fontWeight: 700, fontSize: 8.2, marginTop: 2 }}>Thermal Overload Relay</div>
-                    <UnderlinedRow label="Range" value={w.pulledOverloadRelayRangeA} suffix="A" labelWidth="46%" />
-                    <UnderlinedRow label="Setting" value={w.pulledOverloadRelaySettingA} suffix="A" labelWidth="46%" />
-                    <UnderlinedRow label="Magnetic Contactor Rating" value={w.pulledMagneticContactorRatingA} suffix="A" labelWidth="54%" />
+                    <UnderlinedRow label="Range" value={w.pulledOverloadRelayRangeA} suffix="A" labelWidth="132px" unitWidth="24px" indent />
+                    <UnderlinedRow label="Setting" value={w.pulledOverloadRelaySettingA} suffix="A" labelWidth="132px" unitWidth="24px" indent />
+                    <UnderlinedRow label="Magnetic Contactor Rating" value={w.pulledMagneticContactorRatingA} suffix="A" labelWidth="132px" unitWidth="24px" />
                   </div>
                 </div>
               </div>
@@ -431,24 +501,28 @@ export default function WellPulloutReportSheet({
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: B }}>
                   <div style={{ ...PAD_CELL, borderRight: B, display: 'grid', gap: 2 }}>
                     <div style={{ fontWeight: 800, fontSize: 8.5, textDecoration: 'underline' }}>PUMP DETAILS</div>
-                    <UnderlinedRow label="Brand" value={w.installPumpBrand} uppercase labelWidth="30%" />
-                    <UnderlinedRow label="Model" value={w.installPumpModel} uppercase labelWidth="30%" />
-                    <UnderlinedRow label="Control No." value={w.installPumpControlNo} uppercase labelWidth="30%" />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingTop: 2 }}>
-                      <span style={{ fontWeight: 600, color: '#334155', minWidth: '30%' }}>Status:</span>
-                      <StatusCheck checked={w.installPumpStatus === 'Brand New'} label="Brand New" />
-                      <StatusCheck checked={w.installPumpStatus === 'Repaired'} label="Repaired" />
+                    <UnderlinedRow label="Brand" value={w.installPumpBrand} uppercase labelWidth="64px" unitWidth="0px" />
+                    <UnderlinedRow label="Model" value={w.installPumpModel} uppercase labelWidth="64px" unitWidth="0px" />
+                    <UnderlinedRow label="Control No." value={w.installPumpControlNo} uppercase labelWidth="64px" unitWidth="0px" />
+                    <div style={{ display: 'grid', gridTemplateColumns: '64px minmax(0, 1fr)', alignItems: 'center', gap: 4, paddingTop: 2 }}>
+                      <span style={{ fontWeight: 600, color: '#334155' }}>Status:</span>
+                      <div>
+                        <StatusCheck checked={w.installPumpStatus === 'Brand New'} label="Brand New" />
+                        <StatusCheck checked={w.installPumpStatus === 'Repaired'} label="Repaired" />
+                      </div>
                     </div>
                   </div>
                   <div style={{ ...PAD_CELL, display: 'grid', gap: 2 }}>
                     <div style={{ fontWeight: 800, fontSize: 8.5, textDecoration: 'underline' }}>MOTOR DETAILS</div>
-                    <UnderlinedRow label="Brand" value={w.installMotorBrand} uppercase labelWidth="42%" />
-                    <UnderlinedRow label="HP / Voltage / Phase:" value={w.installMotorHpVoltPhase} uppercase labelWidth="42%" />
-                    <UnderlinedRow label="Serial No." value={w.installMotorSerialNo} uppercase labelWidth="42%" />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingTop: 2 }}>
-                      <span style={{ fontWeight: 600, color: '#334155', minWidth: '28%' }}>Status:</span>
-                      <StatusCheck checked={w.installMotorStatus === 'Brand New'} label="Brand New" />
-                      <StatusCheck checked={w.installMotorStatus === 'Repaired'} label="Repaired" />
+                    <UnderlinedRow label="Brand" value={w.installMotorBrand} uppercase labelWidth="108px" unitWidth="0px" />
+                    <UnderlinedRow label="HP / Voltage / Phase:" value={w.installMotorHpVoltPhase} uppercase labelWidth="108px" unitWidth="0px" />
+                    <UnderlinedRow label="Serial No." value={w.installMotorSerialNo} uppercase labelWidth="108px" unitWidth="0px" />
+                    <div style={{ display: 'grid', gridTemplateColumns: '108px minmax(0, 1fr)', alignItems: 'center', gap: 4, paddingTop: 2 }}>
+                      <span style={{ fontWeight: 600, color: '#334155' }}>Status:</span>
+                      <div>
+                        <StatusCheck checked={w.installMotorStatus === 'Brand New'} label="Brand New" />
+                        <StatusCheck checked={w.installMotorStatus === 'Repaired'} label="Repaired" />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -537,21 +611,21 @@ export default function WellPulloutReportSheet({
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: B }}>
                   <div style={{ ...PAD_CELL, borderRight: B, display: 'grid', gap: 2 }}>
                     <div style={{ fontWeight: 800, fontSize: 8.5, textDecoration: 'underline' }}>DEEPWELL DETAILS</div>
-                    <UnderlinedRow label="Size of Riser Pipes" value={w.installRiserPipeSizeMm} suffix="mm" labelWidth="48%" />
-                    <UnderlinedRow label="No. of Riser Pipes" value={w.installRiserPipeCount} suffix="pcs" labelWidth="48%" />
-                    <UnderlinedRow label="No. of Sounding Pipes" value={w.soundingPipeLengthM} suffix="m" labelWidth="48%" />
-                    <UnderlinedRow label="Flowrate:" value={w.afterInstallFlowrateLps} suffix="lps" labelWidth="48%" />
-                    <UnderlinedRow label="Pressure at Source:" value={w.afterInstallPressurePsi} suffix="psi" labelWidth="48%" />
+                    <UnderlinedRow label="Size of Riser Pipes" value={w.installRiserPipeSizeMm} suffix="mm" labelWidth="118px" unitWidth="24px" />
+                    <UnderlinedRow label="No. of Riser Pipes" value={w.installRiserPipeCount} suffix="pcs" labelWidth="118px" unitWidth="24px" />
+                    <UnderlinedRow label="No. of Sounding Pipes" value={w.soundingPipeLengthM} suffix="m" labelWidth="118px" unitWidth="24px" />
+                    <UnderlinedRow label="Flowrate:" value={w.afterInstallFlowrateLps} suffix="lps" labelWidth="118px" unitWidth="24px" />
+                    <UnderlinedRow label="Pressure at Source:" value={w.afterInstallPressurePsi} suffix="psi" labelWidth="118px" unitWidth="24px" />
                   </div>
                   <div style={{ ...PAD_CELL, display: 'grid', gap: 2, alignContent: 'start' }}>
                     <div style={{ fontWeight: 800, fontSize: 8.5, textDecoration: 'underline' }}>MOTOR CONTROL DETAILS</div>
-                    <UnderlinedRow label="Cable Size" value={w.installCableSizeMm2} suffix="mm²" labelWidth="46%" />
-                    <UnderlinedRow label="Cable Length" value={w.installCableLengthM} suffix="m" labelWidth="46%" />
-                    <UnderlinedRow label="# of Splicing (ex. pigtail)" value={w.installCableSplicingCount} labelWidth="52%" />
+                    <UnderlinedRow label="Cable Size" value={w.installCableSizeMm2} suffix="mm²" labelWidth="132px" unitWidth="24px" />
+                    <UnderlinedRow label="Cable Length" value={w.installCableLengthM} suffix="m" labelWidth="132px" unitWidth="24px" />
+                    <UnderlinedRow label="# of Splicing (ex. pigtail)" value={w.installCableSplicingCount} labelWidth="132px" unitWidth="24px" />
                     <div style={{ fontWeight: 700, fontSize: 8.2, marginTop: 1 }}>Thermal Overload Relay</div>
-                    <UnderlinedRow label="Range" value={w.installOverloadRelayRangeA} suffix="A" labelWidth="46%" />
-                    <UnderlinedRow label="Setting" value={w.installOverloadRelaySettingA} suffix="A" labelWidth="46%" />
-                    <UnderlinedRow label="Magnetic Contactor Rating" value={w.installMagneticContactorRatingA} suffix="A" labelWidth="54%" />
+                    <UnderlinedRow label="Range" value={w.installOverloadRelayRangeA} suffix="A" labelWidth="132px" unitWidth="24px" indent />
+                    <UnderlinedRow label="Setting" value={w.installOverloadRelaySettingA} suffix="A" labelWidth="132px" unitWidth="24px" indent />
+                    <UnderlinedRow label="Magnetic Contactor Rating" value={w.installMagneticContactorRatingA} suffix="A" labelWidth="132px" unitWidth="24px" />
                   </div>
                 </div>
                 <div style={{ ...PAD_CELL, display: 'grid', gap: 3, paddingTop: 3, paddingBottom: 3 }}>
@@ -639,13 +713,15 @@ export default function WellPulloutReportSheet({
                 label="Duration of Pull Out & Installation"
                 value={w.operationDuration}
                 uppercase
-                labelWidth="46%"
+                labelWidth="148px"
+                unitWidth="0px"
               />
               <UnderlinedRow
                 label="Reason of Pull Out & Installation"
                 value={w.reasonOfPullout}
                 uppercase
-                labelWidth="46%"
+                labelWidth="148px"
+                unitWidth="0px"
               />
             </div>
           </div>
