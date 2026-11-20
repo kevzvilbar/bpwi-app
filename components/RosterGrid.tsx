@@ -144,9 +144,10 @@ export default function RosterGrid(p: RosterGridProps) {
               <th
                 colSpan={p.days.length}
                 className="sticky-header-month"
-                style={{ background: 'var(--header-bg)', color: 'var(--header-fg)', padding: '4px 8px', textAlign: 'center', fontSize: 11.5, letterSpacing: '0.03em', textTransform: 'uppercase' }}
+                style={{ background: 'var(--header-bg)', color: 'var(--header-fg)', padding: '4px 8px', textAlign: 'left', fontSize: 11.5, letterSpacing: '0.03em', textTransform: 'uppercase' }}
               >
-                {p.monthLabel}
+                {/* Sticks just right of the operator column so the month stays readable while scrolling the days */}
+                <span style={{ position: 'sticky', left: 212, display: 'inline-block' }}>{p.monthLabel}</span>
               </th>
               <th rowSpan={2} className="sticky-corner-stat sticky-col-duty" style={{ background: 'var(--header-bg)', color: 'var(--header-fg)', width: 42, minWidth: 42, textAlign: 'center' }}>
                 Duty

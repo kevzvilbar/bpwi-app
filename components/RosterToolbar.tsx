@@ -152,14 +152,33 @@ export default function RosterToolbar(p: RosterToolbarProps) {
         )}
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <button
-            className="btn mobile-only-block"
-            style={{ display: undefined }}
-            onClick={p.onToggleMobileTools}
-            aria-expanded={p.mobileToolsOpen}
-          >
-            {p.mobileToolsOpen ? 'Hide Brush & Legend' : `Brush: ${p.brushLabel}`}
-          </button>
+          {p.isPropose && (
+            <span
+              className="mobile-only-block"
+              style={{
+                padding: '4px 9px',
+                borderRadius: 6,
+                background: 'var(--warn-bg)',
+                color: 'var(--warn-fg)',
+                border: '1px solid var(--warn-border)',
+                fontSize: 11.5,
+                fontWeight: 700,
+              }}
+            >
+              Propose · needs approval
+            </span>
+          )}
+          {/* Viewers have no brush; their legend is always visible, so the toggle would do nothing. */}
+          {p.canOperate && (
+            <button
+              className="btn mobile-only-block"
+              style={{ display: undefined }}
+              onClick={p.onToggleMobileTools}
+              aria-expanded={p.mobileToolsOpen}
+            >
+              {p.mobileToolsOpen ? 'Hide Brush & Legend' : `Brush: ${p.brushLabel}`}
+            </button>
+          )}
           <button className="btn desktop-only" onClick={p.onExportCsv}>
             Export CSV
           </button>

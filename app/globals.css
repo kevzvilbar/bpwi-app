@@ -718,6 +718,9 @@ a:focus-visible {
   .input {
     min-height: 44px;
   }
+  .btn {
+    min-width: 44px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -728,5 +731,38 @@ a:focus-visible {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* Roster "changes queued" bar: floats bottom-centre on desktop, sits above the bottom nav on phones/tablets */
+.propose-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  background: var(--surface);
+  border: 2px solid var(--warn-fg);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+@media screen and (max-width: 1024px) {
+  .propose-bar {
+    left: 12px;
+    right: 12px;
+    transform: none;
+    bottom: calc(74px + env(safe-area-inset-bottom));
+    padding: 10px 12px;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .propose-bar .btn {
+    min-height: 40px;
   }
 }

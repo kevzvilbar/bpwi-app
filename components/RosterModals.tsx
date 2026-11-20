@@ -184,27 +184,9 @@ export function RosterProposeBar({
   onDiscard: () => void;
 }) {
   return (
-    <aside
-      className="no-print"
-      aria-label="Pending proposal submission bar"
-      style={{
-        position: 'fixed',
-        bottom: 24,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 40,
-        background: 'var(--surface)',
-        border: '2px solid #f59e0b',
-        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2)',
-        borderRadius: 12,
-        padding: '10px 20px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 16,
-      }}
-    >
+    <aside className="no-print propose-bar" aria-label="Pending proposal submission bar">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#d97706', display: 'inline-block' }} />
+        <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--warn-fg)', display: 'inline-block', flexShrink: 0 }} />
         <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
           Propose Mode: {count} change{count === 1 ? '' : 's'} queued
         </span>
