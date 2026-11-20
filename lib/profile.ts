@@ -224,6 +224,7 @@ export const getProfile = cache(async () => {
     canGenerate: perms.canGenerateSchedule,
     /** Admins, plus anyone an admin has delegated approval to. */
     canApprove,
+    canExportLeaveCsv: perms.canExportLeaveCsv,
     isAdmin,
     isManager,
     editGrant,

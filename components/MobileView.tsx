@@ -181,11 +181,11 @@ export default function MobileView(p: {
   useEffect(() => {
     let active = true;
     const syncPending = async () => {
-      const q = await getOfflineQueue();
+      const q = await getOfflineQueue(p.userId);
       if (!active) return;
       setOfflineQueue(q);
       if (q.length > 0 && navigator.onLine) {
-        const res = await flushOfflineQueue(supabaseBrowser());
+        const res = await flushOfflineQueue(supabaseBrowser(), p.userId);
         if (!active) return;
         if (res.synced.length > 0) {
           const todaySynced = res.synced.filter((a) => a.activity_date === p.date);
@@ -193,16 +193,22 @@ export default function MobileView(p: {
             setActivities((prev) => [...todaySynced, ...prev]);
           }
         }
-        setOfflineQueue(await getOfflineQueue());
+        setOfflineQueue(await getOfflineQueue(p.userId));
       }
+    };
+    const onQueueChanged = async () => {
+      const q = await getOfflineQueue(p.userId);
+      if (active) setOfflineQueue(q);
     };
     void syncPending();
     window.addEventListener('online', syncPending);
+    window.addEventListener('bpwi-offline-queue-changed', onQueueChanged);
     return () => {
       active = false;
       window.removeEventListener('online', syncPending);
+      window.removeEventListener('bpwi-offline-queue-changed', onQueueChanged);
     };
-  }, [p.date]);
+  }, [p.date, p.userId]);
 
   const opBy = useMemo(() => new Map(p.operators.map((o) => [o.id, o])), [p.operators]);
   const shiftBy = useMemo(() => new Map(p.shifts.map((s) => [s.id, s])), [p.shifts]);
@@ -622,8 +628,8 @@ export default function MobileView(p: {
             className="btn"
             style={{ minHeight: 32, padding: '4px 10px', fontSize: 12 }}
             onClick={async () => {
-              const res = await flushOfflineQueue(supabaseBrowser());
-              setOfflineQueue(await getOfflineQueue());
+              const res = await flushOfflineQueue(supabaseBrowser(), p.userId);
+              setOfflineQueue(await getOfflineQueue(p.userId));
               if (res.synced.length > 0) {
                 const todaySynced = res.synced.filter((a) => a.activity_date === p.date);
                 setActivities((prev) => [...todaySynced, ...prev]);
@@ -840,8 +846,8 @@ export default function MobileView(p: {
             setEditingActivity(null);
           }}
           onQueuedOffline={async (payload) => {
-            await enqueueOfflineActivity(payload);
-            setOfflineQueue(await getOfflineQueue());
+            await enqueueOfflineActivity(payload, p.userId);
+            setOfflineQueue(await getOfflineQueue(p.userId));
           }}
           onSaved={(act, opts) => {
             if (!opts?.offline) {

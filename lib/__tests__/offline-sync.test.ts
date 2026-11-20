@@ -1,11 +1,18 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { syncQueuedActivity, type PhotoUploader } from '../offline-sync-core.ts';
+import {
+  describeQueuedActivity,
+  describeQueuedReport,
+  isOwnedByUser,
+  syncQueuedActivity,
+  syncQueuedReport,
+  type PhotoUploader,
+} from '../offline-sync-core.ts';
 
 type Err = { code?: string; message: string } | null;
 
 /** Minimal in-memory stand-in for the Supabase client calls the sync uses. */
-function fakeSb(opts: { insertFailsOnce?: boolean; pmError?: boolean } = {}) {
+function fakeSb(opts: { insertFailsOnce?: boolean; pmError?: boolean; updateError?: boolean } = {}) {
   const rows = new Map<string, Record<string, unknown>>();
   const pm: Record<string, unknown>[] = [];
   let insertCalls = 0;
@@ -40,11 +47,21 @@ function fakeSb(opts: { insertFailsOnce?: boolean; pmError?: boolean } = {}) {
         }),
         update(patch: Record<string, unknown>) {
           return {
-            eq: () => ({
+            eq: (_c: string, id?: string) => ({
               neq: async () => {
                 pm.push({ table, patch });
                 return { error: opts.pmError ? ({ message: 'pm failed' } as Err) : null };
               },
+              select: () => ({
+                single: async () => {
+                  if (opts.updateError) {
+                    return { data: null, error: { message: 'update denied' } as Err };
+                  }
+                  const updated = { ...(rows.get(id ?? '') ?? {}), ...patch, id };
+                  if (id) rows.set(id, updated);
+                  return { data: updated, error: null as Err };
+                },
+              }),
             }),
           };
         },
@@ -101,5 +118,70 @@ describe('offline activity sync is idempotent', () => {
     await assert.rejects(() => syncQueuedActivity(f.sb, 'q-5', p, okUpload), /pm failed/);
     await assert.rejects(() => syncQueuedActivity(f.sb, 'q-5', p, okUpload), /pm failed/);
     assert.equal(f.rows.size, 1);
+  });
+});
+
+describe('offline accomplishment report sync is idempotent', () => {
+  const reportPayload = () => ({
+    id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    organization_id: 'org1',
+    report_date: '2026-11-20',
+    status: 'submitted',
+    entries: [{ activity: 'Flush line' }],
+  });
+
+  it('recovers cleanly on 23505 retry after a lost insert response without duplicating', async () => {
+    const f = fakeSb({ insertFailsOnce: true });
+    await assert.rejects(() => syncQueuedReport(f.sb, null, reportPayload()), /network/);
+    const row = await syncQueuedReport(f.sb, null, reportPayload());
+    assert.equal(f.rows.size, 1);
+    assert.equal(row.id, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+  });
+
+  it('generates a client UUID when a legacy queued report has no id', async () => {
+    const f = fakeSb();
+    const { id: _drop, ...legacy } = reportPayload();
+    const row = await syncQueuedReport(f.sb, null, legacy);
+    assert.match(String(row.id), /^[0-9a-f-]{36}$/);
+  });
+
+  it('updates an existing report when editingId is set and throws on RLS failure', async () => {
+    const f = fakeSb();
+    const row = await syncQueuedReport(f.sb, 'rep-existing-1', reportPayload());
+    assert.equal(row.id, 'rep-existing-1');
+    assert.equal(row.status, 'submitted');
+
+    const failSb = fakeSb({ updateError: true });
+    await assert.rejects(() => syncQueuedReport(failSb.sb, 'rep-existing-1', reportPayload()), /update denied/);
+  });
+});
+
+describe('offline queue user ownership scoping and descriptions', () => {
+  it('isolates queued items by ownerUserId and payload fallback', () => {
+    assert.equal(isOwnedByUser({ ownerUserId: 'user-a' }, 'user-a'), true);
+    assert.equal(isOwnedByUser({ ownerUserId: 'user-a' }, 'user-b'), false);
+    assert.equal(isOwnedByUser({ payload: { logged_by: 'user-a' } }, 'user-a'), true);
+    assert.equal(isOwnedByUser({ payload: { logged_by: 'user-a' } }, 'user-b'), false);
+    assert.equal(isOwnedByUser({ payload: { submitted_by: 'user-a' } }, 'user-b'), false);
+    assert.equal(isOwnedByUser({ payload: {} }, 'user-b'), true);
+    assert.equal(isOwnedByUser({ ownerUserId: 'user-a' }, undefined), true);
+  });
+
+  it('formats readable queue summaries for activities and reports', () => {
+    const act = describeQueuedActivity({
+      activity_type: 'pump_monitoring',
+      activity_date: '2026-11-20',
+      sub_site: 'Pavia PS1',
+      notes: 'Checked pressure',
+    });
+    assert.equal(act.title, 'Pump Monitoring');
+    assert.equal(act.subtitle, '2026-11-20 · Pavia PS1 · Checked pressure');
+
+    const rep = describeQueuedReport(
+      { report_date: '2026-11-20', status: 'submitted', entries: [{}, {}] },
+      null,
+    );
+    assert.equal(rep.title, 'Shift Report (Submit)');
+    assert.equal(rep.subtitle, '2026-11-20 · 2 rows · Pending send to head');
   });
 });

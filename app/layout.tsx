@@ -33,9 +33,12 @@ export const viewport: Viewport = {
   themeColor: '#0f172a',
 };
 
+const THEME_BOOTSTRAP_SCRIPT = `(function(){try{var t=localStorage.getItem('bpwi-theme');var d=t?t==='dark':(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);var hc=localStorage.getItem('bpwi-hc')==='1';document.documentElement.dataset.theme=d?'dark':'light';document.documentElement.dataset.contrast=hc?'high':'normal';}catch(e){}})();`;
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   let profile = {
     hasUser: false,
+    userId: '',
     userEmail: '',
     isActive: true,
     pendingUsersCount: 0,
@@ -59,6 +62,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       const p = await getProfile();
       profile = {
         hasUser: Boolean(p.user),
+        userId: p.user?.id ?? '',
         userEmail: p.user?.email ?? '',
         isActive: p.isActive,
         pendingUsersCount: p.pendingUsersCount,
@@ -83,13 +87,17 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   }
   const pendingApproval = profile.hasUser && !profile.isActive;
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
+      </head>
       <body>
         <PwaRegister />
         <DialogA11y />
         {!pendingApproval && (
           <Nav
             role={profile.role}
+            userId={profile.userId}
             userName={profile.name}
             orgId={profile.orgId}
             orgName={profile.orgName}
@@ -104,7 +112,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             hasUser={profile.hasUser}
           />
         )}
-        {profile.hasUser && !pendingApproval && <OfflineSyncBanner />}
+        {profile.hasUser && !pendingApproval && <OfflineSyncBanner userId={profile.userId} />}
         {profile.isManager && !pendingApproval && <EditAccessBanner active={profile.editGrant} next={profile.nextGrant} />}
         <main className="app-main">
           <PendingApproval pending={pendingApproval} userName={profile.name} userEmail={profile.userEmail}>

@@ -158,26 +158,36 @@ export default function ActivitiesMonitor(p: {
   useEffect(() => {
     let active = true;
     const syncNow = async () => {
-      const q = await getOfflineQueue();
+      const q = await getOfflineQueue(p.userId);
       if (!active) return;
       setOfflineQueue(q);
       if (q.length > 0 && navigator.onLine) {
-        const res = await flushOfflineQueue(supabaseBrowser());
+        const res = await flushOfflineQueue(supabaseBrowser(), p.userId);
         if (!active) return;
         if (res.synced.length > 0) {
           setActivities((prev) => [...res.synced, ...prev]);
-          setBannerMsg(`✓ Synced ${res.synced.length} offline activity log(s).`);
+          setBannerMsg(
+            res.failed > 0
+              ? `Synced ${res.synced.length} offline log(s); ${res.failed} failed — inspect queue above.`
+              : `✓ Synced ${res.synced.length} offline activity log(s).`,
+          );
         }
-        setOfflineQueue(await getOfflineQueue());
+        setOfflineQueue(await getOfflineQueue(p.userId));
       }
+    };
+    const onQueueChanged = async () => {
+      const q = await getOfflineQueue(p.userId);
+      if (active) setOfflineQueue(q);
     };
     void syncNow();
     window.addEventListener('online', syncNow);
+    window.addEventListener('bpwi-offline-queue-changed', onQueueChanged);
     return () => {
       active = false;
       window.removeEventListener('online', syncNow);
+      window.removeEventListener('bpwi-offline-queue-changed', onQueueChanged);
     };
-  }, []);
+  }, [p.userId]);
 
   // Lookup maps
   const opBy = useMemo(() => new Map(p.operators.map((o) => [o.id, o])), [p.operators]);
@@ -462,11 +472,17 @@ export default function ActivitiesMonitor(p: {
             type="button"
             className="btn"
             onClick={async () => {
-              const res = await flushOfflineQueue(supabaseBrowser());
-              setOfflineQueue(await getOfflineQueue());
+              const res = await flushOfflineQueue(supabaseBrowser(), p.userId);
+              setOfflineQueue(await getOfflineQueue(p.userId));
               if (res.synced.length > 0) {
                 setActivities((prev) => [...res.synced, ...prev]);
-                setBannerMsg(`✓ Synced ${res.synced.length} offline item(s).`);
+                setBannerMsg(
+                  res.failed > 0
+                    ? `Synced ${res.synced.length} item(s); ${res.failed} failed — use Inspect Queue above.`
+                    : `✓ Synced ${res.synced.length} offline item(s).`,
+                );
+              } else if (res.failed > 0) {
+                setBannerMsg(`Sync failed for ${res.failed} item(s): ${res.errors[0]?.message ?? 'Check connection'}`);
               }
             }}
           >
@@ -930,8 +946,8 @@ export default function ActivitiesMonitor(p: {
             setEditingActivity(null);
           }}
           onQueuedOffline={async (payload) => {
-            await enqueueOfflineActivity(payload);
-            setOfflineQueue(await getOfflineQueue());
+            await enqueueOfflineActivity(payload, p.userId);
+            setOfflineQueue(await getOfflineQueue(p.userId));
             setBannerMsg('Saved to offline queue. It will auto-sync when online.');
           }}
           onSaved={(act, opts) => {

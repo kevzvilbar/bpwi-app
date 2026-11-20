@@ -275,7 +275,7 @@ export default function AccomplishmentReports(p: Props) {
     };
 
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      await enqueueOfflineReport(editingId, payload);
+      await enqueueOfflineReport(editingId, payload, p.userId);
       setBusy(false);
       setMsg({
         kind: 'ok',
@@ -293,7 +293,7 @@ export default function AccomplishmentReports(p: Props) {
       if (res.error || !res.data) {
         const errText = res.error?.message ?? 'Failed to save report.';
         if (/fetch|network|failed to load/i.test(errText)) {
-          await enqueueOfflineReport(editingId, payload);
+          await enqueueOfflineReport(editingId, payload, p.userId);
           setMsg({
             kind: 'ok',
             text: 'Weak signal — report saved offline and will auto-sync when connection returns.',
@@ -319,7 +319,7 @@ export default function AccomplishmentReports(p: Props) {
     } catch (err: unknown) {
       const errText = getErrorMessage(err, 'Failed to save report.');
       if (!navigator.onLine || /fetch|network|failed to load/i.test(errText)) {
-        await enqueueOfflineReport(editingId, payload);
+        await enqueueOfflineReport(editingId, payload, p.userId);
         setBusy(false);
         setMsg({
           kind: 'ok',
@@ -427,14 +427,16 @@ export default function AccomplishmentReports(p: Props) {
         )}
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <a
-            href="/api/reports/leave-export"
-            className="btn"
-            style={{ fontSize: 12, textDecoration: 'none' }}
-            title="Download annual Leave & Holiday Worked CSV"
-          >
-            Leave/Holiday Export
-          </a>
+          {p.canVerify && (
+            <a
+              href="/api/reports/leave-export"
+              className="btn"
+              style={{ fontSize: 12, textDecoration: 'none' }}
+              title="Download annual Leave & Holiday Worked CSV"
+            >
+              Leave/Holiday Export
+            </a>
+          )}
           <button type="button" className="btn btn-primary" onClick={() => window.print()}>
             Print / Save PDF
           </button>

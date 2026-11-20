@@ -30,6 +30,7 @@ export function computePermissions(ctx: PermissionContext) {
     canEditOrgChart: isAdmin || isManager,
     canRestructureOrgChart: isAdmin,
     canExportPmCsv: isAdmin || isManager,
+    canExportLeaveCsv: isAdmin || isScheduler || isManager,
     canAccessSetup: isAdmin,
   };
 }

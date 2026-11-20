@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import NotificationBell from '@/components/NotificationBell';
+import { clearOfflineQueues, countOfflineItems } from '@/lib/offline-queue';
 
 function Icon({ name }: { name: 'schedule' | 'tasks' | 'activity' | 'pm' | 'standby' | 'reports' | 'menu' | 'close' | 'sun' | 'moon' }) {
   const common = {
@@ -94,6 +95,7 @@ function Icon({ name }: { name: 'schedule' | 'tasks' | 'activity' | 'pm' | 'stan
 
 export default function Nav(p: {
   role: string;
+  userId?: string;
   userName: string;
   orgId: string;
   orgName: string;
@@ -119,6 +121,8 @@ export default function Nav(p: {
   const [editingTitle, setEditingTitle] = useState(false);
   const [savingTitle, setSavingTitle] = useState(false);
   const [titleErr, setTitleErr] = useState('');
+  const [signOutConfirmCount, setSignOutConfirmCount] = useState<number | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
   const menuBtnRef = useRef<HTMLButtonElement | null>(null);
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
 
@@ -203,6 +207,32 @@ export default function Nav(p: {
     setAppTitle(nextTitle);
     setOrgName(nextOrg);
     setEditingTitle(false);
+  }
+
+  async function executeSignOut() {
+    setSigningOut(true);
+    try {
+      await clearOfflineQueues(p.userId);
+      await supabaseBrowser().auth.signOut();
+      localStorage.removeItem('bpwi-last-sync');
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+      window.location.href = '/login';
+    } catch {
+      setSigningOut(false);
+    }
+  }
+
+  async function handleSignOutClick() {
+    const queued = await countOfflineItems(p.userId);
+    if (queued > 0) {
+      setDrawerOpen(false);
+      setSignOutConfirmCount(queued);
+      return;
+    }
+    await executeSignOut();
   }
 
   return (
@@ -342,8 +372,8 @@ export default function Nav(p: {
               fontWeight: 700,
               padding: '2px 8px',
               borderRadius: 999,
-              background: p.canEdit ? '#dbeafe' : 'var(--surface-muted)',
-              color: p.canEdit ? '#1e40af' : 'var(--text-secondary)',
+              background: p.canEdit ? 'var(--info-bg)' : 'var(--surface-muted)',
+              color: p.canEdit ? 'var(--info-fg)' : 'var(--text-secondary)',
               textTransform: 'uppercase',
             }}
           >
@@ -478,9 +508,9 @@ export default function Nav(p: {
                       {(p.pendingRequestsCount ?? 0) > 0 && (
                         <span
                           style={{
-                            background: '#fef3c7',
-                            color: '#b45309',
-                            border: '1px solid #fde68a',
+                            background: 'var(--warn-bg)',
+                            color: 'var(--warn-fg)',
+                            border: '1px solid var(--warn-border)',
                             borderRadius: 999,
                             padding: '1px 7px',
                             fontSize: 11,
@@ -538,18 +568,11 @@ export default function Nav(p: {
             <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-light)', paddingTop: 12 }}>
               <button
                 className="btn"
+                disabled={signingOut}
                 style={{ width: '100%', color: 'var(--danger)' }}
-                onClick={async () => {
-                  await supabaseBrowser().auth.signOut();
-                  localStorage.removeItem('bpwi-last-sync');
-                  if ('caches' in window) {
-                    const keys = await caches.keys();
-                    await Promise.all(keys.map((k) => caches.delete(k)));
-                  }
-                  window.location.href = '/login';
-                }}
+                onClick={() => void handleSignOutClick()}
               >
-                Sign out
+                {signingOut ? 'Signing out…' : 'Sign out'}
               </button>
             </div>
           </aside>
@@ -584,6 +607,50 @@ export default function Nav(p: {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {signOutConfirmCount !== null && (
+        <div
+          className="modal-overlay no-print"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="signout-offline-title"
+          onClick={() => !signingOut && setSignOutConfirmCount(null)}
+        >
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420, display: 'grid', gap: 12 }}>
+            <h2 id="signout-offline-title" style={{ margin: 0, fontSize: 17 }}>
+              Unsynced offline items on this device
+            </h2>
+            <p style={{ margin: 0, fontSize: 13.5, color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+              You have <strong>{signOutConfirmCount}</strong> queued field log{signOutConfirmCount === 1 ? '' : 's'} or report
+              {signOutConfirmCount === 1 ? '' : 's'} not yet uploaded. Signing out will clear your unsynced queue from this device so it cannot leak to the next user.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn"
+                disabled={signingOut}
+                onClick={() => setSignOutConfirmCount(null)}
+              >
+                Stay signed in
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={signingOut}
+                style={{
+                  background: 'var(--danger-bg)',
+                  color: 'var(--danger-fg)',
+                  borderColor: 'var(--danger-border)',
+                  fontWeight: 700,
+                }}
+                onClick={() => void executeSignOut()}
+              >
+                {signingOut ? 'Signing out…' : 'Discard queue & Sign out'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </>

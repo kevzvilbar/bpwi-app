@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProfile, fetchAll } from '@/lib/profile';
 import { manilaYear } from '@/lib/date';
+import { csvQuote } from '@/lib/csv';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export async function GET(req: NextRequest) {
-  const { sb, user } = await getProfile();
+  const { sb, user, isActive, canExportLeaveCsv } = await getProfile();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isActive || !canExportLeaveCsv) {
+    return NextResponse.json(
+      { error: 'Only admins, schedulers, and department heads can export leave summaries' },
+      { status: 403 },
+    );
+  }
 
   const yParam = req.nextUrl.searchParams.get('y') ?? '';
   const year = /^\d{4}$/.test(yParam) ? Number(yParam) : manilaYear();
@@ -59,23 +66,23 @@ export async function GET(req: NextRequest) {
     byMonth.set(`${r.operator_id}:${mIdx}`, (byMonth.get(`${r.operator_id}:${mIdx}`) ?? 0) + 1);
   }
 
-  const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
   const head = ['Operator', ...leaveAreas.map((a) => a.code), 'Total Leave', ...MONTHS, 'Reg Hol Worked', 'Spec Hol Worked'];
-  const lines = [head.map(esc).join(',')];
+  const lines = [head.map(csvQuote).join(',')];
 
   for (const op of ops.data ?? []) {
     const codeCounts = leaveAreas.map((a) => byCode.get(`${op.id}:${a.id}`) ?? 0);
     const total = codeCounts.reduce((s, n) => s + n, 0);
     const monthCounts = MONTHS.map((_, idx) => byMonth.get(`${op.id}:${idx}`) ?? 0);
     const hw = holWorkedCounts.get(op.id) ?? { reg: 0, spec: 0 };
-    lines.push([op.full_name, ...codeCounts, total, ...monthCounts, hw.reg, hw.spec].map(esc).join(','));
+    lines.push([op.full_name, ...codeCounts, total, ...monthCounts, hw.reg, hw.spec].map(csvQuote).join(','));
   }
 
-  return new NextResponse(lines.join('\n'), {
+  return new NextResponse(`\uFEFF${lines.join('\r\n')}`, {
     status: 200,
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="bpwi-leave-holiday-summary-${year}.csv"`,
+      'Cache-Control': 'private, no-store',
     },
   });
 }

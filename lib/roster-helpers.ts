@@ -1,5 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ChangeRequestItem, ChangeRequestOriginalState } from '@/lib/profile';
+import { csvEscape } from './csv.ts';
+
+export { csvEscape };
 
 export type Op = { id: string; full_name: string; position: string | null };
 
@@ -188,9 +191,7 @@ export function resolveShiftSelection(
   return { shiftId: nextShiftId, areaId: currentAreaId };
 }
 
-export function csvEscape(v: string) {
-  return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
-}
+
 
 export function friendlyError(raw: string, role?: string) {
   if (/permission denied|row-level security|42501/i.test(raw)) {

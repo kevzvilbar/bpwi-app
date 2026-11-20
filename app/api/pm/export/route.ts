@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProfile, fetchAll } from '@/lib/profile';
 import { manilaToday } from '@/lib/date';
+import { csvQuote } from '@/lib/csv';
 
 const PRESET_LABELS: Record<string, string> = {
   FLUSH: 'Line Flushing',
@@ -74,7 +75,6 @@ export async function GET(req: NextRequest) {
     ? tasksRes.data.filter((t) => (t.locations ?? []).includes(areaFilter))
     : tasksRes.data;
 
-  const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const headers = [
     'Scheduled Date',
     'Activity Code',
@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
     'Completed At',
     'Remarks',
   ];
-  const lines = [headers.map(esc).join(',')];
+  const lines = [headers.map(csvQuote).join(',')];
 
   for (const t of rows) {
     const assigned = (t.assigned_operator_ids ?? []).map((id) => opById.get(id) ?? id).join('; ');
@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
         t.completed_at ?? '',
         t.remarks ?? '',
       ]
-        .map(esc)
+        .map(csvQuote)
         .join(','),
     );
   }
@@ -114,6 +114,7 @@ export async function GET(req: NextRequest) {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="bpwi-pm-schedule-${rawLabel}.csv"`,
+      'Cache-Control': 'private, no-store',
     },
   });
 }

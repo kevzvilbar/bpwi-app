@@ -10,6 +10,7 @@ describe('Role permission matrix', () => {
     assert.equal(p.canEditOrgChart, true);
     assert.equal(p.canRestructureOrgChart, true);
     assert.equal(p.canExportPmCsv, true);
+    assert.equal(p.canExportLeaveCsv, true);
     assert.equal(p.canLogActivity, true);
     assert.equal(p.canVerifyActivity, true);
   });
@@ -19,6 +20,7 @@ describe('Role permission matrix', () => {
     assert.equal(noGrant.canViewOrgChart, true);
     assert.equal(noGrant.canEditOrgChart, true);
     assert.equal(noGrant.canExportPmCsv, true);
+    assert.equal(noGrant.canExportLeaveCsv, true);
     assert.equal(noGrant.canRestructureOrgChart, false);
     assert.equal(noGrant.canEditSchedule, false);
     assert.equal(noGrant.canProposeRequests, true);
@@ -31,12 +33,21 @@ describe('Role permission matrix', () => {
     assert.equal(withGrant.canClosePm, true);
   });
 
-  it('blocks operators and viewers from org chart, setup, and verification', () => {
+  it('allows active scheduler to export leave CSV and verify activities without setup access', () => {
+    const sched = computePermissions({ role: 'scheduler', isActive: true });
+    assert.equal(sched.canEditSchedule, true);
+    assert.equal(sched.canExportLeaveCsv, true);
+    assert.equal(sched.canVerifyActivity, true);
+    assert.equal(sched.canAccessSetup, false);
+  });
+
+  it('blocks operators and viewers from org chart, setup, exports, and verification', () => {
     const op = computePermissions({ role: 'operator', isActive: true });
     assert.equal(op.canLogActivity, true);
     assert.equal(op.canClosePm, true);
     assert.equal(op.canViewOrgChart, false);
     assert.equal(op.canExportPmCsv, false);
+    assert.equal(op.canExportLeaveCsv, false);
     assert.equal(op.canEditOrgChart, false);
     assert.equal(op.canVerifyActivity, false);
     assert.equal(op.canAccessSetup, false);
@@ -44,6 +55,7 @@ describe('Role permission matrix', () => {
     const viewer = computePermissions({ role: 'viewer', isActive: true });
     assert.equal(viewer.canLogActivity, false);
     assert.equal(viewer.canViewOrgChart, false);
+    assert.equal(viewer.canExportLeaveCsv, false);
     assert.equal(viewer.canEditSchedule, false);
   });
 
@@ -52,6 +64,7 @@ describe('Role permission matrix', () => {
     assert.equal(inactiveAdmin.isAdmin, false);
     assert.equal(inactiveAdmin.canAccessSetup, false);
     assert.equal(inactiveAdmin.canViewOrgChart, false);
+    assert.equal(inactiveAdmin.canExportLeaveCsv, false);
     assert.equal(inactiveAdmin.canApproveRequests, false);
   });
 });
