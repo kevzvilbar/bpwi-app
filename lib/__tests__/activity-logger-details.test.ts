@@ -17,6 +17,7 @@ import {
 } from '../tank-cleaning-types.ts';
 import {
   computePulloutDuration,
+  evaluateWellPulloutAcceptance,
   formatPulloutDateDisplay,
   formatPulloutTimeDisplay,
   normalizePulloutDateYMD,
@@ -448,7 +449,42 @@ describe('activity-telemetry formatTelemetrySummary', () => {
     assert.equal(payload.pumpSettingM, '73');
 
     const rehydrated = hydrateActivityDetailFields(payload);
-    assert.deepEqual(rehydrated.wellPullout, state.wellPullout);
+    assert.deepEqual(rehydrated.wellPullout, {
+      ...state.wellPullout,
+      afterSpliceRemarks: 'OK',
+      acceptIrAbove2Meg: 'YES',
+      acceptCurrentWithin14Pct: 'YES',
+      acceptVoltageWithin10Pct: 'YES',
+    });
+
+    assert.deepEqual(
+      evaluateWellPulloutAcceptance({
+        ...INITIAL_WELL_PULLOUT_DETAILS,
+        motorIrBeforeSpliceL1: '120',
+        motorIrBeforeSpliceL2: '115',
+        motorIrBeforeSpliceL3: '90',
+        splicedIrL1: '1.5',
+        splicedIrL2: '3',
+        splicedIrL3: '3',
+        afterInstallIrL1: '3',
+        afterInstallIrL2: '3',
+        afterInstallIrL3: '3',
+        afterInstallCurrentL1: '20',
+        afterInstallCurrentL2: '20',
+        afterInstallCurrentL3: '35',
+        afterInstallVoltageL1: '230',
+        afterInstallVoltageL2: '260',
+        afterInstallVoltageL3: '230',
+      }),
+      {
+        electrode: 'YES',
+        beforeSplice: 'NOT OK',
+        afterSplice: 'NOT OK',
+        ir2Meg: 'YES',
+        currentUnbalance: 'NO',
+        voltageVariation: 'NO',
+      },
+    );
 
     const summary = formatTelemetrySummary(makeActivity('well_pull_out', payload));
     assert.deepEqual(summary, [
@@ -576,6 +612,7 @@ describe('activity-telemetry formatTelemetrySummary', () => {
         timeStarted: '08:00',
         dateFinished: '2026-11-20',
         timeFinished: '14:30',
+        chlorineDisinfection: '75',
         chlorinePost: '0.80',
         turbidityPost: '0.4',
         phPost: '7.2',
@@ -592,6 +629,7 @@ describe('activity-telemetry formatTelemetrySummary', () => {
 
     const hydrated = hydrateActivityDetailFields(payload);
     assert.equal(hydrated.tankCleaning.totalDowntime, '6 hrs 30 mins');
+    assert.equal(hydrated.tankCleaning.disinfectionConcentrationPpm, '75');
     assert.equal(hydrated.tankCleaning.nextScheduledCleaningDate, '2027-05-20');
 
     const summary = formatTelemetrySummary(makeActivity('tank_cleaning', payload));
@@ -603,5 +641,9 @@ describe('activity-telemetry formatTelemetrySummary', () => {
       'pH: 7.2',
       'CLEARED',
     ]);
+
+    const fallbackAct = makeActivity('tank_cleaning', { tankType: 'Ground Reservoir' });
+    fallbackAct.site_or_well = 'Pavia Tank 2';
+    assert.deepEqual(formatTelemetrySummary(fallbackAct), ['Tank: Pavia Tank 2 · Ground Reservoir']);
   });
 });

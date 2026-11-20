@@ -103,6 +103,17 @@ function toManilaTimestampIso(ymd: string, hhmm: string): string | null {
   }
 }
 
+function calcDurationMinutes(startHHMM: string, endHHMM: string): string {
+  if (!/^\d{2}:\d{2}$/.test(startHHMM) || !/^\d{2}:\d{2}$/.test(endHHMM)) return '';
+  const [sh, sm] = startHHMM.split(':').map(Number);
+  const [eh, em] = endHHMM.split(':').map(Number);
+  const startM = sh * 60 + sm;
+  let endM = eh * 60 + em;
+  if (endM < startM) endM += 24 * 60;
+  const diff = endM - startM;
+  return diff > 0 ? String(diff) : '';
+}
+
 export default function ActivityLoggerModal(p: {
   open: boolean;
   onClose: () => void;
@@ -241,6 +252,19 @@ export default function ActivityLoggerModal(p: {
       setStartedHHMM(toHHMM(ea.started_at));
       setCompletedHHMM(toHHMM(ea.completed_at) || currentManilaHHMM());
       const hydrated = hydrateActivityDetailFields(d);
+      if (!ea.site_or_well) {
+        const legacySite =
+          ea.activity_type === 'tank_cleaning'
+            ? hydrated.tankCleaning.tankId
+            : ea.activity_type === 'backwash'
+              ? hydrated.filterUnit
+              : ea.activity_type === 'thermal_scanning'
+                ? hydrated.scannedEquipment
+                : ea.activity_type === 'water_sampling'
+                  ? hydrated.samplePoint
+                  : '';
+        if (legacySite) setSiteOrWell(legacySite);
+      }
       if (ea.activity_type === 'well_pull_out') {
         hydrated.wellPullout = {
           ...hydrated.wellPullout,
@@ -502,19 +526,19 @@ export default function ActivityLoggerModal(p: {
       : isTankClean
         ? details.tankCleaning.conclusionRecommendations.trim() || notes.trim() || null
         : notes.trim() || null;
+    const siteText = siteOrWell.trim();
+    const locText = [siteText, blockLot.trim()].filter(Boolean).join(' · ');
     const detailsForSubmit: ActivityDetailFieldsState = isPullout
-      ? {
-          ...details,
-          wellPullout: {
-            ...details.wellPullout,
-            dateStarted: wpStartYmd,
-            dateFinished: wpEndYmd,
-            performedByContractor: performedBySummary || details.wellPullout.performedByContractor,
-          },
-        }
+      ? { ...details, wellPullout: { ...details.wellPullout, dateStarted: wpStartYmd, dateFinished: wpEndYmd, performedByContractor: performedBySummary || details.wellPullout.performedByContractor } }
       : isTankClean
-        ? { ...details, tankCleaning: { ...details.tankCleaning, dateStarted: tcStartYmd, dateFinished: tcEndYmd } }
-        : details;
+        ? { ...details, tankCleaning: { ...details.tankCleaning, tankId: siteText || details.tankCleaning.tankId, dateStarted: tcStartYmd, dateFinished: tcEndYmd } }
+        : {
+            ...details,
+            samplePoint: activityType === 'water_sampling' ? locText || details.samplePoint : details.samplePoint,
+            filterUnit: activityType === 'backwash' ? siteText || details.filterUnit : details.filterUnit,
+            scannedEquipment: activityType === 'thermal_scanning' ? siteText || details.scannedEquipment : details.scannedEquipment,
+            driverName: activityType === 'tankering' ? leadOpName || details.driverName : details.driverName,
+          };
 
     const expiresIso = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     const preservedExpiry =
@@ -859,8 +883,9 @@ export default function ActivityLoggerModal(p: {
               )}
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {sameShiftOps.map((op) => {
+              {sameShiftOps.concat(showAllOps ? otherOps : []).map((op) => {
                 const selected = crewOpIds.includes(op.id);
+                const dashed = !sameShiftOps.includes(op);
                 return (
                   <button
                     key={op.id}
@@ -872,9 +897,9 @@ export default function ActivityLoggerModal(p: {
                       fontSize: 11.5,
                       fontWeight: 600,
                       cursor: 'pointer',
-                      border: selected ? '1.5px solid var(--primary)' : '1px solid var(--border)',
+                      border: selected ? '1.5px solid var(--primary)' : `1px ${dashed ? 'dashed' : 'solid'} var(--border)`,
                       background: selected ? 'var(--primary)' : 'var(--surface)',
-                      color: selected ? 'var(--primary-fg)' : 'var(--text)',
+                      color: selected ? 'var(--primary-fg)' : dashed ? 'var(--text-secondary)' : 'var(--text)',
                     }}
                   >
                     {selected ? '✓ ' : '+ '}
@@ -882,31 +907,7 @@ export default function ActivityLoggerModal(p: {
                   </button>
                 );
               })}
-              {showAllOps &&
-                otherOps.map((op) => {
-                  const selected = crewOpIds.includes(op.id);
-                  return (
-                    <button
-                      key={op.id}
-                      type="button"
-                      onClick={() => toggleCrew(op.id)}
-                      style={{
-                        padding: '4px 10px',
-                        borderRadius: 999,
-                        fontSize: 11.5,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        border: selected ? '1.5px solid var(--primary)' : '1px dashed var(--border)',
-                        background: selected ? 'var(--primary)' : 'var(--surface)',
-                        color: selected ? 'var(--primary-fg)' : 'var(--text-secondary)',
-                      }}
-                    >
-                      {selected ? '✓ ' : '+ '}
-                      {op.full_name}
-                    </button>
-                  );
-                })}
-              {sameShiftOps.length === 0 && !showAllOps && otherOps.length === 0 && (
+              {sameShiftOps.length === 0 && otherOps.length === 0 && (
                 <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>No other active operators available.</span>
               )}
             </div>
@@ -915,16 +916,9 @@ export default function ActivityLoggerModal(p: {
 
         {/* Dynamic Specialized Fields based on activityType */}
         <ActivityCategoryFields
-          activityType={activityType}
-          fields={details}
-          setFields={setDetails}
-          meterCalc={meterCalc}
-          sigCanvasRef={sigCanvasRef}
-          sigDrawingRef={sigDrawingRef}
-          setHasSignature={setHasSignature}
-          activityDate={p.date}
-          leadOpName={leadOpName}
-          performedBySummary={performedBySummary}
+          activityType={activityType} fields={details} setFields={setDetails} meterCalc={meterCalc}
+          sigCanvasRef={sigCanvasRef} sigDrawingRef={sigDrawingRef} setHasSignature={setHasSignature}
+          activityDate={p.date} leadOpName={leadOpName} performedBySummary={performedBySummary}
         />
 
         {/* Times + Notes (Pull-Out and Tank Cleaning collect start/finish & notes inside their structured forms) */}
@@ -933,23 +927,39 @@ export default function ActivityLoggerModal(p: {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
                 Start Time (optional)
-                <input className="input" type="time" value={startedHHMM} onChange={(e) => setStartedHHMM(e.target.value)} />
+                <input
+                  className="input" type="time" value={startedHHMM}
+                  onChange={(e) => {
+                    const nextStart = e.target.value;
+                    setStartedHHMM(nextStart);
+                    if (activityType === 'backwash') {
+                      const mins = calcDurationMinutes(nextStart, completedHHMM);
+                      if (mins) setDetails((prev) => ({ ...prev, backwashDurationMin: mins }));
+                    }
+                  }}
+                />
               </label>
               <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
                 Completion Time
-                <input className="input" type="time" value={completedHHMM} onChange={(e) => setCompletedHHMM(e.target.value)} />
+                <input
+                  className="input" type="time" value={completedHHMM}
+                  onChange={(e) => {
+                    const nextEnd = e.target.value;
+                    setCompletedHHMM(nextEnd);
+                    if (activityType === 'backwash') {
+                      const mins = calcDurationMinutes(startedHHMM, nextEnd);
+                      if (mins) setDetails((prev) => ({ ...prev, backwashDurationMin: mins }));
+                    }
+                  }}
+                />
               </label>
             </div>
 
             <label style={{ display: 'grid', gap: 4, fontSize: 12.5, fontWeight: 600 }}>
               Field Notes / Observations
               <textarea
-                className="input"
-                rows={2}
-                placeholder="Work performed, pressure/reading summary, follow-ups needed…"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                style={{ minHeight: 58 }}
+                className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)}
+                placeholder="Work performed, pressure/reading summary, follow-ups needed…" style={{ minHeight: 58 }}
               />
             </label>
           </>
@@ -957,33 +967,17 @@ export default function ActivityLoggerModal(p: {
 
         {/* GPS & 30-day Expiring Photo Capture */}
         <ActivityMediaCapture
-          gpsLat={gpsLat}
-          gpsLng={gpsLng}
-          gpsStatus={gpsStatus}
-          onCaptureGps={handleCaptureGps}
-          uploadingPhoto={uploadingPhoto}
-          onPhotoUpload={handlePhotoUpload}
-          savedBytesTotal={savedBytesTotal}
-          photos={photos}
-          onRemovePhoto={(idx) => setPhotos((prev) => prev.filter((_, i) => i !== idx))}
+          gpsLat={gpsLat} gpsLng={gpsLng} gpsStatus={gpsStatus} onCaptureGps={handleCaptureGps}
+          uploadingPhoto={uploadingPhoto} onPhotoUpload={handlePhotoUpload} savedBytesTotal={savedBytesTotal}
+          photos={photos} onRemovePhoto={(idx) => setPhotos((prev) => prev.filter((_, i) => i !== idx))}
           maxPhotos={MAX_ACTIVITY_PHOTOS}
-          helperNote={
-            activityType === 'tank_cleaning'
-              ? 'Photo 1 = Start (Pre-Cleaning) · Photo 2 = End (Post-Cleaning). Auto-deleted after 30 days.'
-              : undefined
-          }
+          helperNote={activityType === 'tank_cleaning' ? 'Photo 1 = Start (Pre-Cleaning) · Photo 2 = End (Post-Cleaning). Auto-deleted after 30 days.' : undefined}
         />
 
-        {errMsg && (
-          <p role="alert" style={{ margin: 0, fontSize: 12.5, color: 'var(--danger)', fontWeight: 600 }}>
-            {errMsg}
-          </p>
-        )}
+        {errMsg && <p role="alert" style={{ margin: 0, fontSize: 12.5, color: 'var(--danger)', fontWeight: 600 }}>{errMsg}</p>}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
-          <button type="button" className="btn" onClick={p.onClose} disabled={submitting}>
-            Cancel
-          </button>
+          <button type="button" className="btn" onClick={p.onClose} disabled={submitting}>Cancel</button>
           <button type="submit" className="btn btn-primary" disabled={submitting || uploadingPhoto}>
             {submitting ? 'Saving Activity…' : p.editingActivity ? 'Save Changes' : p.linkedPmTask ? 'Log Activity & Complete PM' : p.linkedJobOrder ? 'Log Activity & Close JO' : 'Submit Activity Log'}
           </button>

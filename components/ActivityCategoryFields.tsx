@@ -459,10 +459,12 @@ export default function ActivityCategoryFields({
               + Trip Cycle
             </button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <input className="input" placeholder="Vehicle Type" value={fields.vehicleType} onChange={(e) => patch({ vehicleType: e.target.value })} />
             <input className="input" placeholder="Plate #" value={fields.plateNumber} onChange={(e) => patch({ plateNumber: e.target.value })} />
-            <input className="input" placeholder="Driver Name" value={fields.driverName} onChange={(e) => patch({ driverName: e.target.value })} />
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+            Driver: <strong>{leadOpName || 'Auto-filled from Lead Operator above'}</strong>
           </div>
           {fields.haulingCycles.map((c, idx) => (
             <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px', gap: 6 }}>
@@ -522,10 +524,6 @@ export default function ActivityCategoryFields({
               pH Level
               <input className="input" type="number" step="0.1" value={fields.phLevel} onChange={(e) => patch({ phLevel: e.target.value })} />
             </label>
-            <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-              Sample Point
-              <input className="input" value={fields.samplePoint} onChange={(e) => patch({ samplePoint: e.target.value })} />
-            </label>
           </div>
         </div>
       )}
@@ -535,11 +533,7 @@ export default function ActivityCategoryFields({
           <strong style={{ fontSize: 12.5, color: 'var(--violet-fg)' }}>MMF / Filter Backwash Telemetry</strong>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-              Filter / MMF Unit
-              <input className="input" placeholder="e.g. MMF-1, Vessel A" value={fields.filterUnit} onChange={(e) => patch({ filterUnit: e.target.value })} />
-            </label>
-            <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-              Duration (mins)
+              Duration (mins, auto from time)
               <input className="input" type="number" step="1" value={fields.backwashDurationMin} onChange={(e) => patch({ backwashDurationMin: e.target.value })} />
             </label>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
@@ -566,10 +560,6 @@ export default function ActivityCategoryFields({
         <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: 'var(--warn-border)' }}>
           <strong style={{ fontSize: 12.5, color: 'var(--warn-fg)' }}>Thermal Scanning Readings</strong>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
-            <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-              Panel / Motor Scanned
-              <input className="input" placeholder="e.g. MCC Panel, Pump 1" value={fields.scannedEquipment} onChange={(e) => patch({ scannedEquipment: e.target.value })} />
-            </label>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
               Max Temp (°C)
               <input className="input" type="number" step="0.1" value={fields.maxTempC} onChange={(e) => patch({ maxTempC: e.target.value })} />

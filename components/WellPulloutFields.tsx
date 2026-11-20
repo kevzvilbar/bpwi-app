@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import {
   computePulloutDuration,
+  evaluateWellPulloutAcceptance,
   normalizePulloutDateYMD,
   normalizePulloutTimeHHMM,
   type WellPulloutEquipmentStatus,
@@ -77,6 +78,22 @@ export default function WellPulloutFields({
   performedBySummary = '',
 }: WellPulloutFieldsProps) {
   const [editInstallSpecs, setEditInstallSpecs] = useState<boolean>(() => specsDifferFromPulled(value));
+  const [samePumpAsPulled, setSamePumpAsPulled] = useState<boolean>(() =>
+    Boolean(
+      value.pulledPumpBrand &&
+        value.installPumpBrand === value.pulledPumpBrand &&
+        value.installPumpModel === value.pulledPumpModel &&
+        value.installPumpControlNo === value.pulledPumpStockNo,
+    ),
+  );
+  const [sameMotorAsPulled, setSameMotorAsPulled] = useState<boolean>(() =>
+    Boolean(
+      value.pulledMotorBrand &&
+        value.installMotorBrand === value.pulledMotorBrand &&
+        value.installMotorHpVoltPhase === value.pulledMotorHpVoltPhase &&
+        value.installMotorSerialNo === value.pulledMotorSerialNo,
+    ),
+  );
 
   useEffect(() => {
     if (specsDifferFromPulled(value)) setEditInstallSpecs(true);
@@ -90,20 +107,29 @@ export default function WellPulloutFields({
     nextVal: WellPulloutFormDetails[K],
   ) => {
     const next: WellPulloutFormDetails = { ...value, [key]: nextVal };
+    if (samePumpAsPulled) {
+      next.installPumpBrand = next.pulledPumpBrand;
+      next.installPumpModel = next.pulledPumpModel;
+      next.installPumpControlNo = next.pulledPumpStockNo;
+    }
+    if (sameMotorAsPulled) {
+      next.installMotorBrand = next.pulledMotorBrand;
+      next.installMotorHpVoltPhase = next.pulledMotorHpVoltPhase;
+      next.installMotorSerialNo = next.pulledMotorSerialNo;
+    }
     if (
       key === 'dateStarted' ||
       key === 'timeStarted' ||
       key === 'dateFinished' ||
       key === 'timeFinished'
     ) {
-      const computed = computePulloutDuration(
+      next.operationDuration = computePulloutDuration(
         next.dateStarted,
         next.timeStarted,
         next.dateFinished,
         next.timeFinished,
         activityDate,
       );
-      if (computed) next.operationDuration = computed;
     }
     onChange(next);
   };
@@ -189,6 +215,28 @@ export default function WellPulloutFields({
     }
   };
 
+  const accept = evaluateWellPulloutAcceptance(value);
+  const autoBadge = (text: string, ok: boolean) =>
+    text && !text.endsWith('—') ? (
+      <span
+        style={{
+          padding: '2px 7px',
+          borderRadius: 999,
+          fontSize: 10.5,
+          fontWeight: 700,
+          background: ok ? 'var(--ok-bg)' : 'var(--surface-muted)',
+          color: ok ? 'var(--ok-fg)' : 'var(--danger)',
+          border: `1px solid ${ok ? 'var(--ok-border)' : 'var(--danger)'}`,
+        }}
+      >
+        {text.startsWith('OK') || text.startsWith('NOT OK') ? `Auto: ${text}` : text}
+      </span>
+    ) : (
+      <span style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>
+        {text.endsWith('—') ? text : 'Auto result appears once all 3 readings are entered'}
+      </span>
+    );
+
   const reusedSummary = [
     value.pulledRiserPipeSizeMm && `${value.pulledRiserPipeSizeMm}mm pipe`,
     value.pulledRiserPipeCount && `${value.pulledRiserPipeCount} pcs`,
@@ -207,7 +255,6 @@ export default function WellPulloutFields({
         </strong>
         <div style={GRID_3_STYLE}>
           {renderInputs([
-            { key: 'contractorCoordinator', label: 'Contractor / Coordinator', placeholder: 'Operations/Technical Team' },
             { key: 'timeReportedToEngineer', label: 'Time Reported to Electromech. Eng.', type: 'time' },
             { key: 'arrivalTimeAtSite', label: 'Arrival Time at Site', type: 'time' },
             { key: 'timeOfSetUp', label: 'Time of Set-up', type: 'time' },
@@ -310,22 +357,81 @@ export default function WellPulloutFields({
             { key: 'beforeInstallTime', label: 'Time Started (Pre-Install)', type: 'time' },
             { key: 'checkNoLooseThread', label: 'Loose Threads on Couplings/Adapters?', placeholder: 'NONE' },
             { key: 'checkNoVisibleCorrosion', label: 'Visible Damage / Corrosion on Pipes?', placeholder: 'NONE' },
-            { key: 'checkElectrodeNotZeroMeg', label: 'Electrode Not 0 MΩ (Megger Test)?', placeholder: 'YES' },
           ])}
         </div>
         <div style={SUBHEADER_STYLE}>Installed Pump &amp; Motor Details</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, fontSize: 11.5, color: 'var(--text-primary)' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={samePumpAsPulled}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setSamePumpAsPulled(checked);
+                if (checked) {
+                  onChange({
+                    ...value,
+                    installPumpBrand: value.pulledPumpBrand,
+                    installPumpModel: value.pulledPumpModel,
+                    installPumpControlNo: value.pulledPumpStockNo,
+                    installPumpStatus: value.installPumpStatus || 'Repaired',
+                  });
+                }
+              }}
+            />
+            <span>Reinstall same Pump from Section 3</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={sameMotorAsPulled}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setSameMotorAsPulled(checked);
+                if (checked) {
+                  onChange({
+                    ...value,
+                    installMotorBrand: value.pulledMotorBrand,
+                    installMotorHpVoltPhase: value.pulledMotorHpVoltPhase,
+                    installMotorSerialNo: value.pulledMotorSerialNo,
+                    installMotorStatus: value.installMotorStatus || 'Repaired',
+                  });
+                }
+              }}
+            />
+            <span>Reinstall same Motor from Section 3</span>
+          </label>
+        </div>
         <div style={GRID_3_STYLE}>
-          {renderInputs([
-            { key: 'installPumpBrand', label: 'Pump Brand', placeholder: 'DYNAFLOW' },
-            { key: 'installPumpModel', label: 'Pump Model', placeholder: 'DP17-8' },
-            { key: 'installPumpControlNo', label: 'Pump Control No.', placeholder: 'Control #' },
-          ])}
+          {samePumpAsPulled ? (
+            <div style={LABEL_STYLE}>
+              <span>Installed Pump (from Section 3)</span>
+              <div className="input" style={{ background: 'var(--surface-muted)', color: 'var(--text-secondary)', fontSize: 12, display: 'flex', alignItems: 'center' }}>
+                {[value.pulledPumpBrand, value.pulledPumpModel, value.pulledPumpStockNo].filter(Boolean).join(' · ') || 'Fill Pump Details in Section 3'}
+              </div>
+            </div>
+          ) : (
+            renderInputs([
+              { key: 'installPumpBrand', label: 'Pump Brand', placeholder: 'DYNAFLOW' },
+              { key: 'installPumpModel', label: 'Pump Model', placeholder: 'DP17-8' },
+              { key: 'installPumpControlNo', label: 'Pump Control No.', placeholder: 'Control #' },
+            ])
+          )}
           {renderEquipStatus('Pump Status', 'installPumpStatus')}
-          {renderInputs([
-            { key: 'installMotorBrand', label: 'Motor Brand', placeholder: 'FRANKLIN MOTORS' },
-            { key: 'installMotorHpVoltPhase', label: 'HP / Voltage / Phase', placeholder: '10/230/3' },
-            { key: 'installMotorSerialNo', label: 'Motor Serial No.', placeholder: 'Serial #' },
-          ])}
+          {sameMotorAsPulled ? (
+            <div style={LABEL_STYLE}>
+              <span>Installed Motor (from Section 3)</span>
+              <div className="input" style={{ background: 'var(--surface-muted)', color: 'var(--text-secondary)', fontSize: 12, display: 'flex', alignItems: 'center' }}>
+                {[value.pulledMotorBrand, value.pulledMotorHpVoltPhase, value.pulledMotorSerialNo].filter(Boolean).join(' · ') || 'Fill Motor Details in Section 3'}
+              </div>
+            </div>
+          ) : (
+            renderInputs([
+              { key: 'installMotorBrand', label: 'Motor Brand', placeholder: 'FRANKLIN MOTORS' },
+              { key: 'installMotorHpVoltPhase', label: 'HP / Voltage / Phase', placeholder: '10/230/3' },
+              { key: 'installMotorSerialNo', label: 'Motor Serial No.', placeholder: 'Serial #' },
+            ])
+          )}
           {renderEquipStatus('Motor Status', 'installMotorStatus')}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10 }}>
@@ -335,7 +441,7 @@ export default function WellPulloutFields({
               ['motorIrBeforeSpliceL1', 'motorIrBeforeSpliceL2', 'motorIrBeforeSpliceL3'],
               ['(L1) MΩ', '(L2) MΩ', '(L3) MΩ'],
             )}
-            {renderInputs([{ key: 'beforeSpliceRemarks', label: 'Remarks (Before Splicing)', placeholder: 'Notes' }])}
+            {autoBadge(accept.beforeSplice, accept.beforeSplice === 'OK')}
           </div>
           <div style={{ display: 'grid', gap: 6, padding: 8, borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
             {renderTriplet(
@@ -344,7 +450,7 @@ export default function WellPulloutFields({
               ['(L1) MΩ', '(L2) MΩ', '(L3) MΩ'],
               ['30.63', '30.13', '31.66'],
             )}
-            {renderInputs([{ key: 'afterSpliceRemarks', label: 'Remarks (After Splicing)', placeholder: 'Notes' }])}
+            {autoBadge(accept.afterSplice, accept.afterSplice === 'OK')}
           </div>
         </div>
         {renderTriplet(
@@ -369,9 +475,6 @@ export default function WellPulloutFields({
             { key: 'soundingPipeLengthM', label: 'Sounding Pipe Length (m)', placeholder: '72' },
             { key: 'afterInstallFlowrateLps', label: 'Flowrate (lps)', placeholder: 'e.g. 7.2' },
             { key: 'afterInstallPressurePsi', label: 'Discharge Line Pressure (psi)', placeholder: '28' },
-            { key: 'acceptIrAbove2Meg', label: 'IR > 2 MΩ?', placeholder: 'YES' },
-            { key: 'acceptCurrentWithin14Pct', label: 'Current Unbalance ≤ 14% FLA?', placeholder: 'YES' },
-            { key: 'acceptVoltageWithin10Pct', label: 'Voltage Within ±10%?', placeholder: 'YES' },
           ])}
         </div>
         {renderTriplet(
@@ -392,6 +495,12 @@ export default function WellPulloutFields({
           ['(L1) V', '(L2) V', '(L3) V'],
           ['231', '233', '235'],
         )}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', fontSize: 11 }}>
+          <span style={{ color: 'var(--text-muted)' }}>Auto-checked acceptance:</span>
+          {autoBadge(`IR ≥ 2 MΩ: ${accept.ir2Meg || '—'}`, accept.ir2Meg === 'YES')}
+          {autoBadge(`Current unbalance ≤ 14%: ${accept.currentUnbalance || '—'}`, accept.currentUnbalance === 'YES')}
+          {autoBadge(`Voltage ±10% of 230 V: ${accept.voltageVariation || '—'}`, accept.voltageVariation === 'YES')}
+        </div>
         <label
           style={{
             display: 'flex',
@@ -438,8 +547,30 @@ export default function WellPulloutFields({
           6. Results of Operation &amp; 7. Over All Remarks / Signatories
         </strong>
         <div style={GRID_3_STYLE}>
+          <div style={LABEL_STYLE}>
+            <span>6. Duration (auto-computed)</span>
+            <div
+              className="input"
+              style={{
+                background: 'var(--surface-muted)',
+                color: 'var(--text-secondary)',
+                fontSize: 12,
+                display: 'flex',
+                alignItems: 'center',
+              }}
+            >
+              {value.operationDuration ||
+                computePulloutDuration(
+                  value.dateStarted,
+                  value.timeStarted,
+                  value.dateFinished,
+                  value.timeFinished,
+                  activityDate,
+                ) ||
+                'Auto-computed from Section 1 start & finish'}
+            </div>
+          </div>
           {renderInputs([
-            { key: 'operationDuration', label: '6. Duration (auto-computed, editable)', placeholder: 'e.g. 9 HOURS' },
             { key: 'reasonOfPullout', label: '6. Reason of Pull-Out', placeholder: 'e.g. VIBRATION AND HIGH AMPERE' },
           ])}
         </div>

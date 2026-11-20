@@ -4,6 +4,7 @@ import type { DailyActivityRow } from '@/lib/activity-types';
 import { resolveActivityPhotoUrl } from '@/lib/activity-media';
 import {
   DEFAULT_TANK_CLEANING_CONCLUSION,
+  DEFAULT_TANK_CLEANING_OBJECTIVE,
   computeTankDowntime,
   evaluateTankWaterQuality,
   formatTankReportNumber,
@@ -65,6 +66,22 @@ function formatTime12h(raw: string): string {
   const ampm = h24 >= 12 ? 'PM' : 'AM';
   const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
   return `${String(h12).padStart(2, '0')}:${mStr} ${ampm}`;
+}
+
+/** Derives the Manila "HH:MM" capture time from an uploaded photo's storage filename (`<epochMs>-<rand>.ext`). */
+function photoTimeFromPath(path: string | null | undefined): string {
+  const file = (path ?? '').split('/').pop() ?? '';
+  const m = /^(\d{13})-/.exec(file);
+  if (!m) return '';
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Manila',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(Number(m[1])));
+  const hh = parts.find((x) => x.type === 'hour')?.value ?? '';
+  const mm = parts.find((x) => x.type === 'minute')?.value ?? '';
+  return hh && mm ? `${hh === '24' ? '00' : hh}:${mm}` : '';
 }
 
 function clearanceBadgeStyle(status: TankSanitaryClearance): React.CSSProperties {
@@ -129,7 +146,7 @@ export default function TankCleaningReportSheet({
   const capacityDisplay = tc.tankCapacity.trim()
     ? `${tc.tankCapacity.trim()} ${tc.tankCapacityUnit}`
     : 'N/A';
-  const tankDesc = [tc.tankId.trim(), tc.tankType].filter(Boolean).join(' · ') || 'N/A';
+  const tankDesc = [tc.tankId.trim() || activity.site_or_well || '', tc.tankType].filter(Boolean).join(' · ') || 'N/A';
   const startDateFmt = formatPulloutDateDisplay(tc.dateStarted || activity.activity_date);
   const endDateFmt = formatPulloutDateDisplay(tc.dateFinished || tc.dateStarted || activity.activity_date);
   const dateDisplay =
@@ -365,7 +382,9 @@ export default function TankCleaningReportSheet({
       {/* 1. Objective */}
       <div>
         <div style={SEC_TITLE}>1. Objective</div>
-        <div style={{ fontSize: 9.5, lineHeight: 1.4, color: '#1e293b' }}>{tc.objective}</div>
+        <div style={{ fontSize: 9.5, lineHeight: 1.4, color: '#1e293b' }}>
+          {tc.objective || DEFAULT_TANK_CLEANING_OBJECTIVE}
+        </div>
       </div>
 
       {/* 2. Scope of Work & Execution Summary */}
@@ -394,7 +413,7 @@ export default function TankCleaningReportSheet({
           <ScopeCheck
             checked={tc.scopeDisinfection}
             title="Disinfection & Sanitization"
-            desc={`Applied chlorine disinfection solution at ${tc.disinfectionConcentrationPpm || '—'} ppm concentration for a contact time of ${tc.disinfectionContactTime || '—'}.`}
+            desc={`Applied chlorine disinfection solution at ${tc.chlorineDisinfection.trim() || tc.disinfectionConcentrationPpm || '—'} ppm concentration for a contact time of ${tc.disinfectionContactTime || '—'}.`}
           />
           <ScopeCheck
             checked={tc.scopeFlushingRefilling}
@@ -519,13 +538,13 @@ export default function TankCleaningReportSheet({
           {renderPhotoCard(
             'Start of Activity (Pre-Cleaning / Initial Condition)',
             startPhotoUrl,
-            tc.startPhotoTime,
+            tc.startPhotoTime || photoTimeFromPath(paths[0]) || startHHMM,
             tc.startPhotoRemarks,
           )}
           {renderPhotoCard(
             'End of Activity (Post-Cleaning / Sanitized Condition)',
             endPhotoUrl,
-            tc.endPhotoTime,
+            tc.endPhotoTime || (endIdx >= 0 ? photoTimeFromPath(paths[endIdx]) : '') || endHHMM,
             tc.endPhotoRemarks,
           )}
         </div>

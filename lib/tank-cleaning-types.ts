@@ -363,7 +363,13 @@ export function buildTankCleaningPayload(
   const totalDowntime =
     tc.totalDowntime.trim() ||
     computeTankDowntime(tc.dateStarted, tc.timeStarted, tc.dateFinished, tc.timeFinished, fallbackDateYmd);
-  const resolved: TankCleaningFormDetails = { ...tc, totalDowntime };
+  const disinfectionConcentrationPpm =
+    tc.chlorineDisinfection.trim() || tc.disinfectionConcentrationPpm;
+  const resolved: TankCleaningFormDetails = {
+    ...tc,
+    totalDowntime,
+    disinfectionConcentrationPpm,
+  };
   const evalRes = evaluateTankWaterQuality(resolved);
 
   return {

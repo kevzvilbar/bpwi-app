@@ -99,21 +99,20 @@ export default function TankCleaningFields({
 
   const patch = (updates: Partial<TankCleaningFormDetails>) => {
     const next: TankCleaningFormDetails = { ...value, ...updates };
-    if (
-      'dateStarted' in updates ||
-      'timeStarted' in updates ||
-      'dateFinished' in updates ||
-      'timeFinished' in updates
-    ) {
-      const computed = computeTankDowntime(
-        next.dateStarted,
-        next.timeStarted,
-        next.dateFinished,
-        next.timeFinished,
-        activityDate,
-      );
-      if (computed) next.totalDowntime = computed;
-    }
+      if (
+        'dateStarted' in updates ||
+        'timeStarted' in updates ||
+        'dateFinished' in updates ||
+        'timeFinished' in updates
+      ) {
+        next.totalDowntime = computeTankDowntime(
+          next.dateStarted,
+          next.timeStarted,
+          next.dateFinished,
+          next.timeFinished,
+          activityDate,
+        );
+      }
     onChange(next);
   };
 
@@ -138,15 +137,6 @@ export default function TankCleaningFields({
           Tank Cleaning &amp; Sanitation Details
         </strong>
         <div style={GRID_STYLE}>
-          <label style={LABEL_STYLE}>
-            Tank ID / Name
-            <input
-              className="input"
-              value={value.tankId}
-              placeholder="e.g. Reservoir 1 / OHT-01"
-              onChange={(e) => patch({ tankId: e.target.value })}
-            />
-          </label>
           <label style={LABEL_STYLE}>
             Tank Type
             <select
@@ -180,15 +170,6 @@ export default function TankCleaningFields({
               </select>
             </div>
           </div>
-          <label style={LABEL_STYLE}>
-            Report No. (optional override)
-            <input
-              className="input"
-              value={value.reportNo}
-              placeholder="Auto: TCAR-YYYY-MM-XXXX"
-              onChange={(e) => patch({ reportNo: e.target.value })}
-            />
-          </label>
           <label style={LABEL_STYLE}>
             Date Started
             <input
@@ -225,32 +206,37 @@ export default function TankCleaningFields({
               onChange={(e) => patch({ timeFinished: e.target.value })}
             />
           </label>
-          <label style={LABEL_STYLE}>
-            Total Downtime (auto-computed)
-            <input
+          <div style={LABEL_STYLE}>
+            <span>Total Downtime (auto-computed)</span>
+            <div
               className="input"
-              value={value.totalDowntime}
-              placeholder="e.g. 6 hrs 30 mins"
-              onChange={(e) => patch({ totalDowntime: e.target.value })}
-            />
-          </label>
+              style={{
+                background: 'var(--surface-muted)',
+                color: 'var(--text-secondary)',
+                fontSize: 12,
+                display: 'flex',
+                alignItems: 'center',
+              }}
+            >
+              {value.totalDowntime ||
+                computeTankDowntime(
+                  value.dateStarted,
+                  value.timeStarted,
+                  value.dateFinished,
+                  value.timeFinished,
+                  activityDate,
+                ) ||
+                'Auto-computed from start & finish'}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Section 1 & 2: Objective & Scope of Work */}
+      {/* Section 2: Scope of Work */}
       <div className="card" style={SECTION_STYLE}>
         <strong style={{ fontSize: 12, color: 'var(--text-primary)' }}>
-          1. Objective &amp; 2. Scope of Work
+          2. Scope of Work &amp; Execution Summary
         </strong>
-        <label style={LABEL_STYLE}>
-          Objective
-          <textarea
-            className="input"
-            rows={2}
-            value={value.objective}
-            onChange={(e) => patch({ objective: e.target.value })}
-          />
-        </label>
         <div style={{ display: 'grid', gap: 6, fontSize: 12, color: 'var(--text-primary)' }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
@@ -298,15 +284,6 @@ export default function TankCleaningFields({
             {value.scopeDisinfection && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, paddingLeft: 20 }}>
                 <label style={LABEL_STYLE}>
-                  Chlorine Concentration (ppm)
-                  <input
-                    className="input"
-                    value={value.disinfectionConcentrationPpm}
-                    placeholder="50"
-                    onChange={(e) => patch({ disinfectionConcentrationPpm: e.target.value })}
-                  />
-                </label>
-                <label style={LABEL_STYLE}>
                   Contact Time
                   <input
                     className="input"
@@ -315,6 +292,12 @@ export default function TankCleaningFields({
                     onChange={(e) => patch({ disinfectionContactTime: e.target.value })}
                   />
                 </label>
+                <div style={LABEL_STYLE}>
+                  <span>Chlorine Concentration</span>
+                  <div className="input" style={{ background: 'var(--surface-muted)', color: 'var(--text-secondary)', fontSize: 11.5, display: 'flex', alignItems: 'center' }}>
+                    {value.chlorineDisinfection ? `${value.chlorineDisinfection} ppm (from Sec. 3)` : 'Set in Sec. 3 Free Cl₂ Disinfect'}
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -469,18 +452,9 @@ export default function TankCleaningFields({
           6. Photo Captions &amp; 7. Sign-Off Details
         </strong>
         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-          Attach Start Photo first and End Photo second in the Field Photos section below — photos are automatically deleted after 30 days.
+          Attach Start Photo first and End Photo second in the Field Photos section below. Time taken is recorded automatically from each photo&apos;s upload time — photos are automatically deleted after 30 days.
         </div>
         <div style={GRID_STYLE}>
-          <label style={LABEL_STYLE}>
-            Start Photo Time Taken
-            <input
-              className="input"
-              type="time"
-              value={normalizePulloutTimeHHMM(value.startPhotoTime)}
-              onChange={(e) => patch({ startPhotoTime: e.target.value })}
-            />
-          </label>
           <label style={LABEL_STYLE}>
             Start Photo Remarks
             <input
@@ -488,15 +462,6 @@ export default function TankCleaningFields({
               value={value.startPhotoRemarks}
               placeholder="e.g. Initial sediment buildup prior to washing"
               onChange={(e) => patch({ startPhotoRemarks: e.target.value })}
-            />
-          </label>
-          <label style={LABEL_STYLE}>
-            End Photo Time Taken
-            <input
-              className="input"
-              type="time"
-              value={normalizePulloutTimeHHMM(value.endPhotoTime)}
-              onChange={(e) => patch({ endPhotoTime: e.target.value })}
             />
           </label>
           <label style={LABEL_STYLE}>

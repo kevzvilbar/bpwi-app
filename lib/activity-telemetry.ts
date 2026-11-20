@@ -106,7 +106,7 @@ export function formatTelemetrySummary(act: DailyActivityRow): string[] {
 
   if (act.activity_type === 'tank_cleaning') {
     const tc = hydrateTankCleaningDetails(d);
-    const tankDesc = [tc.tankId.trim(), tc.tankType].filter(Boolean).join(' · ');
+    const tankDesc = [tc.tankId.trim() || act.site_or_well || '', tc.tankType].filter(Boolean).join(' · ');
     const cap = tc.tankCapacity.trim() ? ` (${tc.tankCapacity.trim()} ${tc.tankCapacityUnit})` : '';
     if (tankDesc || cap) parts.push(`Tank: ${tankDesc || 'Tank'}${cap}`);
     const dt =

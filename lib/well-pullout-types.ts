@@ -460,11 +460,66 @@ export function computePulloutDuration(
   return rounded === 1 ? '1 HOUR' : `${rounded} HOURS`;
 }
 
-/** Backfill blank Section 5 pipe/cable/control specs from Section 3 and auto-compute blank duration. */
+const NOMINAL_VOLTAGE = 230;
+
+function numsOrNull(vals: readonly string[]): number[] | null {
+  const out: number[] = [];
+  for (const v of vals) {
+    const s = v.trim();
+    if (!/^-?\d+(?:\.\d+)?$/.test(s) && !/^-?\.\d+$/.test(s)) return null;
+    out.push(Number(s));
+  }
+  return out;
+}
+
+/**
+ * Derives the acceptance-criteria verdicts that used to be typed by hand
+ * (megger >= 100 / >= 2 MΩ, electrode not 0 meg, current unbalance <= 14%, voltage within ±10% of 230 V).
+ * Returns '' for a verdict when its readings are incomplete.
+ */
+export function evaluateWellPulloutAcceptance(w: WellPulloutFormDetails): {
+  electrode: '' | 'YES' | 'NO';
+  beforeSplice: '' | 'OK' | 'NOT OK';
+  afterSplice: '' | 'OK' | 'NOT OK';
+  ir2Meg: '' | 'YES' | 'NO';
+  currentUnbalance: '' | 'YES' | 'NO';
+  voltageVariation: '' | 'YES' | 'NO';
+} {
+  const pre = numsOrNull([w.motorIrBeforeSpliceL1, w.motorIrBeforeSpliceL2, w.motorIrBeforeSpliceL3]);
+  const spliced = numsOrNull([w.splicedIrL1, w.splicedIrL2, w.splicedIrL3]);
+  const ir = numsOrNull([w.afterInstallIrL1, w.afterInstallIrL2, w.afterInstallIrL3]);
+  const cur = numsOrNull([w.afterInstallCurrentL1, w.afterInstallCurrentL2, w.afterInstallCurrentL3]);
+  const volt = numsOrNull([w.afterInstallVoltageL1, w.afterInstallVoltageL2, w.afterInstallVoltageL3]);
+
+  let currentUnbalance: '' | 'YES' | 'NO' = '';
+  if (cur) {
+    const avg = (cur[0] + cur[1] + cur[2]) / 3;
+    if (avg > 0) {
+      const maxDev = Math.max(...cur.map((c) => Math.abs(c - avg)));
+      currentUnbalance = (maxDev / avg) * 100 <= 14 ? 'YES' : 'NO';
+    }
+  }
+
+  return {
+    electrode: pre ? (pre.every((v) => v > 0) ? 'YES' : 'NO') : '',
+    beforeSplice: pre ? (pre.every((v) => v >= 100) ? 'OK' : 'NOT OK') : '',
+    afterSplice: spliced ? (spliced.every((v) => v >= 2) ? 'OK' : 'NOT OK') : '',
+    ir2Meg: ir ? (ir.every((v) => v >= 2) ? 'YES' : 'NO') : '',
+    currentUnbalance,
+    voltageVariation: volt
+      ? volt.every((v) => v >= NOMINAL_VOLTAGE * 0.9 && v <= NOMINAL_VOLTAGE * 1.1)
+        ? 'YES'
+        : 'NO'
+      : '',
+  };
+}
+
+/** Backfill blank Section 5 pipe/cable/control specs from Section 3, auto-compute duration and acceptance verdicts. */
 export function resolveInstalledPulloutSpecs(
   w: WellPulloutFormDetails,
   fallbackDateYmd = '',
 ): WellPulloutFormDetails {
+  const acc = evaluateWellPulloutAcceptance(w);
   return {
     ...w,
     installRiserPipeSizeMm: w.installRiserPipeSizeMm || w.pulledRiserPipeSizeMm,
@@ -478,6 +533,12 @@ export function resolveInstalledPulloutSpecs(
     operationDuration:
       w.operationDuration.trim() ||
       computePulloutDuration(w.dateStarted, w.timeStarted, w.dateFinished, w.timeFinished, fallbackDateYmd),
+    checkElectrodeNotZeroMeg: acc.electrode || w.checkElectrodeNotZeroMeg,
+    beforeSpliceRemarks: acc.beforeSplice || w.beforeSpliceRemarks,
+    afterSpliceRemarks: acc.afterSplice || w.afterSpliceRemarks,
+    acceptIrAbove2Meg: acc.ir2Meg || w.acceptIrAbove2Meg,
+    acceptCurrentWithin14Pct: acc.currentUnbalance || w.acceptCurrentWithin14Pct,
+    acceptVoltageWithin10Pct: acc.voltageVariation || w.acceptVoltageWithin10Pct,
   };
 }
 
