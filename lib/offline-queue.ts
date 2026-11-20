@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { DailyActivityRow } from './activity-types';
 import { uploadDataUrlPhoto } from './image-compress';
+import { newClientId, syncQueuedActivity } from './offline-sync-core';
 
 const DB_NAME = 'bpwi-field-sync-db';
 const DB_VERSION = 2;
@@ -51,7 +52,8 @@ export async function enqueueOfflineActivity(payload: Record<string, unknown>): 
   const item: PendingOfflineActivity = {
     queueId: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     queuedAt: new Date().toISOString(),
-    payload,
+    // Client-generated primary key makes a retried sync idempotent (see offline-sync-core.ts)
+    payload: { ...payload, id: typeof payload.id === 'string' && payload.id ? payload.id : newClientId() },
   };
   const db = await openSyncDb();
   await new Promise<void>((resolve, reject) => {
@@ -97,79 +99,33 @@ export async function removeOfflineItem(queueId: string): Promise<void> {
   }
 }
 
-export async function flushOfflineQueue(sb: SupabaseClient): Promise<{
+let activityFlush: Promise<{ synced: DailyActivityRow[]; failed: number }> | null = null;
+
+/**
+ * Several screens and the sync banner call this on reconnect. Concurrent runs would each push the
+ * same queued item, so callers share one in-flight run.
+ */
+export function flushOfflineQueue(sb: SupabaseClient): Promise<{
   synced: DailyActivityRow[];
   failed: number;
 }> {
+  if (activityFlush) return activityFlush;
+  activityFlush = runActivityFlush(sb).finally(() => {
+    activityFlush = null;
+  });
+  return activityFlush;
+}
+
+async function runActivityFlush(sb: SupabaseClient): Promise<{ synced: DailyActivityRow[]; failed: number }> {
   const items = await getOfflineQueue();
   const synced: DailyActivityRow[] = [];
   let failed = 0;
 
   for (const item of items) {
     try {
-      const payloadToInsert: Record<string, unknown> = { ...item.payload };
-      const orgId = typeof payloadToInsert.organization_id === 'string' ? payloadToInsert.organization_id : '';
-      if (
-        Array.isArray(payloadToInsert.photo_urls) &&
-        payloadToInsert.photo_urls.length > 0 &&
-        orgId
-      ) {
-        const uploadedUrls: string[] = [];
-        const uploadedPaths: string[] = Array.isArray(payloadToInsert.photo_storage_paths)
-          ? payloadToInsert.photo_storage_paths.filter((p): p is string => typeof p === 'string')
-          : [];
-        for (const rawUrl of payloadToInsert.photo_urls) {
-          if (typeof rawUrl === 'string' && rawUrl.startsWith('data:image/')) {
-            const up = await uploadDataUrlPhoto(sb, orgId, rawUrl);
-            uploadedUrls.push(up.url);
-            if (up.storagePath) uploadedPaths.push(up.storagePath);
-          } else if (typeof rawUrl === 'string') {
-            uploadedUrls.push(rawUrl);
-          }
-        }
-        payloadToInsert.photo_urls = uploadedUrls;
-        payloadToInsert.photo_storage_paths = uploadedPaths;
-      }
-
-      const { data, error } = await sb
-        .from('daily_activities')
-        .insert(payloadToInsert)
-        .select('*')
-        .single();
-      if (error || !data) {
-        failed += 1;
-        continue;
-      }
-
-      const pmTaskId = typeof item.payload.pm_task_id === 'string' ? item.payload.pm_task_id : null;
-      const activityDate = typeof item.payload.activity_date === 'string' ? item.payload.activity_date : null;
-      const activityNotes = typeof item.payload.notes === 'string' ? item.payload.notes : '';
-      const activityType = typeof item.payload.activity_type === 'string' ? item.payload.activity_type : 'activity';
-      const jobOrderId = typeof item.payload.job_order_id === 'string' ? item.payload.job_order_id : null;
-
-      if (pmTaskId) {
-        await sb
-          .from('pm_tasks')
-          .update({
-            status: 'done',
-            completed_at: activityDate,
-            remarks: activityNotes || `Synced from offline activity (${activityType})`,
-          })
-          .eq('id', pmTaskId);
-      }
-
-      if (jobOrderId) {
-        await sb
-          .from('job_orders')
-          .update({
-            status: 'completed',
-            completed_at: new Date().toISOString(),
-          })
-          .eq('id', jobOrderId);
-      }
-
+      const row = await syncQueuedActivity(sb, item.queueId, item.payload, uploadDataUrlPhoto);
       await removeOfflineItem(item.queueId);
-      synced.push(data as DailyActivityRow);
+      synced.push(row as unknown as DailyActivityRow);
     } catch {
       failed += 1;
     }

@@ -25,28 +25,42 @@ async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
     return { purgedCount: 0, filesRemoved: 0, status: 200 as const };
   }
 
+  // Only rows whose files were really removed may be marked purged. If a storage call fails, the
+  // row keeps its paths so the next run retries; otherwise the files would be orphaned forever.
+  const pathsByRow = new Map<string, string[]>();
   const allPaths: string[] = [];
-  const idsToUpdate: string[] = [];
   for (const row of expiredRows) {
-    idsToUpdate.push(row.id);
+    const paths: string[] = [];
     if (Array.isArray(row.photo_storage_paths)) {
       for (const p of row.photo_storage_paths) {
-        if (typeof p === 'string' && p.trim()) {
-          allPaths.push(p.trim());
-        }
+        if (typeof p === 'string' && p.trim()) paths.push(p.trim());
       }
+    }
+    pathsByRow.set(row.id, paths);
+    allPaths.push(...paths);
+  }
+
+  const failedPaths = new Set<string>();
+  let filesRemoved = 0;
+  for (let i = 0; i < allPaths.length; i += 100) {
+    const chunk = allPaths.slice(i, i + 100);
+    const { error: rmErr } = await db.storage.from('activity-media').remove(chunk);
+    if (rmErr) {
+      chunk.forEach((p) => failedPaths.add(p));
+    } else {
+      filesRemoved += chunk.length;
     }
   }
 
-  let filesRemoved = 0;
-  if (allPaths.length > 0) {
-    for (let i = 0; i < allPaths.length; i += 100) {
-      const chunk = allPaths.slice(i, i + 100);
-      const { error: rmErr } = await db.storage.from('activity-media').remove(chunk);
-      if (!rmErr) {
-        filesRemoved += chunk.length;
-      }
-    }
+  const idsToUpdate = [...pathsByRow.entries()]
+    .filter(([, paths]) => paths.every((p) => !failedPaths.has(p)))
+    .map(([id]) => id);
+
+  if (idsToUpdate.length === 0) {
+    return {
+      error: `Storage removal failed for ${failedPaths.size} file(s); nothing marked purged`,
+      status: 500 as const,
+    };
   }
 
   let updQuery = db

@@ -128,6 +128,7 @@ export async function uploadDataUrlPhoto(
   sb: SupabaseClient,
   orgId: string,
   dataUrl: string,
+  opts: { fileStem?: string; requireStorage?: boolean } = {},
 ): Promise<{ url: string; storagePath: string | null }> {
   if (!dataUrl.startsWith('data:image/')) {
     return { url: dataUrl, storagePath: null };
@@ -139,7 +140,8 @@ export async function uploadDataUrlPhoto(
     const ext = mimeType.includes('webp') ? 'webp' : mimeType.includes('png') ? 'png' : 'jpg';
     const rand = Math.random().toString(36).slice(2, 8);
     const dateFolder = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
-    const storagePath = `${orgId}/${dateFolder}/${Date.now()}-${rand}.${ext}`;
+    const stem = opts.fileStem && /^[A-Za-z0-9_-]+$/.test(opts.fileStem) ? opts.fileStem : `${Date.now()}-${rand}`;
+    const storagePath = `${orgId}/${dateFolder}/${stem}.${ext}`;
 
     const { error } = await sb.storage
       .from(ACTIVITY_MEDIA_BUCKET)
@@ -149,11 +151,16 @@ export async function uploadDataUrlPhoto(
         upsert: false,
       });
 
-    if (!error) {
+    const already =
+      error && (String((error as { statusCode?: string }).statusCode) === '409' || /already exists|duplicate/i.test(error.message ?? ''));
+    if (!error || already) {
       return { url: buildActivityPhotoUrl(storagePath), storagePath };
     }
-  } catch {
+    if (opts.requireStorage) throw new Error(error.message || 'Photo upload failed');
+  } catch (e) {
+    if (opts.requireStorage) throw e instanceof Error ? e : new Error('Photo upload failed');
     /* keep dataUrl fallback if storage is still unreachable */
   }
+  if (opts.requireStorage) throw new Error('Photo upload failed');
   return { url: dataUrl, storagePath: null };
 }
