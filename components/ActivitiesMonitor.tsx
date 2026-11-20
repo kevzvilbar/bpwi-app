@@ -16,6 +16,7 @@ import { formatTelemetrySummary } from '@/lib/activity-telemetry';
 import ActivityLoggerModal, { type LinkedJobOrder } from '@/components/ActivityLoggerModal';
 import PrintableActivityReport from '@/components/PrintableActivityReport';
 import ActivitiesKpiTab from '@/components/ActivitiesKpiTab';
+import ActivitiesRoutesTab from '@/components/ActivitiesRoutesTab';
 import JobOrdersTab from '@/components/JobOrdersTab';
 import ShiftHandoversTab from '@/components/ShiftHandoversTab';
 import { DEFAULT_STATION_CODE } from '@/lib/roster-helpers';
@@ -72,9 +73,10 @@ export default function ActivitiesMonitor(p: {
   jobOrders: JobOrderRow[];
   handovers: ShiftHandoverRow[];
   schemaWarning: string;
+  googleMapsApiKey?: string;
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<'monitor' | 'job-orders' | 'handovers' | 'kpis'>('monitor');
+  const [tab, setTab] = useState<'monitor' | 'routes' | 'job-orders' | 'handovers' | 'kpis'>('monitor');
   const [activities, setActivities] = useState<DailyActivityRow[]>(p.activities);
   const [jobOrders, setJobOrders] = useState<JobOrderRow[]>(p.jobOrders);
   const [handovers, setHandovers] = useState<ShiftHandoverRow[]>(p.handovers);
@@ -496,6 +498,14 @@ export default function ActivitiesMonitor(p: {
         {(
           [
             { id: 'monitor', label: `${p.canVerifyActivity ? 'Duty & Activity Feed' : 'My Activity Logs'} (${dateActivities.length})` },
+            {
+              id: 'routes',
+              label: `Routes & Distance (${
+                dateActivities.filter(
+                  (a) => typeof a.gps_lat === 'number' && typeof a.gps_lng === 'number' && !(a.gps_lat === 0 && a.gps_lng === 0),
+                ).length
+              } GPS)`,
+            },
             { id: 'job-orders', label: `Job Orders (${filteredJobOrders.filter((j) => j.status === 'pending' || j.status === 'in_progress').length} open)` },
             { id: 'handovers', label: `Shift Handover & Huddle (${handovers.filter((h) => h.handover_date === p.date).length})` },
             ...(p.canVerifyActivity ? [{ id: 'kpis' as const, label: 'Employee KPIs & Fuel' }] : []),
@@ -859,6 +869,19 @@ export default function ActivitiesMonitor(p: {
             </div>
           )}
         </div>
+      )}
+
+      {/* TAB 1B: DAILY FOOTPRINTS, ROUTES & DISTANCE */}
+      {tab === 'routes' && (
+        <ActivitiesRoutesTab
+          date={p.date}
+          canVerifyActivity={p.canVerifyActivity}
+          operatorId={p.operatorId}
+          operators={p.operators}
+          areas={p.areas}
+          activities={activities}
+          googleMapsApiKey={p.googleMapsApiKey ?? ''}
+        />
       )}
 
       {/* TAB 2: DISPATCHED JOB ORDERS */}

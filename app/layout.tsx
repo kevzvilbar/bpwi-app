@@ -6,6 +6,7 @@ import DialogA11y from '@/components/DialogA11y';
 import PendingApproval from '@/components/PendingApproval';
 import EditAccessBanner from '@/components/EditAccessBanner';
 import OfflineSyncBanner from '@/components/OfflineSyncBanner';
+import MapsQuotaBanner from '@/components/MapsQuotaBanner';
 import { getProfile, type EditGrant } from '@/lib/profile';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 
@@ -94,6 +95,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body>
         <PwaRegister />
         <DialogA11y />
+        <MapsQuotaBanner />
         {!pendingApproval && (
           <Nav
             role={profile.role}

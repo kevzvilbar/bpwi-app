@@ -131,6 +131,7 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
       jobOrders={joRes.error ? [] : ((joRes.data ?? []) as JobOrderRow[])}
       handovers={hoRes.error ? [] : ((hoRes.data ?? []) as ShiftHandoverRow[])}
       schemaWarning={schemaWarning}
+      googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || ''}
     />
   );
 }
