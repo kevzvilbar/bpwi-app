@@ -233,19 +233,19 @@ export default function WellPulloutFields({
         {renderTriplet(
           'Insulation Resistance (mΩ)',
           ['beforePulloutIrL1', 'beforePulloutIrL2', 'beforePulloutIrL3'],
-          ['L1-L2', 'L1-L3', 'L2-L3'],
+          ['(L1) mΩ', '(L2) mΩ', '(L3) mΩ'],
           ['0.036', '0.038', '0.037'],
         )}
         {renderTriplet(
           'Current Reading (A)',
           ['beforePulloutCurrentL1', 'beforePulloutCurrentL2', 'beforePulloutCurrentL3'],
-          ['L1', 'L2', 'L3'],
+          ['(L1) A', '(L2) A', '(L3) A'],
           ['28', '28', '28'],
         )}
         {renderTriplet(
           'Voltage Reading (V)',
           ['beforePulloutVoltageL1', 'beforePulloutVoltageL2', 'beforePulloutVoltageL3'],
-          ['L1-L2', 'L1-L3', 'L2-L3'],
+          ['(L1) V', '(L2) V', '(L3) V'],
           ['232', '233', '231'],
         )}
         {renderInputs([{ key: 'beforePulloutRemarks', label: 'Before Pull-Out Remarks', placeholder: 'Notes before pull-out' }])}
@@ -328,23 +328,29 @@ export default function WellPulloutFields({
           ])}
           {renderEquipStatus('Motor Status', 'installMotorStatus')}
         </div>
-        {renderTriplet(
-          'Insulation Resistance of Motor (Before Splicing, ≥ 100 MΩ)',
-          ['motorIrBeforeSpliceL1', 'motorIrBeforeSpliceL2', 'motorIrBeforeSpliceL3'],
-          ['L1-L2', 'L1-L3', 'L2-L3'],
-        )}
-        {renderInputs([{ key: 'beforeSpliceRemarks', label: 'Remarks (Before Splicing)', placeholder: 'Notes' }])}
-        {renderTriplet(
-          'Insulation Resistance (Submersible Cable & Motor Spliced, ≥ 2 MΩ)',
-          ['splicedIrL1', 'splicedIrL2', 'splicedIrL3'],
-          ['L1-L2', 'L1-L3', 'L2-L3'],
-          ['30.63', '30.13', '31.66'],
-        )}
-        {renderInputs([{ key: 'afterSpliceRemarks', label: 'Remarks (After Splicing)', placeholder: 'Notes' }])}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10 }}>
+          <div style={{ display: 'grid', gap: 6, padding: 8, borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
+            {renderTriplet(
+              'Before Splicing IR (≥ 100 MΩ)',
+              ['motorIrBeforeSpliceL1', 'motorIrBeforeSpliceL2', 'motorIrBeforeSpliceL3'],
+              ['(L1) MΩ', '(L2) MΩ', '(L3) MΩ'],
+            )}
+            {renderInputs([{ key: 'beforeSpliceRemarks', label: 'Remarks (Before Splicing)', placeholder: 'Notes' }])}
+          </div>
+          <div style={{ display: 'grid', gap: 6, padding: 8, borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
+            {renderTriplet(
+              'After Splicing IR (≥ 2 MΩ)',
+              ['splicedIrL1', 'splicedIrL2', 'splicedIrL3'],
+              ['(L1) MΩ', '(L2) MΩ', '(L3) MΩ'],
+              ['30.63', '30.13', '31.66'],
+            )}
+            {renderInputs([{ key: 'afterSpliceRemarks', label: 'Remarks (After Splicing)', placeholder: 'Notes' }])}
+          </div>
+        </div>
         {renderTriplet(
           'No Load Current Reading (A)',
           ['noLoadCurrentL1', 'noLoadCurrentL2', 'noLoadCurrentL3'],
-          ['L1', 'L2', 'L3'],
+          ['(L1) A', '(L2) A', '(L3) A'],
         )}
       </div>
 
@@ -371,19 +377,19 @@ export default function WellPulloutFields({
         {renderTriplet(
           'Insulation Resistance (MΩ)',
           ['afterInstallIrL1', 'afterInstallIrL2', 'afterInstallIrL3'],
-          ['L1-L2', 'L1-L3', 'L2-L3'],
+          ['(L1) MΩ', '(L2) MΩ', '(L3) MΩ'],
           ['29.5', '30.1', '32.33'],
         )}
         {renderTriplet(
           'Current Reading (A)',
           ['afterInstallCurrentL1', 'afterInstallCurrentL2', 'afterInstallCurrentL3'],
-          ['L1', 'L2', 'L3'],
+          ['(L1) A', '(L2) A', '(L3) A'],
           ['28', '27', '28'],
         )}
         {renderTriplet(
           'Voltage Reading (V)',
           ['afterInstallVoltageL1', 'afterInstallVoltageL2', 'afterInstallVoltageL3'],
-          ['L1-L2', 'L1-L3', 'L2-L3'],
+          ['(L1) V', '(L2) V', '(L3) V'],
           ['231', '233', '235'],
         )}
         <label
