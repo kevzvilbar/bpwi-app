@@ -1,5 +1,10 @@
 import type { DailyActivityRow } from '@/lib/activity-types';
 import { hydrateWellPulloutDetails } from './well-pullout-types.ts';
+import {
+  computeTankDowntime,
+  evaluateTankWaterQuality,
+  hydrateTankCleaningDetails,
+} from './tank-cleaning-types.ts';
 
 export function formatTelemetrySummary(act: DailyActivityRow): string[] {
   const d = act.details ?? {};
@@ -97,6 +102,22 @@ export function formatTelemetrySummary(act: DailyActivityRow): string[] {
       parts.push(`SWL/PWL: ${wp.swlMeters.trim() || '—'}m/${wp.pwlMeters.trim() || '—'}m`);
     }
     if (wp.operationDuration.trim()) parts.push(`Duration: ${wp.operationDuration.trim()}`);
+  }
+
+  if (act.activity_type === 'tank_cleaning') {
+    const tc = hydrateTankCleaningDetails(d);
+    const tankDesc = [tc.tankId.trim(), tc.tankType].filter(Boolean).join(' · ');
+    const cap = tc.tankCapacity.trim() ? ` (${tc.tankCapacity.trim()} ${tc.tankCapacityUnit})` : '';
+    if (tankDesc || cap) parts.push(`Tank: ${tankDesc || 'Tank'}${cap}`);
+    const dt =
+      tc.totalDowntime.trim() ||
+      computeTankDowntime(tc.dateStarted, tc.timeStarted, tc.dateFinished, tc.timeFinished, act.activity_date);
+    if (dt) parts.push(`Downtime: ${dt}`);
+    if (tc.chlorinePost.trim()) parts.push(`Post Cl₂: ${tc.chlorinePost.trim()} mg/L`);
+    if (tc.turbidityPost.trim()) parts.push(`Turbidity: ${tc.turbidityPost.trim()} NTU`);
+    if (tc.phPost.trim()) parts.push(`pH: ${tc.phPost.trim()}`);
+    const evalRes = evaluateTankWaterQuality(tc);
+    if (evalRes.overall !== 'INCOMPLETE') parts.push(evalRes.overall);
   }
 
   return parts;

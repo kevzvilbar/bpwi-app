@@ -94,7 +94,7 @@ export default function ActivitiesMonitor(p: {
 
   // Printable preview state
   const [printState, setPrintState] = useState<{
-    mode: 'activity' | 'meter_test' | 'well_pull_out';
+    mode: 'activity' | 'meter_test' | 'well_pull_out' | 'tank_cleaning';
     activity?: DailyActivityRow | null;
     jobOrder?: JobOrderRow | null;
   } | null>(null);
@@ -795,25 +795,12 @@ export default function ActivitiesMonitor(p: {
                     {/* Action Bar */}
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4, borderTop: '1px solid var(--border-light)', paddingTop: 8 }}>
                       {p.canVerifyActivity && act.status !== 'verified' && (
-                        <button
-                          type="button"
-                          className="btn"
-                          onClick={() => void updateActivityVerification(act, 'verified')}
-                          style={{ fontSize: 11.5, background: 'var(--ok-bg)', color: 'var(--ok-fg)', borderColor: 'var(--ok-border)', fontWeight: 700 }}
-                        >
+                        <button type="button" className="btn" onClick={() => void updateActivityVerification(act, 'verified')} style={{ fontSize: 11.5, background: 'var(--ok-bg)', color: 'var(--ok-fg)', borderColor: 'var(--ok-border)', fontWeight: 700 }}>
                           ✓ Verify
                         </button>
                       )}
                       {p.canVerifyActivity && act.status !== 'flagged' && (
-                        <button
-                          type="button"
-                          className="btn"
-                          onClick={() => {
-                            setFlaggingId(flaggingId === act.id ? null : act.id);
-                            setFlagReason('');
-                          }}
-                          style={{ fontSize: 11.5, color: 'var(--danger)' }}
-                        >
+                        <button type="button" className="btn" onClick={() => { setFlaggingId(flaggingId === act.id ? null : act.id); setFlagReason(''); }} style={{ fontSize: 11.5, color: 'var(--danger)' }}>
                           ⚠ Flag
                         </button>
                       )}
@@ -830,17 +817,17 @@ export default function ActivitiesMonitor(p: {
                           🖨 Pull-Out Form
                         </button>
                       )}
+                      {act.activity_type === 'tank_cleaning' && (
+                        <button type="button" className="btn" onClick={() => setPrintState({ mode: 'tank_cleaning', activity: act })} style={{ fontSize: 11.5, color: 'var(--ok-fg)', fontWeight: 700 }}>
+                          🖨 Tank Cleaning Report
+                        </button>
+                      )}
                       {(p.isAdmin || act.logged_by === p.userId) && act.status !== 'verified' && (
                         <>
                           <button type="button" className="btn" onClick={() => { setLinkedJoForLog(null); setEditingActivity(act); setLoggerOpen(true); }} style={{ fontSize: 11.5 }}>
                             Edit
                           </button>
-                          <button
-                            type="button"
-                            className="btn"
-                            onClick={() => void handleDeleteActivity(act)}
-                            style={{ fontSize: 11.5, color: 'var(--danger)' }}
-                          >
+                          <button type="button" className="btn" onClick={() => void handleDeleteActivity(act)} style={{ fontSize: 11.5, color: 'var(--danger)' }}>
                             Delete
                           </button>
                         </>

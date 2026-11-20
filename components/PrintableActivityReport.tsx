@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { ACTIVITY_BY_ID, type DailyActivityRow, type JobOrderRow } from '@/lib/activity-types';
 import WellPulloutReportSheet from '@/components/WellPulloutReportSheet';
+import TankCleaningReportSheet from '@/components/TankCleaningReportSheet';
 
 type LookupOp = { id: string; full_name: string; position: string | null };
 type LookupArea = { id: string; code: string; name: string | null };
@@ -31,7 +32,7 @@ function calcTatHours(startIso?: string | null, endIso?: string | null) {
 }
 
 export default function PrintableActivityReport(p: {
-  mode: 'activity' | 'meter_test' | 'well_pull_out';
+  mode: 'activity' | 'meter_test' | 'well_pull_out' | 'tank_cleaning';
   orgName: string;
   activity?: DailyActivityRow | null;
   jobOrder?: JobOrderRow | null;
@@ -40,11 +41,11 @@ export default function PrintableActivityReport(p: {
   shifts: LookupShift[];
   onClose: () => void;
 }) {
-  const [pulloutView, setPulloutView] = useState<'form' | 'standard'>('form');
+  const [sheetView, setSheetView] = useState<'form' | 'standard'>('form');
   const actId = p.activity?.id ?? '';
 
   useEffect(() => {
-    setPulloutView('form');
+    setSheetView('form');
   }, [p.mode, actId]);
 
   if (!p.activity && !p.jobOrder) return null;
@@ -69,16 +70,22 @@ export default function PrintableActivityReport(p: {
     (jo?.area_code_id ? areaBy.get(jo.area_code_id) : undefined);
   const shiftObj = act?.shift_type_id ? shiftBy.get(act.shift_type_id) : undefined;
   const leadOp = act?.lead_operator_id ? opBy.get(act.lead_operator_id) : undefined;
-  const crewOps = (act?.crew_operator_ids ?? jo?.assigned_operator_ids ?? [])
-    .map((id) => opBy.get(id)?.full_name)
-    .filter(Boolean) as string[];
+  const crewOpObjects = (act?.crew_operator_ids ?? jo?.assigned_operator_ids ?? [])
+    .map((id) => opBy.get(id))
+    .filter((o): o is LookupOp => Boolean(o));
+  const crewOps = crewOpObjects.map((o) => o.full_name);
 
   const actDef = act ? ACTIVITY_BY_ID[act.activity_type] : jo?.activity_type ? ACTIVITY_BY_ID[jo.activity_type] : undefined;
   const refCode = jo?.jo_number ?? (act ? `ACT-${act.id.slice(0, 8).toUpperCase()}` : 'REPORT');
   const isPulloutEligible = act?.activity_type === 'well_pull_out';
+  const isTankCleaningEligible = act?.activity_type === 'tank_cleaning';
   const showPulloutSheet = Boolean(
-    act && (p.mode === 'well_pull_out' || isPulloutEligible) && pulloutView === 'form',
+    act && (p.mode === 'well_pull_out' || isPulloutEligible) && sheetView === 'form',
   );
+  const showTankCleaningSheet = Boolean(
+    act && (p.mode === 'tank_cleaning' || isTankCleaningEligible) && sheetView === 'form',
+  );
+  const hideGenericHeader = showPulloutSheet || showTankCleaningSheet;
   const areaLabel = areaObj ? `${areaObj.code}${areaObj.name ? ` · ${areaObj.name}` : ''}` : '';
 
   return (
@@ -124,7 +131,7 @@ export default function PrintableActivityReport(p: {
                   margin: 0 !important;
                   z-index: 9999 !important;
                 }
-                @page { size: ${showPulloutSheet ? 'legal portrait' : 'portrait'}; margin: ${showPulloutSheet ? '6mm' : '10mm'}; }
+                @page { size: ${showPulloutSheet ? 'legal portrait' : showTankCleaningSheet ? 'letter portrait' : 'portrait'}; margin: ${showPulloutSheet ? '6mm' : '10mm'}; }
               }
             `,
           }}
@@ -150,23 +157,25 @@ export default function PrintableActivityReport(p: {
                 ? 'Meter Volumetric Test Certificate Preview'
                 : showPulloutSheet
                   ? 'Deepwell Pull-Out & Installation Accomplishment Report'
-                  : 'Field Operations / Job Order Report Preview'}
+                  : showTankCleaningSheet
+                    ? 'Tank Cleaning & Sanitation Accomplishment Report'
+                    : 'Field Operations / Job Order Report Preview'}
             </strong>
-            {isPulloutEligible && (
+            {(isPulloutEligible || isTankCleaningEligible) && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button
                   type="button"
-                  className={pulloutView === 'form' ? 'btn btn-primary' : 'btn'}
+                  className={sheetView === 'form' ? 'btn btn-primary' : 'btn'}
                   style={{ fontSize: 11.5, padding: '4px 9px' }}
-                  onClick={() => setPulloutView('form')}
+                  onClick={() => setSheetView('form')}
                 >
-                  📄 Official Deepwell Pull-Out Form
+                  {isTankCleaningEligible ? '📄 Official Tank Cleaning Report' : '📄 Official Deepwell Pull-Out Form'}
                 </button>
                 <button
                   type="button"
-                  className={pulloutView === 'standard' ? 'btn btn-primary' : 'btn'}
+                  className={sheetView === 'standard' ? 'btn btn-primary' : 'btn'}
                   style={{ fontSize: 11.5, padding: '4px 9px' }}
-                  onClick={() => setPulloutView('standard')}
+                  onClick={() => setSheetView('standard')}
                 >
                   📋 Standard Activity Sheet (with Photos)
                 </button>
@@ -184,7 +193,7 @@ export default function PrintableActivityReport(p: {
         </div>
 
         {/* Official Document Header (standard reports / meter certificate) */}
-        {!showPulloutSheet && (
+        {!hideGenericHeader && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #0f172a', paddingBottom: 12, marginBottom: 18, gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <img src="/bpwi-logo.png" alt="BP Waterworks, Inc." style={{ width: 52, height: 39, objectFit: 'contain' }} />
@@ -212,6 +221,14 @@ export default function PrintableActivityReport(p: {
             areaLabel={areaLabel}
             leadOpName={leadOp?.full_name ?? ''}
             crewNames={crewOps}
+          />
+        ) : showTankCleaningSheet && act ? (
+          <TankCleaningReportSheet
+            activity={act}
+            orgName={p.orgName}
+            areaLabel={areaLabel}
+            leadOp={leadOp ?? null}
+            crewOps={crewOpObjects}
           />
         ) : p.mode === 'meter_test' ? (
           /* Official Water Meter Volumetric Test Certificate Layout */

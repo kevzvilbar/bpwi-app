@@ -28,6 +28,8 @@ import { compressImageFile, uploadActivityPhoto } from '@/lib/image-compress';
 import ActivityCategoryFields from '@/components/ActivityCategoryFields';
 import ActivityMediaCapture, { type ActivityPhotoEntry } from '@/components/ActivityMediaCapture';
 
+const MAX_ACTIVITY_PHOTOS = 4;
+
 export type LoggerOperator = {
   id: string;
   full_name: string;
@@ -135,6 +137,10 @@ export default function ActivityLoggerModal(p: {
   const [leadOpId, setLeadOpId] = useState<string>('');
   const [crewOpIds, setCrewOpIds] = useState<string[]>([]);
 
+  const leadOpName = useMemo(
+    () => p.operators.find((o) => o.id === leadOpId)?.full_name ?? '',
+    [p.operators, leadOpId],
+  );
   const performedBySummary = useMemo(() => {
     const opNameById = new Map(p.operators.map((o) => [o.id, o.full_name]));
     const names: string[] = [];
@@ -242,6 +248,14 @@ export default function ActivityLoggerModal(p: {
           timeStarted: hydrated.wellPullout.timeStarted || toHHMM(ea.started_at),
           timeFinished: hydrated.wellPullout.timeFinished || toHHMM(ea.completed_at),
           overallRemarks: hydrated.wellPullout.overallRemarks || (ea.notes ?? ''),
+        };
+      } else if (ea.activity_type === 'tank_cleaning') {
+        hydrated.tankCleaning = {
+          ...hydrated.tankCleaning,
+          dateStarted: hydrated.tankCleaning.dateStarted || ea.activity_date,
+          timeStarted: hydrated.tankCleaning.timeStarted || toHHMM(ea.started_at),
+          timeFinished: hydrated.tankCleaning.timeFinished || toHHMM(ea.completed_at),
+          conclusionRecommendations: hydrated.tankCleaning.conclusionRecommendations || (ea.notes ?? ''),
         };
       }
       setDetails(hydrated);
@@ -409,13 +423,24 @@ export default function ActivityLoggerModal(p: {
   async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files || files.length === 0) return;
+    const remaining = MAX_ACTIVITY_PHOTOS - photos.length;
+    if (remaining <= 0) {
+      setErrMsg(`Maximum ${MAX_ACTIVITY_PHOTOS} photos allowed per activity.`);
+      e.target.value = '';
+      return;
+    }
     setUploadingPhoto(true);
-    setErrMsg('');
+    setErrMsg(
+      files.length > remaining
+        ? `Only ${remaining} more photo${remaining === 1 ? '' : 's'} can be added (max ${MAX_ACTIVITY_PHOTOS} per activity).`
+        : '',
+    );
     const sb = supabaseBrowser();
     let totalSaved = 0;
     const added: Array<{ url: string; storagePath: string | null; preview: string }> = [];
 
-    for (let i = 0; i < files.length; i++) {
+    const count = Math.min(files.length, remaining);
+    for (let i = 0; i < count; i++) {
       const file = files[i];
       try {
         if (navigator.onLine) {
@@ -457,17 +482,26 @@ export default function ActivityLoggerModal(p: {
         : null;
 
     const isPullout = activityType === 'well_pull_out';
+    const isTankClean = activityType === 'tank_cleaning';
     const wpStartYmd = normalizePulloutDateYMD(details.wellPullout.dateStarted, p.date);
     const wpEndYmd = normalizePulloutDateYMD(details.wellPullout.dateFinished, wpStartYmd);
+    const tcStartYmd = normalizePulloutDateYMD(details.tankCleaning.dateStarted, p.date);
+    const tcEndYmd = normalizePulloutDateYMD(details.tankCleaning.dateFinished, tcStartYmd);
     const resolvedStartedAt = isPullout
       ? toManilaTimestampIso(wpStartYmd, normalizePulloutTimeHHMM(details.wellPullout.timeStarted))
-      : toManilaTimestampIso(p.date, startedHHMM);
+      : isTankClean
+        ? toManilaTimestampIso(tcStartYmd, normalizePulloutTimeHHMM(details.tankCleaning.timeStarted))
+        : toManilaTimestampIso(p.date, startedHHMM);
     const resolvedCompletedAt = isPullout
       ? toManilaTimestampIso(wpEndYmd, normalizePulloutTimeHHMM(details.wellPullout.timeFinished)) ?? new Date().toISOString()
-      : toManilaTimestampIso(p.date, completedHHMM) ?? new Date().toISOString();
+      : isTankClean
+        ? toManilaTimestampIso(tcEndYmd, normalizePulloutTimeHHMM(details.tankCleaning.timeFinished)) ?? new Date().toISOString()
+        : toManilaTimestampIso(p.date, completedHHMM) ?? new Date().toISOString();
     const resolvedNotes = isPullout
       ? details.wellPullout.overallRemarks.trim() || notes.trim() || null
-      : notes.trim() || null;
+      : isTankClean
+        ? details.tankCleaning.conclusionRecommendations.trim() || notes.trim() || null
+        : notes.trim() || null;
     const detailsForSubmit: ActivityDetailFieldsState = isPullout
       ? {
           ...details,
@@ -478,9 +512,16 @@ export default function ActivityLoggerModal(p: {
             performedByContractor: performedBySummary || details.wellPullout.performedByContractor,
           },
         }
-      : details;
+      : isTankClean
+        ? { ...details, tankCleaning: { ...details.tankCleaning, dateStarted: tcStartYmd, dateFinished: tcEndYmd } }
+        : details;
 
     const expiresIso = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const preservedExpiry =
+      p.editingActivity?.photos_expires_at ??
+      (p.editingActivity?.created_at
+        ? new Date(new Date(p.editingActivity.created_at).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
+        : expiresIso);
     type ActivitySubmitPayload = Omit<
       DailyActivityRow,
       'id' | 'verified_by' | 'verified_at' | 'review_note' | 'photos_purged_at' | 'created_at' | 'updated_at'
@@ -506,7 +547,7 @@ export default function ActivityLoggerModal(p: {
       details: buildActivityDetailsPayload(activityType, detailsForSubmit, meterCalc),
       photo_urls: photos.map((ph) => ph.url),
       photo_storage_paths: photos.map((ph) => ph.storagePath).filter((sp): sp is string => Boolean(sp)),
-      photos_expires_at: photos.length > 0 ? expiresIso : null,
+      photos_expires_at: photos.length > 0 ? preservedExpiry : null,
       signature_data: sigData,
       ...(p.linkedJobOrder?.id ? { job_order_id: p.linkedJobOrder.id } : {}),
     };
@@ -882,11 +923,12 @@ export default function ActivityLoggerModal(p: {
           sigDrawingRef={sigDrawingRef}
           setHasSignature={setHasSignature}
           activityDate={p.date}
+          leadOpName={leadOpName}
           performedBySummary={performedBySummary}
         />
 
-        {/* Times + Notes (Pull-Out collects start/finish & overall remarks inside its structured form) */}
-        {activityType !== 'well_pull_out' && (
+        {/* Times + Notes (Pull-Out and Tank Cleaning collect start/finish & notes inside their structured forms) */}
+        {activityType !== 'well_pull_out' && activityType !== 'tank_cleaning' && (
           <>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
@@ -924,6 +966,12 @@ export default function ActivityLoggerModal(p: {
           savedBytesTotal={savedBytesTotal}
           photos={photos}
           onRemovePhoto={(idx) => setPhotos((prev) => prev.filter((_, i) => i !== idx))}
+          maxPhotos={MAX_ACTIVITY_PHOTOS}
+          helperNote={
+            activityType === 'tank_cleaning'
+              ? 'Photo 1 = Start (Pre-Cleaning) · Photo 2 = End (Post-Cleaning). Auto-deleted after 30 days.'
+              : undefined
+          }
         />
 
         {errMsg && (

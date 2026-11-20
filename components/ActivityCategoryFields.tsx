@@ -7,6 +7,7 @@ import {
   type ActivityDetailFieldsState,
 } from '@/lib/activity-logger-details';
 import WellPulloutFields from '@/components/WellPulloutFields';
+import TankCleaningFields from '@/components/TankCleaningFields';
 
 interface ActivityCategoryFieldsProps {
   activityType: string;
@@ -17,6 +18,7 @@ interface ActivityCategoryFieldsProps {
   sigDrawingRef: MutableRefObject<boolean>;
   setHasSignature: (v: boolean) => void;
   activityDate?: string;
+  leadOpName?: string;
   performedBySummary?: string;
 }
 
@@ -29,6 +31,7 @@ export default function ActivityCategoryFields({
   sigDrawingRef,
   setHasSignature,
   activityDate,
+  leadOpName,
   performedBySummary,
 }: ActivityCategoryFieldsProps) {
   const patch = (updates: Partial<ActivityDetailFieldsState>) =>
@@ -604,6 +607,15 @@ export default function ActivityCategoryFields({
           onChange={(wellPullout) => patch({ wellPullout })}
           activityDate={activityDate}
           performedBySummary={performedBySummary}
+        />
+      )}
+
+      {activityType === 'tank_cleaning' && (
+        <TankCleaningFields
+          value={fields.tankCleaning}
+          onChange={(tankCleaning) => patch({ tankCleaning })}
+          activityDate={activityDate}
+          leadOpName={leadOpName ?? performedBySummary}
         />
       )}
     </>

@@ -3,14 +3,17 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { supabaseServer } from '@/lib/supabase/server';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 import { getErrorMessage } from '@/lib/error-utils';
+import { ACTIVITY_MEDIA_BUCKET, extractActivityStoragePath } from '@/lib/activity-media';
 
 async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
-  const nowIso = new Date().toISOString();
+  const nowMs = Date.now();
+  const nowIso = new Date(nowMs).toISOString();
+  const cutoffIso = new Date(nowMs - 30 * 24 * 60 * 60 * 1000).toISOString();
   let query = db
     .from('daily_activities')
-    .select('id, photo_storage_paths')
-    .lt('photos_expires_at', nowIso)
-    .is('photos_purged_at', null);
+    .select('id, photo_storage_paths, photo_urls')
+    .is('photos_purged_at', null)
+    .or(`photos_expires_at.lt.${nowIso},and(photos_expires_at.is.null,created_at.lt.${cutoffIso})`);
 
   if (orgId) {
     query = query.eq('organization_id', orgId);
@@ -21,7 +24,13 @@ async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
     return { error: fetchErr.message, status: 500 as const };
   }
 
-  if (!expiredRows || expiredRows.length === 0) {
+  const rowsWithMedia = (expiredRows ?? []).filter(
+    (r) =>
+      (Array.isArray(r.photo_storage_paths) && r.photo_storage_paths.length > 0) ||
+      (Array.isArray(r.photo_urls) && r.photo_urls.length > 0),
+  );
+
+  if (rowsWithMedia.length === 0) {
     return { purgedCount: 0, filesRemoved: 0, status: 200 as const };
   }
 
@@ -29,13 +38,22 @@ async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
   // row keeps its paths so the next run retries; otherwise the files would be orphaned forever.
   const pathsByRow = new Map<string, string[]>();
   const allPaths: string[] = [];
-  for (const row of expiredRows) {
-    const paths: string[] = [];
+  for (const row of rowsWithMedia) {
+    const pathSet = new Set<string>();
     if (Array.isArray(row.photo_storage_paths)) {
       for (const p of row.photo_storage_paths) {
-        if (typeof p === 'string' && p.trim()) paths.push(p.trim());
+        if (typeof p === 'string' && p.trim()) pathSet.add(p.trim());
       }
     }
+    if (Array.isArray(row.photo_urls)) {
+      for (const u of row.photo_urls) {
+        if (typeof u === 'string') {
+          const extracted = extractActivityStoragePath(u);
+          if (extracted) pathSet.add(extracted);
+        }
+      }
+    }
+    const paths = [...pathSet];
     pathsByRow.set(row.id, paths);
     allPaths.push(...paths);
   }
@@ -44,7 +62,7 @@ async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
   let filesRemoved = 0;
   for (let i = 0; i < allPaths.length; i += 100) {
     const chunk = allPaths.slice(i, i + 100);
-    const { error: rmErr } = await db.storage.from('activity-media').remove(chunk);
+    const { error: rmErr } = await db.storage.from(ACTIVITY_MEDIA_BUCKET).remove(chunk);
     if (rmErr) {
       chunk.forEach((p) => failedPaths.add(p));
     } else {

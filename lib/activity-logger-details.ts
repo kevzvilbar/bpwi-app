@@ -5,9 +5,17 @@ import {
   hydrateWellPulloutDetails,
   type WellPulloutFormDetails,
 } from './well-pullout-types.ts';
+import {
+  INITIAL_TANK_CLEANING_DETAILS,
+  buildTankCleaningPayload,
+  hydrateTankCleaningDetails,
+  type TankCleaningFormDetails,
+} from './tank-cleaning-types.ts';
 
 export type { WellPulloutFormDetails } from './well-pullout-types.ts';
 export { INITIAL_WELL_PULLOUT_DETAILS } from './well-pullout-types.ts';
+export type { TankCleaningFormDetails } from './tank-cleaning-types.ts';
+export { INITIAL_TANK_CLEANING_DETAILS } from './tank-cleaning-types.ts';
 
 export interface BlowOffItem {
   name: string;
@@ -99,6 +107,9 @@ export interface ActivityDetailFieldsState {
 
   // 9. Deep Well Pump & Motor Pull-Out
   wellPullout: WellPulloutFormDetails;
+
+  // 10. Tank Cleaning & Sanitation
+  tankCleaning: TankCleaningFormDetails;
 }
 
 export const INITIAL_ACTIVITY_DETAIL_FIELDS: ActivityDetailFieldsState = {
@@ -153,6 +164,7 @@ export const INITIAL_ACTIVITY_DETAIL_FIELDS: ActivityDetailFieldsState = {
   swlMeters: '',
   pwlMeters: '',
   wellPullout: INITIAL_WELL_PULLOUT_DETAILS,
+  tankCleaning: INITIAL_TANK_CLEANING_DETAILS,
 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -253,6 +265,7 @@ export function hydrateActivityDetailFields(
   if (d.swlMeters != null) next.swlMeters = String(d.swlMeters);
   if (d.pwlMeters != null) next.pwlMeters = String(d.pwlMeters);
   next.wellPullout = hydrateWellPulloutDetails(d);
+  next.tankCleaning = hydrateTankCleaningDetails(d);
 
   return next;
 }
@@ -382,6 +395,9 @@ export function buildActivityDetailsPayload(
   }
   if (activityType === 'well_pull_out') {
     return buildWellPulloutPayload(f.wellPullout);
+  }
+  if (activityType === 'tank_cleaning') {
+    return buildTankCleaningPayload(f.tankCleaning);
   }
   return {};
 }

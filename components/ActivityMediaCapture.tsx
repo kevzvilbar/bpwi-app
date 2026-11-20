@@ -16,6 +16,8 @@ interface ActivityMediaCaptureProps {
   savedBytesTotal: number;
   photos: ActivityPhotoEntry[];
   onRemovePhoto: (index: number) => void;
+  maxPhotos?: number;
+  helperNote?: string;
 }
 
 export default function ActivityMediaCapture({
@@ -28,7 +30,10 @@ export default function ActivityMediaCapture({
   savedBytesTotal,
   photos,
   onRemovePhoto,
+  maxPhotos = 4,
+  helperNote,
 }: ActivityMediaCaptureProps) {
+  const limitReached = photos.length >= maxPhotos;
   return (
     <div style={{ display: 'grid', gap: 8, padding: 10, borderRadius: 8, border: '1px solid var(--border)' }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -37,14 +42,25 @@ export default function ActivityMediaCapture({
         </button>
         {gpsStatus && <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{gpsStatus}</span>}
 
-        <label className="btn" style={{ fontSize: 12, cursor: uploadingPhoto ? 'wait' : 'pointer' }}>
-          {uploadingPhoto ? 'Compressing & Uploading…' : '📷 Add Field Photos'}
+        <label
+          className="btn"
+          style={{
+            fontSize: 12,
+            cursor: uploadingPhoto ? 'wait' : limitReached ? 'not-allowed' : 'pointer',
+            opacity: limitReached ? 0.6 : 1,
+          }}
+        >
+          {uploadingPhoto
+            ? 'Compressing & Uploading…'
+            : limitReached
+              ? `📷 Max ${maxPhotos} Photos (${photos.length}/${maxPhotos})`
+              : `📷 Add Field Photos (${photos.length}/${maxPhotos})`}
           <input
             type="file"
             accept="image/*"
             capture="environment"
             multiple
-            disabled={uploadingPhoto}
+            disabled={uploadingPhoto || limitReached}
             onChange={onPhotoUpload}
             style={{ display: 'none' }}
           />
@@ -52,7 +68,7 @@ export default function ActivityMediaCapture({
       </div>
 
       <div style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-        <span>Compressed client-side · Photos auto-expire after 30 days to conserve storage limits.</span>
+        <span>{helperNote ?? 'Compressed client-side · Photos auto-deleted after 30 days to conserve storage limits.'}</span>
         {savedBytesTotal > 0 && (
           <span style={{ color: 'var(--ok-fg)', fontWeight: 700 }}>
             Saved {(savedBytesTotal / 1024).toFixed(0)} KB

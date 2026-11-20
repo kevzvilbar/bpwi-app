@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   INITIAL_ACTIVITY_DETAIL_FIELDS,
+  INITIAL_TANK_CLEANING_DETAILS,
   INITIAL_WELL_PULLOUT_DETAILS,
   buildActivityDetailsPayload,
   hydrateActivityDetailFields,
@@ -9,6 +10,11 @@ import {
   type ActivityDetailFieldsState,
 } from '../activity-logger-details.ts';
 import { formatTelemetrySummary } from '../activity-telemetry.ts';
+import {
+  computeTankDowntime,
+  evaluateTankWaterQuality,
+  formatTankReportNumber,
+} from '../tank-cleaning-types.ts';
 import {
   computePulloutDuration,
   formatPulloutDateDisplay,
@@ -505,5 +511,97 @@ describe('activity-telemetry formatTelemetrySummary', () => {
     assert.equal(hydrated.wellPullout.installMagneticContactorRatingA, '50');
     assert.equal(hydrated.wellPullout.operationDuration, '15.5 HOURS');
     assert.equal(payload.operationDuration, '15.5 HOURS');
+  });
+
+  it('builds/round-trips tank_cleaning details, evaluates PNSDW clearance, computes downtime, and formats telemetry', () => {
+    assert.equal(
+      computeTankDowntime('2026-11-20', '08:00', '2026-11-20', '14:30'),
+      '6 hrs 30 mins',
+    );
+    assert.equal(
+      computeTankDowntime('2026-11-20', '22:00', '2026-11-21', '01:00'),
+      '3 hrs',
+    );
+    assert.equal(
+      formatTankReportNumber('2026-11-20', '35d9ae9f-1234', ''),
+      'TCAR-2026-11-35D9',
+    );
+    assert.equal(
+      formatTankReportNumber('2026-11-20', '35d9ae9f', 'TCAR-CUSTOM-01'),
+      'TCAR-CUSTOM-01',
+    );
+
+    const clearedEval = evaluateTankWaterQuality({
+      ...INITIAL_TANK_CLEANING_DETAILS,
+      chlorinePost: '0.85',
+      turbidityPost: '< 1.0',
+      phPost: '7.2',
+      odorPost: 'Clear / Odorless',
+    });
+    assert.deepEqual(clearedEval, {
+      chlorine: 'PASS',
+      turbidity: 'PASS',
+      ph: 'PASS',
+      odor: 'PASS',
+      overall: 'CLEARED',
+    });
+
+    const holdEval = evaluateTankWaterQuality({
+      ...INITIAL_TANK_CLEANING_DETAILS,
+      chlorinePost: '2.40',
+      turbidityPost: '0.6',
+      phPost: '7.1',
+      odorPost: 'Silt odor',
+    });
+    assert.deepEqual(holdEval, {
+      chlorine: 'FAIL',
+      turbidity: 'PASS',
+      ph: 'PASS',
+      odor: 'FAIL',
+      overall: 'HOLD',
+    });
+
+    const incompleteEval = evaluateTankWaterQuality(INITIAL_TANK_CLEANING_DETAILS);
+    assert.equal(incompleteEval.overall, 'INCOMPLETE');
+
+    const tcState: ActivityDetailFieldsState = {
+      ...INITIAL_ACTIVITY_DETAIL_FIELDS,
+      tankCleaning: {
+        ...INITIAL_TANK_CLEANING_DETAILS,
+        tankId: 'Reservoir 1',
+        tankType: 'Ground Reservoir',
+        tankCapacity: '150',
+        tankCapacityUnit: 'm³',
+        dateStarted: '2026-11-20',
+        timeStarted: '08:00',
+        dateFinished: '2026-11-20',
+        timeFinished: '14:30',
+        chlorinePost: '0.80',
+        turbidityPost: '0.4',
+        phPost: '7.2',
+        odorPost: 'Clear / Odorless',
+        conclusionRecommendations: 'Restored cleanly to service.',
+        nextScheduledCleaningDate: '2027-05-20',
+      },
+    };
+
+    const payload = buildActivityDetailsPayload('tank_cleaning', tcState, SAMPLE_METER_CALC);
+    assert.equal(payload.totalDowntime, '6 hrs 30 mins');
+    assert.equal(payload.sanitaryClearance, 'CLEARED');
+    assert.equal(payload.tankId, 'Reservoir 1');
+
+    const hydrated = hydrateActivityDetailFields(payload);
+    assert.equal(hydrated.tankCleaning.totalDowntime, '6 hrs 30 mins');
+    assert.equal(hydrated.tankCleaning.nextScheduledCleaningDate, '2027-05-20');
+
+    const summary = formatTelemetrySummary(makeActivity('tank_cleaning', payload));
+    assert.deepEqual(summary, [
+      'Tank: Reservoir 1 · Ground Reservoir (150 m³)',
+      'Downtime: 6 hrs 30 mins',
+      'Post Cl₂: 0.80 mg/L',
+      'Turbidity: 0.4 NTU',
+      'pH: 7.2',
+      'CLEARED',
+    ]);
   });
 });
