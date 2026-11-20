@@ -211,6 +211,7 @@ export default function PrintableActivityReport(p: {
             orgName={p.orgName}
             areaLabel={areaLabel}
             leadOpName={leadOp?.full_name ?? ''}
+            crewNames={crewOps}
           />
         ) : p.mode === 'meter_test' ? (
           /* Official Water Meter Volumetric Test Certificate Layout */

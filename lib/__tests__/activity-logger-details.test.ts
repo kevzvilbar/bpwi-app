@@ -9,6 +9,13 @@ import {
   type ActivityDetailFieldsState,
 } from '../activity-logger-details.ts';
 import { formatTelemetrySummary } from '../activity-telemetry.ts';
+import {
+  computePulloutDuration,
+  formatPulloutDateDisplay,
+  formatPulloutTimeDisplay,
+  normalizePulloutDateYMD,
+  normalizePulloutTimeHHMM,
+} from '../well-pullout-types.ts';
 import type { DailyActivityRow, MeterTestCalculation } from '../activity-types.ts';
 
 function makeActivity(
@@ -446,5 +453,57 @@ describe('activity-telemetry formatTelemetrySummary', () => {
       'SWL/PWL: 35m/69m',
       'Duration: 9 HOURS',
     ]);
+  });
+
+  it('normalizes times/dates, computes overnight pull-out duration, and falls back Section 3 -> Section 5 specs', () => {
+    assert.equal(normalizePulloutTimeHHMM('1300H'), '13:00');
+    assert.equal(normalizePulloutTimeHHMM('8:30 am'), '08:30');
+    assert.equal(normalizePulloutTimeHHMM('0130h'), '01:30');
+    assert.equal(formatPulloutTimeDisplay('13:00'), '1300H');
+    assert.equal(formatPulloutTimeDisplay('0800H'), '0800H');
+
+    assert.equal(normalizePulloutDateYMD('November 20, 2026'), '2026-11-20');
+    assert.equal(normalizePulloutDateYMD('', '2026-11-20'), '2026-11-20');
+    assert.equal(formatPulloutDateDisplay('2026-11-20'), 'November 20, 2026');
+
+    assert.equal(
+      computePulloutDuration('2026-11-20', '10:00', '2026-11-21', '01:30'),
+      '15.5 HOURS',
+    );
+    assert.equal(
+      computePulloutDuration('', '1300H', '', '0100H', '2026-11-20'),
+      '12 HOURS',
+    );
+
+    const stateWithSection3Only: ActivityDetailFieldsState = {
+      ...INITIAL_ACTIVITY_DETAIL_FIELDS,
+      wellPullout: {
+        ...INITIAL_WELL_PULLOUT_DETAILS,
+        dateStarted: '2026-11-20',
+        timeStarted: '10:00',
+        dateFinished: '2026-11-21',
+        timeFinished: '01:30',
+        pulledRiserPipeSizeMm: '80',
+        pulledRiserPipeCount: '12',
+        pulledCableSizeMm2: '5.26',
+        pulledCableLengthM: '76',
+        pulledCableSplicingCount: '1',
+        pulledOverloadRelayRangeA: '24-36',
+        pulledOverloadRelaySettingA: '30',
+        pulledMagneticContactorRatingA: '50',
+      },
+    };
+    const payload = buildActivityDetailsPayload('well_pull_out', stateWithSection3Only, SAMPLE_METER_CALC);
+    const hydrated = hydrateActivityDetailFields(payload);
+    assert.equal(hydrated.wellPullout.installRiserPipeSizeMm, '80');
+    assert.equal(hydrated.wellPullout.installRiserPipeCount, '12');
+    assert.equal(hydrated.wellPullout.installCableSizeMm2, '5.26');
+    assert.equal(hydrated.wellPullout.installCableLengthM, '76');
+    assert.equal(hydrated.wellPullout.installCableSplicingCount, '1');
+    assert.equal(hydrated.wellPullout.installOverloadRelayRangeA, '24-36');
+    assert.equal(hydrated.wellPullout.installOverloadRelaySettingA, '30');
+    assert.equal(hydrated.wellPullout.installMagneticContactorRatingA, '50');
+    assert.equal(hydrated.wellPullout.operationDuration, '15.5 HOURS');
+    assert.equal(payload.operationDuration, '15.5 HOURS');
   });
 });

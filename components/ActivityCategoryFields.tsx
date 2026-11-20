@@ -16,6 +16,8 @@ interface ActivityCategoryFieldsProps {
   sigCanvasRef: MutableRefObject<HTMLCanvasElement | null>;
   sigDrawingRef: MutableRefObject<boolean>;
   setHasSignature: (v: boolean) => void;
+  activityDate?: string;
+  performedBySummary?: string;
 }
 
 export default function ActivityCategoryFields({
@@ -26,6 +28,8 @@ export default function ActivityCategoryFields({
   sigCanvasRef,
   sigDrawingRef,
   setHasSignature,
+  activityDate,
+  performedBySummary,
 }: ActivityCategoryFieldsProps) {
   const patch = (updates: Partial<ActivityDetailFieldsState>) =>
     setFields((prev) => ({ ...prev, ...updates }));
@@ -598,6 +602,8 @@ export default function ActivityCategoryFields({
         <WellPulloutFields
           value={fields.wellPullout}
           onChange={(wellPullout) => patch({ wellPullout })}
+          activityDate={activityDate}
+          performedBySummary={performedBySummary}
         />
       )}
     </>

@@ -1,13 +1,19 @@
 'use client';
 
 import type { DailyActivityRow } from '@/lib/activity-types';
-import { hydrateWellPulloutDetails } from '@/lib/well-pullout-types';
+import {
+  formatPulloutDateDisplay,
+  formatPulloutTimeDisplay,
+  hydrateWellPulloutDetails,
+  resolveInstalledPulloutSpecs,
+} from '@/lib/well-pullout-types';
 
 interface WellPulloutReportSheetProps {
   activity: DailyActivityRow;
   orgName: string;
   areaLabel: string;
   leadOpName: string;
+  crewNames?: string[];
 }
 
 const BORDER = '1px solid #1e293b';
@@ -119,12 +125,24 @@ export default function WellPulloutReportSheet({
   orgName,
   areaLabel,
   leadOpName,
+  crewNames = [],
 }: WellPulloutReportSheetProps) {
-  const w = hydrateWellPulloutDetails(activity.details ?? {});
-  const derivedMY = deriveMonthYear(activity.activity_date);
-  const station = w.projectPumpStation || activity.site_or_well || areaLabel || 'N/A';
-  const month = w.reportMonth || derivedMY.month;
-  const year = w.reportYear || derivedMY.year;
+  const w = resolveInstalledPulloutSpecs(
+    hydrateWellPulloutDetails(activity.details ?? {}),
+    activity.activity_date,
+  );
+  const derivedMY = deriveMonthYear(activity.activity_date || w.dateStarted);
+  const station = activity.site_or_well || areaLabel || w.projectPumpStation || 'N/A';
+  const month = derivedMY.month || w.reportMonth;
+  const year = derivedMY.year || w.reportYear;
+  const startDateDisplay = formatPulloutDateDisplay(w.dateStarted || activity.activity_date);
+  const startTimeDisplay = formatPulloutTimeDisplay(w.timeStarted);
+  const endDateDisplay = formatPulloutDateDisplay(w.dateFinished || w.dateStarted || activity.activity_date);
+  const endTimeDisplay = formatPulloutTimeDisplay(w.timeFinished);
+  const performedByDisplay =
+    Array.from(new Set([leadOpName, ...crewNames].filter(Boolean))).join(', ') ||
+    w.performedByContractor ||
+    '';
   const signatureDataUrl =
     typeof activity.details?.signatureDataUrl === 'string' ? activity.details.signatureDataUrl : '';
 
@@ -132,7 +150,7 @@ export default function WellPulloutReportSheet({
 
   return (
     <div style={{ display: 'grid', gap: 6, color: '#0f172a', fontFamily: 'Arial, sans-serif' }}>
-      {/* Dual Branding Header */}
+      {/* Company Header */}
       <div
         style={{
           display: 'flex',
@@ -142,44 +160,29 @@ export default function WellPulloutReportSheet({
           paddingBottom: 4,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: '50%',
-              border: '2px solid #0284c7',
-              display: 'grid',
-              placeItems: 'center',
-              fontSize: 10,
-              fontWeight: 900,
-              color: '#0369a1',
-            }}
-          >
-            GW
-          </div>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 800, color: '#0f172a', letterSpacing: '0.02em' }}>
-              Goodhands Water Specialists
-            </div>
-            <div style={{ fontSize: 8.5, color: '#475569' }}>Electromechanical &amp; Deepwell Services</div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, textAlign: 'right' }}>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 800, color: '#0f172a' }}>
-              {orgName || 'BP Waterworks Inc.'}
-            </div>
-            <div style={{ fontSize: 8.5, color: '#475569' }}>
-              Ref: ACT-{activity.id.slice(0, 8).toUpperCase()}
-            </div>
-          </div>
-          {/* eslint-disable-next-line @next/next/no-img-element -- static logo / data-URL signature in a print sheet; next/image adds nothing here */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- static logo in print sheet */}
           <img
             src="/bpwi-logo.png"
-            alt="BP Waterworks Inc."
-            style={{ width: 42, height: 32, objectFit: 'contain' }}
+            alt="BP Waterworks, Inc."
+            style={{ width: 46, height: 34, objectFit: 'contain' }}
           />
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', letterSpacing: '0.02em' }}>
+              {orgName || 'BP Waterworks, Inc.'}
+            </div>
+            <div style={{ fontSize: 8.5, color: '#475569' }}>
+              Deepwell Operations &amp; Maintenance Accomplishment Report
+            </div>
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, color: '#0f172a' }}>
+            Ref: ACT-{activity.id.slice(0, 8).toUpperCase()}
+          </div>
+          <div style={{ fontSize: 8.5, color: '#475569' }}>
+            Activity Date: {formatPulloutDateDisplay(activity.activity_date) || 'N/A'}
+          </div>
         </div>
       </div>
 
@@ -215,18 +218,27 @@ export default function WellPulloutReportSheet({
               <span style={{ fontWeight: 600 }}>{w.contractorCoordinator}</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
-              <FieldPair label="Time Reported to Electromech. Eng." value={w.timeReportedToEngineer} />
-              <FieldPair label="Arrival Time at Site" value={w.arrivalTimeAtSite} />
-              <FieldPair label="Time of Set-up" value={w.timeOfSetUp} />
+              <FieldPair
+                label="Time Reported to Electromech. Eng."
+                value={formatPulloutTimeDisplay(w.timeReportedToEngineer)}
+              />
+              <FieldPair
+                label="Arrival Time at Site"
+                value={formatPulloutTimeDisplay(w.arrivalTimeAtSite)}
+              />
+              <FieldPair
+                label="Time of Set-up"
+                value={formatPulloutTimeDisplay(w.timeOfSetUp)}
+              />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
               <FieldPair
                 label="Date and Time Started"
-                value={[w.dateStarted, w.timeStarted].filter(Boolean).join(' @ ')}
+                value={[startDateDisplay, startTimeDisplay].filter(Boolean).join(' @ ')}
               />
               <FieldPair
                 label="Date and Time Finished"
-                value={[w.dateFinished, w.timeFinished].filter(Boolean).join(' @ ')}
+                value={[endDateDisplay, endTimeDisplay].filter(Boolean).join(' @ ')}
               />
             </div>
 
@@ -267,7 +279,7 @@ export default function WellPulloutReportSheet({
             {/* Section 3 */}
             <div style={SECTION_HDR}>
               <span>3. AFTER PULL OUT OF PUMP AND MOTOR</span>
-              <span>Time: {w.afterPulloutTime || '—'}</span>
+              <span>Time: {formatPulloutTimeDisplay(w.afterPulloutTime) || '—'}</span>
             </div>
             <FieldPair label="Remarks" value={w.afterPulloutRemarks} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
@@ -346,7 +358,7 @@ export default function WellPulloutReportSheet({
             {/* Section 4 */}
             <div style={SECTION_HDR}>
               <span>4. BEFORE INSTALLATION PUMP AND MOTOR</span>
-              <span>Time: {w.beforeInstallTime || '—'}</span>
+              <span>Time: {formatPulloutTimeDisplay(w.beforeInstallTime) || '—'}</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '2.5fr 1fr' }}>
               <div style={{ ...CELL, background: '#f8fafc', fontWeight: 700, fontSize: 9 }}>
@@ -403,7 +415,7 @@ export default function WellPulloutReportSheet({
             {/* Section 5 */}
             <div style={SECTION_HDR}>
               <span>5. AFTER INSTALLATION</span>
-              <span>Time: {w.afterInstallTime || '—'}</span>
+              <span>Time: {formatPulloutTimeDisplay(w.afterInstallTime) || '—'}</span>
             </div>
             <FieldPair label="Remarks" value={w.afterInstallRemarks} />
             <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr' }}>
@@ -497,7 +509,7 @@ export default function WellPulloutReportSheet({
             <div style={SECTION_HDR}>
               <span>7. OVER ALL REMARKS</span>
             </div>
-            <div style={{ ...CELL, minHeight: 22, fontWeight: 700 }}>{w.overallRemarks || '—'}</div>
+            <div style={{ ...CELL, minHeight: 22, fontWeight: 700 }}>{w.overallRemarks || activity.notes || '—'}</div>
           </div>
 
           {/* Right Side Column: INSULATION RESISTANCE READING (meg Ω) rows 1-34 */}
@@ -581,7 +593,7 @@ export default function WellPulloutReportSheet({
                 style={{ maxHeight: 30, maxWidth: '100%', objectFit: 'contain' }}
               />
             ) : (
-              w.performedByContractor || leadOpName || ''
+              performedByDisplay
             )}
           </div>
           <div style={{ fontWeight: 700, fontSize: 9, marginTop: 2 }}>Contractor</div>

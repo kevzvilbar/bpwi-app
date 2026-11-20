@@ -365,21 +365,138 @@ export function hydrateWellPulloutDetails(d: Record<string, unknown>): WellPullo
   };
 }
 
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+/** Normalize "1300H", "8:00", "13:00", or "1:30 PM" to 24-hour "HH:MM", or "" if unrecognized. */
+export function normalizePulloutTimeHHMM(raw: string): string {
+  const s = raw.trim();
+  if (!s) return '';
+  const colon = /^(\d{1,2}):(\d{2})(?:\s*(am|pm))?$/i.exec(s);
+  if (colon) {
+    let h = Number(colon[1]);
+    const m = Number(colon[2]);
+    const meridiem = colon[3]?.toLowerCase();
+    if (meridiem) {
+      if (h < 1 || h > 12 || m > 59) return '';
+      if (meridiem === 'pm' && h < 12) h += 12;
+      if (meridiem === 'am' && h === 12) h = 0;
+    } else if (h > 23 || m > 59) {
+      return '';
+    }
+    return `${pad2(h)}:${pad2(m)}`;
+  }
+  const mil = /^(\d{1,2})(\d{2})\s*[Hh]?$/.exec(s);
+  if (mil) {
+    const h = Number(mil[1]);
+    const m = Number(mil[2]);
+    if (h <= 23 && m <= 59) return `${pad2(h)}:${pad2(m)}`;
+  }
+  return '';
+}
+
+/** Format stored time ("13:00" or "1300H") into military printout format ("1300H"). */
+export function formatPulloutTimeDisplay(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  const hhmm = normalizePulloutTimeHHMM(trimmed);
+  return hhmm ? `${hhmm.replace(':', '')}H` : trimmed;
+}
+
+/** Normalize a date string ("2026-11-20" or "November 20, 2026") into "YYYY-MM-DD". */
+export function normalizePulloutDateYMD(raw: string, fallbackYmd = ''): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return fallbackYmd;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const parsed = new Date(`${trimmed} UTC`);
+  if (!Number.isNaN(parsed.getTime())) {
+    return `${parsed.getUTCFullYear()}-${pad2(parsed.getUTCMonth() + 1)}-${pad2(parsed.getUTCDate())}`;
+  }
+  const local = new Date(trimmed);
+  if (!Number.isNaN(local.getTime())) {
+    return `${local.getFullYear()}-${pad2(local.getMonth() + 1)}-${pad2(local.getDate())}`;
+  }
+  return fallbackYmd;
+}
+
+/** Format "YYYY-MM-DD" into "November 20, 2026" for the official printable sheet. */
+export function formatPulloutDateDisplay(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  const ymd = /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : '';
+  if (!ymd) return trimmed;
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(y, m - 1, d)));
+}
+
+/** Compute operation duration (e.g. "9 HOURS" or "15.5 HOURS") from start/finish date & time. */
+export function computePulloutDuration(
+  dateStarted: string,
+  timeStarted: string,
+  dateFinished: string,
+  timeFinished: string,
+  fallbackDateYmd = '',
+): string {
+  const sTime = normalizePulloutTimeHHMM(timeStarted);
+  const eTime = normalizePulloutTimeHHMM(timeFinished);
+  if (!sTime || !eTime) return '';
+  const sYmd = normalizePulloutDateYMD(dateStarted, fallbackDateYmd || '2000-01-01');
+  const eYmd = normalizePulloutDateYMD(dateFinished, sYmd);
+  const startMs = Date.parse(`${sYmd}T${sTime}:00Z`);
+  let endMs = Date.parse(`${eYmd}T${eTime}:00Z`);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return '';
+  if (!dateFinished.trim() && endMs < startMs) {
+    endMs += 24 * 60 * 60 * 1000;
+  }
+  const diffHours = (endMs - startMs) / (1000 * 60 * 60);
+  if (diffHours <= 0) return '';
+  const rounded = Math.round(diffHours * 100) / 100;
+  return rounded === 1 ? '1 HOUR' : `${rounded} HOURS`;
+}
+
+/** Backfill blank Section 5 pipe/cable/control specs from Section 3 and auto-compute blank duration. */
+export function resolveInstalledPulloutSpecs(
+  w: WellPulloutFormDetails,
+  fallbackDateYmd = '',
+): WellPulloutFormDetails {
+  return {
+    ...w,
+    installRiserPipeSizeMm: w.installRiserPipeSizeMm || w.pulledRiserPipeSizeMm,
+    installRiserPipeCount: w.installRiserPipeCount || w.pulledRiserPipeCount,
+    installCableSizeMm2: w.installCableSizeMm2 || w.pulledCableSizeMm2,
+    installCableLengthM: w.installCableLengthM || w.pulledCableLengthM,
+    installCableSplicingCount: w.installCableSplicingCount || w.pulledCableSplicingCount,
+    installOverloadRelayRangeA: w.installOverloadRelayRangeA || w.pulledOverloadRelayRangeA,
+    installOverloadRelaySettingA: w.installOverloadRelaySettingA || w.pulledOverloadRelaySettingA,
+    installMagneticContactorRatingA: w.installMagneticContactorRatingA || w.pulledMagneticContactorRatingA,
+    operationDuration:
+      w.operationDuration.trim() ||
+      computePulloutDuration(w.dateStarted, w.timeStarted, w.dateFinished, w.timeFinished, fallbackDateYmd),
+  };
+}
+
 /** Build the persisted JSON details object for `activity_type === 'well_pull_out'`. */
 export function buildWellPulloutPayload(w: WellPulloutFormDetails): Record<string, unknown> {
+  const resolved = resolveInstalledPulloutSpecs(w);
   return {
-    wellPullout: w,
-    reasonOfPullout: w.reasonOfPullout.trim() || null,
-    operationDuration: w.operationDuration.trim() || null,
-    pulledPumpBrand: w.pulledPumpBrand.trim() || null,
-    pulledPumpModel: w.pulledPumpModel.trim() || null,
-    installPumpBrand: w.installPumpBrand.trim() || null,
-    installPumpModel: w.installPumpModel.trim() || null,
-    installPumpStatus: w.installPumpStatus || null,
-    swlMeters: w.swlMeters.trim() || null,
-    pwlMeters: w.pwlMeters.trim() || null,
-    pumpSettingM: w.pumpSettingM.trim() || null,
-    afterInstallFlowrateLps: w.afterInstallFlowrateLps.trim() || null,
-    afterInstallPressurePsi: w.afterInstallPressurePsi.trim() || null,
+    wellPullout: resolved,
+    reasonOfPullout: resolved.reasonOfPullout.trim() || null,
+    operationDuration: resolved.operationDuration.trim() || null,
+    pulledPumpBrand: resolved.pulledPumpBrand.trim() || null,
+    pulledPumpModel: resolved.pulledPumpModel.trim() || null,
+    installPumpBrand: resolved.installPumpBrand.trim() || null,
+    installPumpModel: resolved.installPumpModel.trim() || null,
+    installPumpStatus: resolved.installPumpStatus || null,
+    swlMeters: resolved.swlMeters.trim() || null,
+    pwlMeters: resolved.pwlMeters.trim() || null,
+    pumpSettingM: resolved.pumpSettingM.trim() || null,
+    afterInstallFlowrateLps: resolved.afterInstallFlowrateLps.trim() || null,
+    afterInstallPressurePsi: resolved.afterInstallPressurePsi.trim() || null,
   };
 }

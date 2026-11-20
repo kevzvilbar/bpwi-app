@@ -20,6 +20,10 @@ import {
   INITIAL_ACTIVITY_DETAIL_FIELDS,
   type ActivityDetailFieldsState,
 } from '@/lib/activity-logger-details';
+import {
+  normalizePulloutDateYMD,
+  normalizePulloutTimeHHMM,
+} from '@/lib/well-pullout-types';
 import { compressImageFile, uploadActivityPhoto } from '@/lib/image-compress';
 import ActivityCategoryFields from '@/components/ActivityCategoryFields';
 import ActivityMediaCapture, { type ActivityPhotoEntry } from '@/components/ActivityMediaCapture';
@@ -127,10 +131,20 @@ export default function ActivityLoggerModal(p: {
   const shiftBy = useMemo(() => new Map(p.shifts.map((s) => [s.id, s])), [p.shifts]);
   const asgByOp = useMemo(() => new Map(p.assignments.map((a) => [a.operator_id, a])), [p.assignments]);
   const stationIdSet = useMemo(() => new Set(stationAreas.map((a) => a.id)), [stationAreas]);
-
   const [activityType, setActivityType] = useState<string>('pump_monitoring');
   const [leadOpId, setLeadOpId] = useState<string>('');
   const [crewOpIds, setCrewOpIds] = useState<string[]>([]);
+
+  const performedBySummary = useMemo(() => {
+    const opNameById = new Map(p.operators.map((o) => [o.id, o.full_name]));
+    const names: string[] = [];
+    if (leadOpId && opNameById.get(leadOpId)) names.push(opNameById.get(leadOpId)!);
+    for (const id of crewOpIds) {
+      const n = id !== leadOpId ? opNameById.get(id) : undefined;
+      if (n) names.push(n);
+    }
+    return names.join(', ');
+  }, [p.operators, leadOpId, crewOpIds]);
   const [showAllOps, setShowAllOps] = useState(false);
   const [shiftTypeId, setShiftTypeId] = useState<string>('');
   const [areaCodeId, setAreaCodeId] = useState<string>('');
@@ -220,7 +234,17 @@ export default function ActivityLoggerModal(p: {
       };
       setStartedHHMM(toHHMM(ea.started_at));
       setCompletedHHMM(toHHMM(ea.completed_at) || currentManilaHHMM());
-      setDetails(hydrateActivityDetailFields(d));
+      const hydrated = hydrateActivityDetailFields(d);
+      if (ea.activity_type === 'well_pull_out') {
+        hydrated.wellPullout = {
+          ...hydrated.wellPullout,
+          dateStarted: hydrated.wellPullout.dateStarted || ea.activity_date,
+          timeStarted: hydrated.wellPullout.timeStarted || toHHMM(ea.started_at),
+          timeFinished: hydrated.wellPullout.timeFinished || toHHMM(ea.completed_at),
+          overallRemarks: hydrated.wellPullout.overallRemarks || (ea.notes ?? ''),
+        };
+      }
+      setDetails(hydrated);
       return;
     }
 
@@ -432,6 +456,30 @@ export default function ActivityLoggerModal(p: {
         ? sigCanvasRef.current.toDataURL('image/png')
         : null;
 
+    const isPullout = activityType === 'well_pull_out';
+    const wpStartYmd = normalizePulloutDateYMD(details.wellPullout.dateStarted, p.date);
+    const wpEndYmd = normalizePulloutDateYMD(details.wellPullout.dateFinished, wpStartYmd);
+    const resolvedStartedAt = isPullout
+      ? toManilaTimestampIso(wpStartYmd, normalizePulloutTimeHHMM(details.wellPullout.timeStarted))
+      : toManilaTimestampIso(p.date, startedHHMM);
+    const resolvedCompletedAt = isPullout
+      ? toManilaTimestampIso(wpEndYmd, normalizePulloutTimeHHMM(details.wellPullout.timeFinished)) ?? new Date().toISOString()
+      : toManilaTimestampIso(p.date, completedHHMM) ?? new Date().toISOString();
+    const resolvedNotes = isPullout
+      ? details.wellPullout.overallRemarks.trim() || notes.trim() || null
+      : notes.trim() || null;
+    const detailsForSubmit: ActivityDetailFieldsState = isPullout
+      ? {
+          ...details,
+          wellPullout: {
+            ...details.wellPullout,
+            dateStarted: wpStartYmd,
+            dateFinished: wpEndYmd,
+            performedByContractor: performedBySummary || details.wellPullout.performedByContractor,
+          },
+        }
+      : details;
+
     const expiresIso = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     type ActivitySubmitPayload = Omit<
       DailyActivityRow,
@@ -450,12 +498,12 @@ export default function ActivityLoggerModal(p: {
       activity_type: activityType,
       pm_task_id: p.linkedPmTask?.id ?? null,
       status: 'submitted',
-      started_at: toManilaTimestampIso(p.date, startedHHMM),
-      completed_at: toManilaTimestampIso(p.date, completedHHMM) ?? new Date().toISOString(),
+      started_at: resolvedStartedAt,
+      completed_at: resolvedCompletedAt,
       gps_lat: gpsLat,
       gps_lng: gpsLng,
-      notes: notes.trim() || null,
-      details: buildActivityDetailsPayload(activityType, details, meterCalc),
+      notes: resolvedNotes,
+      details: buildActivityDetailsPayload(activityType, detailsForSubmit, meterCalc),
       photo_urls: photos.map((ph) => ph.url),
       photo_storage_paths: photos.map((ph) => ph.storagePath).filter((sp): sp is string => Boolean(sp)),
       photos_expires_at: photos.length > 0 ? expiresIso : null,
@@ -833,31 +881,37 @@ export default function ActivityLoggerModal(p: {
           sigCanvasRef={sigCanvasRef}
           sigDrawingRef={sigDrawingRef}
           setHasSignature={setHasSignature}
+          activityDate={p.date}
+          performedBySummary={performedBySummary}
         />
 
-        {/* Times + Notes */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
-            Start Time (optional)
-            <input className="input" type="time" value={startedHHMM} onChange={(e) => setStartedHHMM(e.target.value)} />
-          </label>
-          <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
-            Completion Time
-            <input className="input" type="time" value={completedHHMM} onChange={(e) => setCompletedHHMM(e.target.value)} />
-          </label>
-        </div>
+        {/* Times + Notes (Pull-Out collects start/finish & overall remarks inside its structured form) */}
+        {activityType !== 'well_pull_out' && (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
+                Start Time (optional)
+                <input className="input" type="time" value={startedHHMM} onChange={(e) => setStartedHHMM(e.target.value)} />
+              </label>
+              <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
+                Completion Time
+                <input className="input" type="time" value={completedHHMM} onChange={(e) => setCompletedHHMM(e.target.value)} />
+              </label>
+            </div>
 
-        <label style={{ display: 'grid', gap: 4, fontSize: 12.5, fontWeight: 600 }}>
-          Field Notes / Observations
-          <textarea
-            className="input"
-            rows={2}
-            placeholder="Work performed, pressure/reading summary, follow-ups needed…"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            style={{ minHeight: 58 }}
-          />
-        </label>
+            <label style={{ display: 'grid', gap: 4, fontSize: 12.5, fontWeight: 600 }}>
+              Field Notes / Observations
+              <textarea
+                className="input"
+                rows={2}
+                placeholder="Work performed, pressure/reading summary, follow-ups needed…"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                style={{ minHeight: 58 }}
+              />
+            </label>
+          </>
+        )}
 
         {/* GPS & 30-day Expiring Photo Capture */}
         <ActivityMediaCapture
