@@ -1,4 +1,4 @@
-import { ACTIVITY_BY_ID, type DailyActivityRow } from './activity-types';
+import { ACTIVITY_BY_ID, type DailyActivityRow } from './activity-types.ts';
 
 export type LatLng = {
   lat: number;
@@ -256,10 +256,10 @@ export function summarizeTeamFootprints(
 }
 
 /**
- * Splits a multi-stop route into overlapping chunks compatible with the
- * Google Routes API maximum intermediate waypoint limit (default 25 -> 27 stops/chunk).
- * Adjacent chunks share the boundary stop so concatenating leg results yields
- * exactly `stops.length - 1` legs.
+ * Splits a multi-stop route into overlapping chunks compatible with multi-stop
+ * routing endpoints (e.g. OSRM / Routes API max intermediate waypoint limits;
+ * default 25 -> 27 stops/chunk). Adjacent chunks share the boundary stop so
+ * concatenating leg results yields exactly `stops.length - 1` legs.
  */
 export function chunkRouteWaypoints<T extends LatLng>(stops: T[], maxIntermediates = 25): T[][] {
   if (stops.length < 2) return [];
@@ -348,4 +348,101 @@ export function formatDuration(seconds: number | null | undefined): string {
 export function buildRouteCacheKey(stops: LatLng[], travelMode: RouteTravelMode): string {
   const coords = stops.map((s) => `${s.lat.toFixed(5)},${s.lng.toFixed(5)}`).join('|');
   return `${travelMode}::${coords}`;
+}
+
+export type RouteSource = 'osrm' | 'straight-line';
+
+export type RouteLegEstimate = {
+  distanceMeters: number;
+  durationSeconds: number;
+};
+
+/** Formats LatLng coordinates in OSRM `lng,lat;lng,lat` path order. */
+export function formatOsrmCoordinates(stops: LatLng[]): string {
+  return stops.map((s) => `${s.lng.toFixed(6)},${s.lat.toFixed(6)}`).join(';');
+}
+
+/** Returns ordered free OSRM endpoints for the selected travel mode (or custom self-hosted base URL). */
+export function getOsrmEndpoints(travelMode: RouteTravelMode, customBaseUrl?: string): string[] {
+  const trimmed = customBaseUrl?.trim().replace(/\/+$/, '');
+  const profile = travelMode === 'WALK' ? 'foot' : 'driving';
+  if (trimmed) {
+    return [`${trimmed}/route/v1/${profile}`];
+  }
+  if (travelMode === 'WALK') {
+    return ['https://routing.openstreetmap.de/routed-foot/route/v1/foot'];
+  }
+  return [
+    'https://router.project-osrm.org/route/v1/driving',
+    'https://routing.openstreetmap.de/routed-car/route/v1/driving',
+  ];
+}
+
+/**
+ * Collapses consecutive identical coordinates (< 1m apart) so routing services
+ * do not receive zero-length duplicate adjacent waypoints, while tracking how
+ * original stop-to-stop legs map back onto the deduplicated routed legs.
+ */
+export function compressConsecutiveDuplicateStops(stops: LatLng[]): {
+  uniqueStops: LatLng[];
+  legMap: Array<number | null>;
+} {
+  if (stops.length === 0) {
+    return { uniqueStops: [], legMap: [] };
+  }
+  const uniqueStops: LatLng[] = [stops[0]];
+  const legMap: Array<number | null> = [];
+  let routedLegIdx = 0;
+
+  for (let i = 0; i < stops.length - 1; i += 1) {
+    if (haversineMeters(stops[i], stops[i + 1]) < 1) {
+      legMap.push(null);
+    } else {
+      uniqueStops.push(stops[i + 1]);
+      legMap.push(routedLegIdx);
+      routedLegIdx += 1;
+    }
+  }
+
+  return { uniqueStops, legMap };
+}
+
+/** Expands routed legs back to all original stop-to-stop intervals (0m/0s for compressed duplicates). */
+export function expandCompressedLegs(
+  legMap: Array<number | null>,
+  routedLegs: RouteLegEstimate[],
+  originalStops: LatLng[],
+): RouteLegEstimate[] {
+  return legMap.map((mappedIdx, i) => {
+    if (mappedIdx === null) {
+      return { distanceMeters: 0, durationSeconds: 0 };
+    }
+    const leg = routedLegs[mappedIdx];
+    if (leg) return leg;
+    const distanceMeters =
+      originalStops[i] && originalStops[i + 1]
+        ? haversineMeters(originalStops[i], originalStops[i + 1])
+        : 0;
+    return { distanceMeters, durationSeconds: 0 };
+  });
+}
+
+/** Computes a point-to-point Haversine baseline route when road routing is unavailable. */
+export function buildStraightLineRoute(stops: LatLng[]): {
+  totalDistanceMeters: number;
+  totalDurationSeconds: number;
+  legs: RouteLegEstimate[];
+} {
+  const legs: RouteLegEstimate[] = [];
+  let totalDistanceMeters = 0;
+  for (let i = 0; i < stops.length - 1; i += 1) {
+    const distanceMeters = haversineMeters(stops[i], stops[i + 1]);
+    legs.push({ distanceMeters, durationSeconds: 0 });
+    totalDistanceMeters += distanceMeters;
+  }
+  return {
+    totalDistanceMeters,
+    totalDurationSeconds: 0,
+    legs,
+  };
 }

@@ -820,3 +820,45 @@ a:focus-visible {
     min-width: 0;
   }
 }
+
+/* Leaflet map & custom stop pins */
+.bpwi-leaflet-container {
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+}
+
+.bpwi-map-pin-icon {
+  background: transparent;
+  border: 0;
+}
+
+.bpwi-map-pin {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 2px solid #ffffff;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.35);
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.bpwi-map-pin.is-selected {
+  border-color: #facc15;
+  transform: scale(1.2);
+}
+
+.bpwi-leaflet-container .leaflet-popup-content-wrapper,
+.bpwi-leaflet-container .leaflet-popup-tip {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.bpwi-leaflet-container .leaflet-popup-close-button {
+  color: var(--text-secondary);
+}

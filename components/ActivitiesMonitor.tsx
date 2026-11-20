@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { getErrorMessage } from '@/lib/error-utils';
+import { addIsoDays as addDays, fmtTimeManila } from '@/lib/date';
+import { isValidCoordinate } from '@/lib/route-footprints';
 import { resolveActivityPhotoUrl } from '@/lib/activity-media';
 import {
   ACTIVITY_BY_ID,
@@ -28,23 +30,6 @@ type MonArea = { id: string; code: string; name: string | null; category: string
 type MonAsg = { operator_id: string; schedule_date: string; shift_type_id: string | null; area_code_id: string | null };
 type MonStandby = { operator_id: string; standby_type: string };
 type MonPm = { id: string; activity_type: string; title: string; scheduled_date: string; completed_at: string | null; status: string; assigned_operator_ids: string[] };
-
-function addDays(d: string, n: number) {
-  const t = new Date(d + 'T00:00:00Z');
-  t.setUTCDate(t.getUTCDate() + n);
-  return t.toISOString().slice(0, 10);
-}
-
-function fmtTimeManila(iso: string | null | undefined) {
-  if (!iso) return '—';
-  const dt = new Date(iso);
-  if (Number.isNaN(dt.getTime())) return iso;
-  return new Intl.DateTimeFormat('en-PH', {
-    timeZone: 'Asia/Manila',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(dt);
-}
 
 function daysUntil(iso: string | null | undefined) {
   if (!iso) return null;
@@ -73,7 +58,6 @@ export default function ActivitiesMonitor(p: {
   jobOrders: JobOrderRow[];
   handovers: ShiftHandoverRow[];
   schemaWarning: string;
-  googleMapsApiKey?: string;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<'monitor' | 'routes' | 'job-orders' | 'handovers' | 'kpis'>('monitor');
@@ -498,14 +482,7 @@ export default function ActivitiesMonitor(p: {
         {(
           [
             { id: 'monitor', label: `${p.canVerifyActivity ? 'Duty & Activity Feed' : 'My Activity Logs'} (${dateActivities.length})` },
-            {
-              id: 'routes',
-              label: `Routes & Distance (${
-                dateActivities.filter(
-                  (a) => typeof a.gps_lat === 'number' && typeof a.gps_lng === 'number' && !(a.gps_lat === 0 && a.gps_lng === 0),
-                ).length
-              } GPS)`,
-            },
+            { id: 'routes', label: `Routes & Distance (${dateActivities.filter((a) => isValidCoordinate(a.gps_lat, a.gps_lng)).length} GPS)` },
             { id: 'job-orders', label: `Job Orders (${filteredJobOrders.filter((j) => j.status === 'pending' || j.status === 'in_progress').length} open)` },
             { id: 'handovers', label: `Shift Handover & Huddle (${handovers.filter((h) => h.handover_date === p.date).length})` },
             ...(p.canVerifyActivity ? [{ id: 'kpis' as const, label: 'Employee KPIs & Fuel' }] : []),
@@ -880,7 +857,6 @@ export default function ActivitiesMonitor(p: {
           operators={p.operators}
           areas={p.areas}
           activities={activities}
-          googleMapsApiKey={p.googleMapsApiKey ?? ''}
         />
       )}
 

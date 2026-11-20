@@ -49,3 +49,22 @@ export function toManilaInput(date: Date) {
 export function manilaInputToIso(value: string) {
   return new Date(`${value}:00+08:00`).toISOString();
 }
+
+/** Add `n` UTC calendar days to a YYYY-MM-DD date string. */
+export function addIsoDays(ymd: string, n: number): string {
+  const t = new Date(ymd + 'T00:00:00Z');
+  t.setUTCDate(t.getUTCDate() + n);
+  return t.toISOString().slice(0, 10);
+}
+
+/** Format an ISO timestamp in Manila 12-hour clock (`hour:minute`). */
+export function fmtTimeManila(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return iso;
+  return new Intl.DateTimeFormat('en-PH', {
+    timeZone: 'Asia/Manila',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(dt);
+}

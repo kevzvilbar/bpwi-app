@@ -1,54 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProfile } from '@/lib/profile';
 import {
+  buildStraightLineRoute,
   chunkRouteWaypoints,
+  compressConsecutiveDuplicateStops,
+  expandCompressedLegs,
+  formatOsrmCoordinates,
+  getOsrmEndpoints,
+  haversineMeters,
   isValidCoordinate,
-  parseGoogleDurationSeconds,
   type LatLng,
+  type RouteLegEstimate,
   type RouteTravelMode,
 } from '@/lib/route-footprints';
 
 const ALLOWED_MODES = new Set<RouteTravelMode>(['DRIVE', 'TWO_WHEELER', 'WALK']);
-const ROUTES_ENDPOINT = 'https://routes.googleapis.com/directions/v2:computeRoutes';
-const FIELD_MASK = [
-  'routes.distanceMeters',
-  'routes.duration',
-  'routes.polyline.encodedPolyline',
-  'routes.legs.distanceMeters',
-  'routes.legs.duration',
-].join(',');
 
 type ComputeRequestBody = {
   stops?: Array<{ lat?: unknown; lng?: unknown }>;
   travelMode?: unknown;
 };
 
-type GoogleRouteLeg = {
-  distanceMeters?: number;
-  duration?: string;
+type OsrmRouteLeg = {
+  distance?: number;
+  duration?: number;
 };
 
-type GoogleRoute = {
-  distanceMeters?: number;
-  duration?: string;
-  polyline?: { encodedPolyline?: string };
-  legs?: GoogleRouteLeg[];
+type OsrmRoute = {
+  distance?: number;
+  duration?: number;
+  geometry?: string;
+  legs?: OsrmRouteLeg[];
 };
 
-type GoogleRoutesResponse = {
-  routes?: GoogleRoute[];
-  error?: {
-    code?: number;
-    status?: string;
-    message?: string;
-  };
+type OsrmResponse = {
+  code?: string;
+  message?: string;
+  routes?: OsrmRoute[];
 };
-
-function isQuotaError(status: number, body?: GoogleRoutesResponse | null, rawText = ''): boolean {
-  if (status === 429) return true;
-  const combined = `${body?.error?.status ?? ''} ${body?.error?.message ?? ''} ${rawText}`;
-  return /RESOURCE_EXHAUSTED|OVER_QUERY_LIMIT|QuotaExceeded|quota/i.test(combined);
-}
 
 export async function POST(req: NextRequest) {
   const profile = await getProfile();
@@ -82,118 +71,114 @@ export async function POST(req: NextRequest) {
     stops.push({ lat: s.lat, lng: s.lng as number });
   }
 
-  const requestedMode = typeof body.travelMode === 'string' ? (body.travelMode.toUpperCase() as RouteTravelMode) : 'DRIVE';
+  const requestedMode =
+    typeof body.travelMode === 'string'
+      ? (body.travelMode.toUpperCase() as RouteTravelMode)
+      : 'DRIVE';
   const travelMode: RouteTravelMode = ALLOWED_MODES.has(requestedMode) ? requestedMode : 'DRIVE';
 
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: 'Google Maps API key is not configured on the server.', missingKey: true },
-      { status: 503 },
-    );
+  const { uniqueStops, legMap } = compressConsecutiveDuplicateStops(stops);
+  if (uniqueStops.length < 2) {
+    return NextResponse.json({
+      source: 'osrm',
+      totalDistanceMeters: 0,
+      totalDurationSeconds: 0,
+      legs: stops.slice(1).map(() => ({ distanceMeters: 0, durationSeconds: 0 })),
+      encodedPolylines: [],
+      travelMode,
+    });
   }
 
-  const chunks = chunkRouteWaypoints(stops, 25);
-  let totalDistanceMeters = 0;
-  let totalDurationSeconds = 0;
-  const legs: Array<{ distanceMeters: number; durationSeconds: number }> = [];
+  const chunks = chunkRouteWaypoints(uniqueStops, 25);
+  const endpoints = getOsrmEndpoints(travelMode, process.env.OSRM_BASE_URL);
+  const routedLegs: RouteLegEstimate[] = [];
   const encodedPolylines: string[] = [];
+  let lastError = '';
 
   for (const chunk of chunks) {
-    const origin = chunk[0];
-    const destination = chunk[chunk.length - 1];
-    const intermediates = chunk.slice(1, -1);
+    const coords = formatOsrmCoordinates(chunk);
+    let chunkSucceeded = false;
 
-    const payload: Record<string, unknown> = {
-      origin: { location: { latLng: { latitude: origin.lat, longitude: origin.lng } } },
-      destination: { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } },
-      travelMode,
-      units: 'METRIC',
-      languageCode: 'en-PH',
-      regionCode: 'PH',
-    };
-
-    if (intermediates.length > 0) {
-      payload.intermediates = intermediates.map((pt) => ({
-        location: { latLng: { latitude: pt.lat, longitude: pt.lng } },
-      }));
-    }
-
-    if (travelMode === 'DRIVE' || travelMode === 'TWO_WHEELER') {
-      payload.routingPreference = 'TRAFFIC_UNAWARE';
-    }
-
-    let res: Response;
-    try {
-      res = await fetch(ROUTES_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': apiKey,
-          'X-Goog-FieldMask': FIELD_MASK,
-        },
-        body: JSON.stringify(payload),
-        cache: 'no-store',
-      });
-    } catch (err) {
-      return NextResponse.json(
-        { error: err instanceof Error ? err.message : 'Failed to contact Google Routes API' },
-        { status: 502 },
-      );
-    }
-
-    const rawText = await res.text();
-    let parsed: GoogleRoutesResponse | null = null;
-    try {
-      parsed = JSON.parse(rawText) as GoogleRoutesResponse;
-    } catch {
-      parsed = null;
-    }
-
-    if (!res.ok) {
-      if (isQuotaError(res.status, parsed, rawText)) {
-        return NextResponse.json(
-          { quotaExceeded: true, error: 'Google Maps Platform quota exceeded.' },
-          { status: 429 },
-        );
-      }
-      return NextResponse.json(
-        { error: parsed?.error?.message || `Routes API error (HTTP ${res.status})` },
-        { status: res.status >= 400 && res.status < 500 ? res.status : 502 },
-      );
-    }
-
-    const primary = parsed?.routes?.[0];
-    if (!primary) {
-      return NextResponse.json(
-        { error: 'No drivable road route was found between the logged GPS points.' },
-        { status: 404 },
-      );
-    }
-
-    totalDistanceMeters += typeof primary.distanceMeters === 'number' ? primary.distanceMeters : 0;
-    totalDurationSeconds += parseGoogleDurationSeconds(primary.duration);
-    if (primary.polyline?.encodedPolyline) {
-      encodedPolylines.push(primary.polyline.encodedPolyline);
-    }
-
-    const chunkLegs = primary.legs ?? [];
-    if (chunkLegs.length > 0) {
-      for (const leg of chunkLegs) {
-        legs.push({
-          distanceMeters: typeof leg.distanceMeters === 'number' ? leg.distanceMeters : 0,
-          durationSeconds: parseGoogleDurationSeconds(leg.duration),
+    for (const endpoint of endpoints) {
+      const url = `${endpoint}/${coords}?overview=full&geometries=polyline&steps=false`;
+      try {
+        const res = await fetch(url, {
+          headers: {
+            Accept: 'application/json',
+            'User-Agent': 'bpwi-app/1.0 (BP Waterworks Field Operations)',
+          },
+          cache: 'no-store',
+          signal: AbortSignal.timeout(8000),
         });
+
+        const parsed = (await res.json().catch(() => null)) as OsrmResponse | null;
+        if (!res.ok || parsed?.code !== 'Ok' || !parsed.routes?.[0]) {
+          lastError = parsed?.message || `Routing service HTTP ${res.status}`;
+          continue;
+        }
+
+        const primary = parsed.routes[0];
+        if (typeof primary.geometry === 'string' && primary.geometry.length > 0) {
+          encodedPolylines.push(primary.geometry);
+        }
+
+        const expectedChunkLegs = chunk.length - 1;
+        const apiLegs = Array.isArray(primary.legs) ? primary.legs : [];
+        if (apiLegs.length === expectedChunkLegs) {
+          for (const leg of apiLegs) {
+            routedLegs.push({
+              distanceMeters: typeof leg.distance === 'number' && Number.isFinite(leg.distance) ? Math.round(leg.distance) : 0,
+              durationSeconds: typeof leg.duration === 'number' && Number.isFinite(leg.duration) ? Math.round(leg.duration) : 0,
+            });
+          }
+        } else if (expectedChunkLegs === 1) {
+          routedLegs.push({
+            distanceMeters: typeof primary.distance === 'number' && Number.isFinite(primary.distance) ? Math.round(primary.distance) : 0,
+            durationSeconds: typeof primary.duration === 'number' && Number.isFinite(primary.duration) ? Math.round(primary.duration) : 0,
+          });
+        } else {
+          for (let i = 0; i < expectedChunkLegs; i += 1) {
+            const apiLeg = apiLegs[i];
+            routedLegs.push({
+              distanceMeters:
+                typeof apiLeg?.distance === 'number' && Number.isFinite(apiLeg.distance)
+                  ? Math.round(apiLeg.distance)
+                  : haversineMeters(chunk[i], chunk[i + 1]),
+              durationSeconds:
+                typeof apiLeg?.duration === 'number' && Number.isFinite(apiLeg.duration)
+                  ? Math.round(apiLeg.duration)
+                  : 0,
+            });
+          }
+        }
+
+        chunkSucceeded = true;
+        break;
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : 'Failed to contact free OSRM routing server';
       }
-    } else {
-      legs.push({
-        distanceMeters: typeof primary.distanceMeters === 'number' ? primary.distanceMeters : 0,
-        durationSeconds: parseGoogleDurationSeconds(primary.duration),
+    }
+
+    if (!chunkSucceeded) {
+      const fallback = buildStraightLineRoute(stops);
+      return NextResponse.json({
+        source: 'straight-line',
+        fallbackReason: lastError || 'Free OpenStreetMap routing service is temporarily unavailable.',
+        totalDistanceMeters: fallback.totalDistanceMeters,
+        totalDurationSeconds: 0,
+        legs: fallback.legs,
+        encodedPolylines: [],
+        travelMode,
       });
     }
   }
 
+  const legs = expandCompressedLegs(legMap, routedLegs, stops);
+  const totalDistanceMeters = legs.reduce((sum, l) => sum + l.distanceMeters, 0);
+  const totalDurationSeconds = legs.reduce((sum, l) => sum + l.durationSeconds, 0);
+
   return NextResponse.json({
+    source: 'osrm',
     totalDistanceMeters,
     totalDurationSeconds,
     legs,

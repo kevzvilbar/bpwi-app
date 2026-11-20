@@ -3,11 +3,16 @@ import assert from 'node:assert/strict';
 import type { DailyActivityRow } from '../activity-types.ts';
 import {
   buildRouteCacheKey,
+  buildStraightLineRoute,
   chunkRouteWaypoints,
+  compressConsecutiveDuplicateStops,
   decodeEncodedPolyline,
+  expandCompressedLegs,
   extractOperatorStops,
   formatDistanceKm,
   formatDuration,
+  formatOsrmCoordinates,
+  getOsrmEndpoints,
   haversineMeters,
   isValidCoordinate,
   parseGoogleDurationSeconds,
@@ -276,5 +281,79 @@ describe('polyline decoding, duration parsing & formatting', () => {
       'DRIVE',
     );
     assert.equal(k1, k2);
+  });
+});
+
+describe('free OSRM helpers & duplicate stop compression', () => {
+  it('formats OSRM coordinates in lng,lat order with semicolon separators', () => {
+    const formatted = formatOsrmCoordinates([
+      { lat: 10.775, lng: 122.543 },
+      { lat: 10.7812345, lng: 122.5512345 },
+    ]);
+    assert.equal(formatted, '122.543000,10.775000;122.551235,10.781235');
+  });
+
+  it('resolves free OSRM endpoints by travel mode and supports custom base URLs', () => {
+    const driveUrls = getOsrmEndpoints('DRIVE');
+    assert.ok(driveUrls[0].includes('/route/v1/driving'));
+    assert.equal(driveUrls.length, 2);
+
+    const motoUrls = getOsrmEndpoints('TWO_WHEELER');
+    assert.ok(motoUrls[0].includes('/route/v1/driving'));
+
+    const walkUrls = getOsrmEndpoints('WALK');
+    assert.ok(walkUrls[0].includes('/route/v1/foot'));
+
+    assert.deepEqual(
+      getOsrmEndpoints('WALK', 'https://osrm.example.com///'),
+      ['https://osrm.example.com/route/v1/foot'],
+    );
+  });
+
+  it('compresses consecutive duplicate stops and expands routed legs back to original intervals', () => {
+    const stops = [
+      { lat: 10.77, lng: 122.54 },
+      { lat: 10.77, lng: 122.54 },
+      { lat: 10.78, lng: 122.55 },
+      { lat: 10.79, lng: 122.56 },
+    ];
+    const { uniqueStops, legMap } = compressConsecutiveDuplicateStops(stops);
+    assert.equal(uniqueStops.length, 3);
+    assert.deepEqual(legMap, [null, 0, 1]);
+
+    const expanded = expandCompressedLegs(
+      legMap,
+      [
+        { distanceMeters: 1620, durationSeconds: 185 },
+        { distanceMeters: 1710, durationSeconds: 210 },
+      ],
+      stops,
+    );
+    assert.deepEqual(expanded, [
+      { distanceMeters: 0, durationSeconds: 0 },
+      { distanceMeters: 1620, durationSeconds: 185 },
+      { distanceMeters: 1710, durationSeconds: 210 },
+    ]);
+
+    const allSame = compressConsecutiveDuplicateStops([
+      { lat: 10.77, lng: 122.54 },
+      { lat: 10.770001, lng: 122.540001 },
+    ]);
+    assert.equal(allSame.uniqueStops.length, 1);
+    assert.deepEqual(allSame.legMap, [null]);
+  });
+
+  it('builds a Haversine straight-line fallback route', () => {
+    const stops = [
+      { lat: 10.77, lng: 122.54 },
+      { lat: 10.78, lng: 122.54 },
+      { lat: 10.78, lng: 122.54 },
+    ];
+    const fb = buildStraightLineRoute(stops);
+    assert.equal(fb.totalDurationSeconds, 0);
+    assert.equal(fb.legs.length, 2);
+    assert.ok(fb.legs[0].distanceMeters >= 1100 && fb.legs[0].distanceMeters <= 1125);
+    assert.equal(fb.legs[1].distanceMeters, 0);
+    assert.equal(fb.totalDistanceMeters, fb.legs[0].distanceMeters);
   });
 });

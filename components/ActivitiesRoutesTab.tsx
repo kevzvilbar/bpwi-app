@@ -1,20 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  APIProvider,
-  AdvancedMarker,
-  InfoWindow,
-  Map as GoogleMap,
-  Pin,
-  useAdvancedMarkerRef,
-  useMap,
-  useMapsLibrary,
-} from '@vis.gl/react-google-maps';
 import type { DailyActivityRow } from '@/lib/activity-types';
+import { fmtTimeManila } from '@/lib/date';
 import {
   buildRouteCacheKey,
-  chunkRouteWaypoints,
+  buildStraightLineRoute,
   decodeEncodedPolyline,
   extractOperatorStops,
   formatDistanceKm,
@@ -24,10 +15,13 @@ import {
   summarizeTeamFootprints,
   type BaseHqConfig,
   type LatLng,
+  type RouteLegEstimate,
+  type RouteSource,
   type RouteStop,
   type RouteTravelMode,
 } from '@/lib/route-footprints';
-import { triggerMapsQuotaExceeded } from '@/components/MapsQuotaBanner';
+import FreeRouteMap, { type FreeMapStyle } from '@/components/FreeRouteMap';
+import RoutesTeamOverview from '@/components/RoutesTeamOverview';
 
 type RouteOp = {
   id: string;
@@ -42,374 +36,14 @@ type RouteArea = {
 };
 
 type ComputedRouteResult = {
-  source: 'routes-sdk' | 'routes-api';
+  source: RouteSource;
   totalDistanceMeters: number;
   totalDurationSeconds: number;
-  legs: Array<{ distanceMeters: number; durationSeconds: number }>;
+  legs: RouteLegEstimate[];
   paths: LatLng[][];
 };
 
 const BASE_HQ_STORAGE_KEY = 'bpwi-base-hq-v1';
-const ATTRIBUTION_IDS = ['gmp_mcp_codeassist_v1_aistudio'];
-// Neutral Philippines overview center used only when 0 GPS points are plotted
-const DEFAULT_PH_CENTER: LatLng = { lat: 10.7202, lng: 122.5621 };
-
-function fmtTimeManila(iso: string | null | undefined) {
-  if (!iso) return '—';
-  const dt = new Date(iso);
-  if (Number.isNaN(dt.getTime())) return iso;
-  return new Intl.DateTimeFormat('en-PH', {
-    timeZone: 'Asia/Manila',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(dt);
-}
-
-function toSdkTravelMode(mode: RouteTravelMode): google.maps.TravelModeString {
-  if (mode === 'TWO_WHEELER') return 'TWO_WHEELER';
-  if (mode === 'WALK') return 'WALKING';
-  return 'DRIVING';
-}
-
-function isQuotaErrorLike(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err ?? '');
-  return /OVER_QUERY_LIMIT|RESOURCE_EXHAUSTED|QuotaExceeded|OverQuotaMapError|429|quota/i.test(msg);
-}
-
-function StopMarker({
-  stop,
-  isSelected,
-  onSelect,
-  onClose,
-}: {
-  stop: RouteStop;
-  isSelected: boolean;
-  onSelect: () => void;
-  onClose: () => void;
-}) {
-  const [markerRef, marker] = useAdvancedMarkerRef();
-  const isBase = stop.kind !== 'activity';
-  const glyph = isBase ? 'HQ' : String(stop.sequence);
-
-  return (
-    <>
-      <AdvancedMarker
-        ref={markerRef}
-        position={{ lat: stop.lat, lng: stop.lng }}
-        title={`#${stop.sequence} ${stop.label}`}
-        onClick={onSelect}
-        zIndex={isSelected ? 200 : isBase ? 150 : 100 + stop.sequence}
-      >
-        <Pin
-          background={isBase ? '#0f172a' : stop.color}
-          borderColor={isSelected ? '#facc15' : '#ffffff'}
-          glyphColor="#ffffff"
-          scale={isSelected ? 1.25 : 1.05}
-        >
-          <span style={{ fontSize: 10, fontWeight: 800, color: '#ffffff', lineHeight: 1 }}>{glyph}</span>
-        </Pin>
-      </AdvancedMarker>
-      {isSelected && marker && (
-        <InfoWindow anchor={marker} onCloseClick={onClose} maxWidth={260}>
-          <div style={{ color: '#0f172a', fontSize: 12.5, display: 'grid', gap: 4 }}>
-            <div style={{ fontWeight: 800 }}>
-              #{stop.sequence} · {stop.label}
-            </div>
-            {stop.sublabel && <div style={{ color: '#475569' }}>{stop.sublabel}</div>}
-            {stop.timestamp && (
-              <div style={{ fontSize: 11.5, color: '#334155' }}>
-                Logged: <b>{fmtTimeManila(stop.timestamp)}</b>
-                {stop.roleInActivity ? ` · ${stop.roleInActivity === 'lead' ? 'Lead' : 'Crew'}` : ''}
-              </div>
-            )}
-            {stop.activity?.notes && (
-              <div style={{ fontSize: 11.5, color: '#475569', whiteSpace: 'pre-wrap' }}>
-                {stop.activity.notes.slice(0, 140)}
-                {stop.activity.notes.length > 140 ? '…' : ''}
-              </div>
-            )}
-            <div style={{ fontSize: 11, color: '#64748b' }}>
-              {stop.lat.toFixed(5)}, {stop.lng.toFixed(5)}{' '}
-              <a
-                href={`https://www.google.com/maps/search/?api=1&query=${stop.lat},${stop.lng}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: '#0369a1', fontWeight: 700 }}
-              >
-                Open in Maps ↗
-              </a>
-            </div>
-          </div>
-        </InfoWindow>
-      )}
-    </>
-  );
-}
-
-function RouteLayer({
-  stops,
-  travelMode,
-  routeCacheRef,
-  onComputed,
-  onStatusChange,
-}: {
-  stops: RouteStop[];
-  travelMode: RouteTravelMode;
-  routeCacheRef: React.MutableRefObject<Record<string, ComputedRouteResult>>;
-  onComputed: (result: ComputedRouteResult | null) => void;
-  onStatusChange: (status: { loading: boolean; error: string | null }) => void;
-}) {
-  const map = useMap();
-  const routesLib = useMapsLibrary('routes');
-  const polylinesRef = useRef<google.maps.Polyline[]>([]);
-
-  const stopCoordsKey = useMemo(
-    () => buildRouteCacheKey(stops, travelMode),
-    [stops, travelMode],
-  );
-
-  // Fit bounds whenever stops change
-  useEffect(() => {
-    if (!map || stops.length === 0) return;
-    if (stops.length === 1) {
-      map.panTo({ lat: stops[0].lat, lng: stops[0].lng });
-      map.setZoom(15);
-      return;
-    }
-    const bounds = new google.maps.LatLngBounds();
-    for (const s of stops) {
-      bounds.extend({ lat: s.lat, lng: s.lng });
-    }
-    map.fitBounds(bounds, 56);
-  }, [map, stops]);
-
-  useEffect(() => {
-    // Cleanup any existing polylines before recalculating
-    const clearPolylines = () => {
-      polylinesRef.current.forEach((pl) => pl.setMap(null));
-      polylinesRef.current = [];
-    };
-    clearPolylines();
-
-    if (!map || stops.length < 2) {
-      onComputed(null);
-      onStatusChange({ loading: false, error: null });
-      return clearPolylines;
-    }
-
-    const drawPaths = (paths: LatLng[][], isFallback: boolean) => {
-      clearPolylines();
-      const created: google.maps.Polyline[] = [];
-      for (const path of paths) {
-        if (path.length < 2) continue;
-        const pl = new google.maps.Polyline({
-          path,
-          geodesic: isFallback,
-          strokeColor: isFallback ? '#64748b' : '#2563eb',
-          strokeOpacity: isFallback ? 0 : 0.9,
-          strokeWeight: isFallback ? 3 : 5,
-          icons: isFallback
-            ? [
-                {
-                  icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.85, scale: 3 },
-                  offset: '0',
-                  repeat: '14px',
-                },
-              ]
-            : [
-                {
-                  icon: {
-                    path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                    scale: 2.6,
-                    strokeColor: '#ffffff',
-                    fillColor: '#1d4ed8',
-                    fillOpacity: 1,
-                    strokeWeight: 1,
-                  },
-                  offset: '50%',
-                  repeat: '140px',
-                },
-              ],
-          map,
-        });
-        created.push(pl);
-      }
-      polylinesRef.current = created;
-    };
-
-    const cached = routeCacheRef.current[stopCoordsKey];
-    if (cached) {
-      drawPaths(cached.paths, false);
-      onComputed(cached);
-      onStatusChange({ loading: false, error: null });
-      return clearPolylines;
-    }
-
-    let cancelled = false;
-    onStatusChange({ loading: true, error: null });
-
-    const computeViaSdk = async (): Promise<ComputedRouteResult> => {
-      if (!routesLib || !routesLib.Route || typeof routesLib.Route.computeRoutes !== 'function') {
-        throw new Error('Maps JS Routes library not loaded');
-      }
-      const chunks = chunkRouteWaypoints(stops, 25);
-      let totalDistanceMeters = 0;
-      let totalDurationSeconds = 0;
-      const legs: Array<{ distanceMeters: number; durationSeconds: number }> = [];
-      const paths: LatLng[][] = [];
-      const sdkMode = toSdkTravelMode(travelMode);
-
-      for (const chunk of chunks) {
-        const origin = { lat: chunk[0].lat, lng: chunk[0].lng };
-        const destination = { lat: chunk[chunk.length - 1].lat, lng: chunk[chunk.length - 1].lng };
-        const intermediates = chunk.slice(1, -1).map((pt) => ({
-          location: { lat: pt.lat, lng: pt.lng },
-        }));
-
-        const req: google.maps.routes.ComputeRoutesRequest = {
-          origin,
-          destination,
-          ...(intermediates.length > 0 ? { intermediates } : {}),
-          travelMode: sdkMode,
-          ...(sdkMode === 'DRIVING' || sdkMode === 'TWO_WHEELER'
-            ? { routingPreference: 'TRAFFIC_UNAWARE' }
-            : {}),
-          fields: ['path', 'distanceMeters', 'durationMillis', 'legs'],
-          internalUsageAttributionIds: ATTRIBUTION_IDS,
-          language: 'en-PH',
-          region: 'PH',
-        };
-
-        const response = await routesLib.Route.computeRoutes(req);
-        const primary = response.routes?.[0];
-        if (!primary) {
-          throw new Error('No road route found between logged stops.');
-        }
-
-        totalDistanceMeters += primary.distanceMeters ?? 0;
-        totalDurationSeconds += Math.round((primary.durationMillis ?? 0) / 1000);
-
-        const primaryPath = (primary.path ?? [])
-          .map((pt) => {
-            const raw = pt as unknown as { lat: number | (() => number); lng: number | (() => number) };
-            const lat = typeof raw.lat === 'function' ? raw.lat() : Number(raw.lat);
-            const lng = typeof raw.lng === 'function' ? raw.lng() : Number(raw.lng);
-            return { lat, lng };
-          })
-          .filter((pt) => Number.isFinite(pt.lat) && Number.isFinite(pt.lng));
-        if (primaryPath.length >= 2) {
-          paths.push(primaryPath);
-        }
-
-        const chunkLegs = primary.legs ?? [];
-        if (chunkLegs.length > 0) {
-          for (const leg of chunkLegs) {
-            legs.push({
-              distanceMeters: leg.distanceMeters ?? 0,
-              durationSeconds: Math.round((leg.durationMillis ?? 0) / 1000),
-            });
-          }
-        } else {
-          legs.push({
-            distanceMeters: primary.distanceMeters ?? 0,
-            durationSeconds: Math.round((primary.durationMillis ?? 0) / 1000),
-          });
-        }
-      }
-
-      return {
-        source: 'routes-sdk',
-        totalDistanceMeters,
-        totalDurationSeconds,
-        legs,
-        paths,
-      };
-    };
-
-    const computeViaServerProxy = async (): Promise<ComputedRouteResult> => {
-      const res = await fetch('/api/routes/compute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          stops: stops.map((s) => ({ lat: s.lat, lng: s.lng })),
-          travelMode,
-        }),
-      });
-      const json = (await res.json()) as {
-        totalDistanceMeters?: number;
-        totalDurationSeconds?: number;
-        legs?: Array<{ distanceMeters: number; durationSeconds: number }>;
-        encodedPolylines?: string[];
-        quotaExceeded?: boolean;
-        error?: string;
-      };
-      if (res.status === 429 || json.quotaExceeded) {
-        triggerMapsQuotaExceeded();
-        throw new Error(json.error || 'Google Maps Platform quota exceeded.');
-      }
-      if (!res.ok) {
-        throw new Error(json.error || `Routes calculation failed (HTTP ${res.status})`);
-      }
-      const paths = (json.encodedPolylines ?? [])
-        .map((enc) => decodeEncodedPolyline(enc))
-        .filter((pts) => pts.length >= 2);
-      return {
-        source: 'routes-api',
-        totalDistanceMeters: json.totalDistanceMeters ?? 0,
-        totalDurationSeconds: json.totalDurationSeconds ?? 0,
-        legs: json.legs ?? [],
-        paths,
-      };
-    };
-
-    (async () => {
-      try {
-        let result: ComputedRouteResult;
-        try {
-          result = await computeViaSdk();
-        } catch (sdkErr) {
-          if (isQuotaErrorLike(sdkErr)) {
-            triggerMapsQuotaExceeded();
-            throw sdkErr;
-          }
-          result = await computeViaServerProxy();
-        }
-
-        if (cancelled) return;
-        routeCacheRef.current[stopCoordsKey] = result;
-        if (result.paths.length > 0) {
-          drawPaths(result.paths, false);
-        } else {
-          drawPaths([stops.map((s) => ({ lat: s.lat, lng: s.lng }))], true);
-        }
-        onComputed(result);
-        onStatusChange({ loading: false, error: null });
-      } catch (err) {
-        if (cancelled) return;
-        if (isQuotaErrorLike(err)) {
-          triggerMapsQuotaExceeded();
-        }
-        // Always draw dashed straight-line footprint fallback so the operator's stops stay connected
-        drawPaths([stops.map((s) => ({ lat: s.lat, lng: s.lng }))], true);
-        onComputed(null);
-        onStatusChange({
-          loading: false,
-          error:
-            err instanceof Error
-              ? `${err.message} Showing straight-line distance fallback.`
-              : 'Road route unavailable. Showing straight-line distance fallback.',
-        });
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      clearPolylines();
-    };
-  }, [map, routesLib, stops, travelMode, stopCoordsKey, routeCacheRef, onComputed, onStatusChange]);
-
-  return null;
-}
 
 export default function ActivitiesRoutesTab(p: {
   date: string;
@@ -418,10 +52,10 @@ export default function ActivitiesRoutesTab(p: {
   operators: RouteOp[];
   areas: RouteArea[];
   activities: DailyActivityRow[];
-  googleMapsApiKey: string;
 }) {
   const [includeCrew, setIncludeCrew] = useState(true);
   const [travelMode, setTravelMode] = useState<RouteTravelMode>('DRIVE');
+  const [mapStyle, setMapStyle] = useState<FreeMapStyle>('street');
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
 
   // Base HQ optional round-trip config (persisted locally in browser)
@@ -432,7 +66,6 @@ export default function ActivitiesRoutesTab(p: {
   const [hqEditorOpen, setHqEditorOpen] = useState(false);
   const [hqStatusMsg, setHqStatusMsg] = useState('');
 
-  // Load saved Base HQ settings on mount
   useEffect(() => {
     try {
       const raw = localStorage.getItem(BASE_HQ_STORAGE_KEY);
@@ -512,7 +145,6 @@ export default function ActivitiesRoutesTab(p: {
 
   const [selectedOpId, setSelectedOpId] = useState<string>(defaultSelectedOpId);
 
-  // Sync selected operator if date/role changes and current selection is empty or disallowed
   useEffect(() => {
     if (!p.canVerifyActivity) {
       setSelectedOpId(p.operatorId ?? '');
@@ -554,10 +186,110 @@ export default function ActivitiesRoutesTab(p: {
   });
   const routeCacheRef = useRef<Record<string, ComputedRouteResult>>({});
 
-  // Reset selected marker info window when stops change
   useEffect(() => {
     setSelectedStopId(null);
   }, [effectiveOpId, p.date, includeCrew, baseHqConfig]);
+
+  const stopCoordsKey = useMemo(
+    () => buildRouteCacheKey(footprint.stops, travelMode),
+    [footprint.stops, travelMode],
+  );
+
+  // Fetch free OSRM road route (with AbortController + straight-line fallback)
+  useEffect(() => {
+    if (footprint.stops.length < 2) {
+      setComputedRoute(null);
+      setRouteStatus({ loading: false, error: null });
+      return;
+    }
+
+    const cached = routeCacheRef.current[stopCoordsKey];
+    if (cached) {
+      setComputedRoute(cached);
+      setRouteStatus({ loading: false, error: null });
+      return;
+    }
+
+    const controller = new AbortController();
+    setRouteStatus({ loading: true, error: null });
+
+    (async () => {
+      try {
+        const res = await fetch('/api/routes/compute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            stops: footprint.stops.map((s) => ({ lat: s.lat, lng: s.lng })),
+            travelMode,
+          }),
+        });
+
+        const json = (await res.json()) as {
+          source?: RouteSource;
+          fallbackReason?: string;
+          totalDistanceMeters?: number;
+          totalDurationSeconds?: number;
+          legs?: RouteLegEstimate[];
+          encodedPolylines?: string[];
+          error?: string;
+        };
+
+        if (!res.ok) {
+          throw new Error(json.error || `Route calculation failed (HTTP ${res.status})`);
+        }
+
+        if (controller.signal.aborted) return;
+
+        const paths = (json.encodedPolylines ?? [])
+          .map((enc) => decodeEncodedPolyline(enc))
+          .filter((pts) => pts.length >= 2);
+        const source: RouteSource = json.source === 'osrm' ? 'osrm' : 'straight-line';
+        const result: ComputedRouteResult = {
+          source,
+          totalDistanceMeters: json.totalDistanceMeters ?? 0,
+          totalDurationSeconds: json.totalDurationSeconds ?? 0,
+          legs: json.legs ?? [],
+          paths,
+        };
+
+        if (source === 'osrm') {
+          routeCacheRef.current[stopCoordsKey] = result;
+          setComputedRoute(result);
+          setRouteStatus({ loading: false, error: null });
+        } else {
+          setComputedRoute(result);
+          setRouteStatus({
+            loading: false,
+            error: json.fallbackReason
+              ? `${json.fallbackReason} Showing straight-line distance baseline.`
+              : 'Road routing service unavailable. Showing straight-line distance baseline.',
+          });
+        }
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        const fallback = buildStraightLineRoute(footprint.stops);
+        setComputedRoute({
+          source: 'straight-line',
+          totalDistanceMeters: fallback.totalDistanceMeters,
+          totalDurationSeconds: 0,
+          legs: fallback.legs,
+          paths: [],
+        });
+        setRouteStatus({
+          loading: false,
+          error:
+            err instanceof Error
+              ? `${err.message} Showing straight-line distance baseline.`
+              : 'Road routing unavailable. Showing straight-line distance baseline.',
+        });
+      }
+    })();
+
+    return () => {
+      controller.abort();
+    };
+  }, [footprint.stops, travelMode, stopCoordsKey]);
 
   const selectedOp = useMemo(
     () => p.operators.find((o) => o.id === effectiveOpId) ?? null,
@@ -599,18 +331,9 @@ export default function ActivitiesRoutesTab(p: {
     setHqStatusMsg(`✓ Set Base HQ from Stop #${firstActStop.sequence}`);
   };
 
-  const mapInitialCenter = useMemo<LatLng>(() => {
-    if (footprint.stops.length > 0) {
-      return { lat: footprint.stops[0].lat, lng: footprint.stops[0].lng };
-    }
-    return DEFAULT_PH_CENTER;
-  }, [footprint.stops]);
-
-  const effectiveApiKey =
-    p.googleMapsApiKey || (process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '');
-
   const totalLogsForOp = footprint.mappedCount + footprint.unmappedCount;
   const activeOpsWithGps = teamSummary.filter((r) => r.mappedCount > 0).length;
+  const isFallbackLine = !computedRoute || computedRoute.source === 'straight-line' || computedRoute.paths.length === 0;
 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
@@ -620,7 +343,7 @@ export default function ActivitiesRoutesTab(p: {
           <div>
             <strong style={{ fontSize: 15 }}>Daily Field Footprints &amp; Travel Distance ({p.date})</strong>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              Maps chronological GPS activity check-ins and estimates road-snapped travel distance via Google Maps Routes API.
+              Plots chronological GPS check-ins on OpenStreetMap and estimates road distance using free OSRM routing (no API key required).
             </div>
           </div>
           {p.canVerifyActivity && (
@@ -665,7 +388,7 @@ export default function ActivitiesRoutesTab(p: {
               style={{ minHeight: 34 }}
             >
               <option value="DRIVE">Driving (Service Vehicle)</option>
-              <option value="TWO_WHEELER">Motorcycle (2-Wheeler)</option>
+              <option value="TWO_WHEELER">Motorcycle (Road Profile)</option>
               <option value="WALK">Walking</option>
             </select>
           </label>
@@ -864,11 +587,13 @@ export default function ActivitiesRoutesTab(p: {
                     : '—'}
             </strong>
             <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-              {computedRoute
-                ? `${travelMode === 'DRIVE' ? 'Driving' : travelMode === 'TWO_WHEELER' ? '2-Wheeler' : 'Walking'} route${baseHqConfig ? ' · incl. Base HQ' : ''}`
-                : footprint.stops.length < 2
-                  ? 'Needs at least 2 GPS points'
-                  : 'Road route unavailable'}
+              {footprint.stops.length < 2
+                ? 'Needs at least 2 GPS points'
+                : computedRoute?.source === 'straight-line'
+                  ? 'Straight-line fallback (road router unavailable)'
+                  : computedRoute
+                    ? `${travelMode === 'DRIVE' ? 'Driving' : travelMode === 'TWO_WHEELER' ? 'Motorcycle' : 'Walking'} OSRM route${baseHqConfig ? ' · incl. Base HQ' : ''}`
+                    : 'Road route unavailable'}
             </span>
           </div>
 
@@ -881,7 +606,7 @@ export default function ActivitiesRoutesTab(p: {
                 ? '0 min'
                 : routeStatus.loading
                   ? 'Calculating…'
-                  : computedRoute
+                  : computedRoute?.source === 'osrm'
                     ? formatDuration(computedRoute.totalDurationSeconds)
                     : '—'}
             </strong>
@@ -944,41 +669,39 @@ export default function ActivitiesRoutesTab(p: {
         </div>
       )}
 
-      {/* Interactive Map Canvas */}
+      {/* Interactive Free Map Canvas */}
       {effectiveOpId && (
         <div className="card" style={{ padding: 12, display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-            <strong style={{ fontSize: 14 }}>
-              Route Map — {selectedOp?.full_name ?? 'Operator'} ({footprint.stops.length} plotted point{footprint.stops.length === 1 ? '' : 's'})
-            </strong>
-            <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-              Click any numbered pin to inspect the activity log
-            </span>
-          </div>
-
-          {!effectiveApiKey ? (
-            <div
-              style={{
-                height: 320,
-                borderRadius: 8,
-                border: '1px dashed var(--border)',
-                background: 'var(--surface-muted)',
-                display: 'grid',
-                placeItems: 'center',
-                padding: 20,
-                textAlign: 'center',
-                color: 'var(--text-secondary)',
-                fontSize: 13,
-              }}
-            >
-              <div>
-                <strong>Google Maps API key is not configured.</strong>
-                <div style={{ marginTop: 6 }}>
-                  Set <code>NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> or <code>GOOGLE_MAPS_API_KEY</code> to enable interactive maps and road-snapped routing. Straight-line distances remain available below.
-                </div>
+            <div>
+              <strong style={{ fontSize: 14 }}>
+                Route Map — {selectedOp?.full_name ?? 'Operator'} ({footprint.stops.length} plotted point{footprint.stops.length === 1 ? '' : 's'})
+              </strong>
+              <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                Click any numbered pin to inspect the activity log
               </div>
             </div>
-          ) : footprint.stops.length === 0 ? (
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button
+                type="button"
+                className={`btn ${mapStyle === 'street' ? 'btn-primary' : ''}`}
+                onClick={() => setMapStyle('street')}
+                style={{ minHeight: 30, padding: '2px 10px', fontSize: 12 }}
+              >
+                Street (OSM)
+              </button>
+              <button
+                type="button"
+                className={`btn ${mapStyle === 'satellite' ? 'btn-primary' : ''}`}
+                onClick={() => setMapStyle('satellite')}
+                style={{ minHeight: 30, padding: '2px 10px', fontSize: 12 }}
+              >
+                Satellite
+              </button>
+            </div>
+          </div>
+
+          {footprint.stops.length === 0 ? (
             <div
               style={{
                 height: 300,
@@ -1010,49 +733,21 @@ export default function ActivitiesRoutesTab(p: {
                 borderRadius: 8,
                 overflow: 'hidden',
                 border: '1px solid var(--border)',
-                position: 'relative',
               }}
             >
-              <APIProvider
-                apiKey={effectiveApiKey}
-                libraries={['marker', 'routes']}
-                language="en"
-                region="PH"
-              >
-                <GoogleMap
-                  mapId="DEMO_MAP_ID"
-                  defaultCenter={mapInitialCenter}
-                  defaultZoom={14}
-                  gestureHandling="greedy"
-                  mapTypeControl={true}
-                  streetViewControl={false}
-                  fullscreenControl={true}
-                  internalUsageAttributionIds={ATTRIBUTION_IDS}
-                  style={{ width: '100%', height: '100%' }}
-                >
-                  {footprint.stops.map((stop) => (
-                    <StopMarker
-                      key={stop.id}
-                      stop={stop}
-                      isSelected={selectedStopId === stop.id}
-                      onSelect={() => setSelectedStopId(stop.id)}
-                      onClose={() => setSelectedStopId(null)}
-                    />
-                  ))}
-                  <RouteLayer
-                    stops={footprint.stops}
-                    travelMode={travelMode}
-                    routeCacheRef={routeCacheRef}
-                    onComputed={setComputedRoute}
-                    onStatusChange={setRouteStatus}
-                  />
-                </GoogleMap>
-              </APIProvider>
+              <FreeRouteMap
+                stops={footprint.stops}
+                routePaths={computedRoute?.paths ?? []}
+                isFallbackLine={isFallbackLine}
+                selectedStopId={selectedStopId}
+                onSelectStop={setSelectedStopId}
+                mapStyle={mapStyle}
+              />
             </div>
           )}
 
           <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-            Location note: Coordinates reflect operator-initiated GPS check-ins captured when submitting daily field activities. Road distances are estimates from Google Maps Routes API.
+            Location note: Coordinates reflect operator-initiated GPS check-ins captured when submitting daily field activities. Map tiles from OpenStreetMap / Esri; road distances estimated via free OSRM routing.
           </div>
         </div>
       )}
@@ -1125,20 +820,33 @@ export default function ActivitiesRoutesTab(p: {
                       </td>
                       <td style={{ padding: '7px 8px', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: 11.5 }}>
                         <a
-                          href={`https://www.google.com/maps/search/?api=1&query=${stop.lat},${stop.lng}`}
+                          href={`https://www.openstreetmap.org/?mlat=${stop.lat}&mlon=${stop.lng}#map=17/${stop.lat}/${stop.lng}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
                           style={{ color: 'var(--accent)', textDecoration: 'none' }}
                         >
                           {stop.lat.toFixed(5)}, {stop.lng.toFixed(5)} ↗
+                        </a>{' '}
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${stop.lat},${stop.lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ color: 'var(--text-muted)', fontSize: 10.5, textDecoration: 'none' }}
+                        >
+                          (GMaps)
                         </a>
                       </td>
                       <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>
                         {idx === 0 ? 'Start' : roadLeg ? formatDistanceKm(roadLeg.distanceMeters) : '—'}
                       </td>
                       <td style={{ padding: '7px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        {idx === 0 ? '—' : roadLeg ? formatDuration(roadLeg.durationSeconds) : '—'}
+                        {idx === 0
+                          ? '—'
+                          : roadLeg && computedRoute?.source === 'osrm'
+                            ? formatDuration(roadLeg.durationSeconds)
+                            : '—'}
                       </td>
                       <td style={{ padding: '7px 8px', textAlign: 'right', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                         {idx === 0 ? '—' : formatDistanceKm(straightLeg)}
@@ -1182,87 +890,12 @@ export default function ActivitiesRoutesTab(p: {
 
       {/* Supervisor Team Overview Table */}
       {p.canVerifyActivity && (
-        <div className="card" style={{ padding: 14, display: 'grid', gap: 10 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-            <div>
-              <strong style={{ fontSize: 14 }}>Team Daily Footprint Overview ({p.date})</strong>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                Click any staff member to inspect their road-snapped route and leg breakdown on the map above.
-              </div>
-            </div>
-          </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
-                  <th style={{ padding: '7px 8px' }}>Operator</th>
-                  <th style={{ padding: '7px 8px', textAlign: 'right' }}>GPS Stops</th>
-                  <th style={{ padding: '7px 8px', textAlign: 'right' }}>No-GPS Logs</th>
-                  <th style={{ padding: '7px 8px' }}>Active Window</th>
-                  <th style={{ padding: '7px 8px', textAlign: 'right' }}>Straight-Line Est.</th>
-                  <th style={{ padding: '7px 8px', textAlign: 'right' }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {teamSummary.map((row) => {
-                  const isCurrent = row.operatorId === effectiveOpId;
-                  return (
-                    <tr
-                      key={row.operatorId}
-                      onClick={() => setSelectedOpId(row.operatorId)}
-                      style={{
-                        borderBottom: '1px solid var(--border)',
-                        background: isCurrent ? 'var(--info-bg)' : 'transparent',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <td style={{ padding: '7px 8px' }}>
-                        <div style={{ fontWeight: 700 }}>{row.fullName}</div>
-                        {row.position && (
-                          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{row.position}</div>
-                        )}
-                      </td>
-                      <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700 }}>
-                        {row.mappedCount}
-                      </td>
-                      <td
-                        style={{
-                          padding: '7px 8px',
-                          textAlign: 'right',
-                          color: row.unmappedCount > 0 ? 'var(--warn-fg)' : 'var(--text-secondary)',
-                          fontWeight: row.unmappedCount > 0 ? 700 : 400,
-                        }}
-                      >
-                        {row.unmappedCount}
-                      </td>
-                      <td style={{ padding: '7px 8px', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
-                        {row.firstTimestamp && row.lastTimestamp
-                          ? `${fmtTimeManila(row.firstTimestamp)} → ${fmtTimeManila(row.lastTimestamp)}`
-                          : '—'}
-                      </td>
-                      <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                        {formatDistanceKm(row.straightLineMeters)}
-                      </td>
-                      <td style={{ padding: '7px 8px', textAlign: 'right' }}>
-                        <button
-                          type="button"
-                          className={`btn ${isCurrent ? 'btn-primary' : ''}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedOpId(row.operatorId);
-                          }}
-                          style={{ minHeight: 28, padding: '2px 10px', fontSize: 11.5 }}
-                        >
-                          {isCurrent ? 'Viewing' : 'Inspect Route'}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <RoutesTeamOverview
+          date={p.date}
+          teamSummary={teamSummary}
+          selectedOpId={effectiveOpId}
+          onSelectOperator={setSelectedOpId}
+        />
       )}
     </div>
   );
