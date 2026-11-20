@@ -782,6 +782,8 @@ export default function ActivityLoggerModal(p: {
                       <button
                         key={s}
                         type="button"
+                        className="chip-btn"
+                        aria-pressed={siteOrWell === s}
                         onClick={() => setSiteOrWell(s)}
                         style={{
                           padding: '2px 7px',
@@ -890,6 +892,8 @@ export default function ActivityLoggerModal(p: {
                   <button
                     key={op.id}
                     type="button"
+                    className="chip-btn"
+                    aria-pressed={selected}
                     onClick={() => toggleCrew(op.id)}
                     style={{
                       padding: '4px 10px',
