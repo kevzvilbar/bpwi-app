@@ -11,6 +11,7 @@ import MobileActivitiesAndSchedule, {
 } from '@/components/MobileActivitiesAndSchedule';
 import { ACTIVITY_BY_ID, type DailyActivityRow } from '@/lib/activity-types';
 import { enqueueOfflineActivity, flushOfflineQueue, getOfflineQueue, type PendingOfflineActivity } from '@/lib/offline-queue';
+import { AlertBanner, Badge, SegmentedTabs } from '@/components/ui';
 
 type Op = MobileOp;
 type Shift = MobileShift;
@@ -388,18 +389,9 @@ export default function MobileView(p: {
           >
             {meta?.label ?? t.title}
           </span>
-          <span
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              padding: '2px 8px',
-              borderRadius: 999,
-              background: isDone ? 'var(--ok-bg)' : isOverdue ? 'var(--danger-bg)' : isToday ? 'var(--info-bg)' : 'var(--surface-muted)',
-              color: isDone ? 'var(--ok-fg)' : isOverdue ? 'var(--danger-fg)' : isToday ? 'var(--info-fg)' : 'var(--text-secondary)',
-            }}
-          >
+          <Badge tone={isDone ? 'ok' : isOverdue ? 'danger' : isToday ? 'info' : 'neutral'} size="sm">
             {isDone ? `Done${t.completed_at ? ` · ${t.completed_at}` : ''}` : isOverdue ? `Delayed · ${t.scheduled_date}` : isToday ? 'Today' : t.scheduled_date}
-          </span>
+          </Badge>
         </div>
 
         {t.locations.length > 0 && <div style={{ fontSize: 14, fontWeight: 700 }}>{t.locations.join(', ')}</div>}
@@ -467,6 +459,7 @@ export default function MobileView(p: {
 
   return (
     <div className="tasks-shell">
+      <h1 className="sr-only">Tasks, Field Logs and Schedule</h1>
       {/* Top Toolbar */}
       <div
         className="card"
@@ -480,69 +473,17 @@ export default function MobileView(p: {
           justifyContent: 'space-between',
         }}
       >
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr 1fr',
-            gap: 4,
-            padding: 4,
-            background: 'var(--surface-muted)',
-            borderRadius: 10,
-            minWidth: 280,
-          }}
-        >
-          <button
-            onClick={() => setTab('tasks')}
-            style={{
-              minHeight: 40,
-              padding: '0 10px',
-              borderRadius: 8,
-              border: 'none',
-              fontWeight: 700,
-              fontSize: 12.5,
-              cursor: 'pointer',
-              background: tab === 'tasks' ? 'var(--surface)' : 'transparent',
-              color: tab === 'tasks' ? 'var(--text)' : 'var(--text-secondary)',
-              boxShadow: tab === 'tasks' ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
-            }}
-          >
-            PM ({delayedTasks.length + upcomingTasks.length})
-          </button>
-          <button
-            onClick={() => setTab('activities')}
-            style={{
-              minHeight: 40,
-              padding: '0 10px',
-              borderRadius: 8,
-              border: 'none',
-              fontWeight: 700,
-              fontSize: 12.5,
-              cursor: 'pointer',
-              background: tab === 'activities' ? 'var(--surface)' : 'transparent',
-              color: tab === 'activities' ? 'var(--text)' : 'var(--text-secondary)',
-              boxShadow: tab === 'activities' ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
-            }}
-          >
-            Logs ({scopedActivities.length})
-          </button>
-          <button
-            onClick={() => setTab('schedule')}
-            style={{
-              minHeight: 40,
-              padding: '0 10px',
-              borderRadius: 8,
-              border: 'none',
-              fontWeight: 700,
-              fontSize: 12.5,
-              cursor: 'pointer',
-              background: tab === 'schedule' ? 'var(--surface)' : 'transparent',
-              color: tab === 'schedule' ? 'var(--text)' : 'var(--text-secondary)',
-              boxShadow: tab === 'schedule' ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
-            }}
-          >
-            Schedule
-          </button>
-        </div>
+        <SegmentedTabs
+          ariaLabel="Tasks and field views"
+          fullWidth
+          value={tab}
+          onChange={setTab}
+          items={[
+            { id: 'tasks', label: `PM (${delayedTasks.length + upcomingTasks.length})` },
+            { id: 'activities', label: `Logs (${scopedActivities.length})` },
+            { id: 'schedule', label: 'Schedule' },
+          ]}
+        />
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', flex: '1 1 260px', justifyContent: 'flex-end' }}>
           <input
@@ -588,56 +529,35 @@ export default function MobileView(p: {
       </div>
 
       {msg && (
-        <div
-          role="alert"
-          style={{
-            marginBottom: 10,
-            padding: '10px 12px',
-            borderRadius: 8,
-            background: 'var(--danger-bg)',
-            border: '1px solid var(--danger-border)',
-            color: 'var(--danger-fg)',
-            fontSize: 13,
-          }}
-        >
-          {msg}
+        <div style={{ marginBottom: 10 }}>
+          <AlertBanner tone="danger">{msg}</AlertBanner>
         </div>
       )}
 
       {offlineQueue.length > 0 && (
-        <div
-          className="card"
-          style={{
-            marginBottom: 10,
-            padding: '8px 12px',
-            background: 'var(--warn-bg)',
-            border: '1px solid var(--warn-border)',
-            color: 'var(--warn-fg)',
-            fontSize: 12.5,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
-          <span>
-            <b>{offlineQueue.length}</b> activity log{offlineQueue.length === 1 ? '' : 's'} queued offline.
-          </span>
-          <button
-            type="button"
-            className="btn"
-            style={{ minHeight: 32, padding: '4px 10px', fontSize: 12 }}
-            onClick={async () => {
-              const res = await flushOfflineQueue(supabaseBrowser(), p.userId);
-              setOfflineQueue(await getOfflineQueue(p.userId));
-              if (res.synced.length > 0) {
-                const todaySynced = res.synced.filter((a) => a.activity_date === p.date);
-                setActivities((prev) => [...todaySynced, ...prev]);
-              }
-            }}
+        <div style={{ marginBottom: 10 }}>
+          <AlertBanner
+            tone="warn"
+            action={
+              <button
+                type="button"
+                className="btn"
+                style={{ minHeight: 32, padding: '4px 10px', fontSize: 12 }}
+                onClick={async () => {
+                  const res = await flushOfflineQueue(supabaseBrowser(), p.userId);
+                  setOfflineQueue(await getOfflineQueue(p.userId));
+                  if (res.synced.length > 0) {
+                    const todaySynced = res.synced.filter((a) => a.activity_date === p.date);
+                    setActivities((prev) => [...todaySynced, ...prev]);
+                  }
+                }}
+              >
+                Sync Now
+              </button>
+            }
           >
-            Sync Now
-          </button>
+            <b>{offlineQueue.length}</b> activity log{offlineQueue.length === 1 ? '' : 's'} queued offline.
+          </AlertBanner>
         </div>
       )}
 

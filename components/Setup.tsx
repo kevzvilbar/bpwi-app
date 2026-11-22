@@ -184,6 +184,9 @@ export default function Setup(p: {
 
   return (
     <div style={{ padding: 14 }}>
+      <h1 className="page-title" style={{ marginBottom: 10 }}>
+        Operators, Users &amp; Setup
+      </h1>
       <div style={{ display: 'flex', gap: 6, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         {tabBtn('operators', `Operators (${ops.length})`)}
         {tabBtn('shifts', `Shift types (${shifts.length})`)}

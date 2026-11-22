@@ -310,8 +310,8 @@ export default function Nav(p: {
                 {l.href === '/reports' && (p.pendingReportsCount ?? 0) > 0 && (
                   <span
                     style={{
-                      background: on ? '#ffffff' : '#f59e0b',
-                      color: on ? '#0f172a' : '#ffffff',
+                      background: on ? 'var(--surface)' : 'var(--status-pending)',
+                      color: on ? 'var(--text)' : 'var(--badge-fg)',
                       borderRadius: 999,
                       padding: '1px 6px',
                       fontSize: 10,
@@ -351,8 +351,8 @@ export default function Nav(p: {
               {(p.pendingRequestsCount ?? 0) > 0 && (
                 <span
                   style={{
-                    background: '#f59e0b',
-                    color: '#ffffff',
+                    background: 'var(--status-pending)',
+                    color: 'var(--badge-fg)',
                     borderRadius: 999,
                     padding: '1px 5px',
                     fontSize: 10,
@@ -400,8 +400,8 @@ export default function Nav(p: {
             {(((p.canApprove || p.role === 'manager') && (p.pendingRequestsCount ?? 0) > 0) || (p.isAdmin && (p.pendingUsersCount ?? 0) > 0)) && (
               <span
                 style={{
-                  background: (p.isAdmin && (p.pendingUsersCount ?? 0) > 0) ? '#dc2626' : '#f59e0b',
-                  color: '#ffffff',
+                  background: (p.isAdmin && (p.pendingUsersCount ?? 0) > 0) ? 'var(--status-alert)' : 'var(--status-pending)',
+                  color: 'var(--badge-fg)',
                   borderRadius: 999,
                   padding: '1px 6px',
                   fontSize: 10.5,
@@ -430,8 +430,8 @@ export default function Nav(p: {
                     position: 'absolute',
                     top: 4,
                     right: '20%',
-                    background: '#f59e0b',
-                    color: '#ffffff',
+                    background: 'var(--status-pending)',
+                    color: 'var(--badge-fg)',
                     borderRadius: 999,
                     padding: '0 5px',
                     fontSize: 9.5,

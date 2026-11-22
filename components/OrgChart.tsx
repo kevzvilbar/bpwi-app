@@ -374,7 +374,7 @@ export default function OrgChart(p: Props) {
       {/* Toolbar */}
       <div className="no-print card" style={{ padding: '10px 14px', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <strong style={{ fontSize: 15 }}>Master Organizational Chart</strong>
+          <h1 className="page-title" style={{ fontSize: 15 }}>Master Organizational Chart</h1>
           <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
             Heads &amp; Up · Auto-updates when heads resign or new heads sign up
           </span>

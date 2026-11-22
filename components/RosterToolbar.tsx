@@ -61,6 +61,7 @@ export default function RosterToolbar(p: RosterToolbarProps) {
   const offShift = findOffShift(p.shifts);
   return (
     <>
+      <h1 className="sr-only">Plant Operations Monthly Schedule</h1>
       {/* Action & Filter Bar */}
       <div
         className="no-print card"

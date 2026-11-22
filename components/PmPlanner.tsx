@@ -490,7 +490,7 @@ export default function PmPlanner(p: {
           <button className="btn" onClick={() => go(1)} title="Next">
             ›
           </button>
-          <strong className="desktop-only" style={{ fontSize: 16, margin: '0 4px', color: 'var(--text)' }}>{monthLabel}</strong>
+          <h1 className="page-title desktop-only" style={{ fontSize: 16, margin: '0 4px' }}>{monthLabel}</h1>
           <input
             type="month"
             aria-label="Select month"

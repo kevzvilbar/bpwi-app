@@ -22,6 +22,7 @@ import {
 } from '@/lib/route-footprints';
 import FreeRouteMap, { type FreeMapStyle } from '@/components/FreeRouteMap';
 import RoutesTeamOverview from '@/components/RoutesTeamOverview';
+import { AlertBanner, EmptyState, SegmentedTabs, StatCard } from '@/components/ui';
 
 type RouteOp = {
   id: string;
@@ -358,9 +359,10 @@ export default function ActivitiesRoutesTab(p: {
             <label style={{ display: 'grid', gap: 4, fontSize: 12, minWidth: 220 }}>
               <span style={{ fontWeight: 700 }}>Operator / Field Staff</span>
               <select
+                className="input"
                 value={selectedOpId}
                 onChange={(e) => setSelectedOpId(e.target.value)}
-                style={{ minHeight: 34 }}
+                style={{ width: 'auto', minHeight: 36 }}
               >
                 {p.operators.map((op) => {
                   const row = teamSummary.find((r) => r.operatorId === op.id);
@@ -383,9 +385,10 @@ export default function ActivitiesRoutesTab(p: {
           <label style={{ display: 'grid', gap: 4, fontSize: 12 }}>
             <span style={{ fontWeight: 700 }}>Travel Mode</span>
             <select
+              className="input"
               value={travelMode}
               onChange={(e) => setTravelMode(e.target.value as RouteTravelMode)}
-              style={{ minHeight: 34 }}
+              style={{ width: 'auto', minHeight: 36 }}
             >
               <option value="DRIVE">Driving (Service Vehicle)</option>
               <option value="TWO_WHEELER">Motorcycle (Road Profile)</option>
@@ -395,24 +398,16 @@ export default function ActivitiesRoutesTab(p: {
 
           <div style={{ display: 'grid', gap: 4, fontSize: 12 }}>
             <span style={{ fontWeight: 700 }}>Activity Role Scope</span>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <button
-                type="button"
-                className={`btn ${!includeCrew ? 'btn-primary' : ''}`}
-                onClick={() => setIncludeCrew(false)}
-                style={{ minHeight: 34, fontSize: 12 }}
-              >
-                Lead Only
-              </button>
-              <button
-                type="button"
-                className={`btn ${includeCrew ? 'btn-primary' : ''}`}
-                onClick={() => setIncludeCrew(true)}
-                style={{ minHeight: 34, fontSize: 12 }}
-              >
-                Lead + Crew
-              </button>
-            </div>
+            <SegmentedTabs
+              ariaLabel="Activity role scope"
+              size="sm"
+              value={includeCrew ? 'all' : 'lead'}
+              onChange={(v) => setIncludeCrew(v === 'all')}
+              items={[
+                { id: 'lead', label: 'Lead Only' },
+                { id: 'all', label: 'Lead + Crew' },
+              ]}
+            />
           </div>
 
           <div style={{ display: 'grid', gap: 4, fontSize: 12 }}>
@@ -471,6 +466,7 @@ export default function ActivitiesRoutesTab(p: {
                 <span>HQ Label</span>
                 <input
                   type="text"
+                  className="input"
                   value={baseHqLabel}
                   onChange={(e) => setBaseHqLabel(e.target.value)}
                   placeholder="Main Plant / Base HQ"
@@ -481,6 +477,7 @@ export default function ActivitiesRoutesTab(p: {
                 <span>Latitude</span>
                 <input
                   type="text"
+                  className="input"
                   inputMode="decimal"
                   value={baseHqLatStr}
                   onChange={(e) => setBaseHqLatStr(e.target.value)}
@@ -492,6 +489,7 @@ export default function ActivitiesRoutesTab(p: {
                 <span>Longitude</span>
                 <input
                   type="text"
+                  className="input"
                   inputMode="decimal"
                   value={baseHqLngStr}
                   onChange={(e) => setBaseHqLngStr(e.target.value)}
@@ -573,101 +571,66 @@ export default function ActivitiesRoutesTab(p: {
       {/* KPI Summary Cards */}
       {effectiveOpId && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
-          <div className="card" style={{ padding: 12, display: 'grid', gap: 4 }}>
-            <span style={{ fontSize: 11.5, color: 'var(--text-secondary)', fontWeight: 700 }}>
-              EST. ROAD DISTANCE
-            </span>
-            <strong style={{ fontSize: 22 }}>
-              {footprint.stops.length < 2
+          <StatCard
+            label="EST. ROAD DISTANCE"
+            value={
+              footprint.stops.length < 2
                 ? '0.00 km'
                 : routeStatus.loading
                   ? 'Calculating…'
                   : computedRoute
                     ? formatDistanceKm(computedRoute.totalDistanceMeters)
-                    : '—'}
-            </strong>
-            <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-              {footprint.stops.length < 2
+                    : '—'
+            }
+            subtitle={
+              footprint.stops.length < 2
                 ? 'Needs at least 2 GPS points'
                 : computedRoute?.source === 'straight-line'
                   ? 'Straight-line fallback (road router unavailable)'
                   : computedRoute
                     ? `${travelMode === 'DRIVE' ? 'Driving' : travelMode === 'TWO_WHEELER' ? 'Motorcycle' : 'Walking'} OSRM route${baseHqConfig ? ' · incl. Base HQ' : ''}`
-                    : 'Road route unavailable'}
-            </span>
-          </div>
-
-          <div className="card" style={{ padding: 12, display: 'grid', gap: 4 }}>
-            <span style={{ fontSize: 11.5, color: 'var(--text-secondary)', fontWeight: 700 }}>
-              EST. TRAVEL TIME
-            </span>
-            <strong style={{ fontSize: 22 }}>
-              {footprint.stops.length < 2
+                    : 'Road route unavailable'
+            }
+          />
+          <StatCard
+            label="EST. TRAVEL TIME"
+            value={
+              footprint.stops.length < 2
                 ? '0 min'
                 : routeStatus.loading
                   ? 'Calculating…'
                   : computedRoute?.source === 'osrm'
                     ? formatDuration(computedRoute.totalDurationSeconds)
-                    : '—'}
-            </strong>
-            <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-              {footprint.firstTimestamp && footprint.lastTimestamp
+                    : '—'
+            }
+            subtitle={
+              footprint.firstTimestamp && footprint.lastTimestamp
                 ? `Logs: ${fmtTimeManila(footprint.firstTimestamp)} → ${fmtTimeManila(footprint.lastTimestamp)}`
-                : 'No timestamped GPS stops'}
-            </span>
-          </div>
-
-          <div className="card" style={{ padding: 12, display: 'grid', gap: 4 }}>
-            <span style={{ fontSize: 11.5, color: 'var(--text-secondary)', fontWeight: 700 }}>
-              STRAIGHT-LINE DISTANCE
-            </span>
-            <strong style={{ fontSize: 22 }}>
-              {formatDistanceKm(footprint.straightLineTotalMeters)}
-            </strong>
-            <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-              Point-to-point Haversine baseline
-            </span>
-          </div>
-
-          <div className="card" style={{ padding: 12, display: 'grid', gap: 4 }}>
-            <span style={{ fontSize: 11.5, color: 'var(--text-secondary)', fontWeight: 700 }}>
-              GPS LOG COVERAGE
-            </span>
-            <strong style={{ fontSize: 22 }}>
-              {footprint.mappedCount} / {totalLogsForOp}
-            </strong>
-            <span
-              style={{
-                fontSize: 11.5,
-                color: footprint.unmappedCount > 0 ? 'var(--warn-fg)' : 'var(--text-secondary)',
-                fontWeight: footprint.unmappedCount > 0 ? 700 : 400,
-              }}
-            >
-              {footprint.unmappedCount > 0
+                : 'No timestamped GPS stops'
+            }
+          />
+          <StatCard
+            label="STRAIGHT-LINE DISTANCE"
+            value={formatDistanceKm(footprint.straightLineTotalMeters)}
+            subtitle="Point-to-point Haversine baseline"
+          />
+          <StatCard
+            label="GPS LOG COVERAGE"
+            value={`${footprint.mappedCount} / ${totalLogsForOp}`}
+            subtitleTone={footprint.unmappedCount > 0 ? 'warn' : 'default'}
+            subtitle={
+              footprint.unmappedCount > 0
                 ? `${footprint.unmappedCount} log${footprint.unmappedCount === 1 ? '' : 's'} missing GPS`
                 : totalLogsForOp > 0
                   ? '100% of logs have GPS'
-                  : 'No activities logged on date'}
-            </span>
-          </div>
+                  : 'No activities logged on date'
+            }
+          />
         </div>
       )}
 
       {/* Route Warning / Fallback Notice */}
-      {routeStatus.error && (
-        <div
-          className="card"
-          style={{
-            padding: '9px 12px',
-            background: 'var(--warn-bg)',
-            border: '1px solid var(--warn-border)',
-            color: 'var(--warn-fg)',
-            fontSize: 12.5,
-          }}
-        >
-          {routeStatus.error}
-        </div>
-      )}
+      {routeStatus.error && <AlertBanner tone="warn">{routeStatus.error}</AlertBanner>}
 
       {/* Interactive Free Map Canvas */}
       {effectiveOpId && (
@@ -681,50 +644,28 @@ export default function ActivitiesRoutesTab(p: {
                 Click any numbered pin to inspect the activity log
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <button
-                type="button"
-                className={`btn ${mapStyle === 'street' ? 'btn-primary' : ''}`}
-                onClick={() => setMapStyle('street')}
-                style={{ minHeight: 30, padding: '2px 10px', fontSize: 12 }}
-              >
-                Street (OSM)
-              </button>
-              <button
-                type="button"
-                className={`btn ${mapStyle === 'satellite' ? 'btn-primary' : ''}`}
-                onClick={() => setMapStyle('satellite')}
-                style={{ minHeight: 30, padding: '2px 10px', fontSize: 12 }}
-              >
-                Satellite
-              </button>
-            </div>
+            <SegmentedTabs
+              ariaLabel="Map style"
+              size="sm"
+              value={mapStyle}
+              onChange={setMapStyle}
+              items={[
+                { id: 'street', label: 'Street (OSM)' },
+                { id: 'satellite', label: 'Satellite' },
+              ]}
+            />
           </div>
 
           {footprint.stops.length === 0 ? (
-            <div
-              style={{
-                height: 300,
-                borderRadius: 8,
-                border: '1px dashed var(--border)',
-                background: 'var(--surface-muted)',
-                display: 'grid',
-                placeItems: 'center',
-                padding: 20,
-                textAlign: 'center',
-                color: 'var(--text-secondary)',
-                fontSize: 13,
-              }}
-            >
-              <div>
-                <strong>No GPS footprints recorded for {selectedOp?.full_name ?? 'this operator'} on {p.date}.</strong>
-                <div style={{ marginTop: 6 }}>
-                  {footprint.unmappedCount > 0
-                    ? `${footprint.unmappedCount} activity log(s) exist on this date without captured GPS coordinates.`
-                    : 'Field operators can capture GPS automatically using the GPS button inside the Activity Logger.'}
-                </div>
-              </div>
-            </div>
+            <EmptyState
+              minHeight={300}
+              title={`No GPS footprints recorded for ${selectedOp?.full_name ?? 'this operator'} on ${p.date}.`}
+              description={
+                footprint.unmappedCount > 0
+                  ? `${footprint.unmappedCount} activity log(s) exist on this date without captured GPS coordinates.`
+                  : 'Field operators can capture GPS automatically using the GPS button inside the Activity Logger.'
+              }
+            />
           ) : (
             <div
               style={{
@@ -757,9 +698,9 @@ export default function ActivitiesRoutesTab(p: {
         <div className="card" style={{ padding: 14, display: 'grid', gap: 10 }}>
           <strong style={{ fontSize: 14 }}>Chronological Stop Itinerary &amp; Leg Distances</strong>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <table className="data-table">
               <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
+                <tr style={{ textAlign: 'left' }}>
                   <th style={{ padding: '7px 8px' }}>#</th>
                   <th style={{ padding: '7px 8px' }}>Time</th>
                   <th style={{ padding: '7px 8px' }}>Stop / Activity</th>
@@ -862,30 +803,22 @@ export default function ActivitiesRoutesTab(p: {
 
       {/* Unmapped Logs Warning List */}
       {effectiveOpId && footprint.unmappedActivities.length > 0 && (
-        <div
-          className="card"
-          style={{
-            padding: 12,
-            display: 'grid',
-            gap: 6,
-            background: 'var(--warn-bg)',
-            border: '1px solid var(--warn-border)',
-            color: 'var(--warn-fg)',
-          }}
-        >
-          <strong style={{ fontSize: 13 }}>
-            {footprint.unmappedActivities.length} Activity Log{footprint.unmappedActivities.length === 1 ? '' : 's'} Without GPS (Excluded from Map &amp; Distance)
-          </strong>
-          <div style={{ display: 'grid', gap: 4, fontSize: 12 }}>
-            {footprint.unmappedActivities.map((act) => (
-              <div key={act.id}>
-                • <b>{fmtTimeManila(act.started_at ?? act.created_at)}</b> — {act.activity_type.replace(/_/g, ' ')}
-                {act.site_or_well ? ` · ${act.site_or_well}` : ''}
-                {act.block_lot ? ` · ${act.block_lot}` : ''}
-              </div>
-            ))}
+        <AlertBanner tone="warn">
+          <div style={{ display: 'grid', gap: 6 }}>
+            <strong style={{ fontSize: 13 }}>
+              {footprint.unmappedActivities.length} Activity Log{footprint.unmappedActivities.length === 1 ? '' : 's'} Without GPS (Excluded from Map &amp; Distance)
+            </strong>
+            <div style={{ display: 'grid', gap: 4, fontSize: 12 }}>
+              {footprint.unmappedActivities.map((act) => (
+                <div key={act.id}>
+                  • <b>{fmtTimeManila(act.started_at ?? act.created_at)}</b> — {act.activity_type.replace(/_/g, ' ')}
+                  {act.site_or_well ? ` · ${act.site_or_well}` : ''}
+                  {act.block_lot ? ` · ${act.block_lot}` : ''}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        </AlertBanner>
       )}
 
       {/* Supervisor Team Overview Table */}

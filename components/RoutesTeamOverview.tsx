@@ -20,9 +20,9 @@ export default function RoutesTeamOverview(p: {
         </div>
       </div>
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+        <table className="data-table">
           <thead>
-            <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
+            <tr style={{ textAlign: 'left' }}>
               <th style={{ padding: '7px 8px' }}>Operator</th>
               <th style={{ padding: '7px 8px', textAlign: 'right' }}>GPS Stops</th>
               <th style={{ padding: '7px 8px', textAlign: 'right' }}>No-GPS Logs</th>

@@ -21,6 +21,7 @@ import ActivitiesKpiTab from '@/components/ActivitiesKpiTab';
 import ActivitiesRoutesTab from '@/components/ActivitiesRoutesTab';
 import JobOrdersTab from '@/components/JobOrdersTab';
 import ShiftHandoversTab from '@/components/ShiftHandoversTab';
+import { AlertBanner, Badge, SegmentedTabs } from '@/components/ui';
 import { DEFAULT_STATION_CODE } from '@/lib/roster-helpers';
 import { enqueueOfflineActivity, flushOfflineQueue, getOfflineQueue, type PendingOfflineActivity } from '@/lib/offline-queue';
 
@@ -348,10 +349,10 @@ export default function ActivitiesMonitor(p: {
       <div className="card" style={{ padding: 12, display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: 18 }}>Daily Employee Activity Monitor</h1>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+            <h1 className="page-title">Daily Employee Activity Monitor</h1>
+            <p className="page-subtitle">
               Schedule-linked field logs, Job Orders, Shift Huddle &amp; Performance KPIs
-            </div>
+            </p>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -378,19 +379,12 @@ export default function ActivitiesMonitor(p: {
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span
-            style={{
-              fontSize: 11.5,
-              padding: '4px 10px',
-              borderRadius: 999,
-              background: 'var(--surface-muted)',
-              border: '1px solid var(--border)',
-              color: 'var(--text-secondary)',
-            }}
+          <Badge
+            tone="neutral"
             title="Photos uploaded to Supabase Storage auto-expire after 30 days to stay within storage limits."
           >
             30d Photo Retention ({photoRetention.activeWithPhotos} active)
-          </span>
+          </Badge>
 
           {p.canVerifyActivity && (
             <button
@@ -422,83 +416,60 @@ export default function ActivitiesMonitor(p: {
       </div>
 
       {p.schemaWarning && (
-        <div role="alert" style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--warn-bg)', border: '1px solid var(--warn-border)', color: 'var(--warn-fg)', fontSize: 12.5 }}>
+        <AlertBanner tone="warn">
           <b>Setup Notice:</b> {p.schemaWarning}
-        </div>
+        </AlertBanner>
       )}
 
       {bannerMsg && (
-        <div
-          role="status"
-          style={{
-            padding: '9px 14px',
-            borderRadius: 8,
-            background: bannerMsg.startsWith('✓') ? 'var(--ok-bg)' : 'var(--danger-bg)',
-            border: `1px solid ${bannerMsg.startsWith('✓') ? 'var(--ok-border)' : 'var(--danger-border)'}`,
-            color: bannerMsg.startsWith('✓') ? 'var(--ok-fg)' : 'var(--danger-fg)',
-            fontSize: 13,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <span>{bannerMsg}</span>
-          <button type="button" onClick={() => setBannerMsg('')} style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', fontWeight: 700 }}>
-            ✕
-          </button>
-        </div>
+        <AlertBanner tone={bannerMsg.startsWith('✓') ? 'ok' : 'danger'} onDismiss={() => setBannerMsg('')}>
+          {bannerMsg}
+        </AlertBanner>
       )}
 
       {offlineQueue.length > 0 && (
-        <div className="card" style={{ padding: '9px 14px', background: 'var(--warn-bg)', border: '1px solid var(--warn-border)', color: 'var(--warn-fg)', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>
-            <b>{offlineQueue.length}</b> field activity log{offlineQueue.length === 1 ? '' : 's'} queued in browser IndexedDB (offline mode).
-          </span>
-          <button
-            type="button"
-            className="btn"
-            onClick={async () => {
-              const res = await flushOfflineQueue(supabaseBrowser(), p.userId);
-              setOfflineQueue(await getOfflineQueue(p.userId));
-              if (res.synced.length > 0) {
-                setActivities((prev) => [...res.synced, ...prev]);
-                setBannerMsg(
-                  res.failed > 0
-                    ? `Synced ${res.synced.length} item(s); ${res.failed} failed — use Inspect Queue above.`
-                    : `✓ Synced ${res.synced.length} offline item(s).`,
-                );
-              } else if (res.failed > 0) {
-                setBannerMsg(`Sync failed for ${res.failed} item(s): ${res.errors[0]?.message ?? 'Check connection'}`);
-              }
-            }}
-          >
-            Sync Now
-          </button>
-        </div>
+        <AlertBanner
+          tone="warn"
+          action={
+            <button
+              type="button"
+              className="btn"
+              onClick={async () => {
+                const res = await flushOfflineQueue(supabaseBrowser(), p.userId);
+                setOfflineQueue(await getOfflineQueue(p.userId));
+                if (res.synced.length > 0) {
+                  setActivities((prev) => [...res.synced, ...prev]);
+                  setBannerMsg(
+                    res.failed > 0
+                      ? `Synced ${res.synced.length} item(s); ${res.failed} failed — use Inspect Queue above.`
+                      : `✓ Synced ${res.synced.length} offline item(s).`,
+                  );
+                } else if (res.failed > 0) {
+                  setBannerMsg(`Sync failed for ${res.failed} item(s): ${res.errors[0]?.message ?? 'Check connection'}`);
+                }
+              }}
+            >
+              Sync Now
+            </button>
+          }
+        >
+          <b>{offlineQueue.length}</b> field activity log{offlineQueue.length === 1 ? '' : 's'} queued in browser IndexedDB (offline mode).
+        </AlertBanner>
       )}
 
       {/* Navigation Tabs */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {(
-          [
-            { id: 'monitor', label: `${p.canVerifyActivity ? 'Duty & Activity Feed' : 'My Activity Logs'} (${dateActivities.length})` },
-            { id: 'routes', label: `Routes & Distance (${dateActivities.filter((a) => isValidCoordinate(a.gps_lat, a.gps_lng)).length} GPS)` },
-            { id: 'job-orders', label: `Job Orders (${filteredJobOrders.filter((j) => j.status === 'pending' || j.status === 'in_progress').length} open)` },
-            { id: 'handovers', label: `Shift Handover & Huddle (${handovers.filter((h) => h.handover_date === p.date).length})` },
-            ...(p.canVerifyActivity ? [{ id: 'kpis' as const, label: 'Employee KPIs & Fuel' }] : []),
-          ] as const
-        ).map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className={`btn ${tab === t.id ? 'btn-primary' : ''}`}
-            onClick={() => setTab(t.id)}
-            style={{ fontWeight: 700 }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        ariaLabel="Activity monitoring sections"
+        value={tab}
+        onChange={setTab}
+        items={[
+          { id: 'monitor', label: `${p.canVerifyActivity ? 'Duty & Activity Feed' : 'My Activity Logs'} (${dateActivities.length})` },
+          { id: 'routes', label: `Routes & Distance (${dateActivities.filter((a) => isValidCoordinate(a.gps_lat, a.gps_lng)).length} GPS)` },
+          { id: 'job-orders', label: `Job Orders (${filteredJobOrders.filter((j) => j.status === 'pending' || j.status === 'in_progress').length} open)` },
+          { id: 'handovers', label: `Shift Handover & Huddle (${handovers.filter((h) => h.handover_date === p.date).length})` },
+          ...(p.canVerifyActivity ? [{ id: 'kpis' as const, label: 'Employee KPIs & Fuel' }] : []),
+        ]}
+      />
 
       {/* TAB 1: DAILY DUTY & ACTIVITY FEED */}
       {tab === 'monitor' && (

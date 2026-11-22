@@ -401,7 +401,7 @@ export default function AccomplishmentReports(p: Props) {
       {/* Top Toolbar */}
       <div className="no-print card" style={{ padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <strong style={{ fontSize: 15 }}>Daily Accomplishment Reports</strong>
+          <h1 className="page-title" style={{ fontSize: 15 }}>Daily Accomplishment Reports</h1>
           <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
             BPEMS-F-002 · End-of-Shift Technical &amp; Project Report
           </span>

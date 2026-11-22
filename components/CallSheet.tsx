@@ -154,7 +154,9 @@ export default function CallSheet(p: {
           marginBottom: 10,
         }}
       >
-        <strong>Emergency Call Sheet</strong>
+        <h1 className="page-title" style={{ fontSize: 16 }}>
+          Emergency Call Sheet
+        </h1>
         <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
           {p.today} · as of {asOfTime} (Manila)
         </span>

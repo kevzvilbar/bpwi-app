@@ -164,7 +164,7 @@ export default function Generator(p: {
   return (
     <div style={{ padding: 14, maxWidth: 860, margin: '0 auto' }}>
       <div className="card" style={{ padding: 18, display: 'grid', gap: 12 }}>
-        <h2 style={{ margin: 0, fontSize: 18 }}>Generate Schedule</h2>
+        <h1 className="page-title">Generate Schedule</h1>
         <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
           Repeat a shift cycle across a date range. Use shift codes separated by spaces; use <code>-</code> to leave a day blank.
         </p>

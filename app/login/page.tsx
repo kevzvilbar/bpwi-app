@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 import { getErrorMessage } from '@/lib/error-utils';
+import { AlertBanner, SegmentedTabs } from '@/components/ui';
 
 function LoginForm() {
   const params = useSearchParams();
@@ -173,52 +174,17 @@ function LoginForm() {
         </p>
 
         {(mode === 'signin' || mode === 'signup') ? (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: 4,
-              padding: 4,
-              marginBottom: 16,
-              background: 'var(--surface-muted)',
-              borderRadius: 8,
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => switchMode('signin')}
-              style={{
-                padding: '6px 10px',
-                borderRadius: 6,
-                border: 'none',
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: 'pointer',
-                background: mode === 'signin' ? 'var(--surface)' : 'transparent',
-                color: mode === 'signin' ? 'var(--text)' : 'var(--text-secondary)',
-                boxShadow: mode === 'signin' ? '0 1px 3px rgba(15, 23, 42, 0.08)' : 'none',
-              }}
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              onClick={() => switchMode('signup')}
-              style={{
-                padding: '6px 10px',
-                borderRadius: 6,
-                border: 'none',
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: 'pointer',
-                background: mode === 'signup' ? 'var(--surface)' : 'transparent',
-                color: mode === 'signup' ? 'var(--text)' : 'var(--text-secondary)',
-                boxShadow: mode === 'signup' ? '0 1px 3px rgba(15, 23, 42, 0.08)' : 'none',
-              }}
-            >
-              Sign up
-            </button>
-          </div>
+          <SegmentedTabs
+            ariaLabel="Authentication mode"
+            fullWidth
+            value={mode}
+            onChange={switchMode}
+            items={[
+              { id: 'signin', label: 'Sign in' },
+              { id: 'signup', label: 'Sign up' },
+            ]}
+            className="login-mode-tabs"
+          />
         ) : (
           <button
             type="button"
@@ -239,23 +205,12 @@ function LoginForm() {
           </button>
         )}
 
-          {configWarning && (
-            <div
-              role="alert"
-              style={{
-                padding: '10px 12px',
-                marginBottom: 14,
-                borderRadius: 8,
-                background: '#fef2f2',
-                border: '1px solid #fecaca',
-                color: '#991b1b',
-                fontSize: 12.5,
-                lineHeight: 1.45,
-              }}
-            >
+        {configWarning && (
+          <div style={{ marginBottom: 14 }}>
+            <AlertBanner tone="danger">
               <div>{configWarning}</div>
               {(!isConfigured || urlError === 'missing_config') && (
-                <details style={{ marginTop: 6, fontSize: 11.5, color: '#7f1d1d' }}>
+                <details style={{ marginTop: 6, fontSize: 11.5, color: 'var(--danger-fg)' }}>
                   <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Administrator setup details</summary>
                   <div style={{ marginTop: 4 }}>
                     Set <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY</code> (or{' '}
@@ -263,24 +218,13 @@ function LoginForm() {
                   </div>
                 </details>
               )}
-            </div>
-          )}
+            </AlertBanner>
+          </div>
+        )}
 
         {info && (
-          <div
-            role="status"
-            style={{
-              padding: '10px 12px',
-              marginBottom: 14,
-              borderRadius: 8,
-              background: '#f0fdf4',
-              border: '1px solid #bbf7d0',
-              color: '#166534',
-              fontSize: 12,
-              lineHeight: 1.45,
-            }}
-          >
-            {info}
+          <div style={{ marginBottom: 14 }}>
+            <AlertBanner tone="ok">{info}</AlertBanner>
           </div>
         )}
 
@@ -389,7 +333,7 @@ function LoginForm() {
                     : 'Create account'}
           </button>
           {err && (
-            <p role="alert" style={{ color: '#b91c1c', fontSize: 13, margin: 0 }}>
+            <p role="alert" style={{ color: 'var(--danger)', fontSize: 13, margin: 0 }}>
               {err}
             </p>
           )}
@@ -401,7 +345,7 @@ function LoginForm() {
 
 export default function Login() {
   return (
-    <Suspense fallback={<div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#64748b' }}>Loading…</div>}>
+    <Suspense fallback={<div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: 'var(--text-muted)' }}>Loading…</div>}>
       <LoginForm />
     </Suspense>
   );
