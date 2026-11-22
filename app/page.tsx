@@ -1,5 +1,6 @@
 import { getProfile, type ChangeRequestItem } from '@/lib/profile';
 import { manilaToday } from '@/lib/date';
+import { CHANGE_REQUEST_ITEM_COLUMNS } from '@/lib/query-columns';
 import Roster from '@/components/Roster';
 
 export const dynamic = 'force-dynamic';
@@ -12,8 +13,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
   const [y, mo] = month.split('-').map(Number);
   const first = `${month}-01`;
   const last = `${month}-${String(new Date(y, mo, 0).getDate()).padStart(2, '0')}`;
+  const shouldLoadDraft = Boolean((canPropose || role === 'manager') && user);
 
-  const [ops, shifts, areas, rows, standby, pmTasks, pendingReqItems, holidaysRes] = await Promise.all([
+  const [ops, shifts, areas, rows, standby, pmTasks, pendingReqItems, holidaysRes, draftReqRes] = await Promise.all([
     sb.from('operators').select('id, full_name, position').eq('is_active', true).order('sort_order'),
     sb.from('shift_types').select('id, code, description, duration_hours, background_color, text_color, is_off').order('code'),
     sb.from('area_codes').select('id, code, name, category, background_color, text_color').order('code'),
@@ -43,27 +45,26 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
       .select('holiday_date, name, holiday_type')
       .gte('holiday_date', first)
       .lte('holiday_date', last),
+    shouldLoadDraft && user
+      ? sb
+          .from('change_requests')
+          .select('id')
+          .eq('requester_id', user.id)
+          .eq('status', 'draft')
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ]);
 
   // Load draft items if this user is a department head (including when an edit window opened mid-draft)
   let draftItems: ChangeRequestItem[] = [];
   let initialDraftRequestId: string | null = null;
-  if ((canPropose || role === 'manager') && user) {
-    const { data: draftReq } = await sb
-      .from('change_requests')
-      .select('id')
-      .eq('requester_id', user.id)
-      .eq('status', 'draft')
-      .maybeSingle();
-
-    if (draftReq?.id) {
-      initialDraftRequestId = draftReq.id;
-      const { data: items } = await sb
-        .from('change_request_items')
-        .select('*')
-        .eq('request_id', draftReq.id);
-      draftItems = (items ?? []) as ChangeRequestItem[];
-    }
+  if (draftReqRes.data?.id) {
+    initialDraftRequestId = draftReqRes.data.id;
+    const { data: items } = await sb
+      .from('change_request_items')
+      .select(CHANGE_REQUEST_ITEM_COLUMNS)
+      .eq('request_id', draftReqRes.data.id);
+    draftItems = (items ?? []) as ChangeRequestItem[];
   }
 
   const errors = [ops.error, shifts.error, areas.error, rows.error, standby.error, pmTasks.error]

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { supabaseBrowser } from '@/lib/supabase/client';
 import { ACTIVITY_BY_ID, type DailyActivityRow, type JobOrderRow } from '@/lib/activity-types';
 import WellPulloutReportSheet from '@/components/WellPulloutReportSheet';
 import TankCleaningReportSheet from '@/components/TankCleaningReportSheet';
@@ -58,11 +59,33 @@ export default function PrintableActivityReport(p: {
   onClose: () => void;
 }) {
   const [sheetView, setSheetView] = useState<'form' | 'standard'>('form');
+  const [fetchedSig, setFetchedSig] = useState<{ id: string; data: string | null } | null>(null);
   const actId = p.activity?.id ?? '';
+  const actType = p.activity?.activity_type;
+  const actSignatureProp = p.activity?.signature_data;
 
   useEffect(() => {
     setSheetView('form');
   }, [p.mode, actId]);
+
+  useEffect(() => {
+    if (!actId || (p.mode !== 'meter_test' && actType !== 'meter_test') || actSignatureProp !== undefined) {
+      return;
+    }
+    let active = true;
+    void supabaseBrowser()
+      .from('daily_activities')
+      .select('signature_data')
+      .eq('id', actId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!active) return;
+        setFetchedSig({ id: actId, data: (data?.signature_data as string | null | undefined) ?? null });
+      });
+    return () => {
+      active = false;
+    };
+  }, [actId, p.mode, actType, actSignatureProp]);
 
   if (!p.activity && !p.jobOrder) return null;
 
@@ -318,11 +341,19 @@ export default function PrintableActivityReport(p: {
               </div>
               <div>
                 <div style={{ height: 52, display: 'grid', placeItems: 'center', borderBottom: '1px solid #0f172a', marginBottom: 4 }}>
-                  {act?.signature_data ? (
-                    <img src={act.signature_data} alt="Witness signature" style={{ maxHeight: 46, maxWidth: '100%', objectFit: 'contain' }} />
-                  ) : (
-                    <span style={{ fontSize: 11, color: '#94a3b8' }}>No signature captured</span>
-                  )}
+                  {(() => {
+                    const sigUrl =
+                      act?.signature_data !== undefined
+                        ? act.signature_data
+                        : fetchedSig && act && fetchedSig.id === act.id
+                          ? fetchedSig.data
+                          : null;
+                    return sigUrl ? (
+                      <img src={sigUrl} alt="Witness signature" style={{ maxHeight: 46, maxWidth: '100%', objectFit: 'contain' }} />
+                    ) : (
+                      <span style={{ fontSize: 11, color: '#94a3b8' }}>No signature captured</span>
+                    );
+                  })()}
                 </div>
                 <b>Witnessed By: {detStr('witnessedBy', 'Customer Representative')}</b>
                 <div style={{ fontSize: 11, color: '#475569' }}>Signature over Printed Name</div>

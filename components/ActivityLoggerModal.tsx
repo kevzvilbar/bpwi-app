@@ -14,10 +14,14 @@ import {
 } from '@/lib/activity-types';
 import { getErrorMessage } from '@/lib/error-utils';
 import { resolveActivityPhotoUrl } from '@/lib/activity-media';
+import { DAILY_ACTIVITY_LIST_COLUMNS } from '@/lib/query-columns';
 import {
   buildActivityDetailsPayload,
+  calcDurationMinutes,
+  currentManilaHHMM,
   hydrateActivityDetailFields,
   INITIAL_ACTIVITY_DETAIL_FIELDS,
+  toManilaTimestampIso,
   type ActivityDetailFieldsState,
 } from '@/lib/activity-logger-details';
 import {
@@ -81,38 +85,6 @@ export type LinkedJobOrder = {
   account_name?: string | null;
   assigned_operator_ids?: string[];
 };
-
-function currentManilaHHMM() {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Manila',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(new Date());
-  const h = parts.find((p) => p.type === 'hour')?.value ?? '08';
-  const m = parts.find((p) => p.type === 'minute')?.value ?? '00';
-  return `${h === '24' ? '00' : h}:${m}`;
-}
-
-function toManilaTimestampIso(ymd: string, hhmm: string): string | null {
-  if (!ymd || !hhmm || !/^\d{2}:\d{2}$/.test(hhmm)) return null;
-  try {
-    return new Date(`${ymd}T${hhmm}:00+08:00`).toISOString();
-  } catch {
-    return null;
-  }
-}
-
-function calcDurationMinutes(startHHMM: string, endHHMM: string): string {
-  if (!/^\d{2}:\d{2}$/.test(startHHMM) || !/^\d{2}:\d{2}$/.test(endHHMM)) return '';
-  const [sh, sm] = startHHMM.split(':').map(Number);
-  const [eh, em] = endHHMM.split(':').map(Number);
-  const startM = sh * 60 + sm;
-  let endM = eh * 60 + em;
-  if (endM < startM) endM += 24 * 60;
-  const diff = endM - startM;
-  return diff > 0 ? String(diff) : '';
-}
 
 export default function ActivityLoggerModal(p: {
   open: boolean;
@@ -615,23 +587,27 @@ export default function ActivityLoggerModal(p: {
           photo_urls: payload.photo_urls,
           photo_storage_paths: payload.photo_storage_paths,
           photos_expires_at: payload.photos_expires_at,
-          signature_data: sigData ?? p.editingActivity.signature_data ?? null,
+          ...(sigData !== null ? { signature_data: sigData } : {}),
           status: p.editingActivity.status === 'flagged' ? 'submitted' : p.editingActivity.status,
         };
         const { data, error } = await sb
           .from('daily_activities')
           .update(updatePayload)
           .eq('id', p.editingActivity.id)
-          .select('*')
+          .select(DAILY_ACTIVITY_LIST_COLUMNS)
           .single();
         if (error) throw error;
         setSubmitting(false);
-        p.onSaved(data as DailyActivityRow);
+        const savedRow: DailyActivityRow = {
+          ...(data as unknown as DailyActivityRow),
+          ...(sigData !== null ? { signature_data: sigData } : {}),
+        };
+        p.onSaved(savedRow);
         p.onClose();
         return;
       }
 
-      const { data, error } = await sb.from('daily_activities').insert(payload).select('*').single();
+      const { data, error } = await sb.from('daily_activities').insert(payload).select(DAILY_ACTIVITY_LIST_COLUMNS).single();
       if (error) throw error;
 
       if (p.linkedPmTask?.id) {
@@ -656,7 +632,11 @@ export default function ActivityLoggerModal(p: {
       }
 
       setSubmitting(false);
-      p.onSaved(data as DailyActivityRow);
+      const savedRow: DailyActivityRow = {
+        ...(data as unknown as DailyActivityRow),
+        ...(sigData !== null ? { signature_data: sigData } : {}),
+      };
+      p.onSaved(savedRow);
       p.onClose();
     } catch (err: unknown) {
       // Fall back to offline queue if network failure and callback available

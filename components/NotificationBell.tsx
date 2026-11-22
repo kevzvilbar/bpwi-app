@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import { shouldRefreshNotifications } from '@/lib/notification-helpers';
+
+const COUNT_COOLDOWN_MS = 180_000;
+const ITEMS_COOLDOWN_MS = 60_000;
 
 interface NotificationRow {
   id: string;
@@ -17,31 +21,69 @@ interface NotificationRow {
 export default function NotificationBell({ hasUser }: { hasUser: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [items, setItems] = useState<NotificationRow[]>([]);
   const [loading, setLoading] = useState(false);
   const boxRef = useRef<HTMLDivElement | null>(null);
+  const lastCountFetchRef = useRef<number>(0);
+  const lastItemsFetchRef = useRef<number>(0);
+  const itemsLoadedRef = useRef<boolean>(false);
 
-  const loadNotifications = useCallback(async () => {
+  const loadUnreadCount = useCallback(async () => {
     if (!hasUser) return;
+    lastCountFetchRef.current = Date.now();
+    const { count, error } = await supabaseBrowser()
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('is_read', false);
+    if (!error && typeof count === 'number') {
+      setUnreadCount(count);
+    }
+  }, [hasUser]);
+
+  const loadNotifications = useCallback(async (force = false) => {
+    if (!hasUser) return;
+    const now = Date.now();
+    if (!force && itemsLoadedRef.current && now - lastItemsFetchRef.current < ITEMS_COOLDOWN_MS) {
+      return;
+    }
     setLoading(true);
-    const sb = supabaseBrowser();
-    const { data, error } = await sb
+    const { data, error } = await supabaseBrowser()
       .from('notifications')
       .select('id, kind, title, body, href, is_read, created_at')
       .order('created_at', { ascending: false })
       .limit(20);
     setLoading(false);
     if (!error && data) {
-      setItems(data as NotificationRow[]);
+      const rows = data as NotificationRow[];
+      itemsLoadedRef.current = true;
+      lastItemsFetchRef.current = Date.now();
+      lastCountFetchRef.current = lastItemsFetchRef.current;
+      setItems(rows);
+      if (rows.length < 20) {
+        setUnreadCount(rows.filter((n) => !n.is_read).length);
+      } else {
+        void loadUnreadCount();
+      }
     }
-  }, [hasUser]);
+  }, [hasUser, loadUnreadCount]);
 
   useEffect(() => {
-    void loadNotifications();
-    const onFocus = () => void loadNotifications();
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [loadNotifications]);
+    if (!hasUser) return;
+    void loadUnreadCount();
+    const maybeRefreshCount = () => {
+      const visible = typeof document === 'undefined' || document.visibilityState === 'visible';
+      if (shouldRefreshNotifications(lastCountFetchRef.current, Date.now(), COUNT_COOLDOWN_MS, visible)) {
+        void loadUnreadCount();
+      }
+    };
+    window.addEventListener('focus', maybeRefreshCount);
+    document.addEventListener('visibilitychange', maybeRefreshCount);
+    return () => {
+      window.removeEventListener('focus', maybeRefreshCount);
+      document.removeEventListener('visibilitychange', maybeRefreshCount);
+    };
+  }, [hasUser, loadUnreadCount]);
 
   useEffect(() => {
     if (!open) return;
@@ -63,11 +105,10 @@ export default function NotificationBell({ hasUser }: { hasUser: boolean }) {
 
   if (!hasUser) return null;
 
-  const unreadCount = items.filter((n) => !n.is_read).length;
-
   async function markRead(n: NotificationRow) {
     if (!n.is_read) {
       setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, is_read: true } : x)));
+      setUnreadCount((c) => Math.max(0, c - 1));
       await supabaseBrowser().from('notifications').update({ is_read: true }).eq('id', n.id);
     }
     setOpen(false);
@@ -78,6 +119,7 @@ export default function NotificationBell({ hasUser }: { hasUser: boolean }) {
     const unreadIds = items.filter((n) => !n.is_read).map((n) => n.id);
     if (!unreadIds.length) return;
     setItems((prev) => prev.map((x) => ({ ...x, is_read: true })));
+    setUnreadCount((c) => Math.max(0, c - unreadIds.length));
     await supabaseBrowser().from('notifications').update({ is_read: true }).in('id', unreadIds);
   }
 
@@ -105,7 +147,7 @@ export default function NotificationBell({ hasUser }: { hasUser: boolean }) {
               position: 'absolute',
               top: -4,
               right: -4,
-              background: '#dc2626',
+              background: 'var(--danger)',
               color: '#ffffff',
               borderRadius: 999,
               padding: '0 5px',
@@ -179,7 +221,7 @@ export default function NotificationBell({ hasUser }: { hasUser: boolean }) {
                   <span style={{ fontSize: 12, fontWeight: n.is_read ? 600 : 800, color: 'var(--text)' }}>
                     {n.title}
                   </span>
-                  {!n.is_read && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#0284c7', flexShrink: 0 }} />}
+                  {!n.is_read && <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />}
                 </div>
                 {n.body && (
                   <span style={{ fontSize: 11.5, color: 'var(--text-secondary)', lineHeight: 1.3 }}>

@@ -3,6 +3,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import { subscribeVisibilityAwareChannel } from '@/lib/supabase/realtime';
 import type { ChangeRequestItem, ChangeRequestOriginalState } from '@/lib/profile';
 import { getErrorMessage } from '@/lib/error-utils';
 import {
@@ -223,41 +224,50 @@ export default function Roster(p: {
 
   useEffect(() => {
     const sb = supabaseBrowser();
-    const channel = sb
-      .channel(`roster-sync-${p.month}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule_assignments' }, (payload) => {
-        const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as Partial<Row> | undefined;
-        if (!rec?.operator_id || !rec?.schedule_date || !rec.schedule_date.startsWith(p.month)) return;
-        if (payload.eventType === 'DELETE') {
-          setRows((r) => r.filter((x) => !(x.operator_id === rec.operator_id && x.schedule_date === rec.schedule_date)));
-        } else {
-          const nextRow: Row = {
-            operator_id: rec.operator_id,
-            schedule_date: rec.schedule_date,
-            shift_type_id: rec.shift_type_id ?? null,
-            area_code_id: rec.area_code_id ?? null,
-          };
-          setRows((r) => [...r.filter((x) => !(x.operator_id === nextRow.operator_id && x.schedule_date === nextRow.schedule_date)), nextRow]);
-        }
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'standby_assignments' }, (payload) => {
-        const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as Partial<Standby> | undefined;
-        if (!rec?.operator_id || !rec?.schedule_date || !rec.schedule_date.startsWith(p.month)) return;
-        if (payload.eventType === 'DELETE') {
-          setStandby((s) => s.filter((x) => !(x.operator_id === rec.operator_id && x.schedule_date === rec.schedule_date)));
-        } else {
-          const nextSb: Standby = {
-            operator_id: rec.operator_id,
-            schedule_date: rec.schedule_date,
-            standby_type: rec.standby_type ?? 'OC',
-          };
-          setStandby((s) => [...s.filter((x) => !(x.operator_id === nextSb.operator_id && x.schedule_date === nextSb.schedule_date)), nextSb]);
-        }
-      })
-      .subscribe();
-    return () => {
-      sb.removeChannel(channel);
-    };
+    return subscribeVisibilityAwareChannel({
+      sb,
+      channelName: `roster-sync-${p.month}`,
+      listeners: [
+        {
+          table: 'schedule_assignments',
+          onEvent: (payload) => {
+            const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as Partial<Row> | undefined;
+            if (!rec?.operator_id || !rec?.schedule_date || !rec.schedule_date.startsWith(p.month)) return;
+            if (payload.eventType === 'DELETE') {
+              setRows((r) => r.filter((x) => !(x.operator_id === rec.operator_id && x.schedule_date === rec.schedule_date)));
+            } else {
+              const nextRow: Row = {
+                operator_id: rec.operator_id,
+                schedule_date: rec.schedule_date,
+                shift_type_id: rec.shift_type_id ?? null,
+                area_code_id: rec.area_code_id ?? null,
+              };
+              setRows((r) => [...r.filter((x) => !(x.operator_id === nextRow.operator_id && x.schedule_date === nextRow.schedule_date)), nextRow]);
+            }
+          },
+        },
+        {
+          table: 'standby_assignments',
+          onEvent: (payload) => {
+            const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as Partial<Standby> | undefined;
+            if (!rec?.operator_id || !rec?.schedule_date || !rec.schedule_date.startsWith(p.month)) return;
+            if (payload.eventType === 'DELETE') {
+              setStandby((s) => s.filter((x) => !(x.operator_id === rec.operator_id && x.schedule_date === rec.schedule_date)));
+            } else {
+              const nextSb: Standby = {
+                operator_id: rec.operator_id,
+                schedule_date: rec.schedule_date,
+                standby_type: rec.standby_type ?? 'OC',
+              };
+              setStandby((s) => [
+                ...s.filter((x) => !(x.operator_id === nextSb.operator_id && x.schedule_date === nextSb.schedule_date)),
+                nextSb,
+              ]);
+            }
+          },
+        },
+      ],
+    });
   }, [p.month]);
 
   useEffect(() => {

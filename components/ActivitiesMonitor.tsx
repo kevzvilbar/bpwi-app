@@ -1,8 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import { subscribeVisibilityAwareChannel } from '@/lib/supabase/realtime';
+import { DAILY_ACTIVITY_LIST_COLUMNS } from '@/lib/query-columns';
 import { getErrorMessage } from '@/lib/error-utils';
 import { addIsoDays as addDays, fmtTimeManila } from '@/lib/date';
 import { isValidCoordinate } from '@/lib/route-footprints';
@@ -15,15 +18,17 @@ import {
   type ShiftHandoverRow,
 } from '@/lib/activity-types';
 import { formatTelemetrySummary } from '@/lib/activity-telemetry';
-import ActivityLoggerModal, { type LinkedJobOrder } from '@/components/ActivityLoggerModal';
-import PrintableActivityReport from '@/components/PrintableActivityReport';
-import ActivitiesKpiTab from '@/components/ActivitiesKpiTab';
-import ActivitiesRoutesTab from '@/components/ActivitiesRoutesTab';
-import JobOrdersTab from '@/components/JobOrdersTab';
-import ShiftHandoversTab from '@/components/ShiftHandoversTab';
+import type { LinkedJobOrder } from '@/components/ActivityLoggerModal';
 import { AlertBanner, Badge, SegmentedTabs } from '@/components/ui';
 import { DEFAULT_STATION_CODE } from '@/lib/roster-helpers';
 import { enqueueOfflineActivity, flushOfflineQueue, getOfflineQueue, type PendingOfflineActivity } from '@/lib/offline-queue';
+
+const ActivityLoggerModal = dynamic(() => import('@/components/ActivityLoggerModal'), { ssr: false });
+const PrintableActivityReport = dynamic(() => import('@/components/PrintableActivityReport'), { ssr: false });
+const ActivitiesKpiTab = dynamic(() => import('@/components/ActivitiesKpiTab'), { ssr: false });
+const ActivitiesRoutesTab = dynamic(() => import('@/components/ActivitiesRoutesTab'), { ssr: false });
+const JobOrdersTab = dynamic(() => import('@/components/JobOrdersTab'), { ssr: false });
+const ShiftHandoversTab = dynamic(() => import('@/components/ShiftHandoversTab'), { ssr: false });
 
 type MonOp = { id: string; full_name: string; position: string | null; phone_number: string | null; default_station: string | null };
 type MonShift = { id: string; code: string; description: string | null; duration_hours: number; start_time: string | null; end_time: string | null; background_color: string; text_color: string; is_off: boolean };
@@ -103,43 +108,59 @@ export default function ActivitiesMonitor(p: {
   useEffect(() => setJobOrders(p.jobOrders), [p.jobOrders]);
   useEffect(() => setHandovers(p.handovers), [p.handovers]);
 
-  // Realtime sync
+  // Visibility-aware Realtime sync
   useEffect(() => {
     const sb = supabaseBrowser();
-    const ch = sb
-      .channel('bpwi-activities-hub')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_activities' }, (payload) => {
-        const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as DailyActivityRow;
-        if (!rec?.id) return;
-        if (payload.eventType === 'DELETE') {
-          setActivities((prev) => prev.filter((x) => x.id !== rec.id));
-        } else {
-          setActivities((prev) => (prev.some((x) => x.id === rec.id) ? prev.map((x) => (x.id === rec.id ? rec : x)) : [rec, ...prev]));
-        }
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'job_orders' }, (payload) => {
-        const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as JobOrderRow;
-        if (!rec?.id) return;
-        if (payload.eventType === 'DELETE') {
-          setJobOrders((prev) => prev.filter((x) => x.id !== rec.id));
-        } else {
-          setJobOrders((prev) => (prev.some((x) => x.id === rec.id) ? prev.map((x) => (x.id === rec.id ? rec : x)) : [rec, ...prev]));
-        }
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'shift_handovers' }, (payload) => {
-        const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as ShiftHandoverRow;
-        if (!rec?.id) return;
-        if (payload.eventType === 'DELETE') {
-          setHandovers((prev) => prev.filter((x) => x.id !== rec.id));
-        } else {
-          setHandovers((prev) => (prev.some((x) => x.id === rec.id) ? prev.map((x) => (x.id === rec.id ? rec : x)) : [rec, ...prev]));
-        }
-      })
-      .subscribe();
-    return () => {
-      sb.removeChannel(ch);
-    };
-  }, []);
+    return subscribeVisibilityAwareChannel({
+      sb,
+      channelName: 'bpwi-activities-hub',
+      listeners: [
+        {
+          table: 'daily_activities',
+          onEvent: (payload) => {
+            const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as unknown as DailyActivityRow;
+            if (!rec?.id) return;
+            if (payload.eventType === 'DELETE') {
+              setActivities((prev) => prev.filter((x) => x.id !== rec.id));
+              return;
+            }
+            if (rec.activity_date !== p.date) return;
+            setActivities((prev) =>
+              prev.some((x) => x.id === rec.id) ? prev.map((x) => (x.id === rec.id ? rec : x)) : [rec, ...prev],
+            );
+          },
+        },
+        {
+          table: 'job_orders',
+          onEvent: (payload) => {
+            const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as unknown as JobOrderRow;
+            if (!rec?.id) return;
+            if (payload.eventType === 'DELETE') {
+              setJobOrders((prev) => prev.filter((x) => x.id !== rec.id));
+            } else {
+              setJobOrders((prev) =>
+                prev.some((x) => x.id === rec.id) ? prev.map((x) => (x.id === rec.id ? rec : x)) : [rec, ...prev],
+              );
+            }
+          },
+        },
+        {
+          table: 'shift_handovers',
+          onEvent: (payload) => {
+            const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as unknown as ShiftHandoverRow;
+            if (!rec?.id) return;
+            if (payload.eventType === 'DELETE') {
+              setHandovers((prev) => prev.filter((x) => x.id !== rec.id));
+            } else {
+              setHandovers((prev) =>
+                prev.some((x) => x.id === rec.id) ? prev.map((x) => (x.id === rec.id ? rec : x)) : [rec, ...prev],
+              );
+            }
+          },
+        },
+      ],
+    });
+  }, [p.date]);
 
   // Offline queue listener & auto-flush
   useEffect(() => {
@@ -315,14 +336,14 @@ export default function ActivitiesMonitor(p: {
         review_note: note?.trim() || null,
       })
       .eq('id', act.id)
-      .select('*')
+      .select(DAILY_ACTIVITY_LIST_COLUMNS)
       .single();
 
     if (error) {
       setBannerMsg(`Could not update verification: ${error.message}`);
       return;
     }
-    setActivities((prev) => prev.map((x) => (x.id === act.id ? (data as DailyActivityRow) : x)));
+    setActivities((prev) => prev.map((x) => (x.id === act.id ? (data as unknown as DailyActivityRow) : x)));
     setFlaggingId(null);
     setFlagReason('');
   }
@@ -886,15 +907,11 @@ export default function ActivitiesMonitor(p: {
           operators={p.operators}
           areas={p.areas}
           shifts={p.shifts}
-          assignments={p.assignments}
-          activities={activities}
-          pmTasks={p.pmTasks}
-          jobOrders={jobOrders}
         />
       )}
 
       {/* Activity Logger Modal */}
-      {p.canLogActivity && (
+      {p.canLogActivity && loggerOpen && (
         <ActivityLoggerModal
           open={loggerOpen}
           onClose={() => {

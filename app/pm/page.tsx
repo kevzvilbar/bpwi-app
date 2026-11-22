@@ -1,5 +1,6 @@
 import { getProfile } from '@/lib/profile';
 import { manilaToday } from '@/lib/date';
+import { PM_TASK_COLUMNS } from '@/lib/query-columns';
 import PmPlanner from '@/components/PmPlanner';
 
 export const dynamic = 'force-dynamic';
@@ -23,7 +24,7 @@ export default async function PmPage({ searchParams }: { searchParams: Promise<{
   const last = gridEnd.toISOString().slice(0, 10);
 
   const [tasks, activityTypes, ops, shifts, areas, asg, standby, holidaysRes] = await Promise.all([
-    sb.from('pm_tasks').select('*').gte('scheduled_date', first).lte('scheduled_date', last).order('scheduled_date'),
+    sb.from('pm_tasks').select(PM_TASK_COLUMNS).gte('scheduled_date', first).lte('scheduled_date', last).order('scheduled_date'),
     sb.from('pm_activity_types').select('id, code, label, short_label, color, sort_order').order('sort_order').order('code'),
     sb.from('operators').select('id, full_name, phone_number').eq('is_active', true).order('sort_order'),
     sb.from('shift_types').select('id, is_off'),

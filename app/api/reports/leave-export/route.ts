@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getProfile, fetchAll } from '@/lib/profile';
+import { getAuthProfile, fetchAll } from '@/lib/profile';
 import { manilaYear } from '@/lib/date';
 import { csvQuote } from '@/lib/csv';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export async function GET(req: NextRequest) {
-  const { sb, user, isActive, canExportLeaveCsv } = await getProfile();
+  const { sb, user, isActive, canExportLeaveCsv } = await getAuthProfile();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!isActive || !canExportLeaveCsv) {
     return NextResponse.json(

@@ -97,7 +97,7 @@ export async function uploadActivityPhoto(
       .from(ACTIVITY_MEDIA_BUCKET)
       .upload(storagePath, compressed.blob, {
         contentType: compressed.mimeType,
-        cacheControl: '3600',
+        cacheControl: '604800',
         upsert: false,
       });
 
@@ -147,7 +147,7 @@ export async function uploadDataUrlPhoto(
       .from(ACTIVITY_MEDIA_BUCKET)
       .upload(storagePath, blob, {
         contentType: mimeType,
-        cacheControl: '3600',
+        cacheControl: '604800',
         upsert: false,
       });
 

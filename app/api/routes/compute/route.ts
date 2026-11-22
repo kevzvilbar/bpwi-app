@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getProfile } from '@/lib/profile';
+import { getAuthProfile } from '@/lib/profile';
 import {
   buildStraightLineRoute,
   chunkRouteWaypoints,
@@ -40,7 +40,7 @@ type OsrmResponse = {
 };
 
 export async function POST(req: NextRequest) {
-  const profile = await getProfile();
+  const profile = await getAuthProfile();
   if (!profile.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

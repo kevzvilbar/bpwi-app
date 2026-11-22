@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
-import ActivityLoggerModal, { type LinkedPmTask } from '@/components/ActivityLoggerModal';
+import { subscribeVisibilityAwareChannel } from '@/lib/supabase/realtime';
+import type { LinkedPmTask } from '@/components/ActivityLoggerModal';
 import MobileActivitiesAndSchedule, {
   type MobileArea,
   type MobileOp,
@@ -12,6 +14,8 @@ import MobileActivitiesAndSchedule, {
 import { ACTIVITY_BY_ID, type DailyActivityRow } from '@/lib/activity-types';
 import { enqueueOfflineActivity, flushOfflineQueue, getOfflineQueue, type PendingOfflineActivity } from '@/lib/offline-queue';
 import { AlertBanner, Badge, SegmentedTabs } from '@/components/ui';
+
+const ActivityLoggerModal = dynamic(() => import('@/components/ActivityLoggerModal'), { ssr: false });
 
 type Op = MobileOp;
 type Shift = MobileShift;
@@ -124,51 +128,57 @@ export default function MobileView(p: {
   useEffect(() => setActivities(p.initialActivities ?? []), [p.initialActivities]);
   useEffect(() => {
     const sb = supabaseBrowser();
-    const channel = sb
-      .channel('pm-mobile-tasks')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pm_tasks' }, (payload) => {
-        const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as Partial<Task> & { id?: string };
-        if (!rec?.id) return;
-        if (payload.eventType === 'DELETE') {
-          setTasks((prev) => prev.filter((x) => x.id !== rec.id));
-          return;
-        }
-        const nextTask: Task = {
-          id: rec.id,
-          activity_type: rec.activity_type ?? 'FLUSH',
-          title: rec.title ?? '',
-          locations: rec.locations ?? [],
-          asset: rec.asset ?? null,
-          assigned_operator_ids: rec.assigned_operator_ids ?? [],
-          scheduled_date: rec.scheduled_date ?? '',
-          status: (rec.status as Task['status']) ?? 'planned',
-          completed_at: rec.completed_at ?? null,
-          remarks: rec.remarks ?? null,
-        };
-        setTasks((prev) => {
-          const exists = prev.some((x) => x.id === nextTask.id);
-          return exists
-            ? prev.map((x) => (x.id === nextTask.id ? nextTask : x))
-            : [...prev, nextTask].sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
-        });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_activities' }, (payload) => {
-        const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as DailyActivityRow;
-        if (!rec?.id) return;
-        if (payload.eventType === 'DELETE') {
-          setActivities((prev) => prev.filter((x) => x.id !== rec.id));
-          return;
-        }
-        if (rec.activity_date !== p.date) return;
-        setActivities((prev) => {
-          const exists = prev.some((x) => x.id === rec.id);
-          return exists ? prev.map((x) => (x.id === rec.id ? rec : x)) : [rec, ...prev];
-        });
-      })
-      .subscribe();
-    return () => {
-      sb.removeChannel(channel);
-    };
+    return subscribeVisibilityAwareChannel({
+      sb,
+      channelName: 'pm-mobile-tasks',
+      listeners: [
+        {
+          table: 'pm_tasks',
+          onEvent: (payload) => {
+            const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as Partial<Task> & { id?: string };
+            if (!rec?.id) return;
+            if (payload.eventType === 'DELETE') {
+              setTasks((prev) => prev.filter((x) => x.id !== rec.id));
+              return;
+            }
+            const nextTask: Task = {
+              id: rec.id,
+              activity_type: rec.activity_type ?? 'FLUSH',
+              title: rec.title ?? '',
+              locations: rec.locations ?? [],
+              asset: rec.asset ?? null,
+              assigned_operator_ids: rec.assigned_operator_ids ?? [],
+              scheduled_date: rec.scheduled_date ?? '',
+              status: (rec.status as Task['status']) ?? 'planned',
+              completed_at: rec.completed_at ?? null,
+              remarks: rec.remarks ?? null,
+            };
+            setTasks((prev) => {
+              const exists = prev.some((x) => x.id === nextTask.id);
+              return exists
+                ? prev.map((x) => (x.id === nextTask.id ? nextTask : x))
+                : [...prev, nextTask].sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
+            });
+          },
+        },
+        {
+          table: 'daily_activities',
+          onEvent: (payload) => {
+            const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as unknown as DailyActivityRow;
+            if (!rec?.id) return;
+            if (payload.eventType === 'DELETE') {
+              setActivities((prev) => prev.filter((x) => x.id !== rec.id));
+              return;
+            }
+            if (rec.activity_date !== p.date) return;
+            setActivities((prev) => {
+              const exists = prev.some((x) => x.id === rec.id);
+              return exists ? prev.map((x) => (x.id === rec.id ? rec : x)) : [rec, ...prev];
+            });
+          },
+        },
+      ],
+    });
   }, [p.date]);
   useEffect(() => {
     setNowMinutes(manilaClockMinutes());
@@ -757,7 +767,7 @@ export default function MobileView(p: {
           </button>
         </div>
       )}
-      {p.canLogActivity && p.orgId && (
+      {p.canLogActivity && p.orgId && loggerOpen && (
         <ActivityLoggerModal
           open={loggerOpen}
           onClose={() => {

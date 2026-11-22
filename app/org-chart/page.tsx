@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getProfile } from '@/lib/profile';
+import { ORG_POSITION_COLUMNS } from '@/lib/query-columns';
 import OrgChart from '@/components/OrgChart';
 import type { OrgPositionRow } from '@/lib/org-chart';
 
@@ -16,7 +17,7 @@ export default async function OrgChartPage() {
   const [posRes, usersRes, opsRes, orgMetaRes] = await Promise.all([
     sb
       .from('org_positions')
-      .select('*')
+      .select(ORG_POSITION_COLUMNS)
       .eq('organization_id', orgId)
       .order('sort_order'),
     sb

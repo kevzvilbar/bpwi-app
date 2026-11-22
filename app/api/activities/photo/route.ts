@@ -42,6 +42,17 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const etag = `"bpwi-photo-${Buffer.from(storagePath).toString('base64url')}"`;
+    const cacheHeaders = {
+      'Cache-Control': 'private, max-age=86400, immutable',
+      ETag: etag,
+      Vary: 'Cookie',
+    };
+    const ifNoneMatch = req.headers.get('if-none-match');
+    if (ifNoneMatch && ifNoneMatch.split(',').some((tag) => tag.trim() === etag || tag.trim() === '*')) {
+      return new NextResponse(null, { status: 304, headers: cacheHeaders });
+    }
+
     const { data: blob, error } = await me.storage
       .from(ACTIVITY_MEDIA_BUCKET)
       .download(storagePath);
@@ -55,7 +66,7 @@ export async function GET(req: Request) {
       status: 200,
       headers: {
         'Content-Type': getActivityPhotoContentType(storagePath),
-        'Cache-Control': 'private, max-age=300',
+        ...cacheHeaders,
         'X-Content-Type-Options': 'nosniff',
         'Content-Security-Policy': "default-src 'none'",
       },

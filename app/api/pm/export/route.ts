@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getProfile, fetchAll } from '@/lib/profile';
+import { getAuthProfile, fetchAll } from '@/lib/profile';
 import { manilaToday } from '@/lib/date';
 import { csvQuote } from '@/lib/csv';
 
@@ -14,7 +14,7 @@ const PRESET_LABELS: Record<string, string> = {
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function GET(req: NextRequest) {
-  const { sb, user, isAdmin, isManager } = await getProfile();
+  const { sb, user, isAdmin, isManager } = await getAuthProfile();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!isAdmin && !isManager) {
     return NextResponse.json({ error: 'Only admins and department heads can export PM schedules' }, { status: 403 });

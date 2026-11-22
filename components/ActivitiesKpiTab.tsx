@@ -1,21 +1,58 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { supabaseBrowser } from '@/lib/supabase/client';
+import {
+  DAILY_ACTIVITY_GENSET_COLUMNS,
+  DAILY_ACTIVITY_KPI_COLUMNS,
+  JOB_ORDER_KPI_COLUMNS,
+} from '@/lib/query-columns';
 import {
   ACTIVITY_BY_ID,
   ACTIVITY_CATEGORIES,
   ACTIVITY_CATEGORY_LABELS,
   type ActivityCategory,
-  type DailyActivityRow,
-  type JobOrderRow,
 } from '@/lib/activity-types';
-import { SegmentedTabs, StatCard } from '@/components/ui';
+import { AlertBanner, SegmentedTabs, StatCard } from '@/components/ui';
 
 type KpiOp = { id: string; full_name: string; position: string | null };
 type KpiArea = { id: string; code: string; name: string | null; category: string };
 type KpiShift = { id: string; code: string; duration_hours: number; is_off: boolean };
 type KpiAsg = { operator_id: string; schedule_date: string; shift_type_id: string | null; area_code_id: string | null };
 type KpiPm = { id: string; scheduled_date: string; completed_at: string | null; status: string; assigned_operator_ids: string[] };
+type KpiAct = {
+  id: string;
+  activity_date: string;
+  activity_type: string;
+  status: string;
+  lead_operator_id: string | null;
+  crew_operator_ids: string[] | null;
+  area_code_id: string | null;
+};
+type KpiGensetAct = {
+  id: string;
+  activity_date: string;
+  area_code_id: string | null;
+  site_or_well: string | null;
+  details: Record<string, unknown> | null;
+};
+type KpiJo = {
+  id: string;
+  assigned_operator_ids: string[] | null;
+  status: string;
+  created_at: string;
+  completed_at: string | null;
+  deadline: string | null;
+};
+
+type KpiDataset = {
+  fetchedDays: 7 | 30 | 90;
+  acts: KpiAct[];
+  gensetActs: KpiGensetAct[];
+  assignments: KpiAsg[];
+  pmTasks: KpiPm[];
+  jobOrders: KpiJo[];
+};
 
 function subtractDays(ymd: string, n: number) {
   const d = new Date(ymd + 'T00:00:00Z');
@@ -23,18 +60,128 @@ function subtractDays(ymd: string, n: number) {
   return d.toISOString().slice(0, 10);
 }
 
+async function fetchAllClient<T>(
+  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<{ data: T[]; error: string }> {
+  const out: T[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await build(from, from + 999);
+    if (error) return { data: out, error: error.message };
+    out.push(...(data ?? []));
+    if (!data || data.length < 1000) break;
+  }
+  return { data: out, error: '' };
+}
+
 export default function ActivitiesKpiTab(p: {
   anchorDate: string;
   operators: KpiOp[];
   areas: KpiArea[];
   shifts: KpiShift[];
-  assignments: KpiAsg[];
-  activities: DailyActivityRow[];
-  pmTasks: KpiPm[];
-  jobOrders: JobOrderRow[];
 }) {
   const [periodDays, setPeriodDays] = useState<7 | 30 | 90>(30);
+  const [dataset, setDataset] = useState<KpiDataset | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [errMsg, setErrMsg] = useState<string>('');
+  const cacheRef = useRef<{ anchorDate: string; dataset: KpiDataset } | null>(null);
+
   const startDate = useMemo(() => subtractDays(p.anchorDate, periodDays - 1), [p.anchorDate, periodDays]);
+
+  useEffect(() => {
+    const cached = cacheRef.current;
+    if (cached && cached.anchorDate === p.anchorDate && periodDays <= cached.dataset.fetchedDays) {
+      setDataset(cached.dataset);
+      setLoading(false);
+      setErrMsg('');
+      return;
+    }
+
+    let active = true;
+    const loadKpis = async () => {
+      setLoading(true);
+      setErrMsg('');
+      const fetchStart = subtractDays(p.anchorDate, periodDays - 1);
+      const sb = supabaseBrowser();
+
+      const [actsRes, gensetRes, asgRes, pmRes, joRes] = await Promise.all([
+        fetchAllClient<KpiAct>((from, to) =>
+          sb
+            .from('daily_activities')
+            .select(DAILY_ACTIVITY_KPI_COLUMNS)
+            .gte('activity_date', fetchStart)
+            .lte('activity_date', p.anchorDate)
+            .order('activity_date', { ascending: false })
+            .range(from, to),
+        ),
+        sb
+          .from('daily_activities')
+          .select(DAILY_ACTIVITY_GENSET_COLUMNS)
+          .eq('activity_type', 'genset_monitoring')
+          .gte('activity_date', fetchStart)
+          .lte('activity_date', p.anchorDate)
+          .order('activity_date', { ascending: false })
+          .limit(36),
+        fetchAllClient<KpiAsg>((from, to) =>
+          sb
+            .from('schedule_assignments')
+            .select('operator_id, schedule_date, shift_type_id, area_code_id')
+            .gte('schedule_date', fetchStart)
+            .lte('schedule_date', p.anchorDate)
+            .order('schedule_date')
+            .range(from, to),
+        ),
+        fetchAllClient<KpiPm>((from, to) =>
+          sb
+            .from('pm_tasks')
+            .select('id, scheduled_date, completed_at, status, assigned_operator_ids')
+            .gte('scheduled_date', fetchStart)
+            .lte('scheduled_date', p.anchorDate)
+            .order('scheduled_date')
+            .range(from, to),
+        ),
+        fetchAllClient<KpiJo>((from, to) =>
+          sb
+            .from('job_orders')
+            .select(JOB_ORDER_KPI_COLUMNS)
+            .or(`completed_at.gte.${fetchStart}T00:00:00Z,created_at.gte.${fetchStart}T00:00:00Z`)
+            .order('created_at', { ascending: false })
+            .range(from, to),
+        ),
+      ]);
+
+      if (!active) return;
+
+      const firstErr =
+        actsRes.error ||
+        gensetRes.error?.message ||
+        asgRes.error ||
+        pmRes.error ||
+        joRes.error ||
+        '';
+      if (firstErr) {
+        setErrMsg(firstErr);
+        setLoading(false);
+        return;
+      }
+
+      const nextData: KpiDataset = {
+        fetchedDays: periodDays,
+        acts: actsRes.data,
+        gensetActs: (gensetRes.data ?? []) as KpiGensetAct[],
+        assignments: asgRes.data,
+        pmTasks: pmRes.data,
+        jobOrders: joRes.data,
+      };
+      cacheRef.current = { anchorDate: p.anchorDate, dataset: nextData };
+      setDataset(nextData);
+      setLoading(false);
+    };
+
+    void loadKpis();
+    return () => {
+      active = false;
+    };
+  }, [p.anchorDate, periodDays]);
 
   const shiftBy = useMemo(() => new Map(p.shifts.map((s) => [s.id, s])), [p.shifts]);
   const areaBy = useMemo(() => new Map(p.areas.map((a) => [a.id, a])), [p.areas]);
@@ -44,27 +191,27 @@ export default function ActivitiesKpiTab(p: {
   );
 
   const periodActs = useMemo(
-    () => p.activities.filter((a) => a.activity_date >= startDate && a.activity_date <= p.anchorDate),
-    [p.activities, startDate, p.anchorDate],
+    () => (dataset?.acts ?? []).filter((a) => a.activity_date >= startDate && a.activity_date <= p.anchorDate),
+    [dataset, startDate, p.anchorDate],
   );
 
   const periodPms = useMemo(
-    () => p.pmTasks.filter((t) => t.scheduled_date >= startDate && t.scheduled_date <= p.anchorDate),
-    [p.pmTasks, startDate, p.anchorDate],
+    () => (dataset?.pmTasks ?? []).filter((t) => t.scheduled_date >= startDate && t.scheduled_date <= p.anchorDate),
+    [dataset, startDate, p.anchorDate],
   );
 
   const periodJos = useMemo(
     () =>
-      p.jobOrders.filter((j) => {
+      (dataset?.jobOrders ?? []).filter((j) => {
         const d = (j.completed_at ?? j.created_at).slice(0, 10);
         return d >= startDate && d <= p.anchorDate;
       }),
-    [p.jobOrders, startDate, p.anchorDate],
+    [dataset, startDate, p.anchorDate],
   );
 
   const periodAsgs = useMemo(
-    () => p.assignments.filter((a) => a.schedule_date >= startDate && a.schedule_date <= p.anchorDate),
-    [p.assignments, startDate, p.anchorDate],
+    () => (dataset?.assignments ?? []).filter((a) => a.schedule_date >= startDate && a.schedule_date <= p.anchorDate),
+    [dataset, startDate, p.anchorDate],
   );
 
   // Per-operator scorecard
@@ -198,8 +345,8 @@ export default function ActivitiesKpiTab(p: {
   const gensetLogs = useMemo(() => {
     const prim = (v: unknown): string | number | null =>
       typeof v === 'string' || typeof v === 'number' ? v : null;
-    return periodActs
-      .filter((a) => a.activity_type === 'genset_monitoring')
+    return (dataset?.gensetActs ?? [])
+      .filter((a) => a.activity_date >= startDate && a.activity_date <= p.anchorDate)
       .slice(0, 12)
       .map((a) => {
         const d = a.details ?? {};
@@ -214,7 +361,7 @@ export default function ActivitiesKpiTab(p: {
           cause: typeof d.gensetCause === 'string' ? d.gensetCause : 'Routine',
         };
       });
-  }, [periodActs, areaBy]);
+  }, [dataset, startDate, p.anchorDate, areaBy]);
 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
@@ -224,6 +371,7 @@ export default function ActivitiesKpiTab(p: {
           <strong style={{ fontSize: 15 }}>Performance &amp; Telemetry Scorecards</strong>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
             Window: <b>{startDate}</b> to <b>{p.anchorDate}</b>
+            {loading && <span style={{ marginLeft: 8, color: 'var(--accent)', fontWeight: 600 }}>Loading window…</span>}
           </div>
         </div>
         <SegmentedTabs
@@ -238,6 +386,18 @@ export default function ActivitiesKpiTab(p: {
           ]}
         />
       </div>
+
+      {errMsg && (
+        <AlertBanner tone="danger">
+          Could not load KPI metrics: {errMsg}
+        </AlertBanner>
+      )}
+
+      {loading && !dataset && (
+        <div className="card" style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--text-secondary)' }}>
+          Loading {periodDays}-day KPI metrics…
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
         <StatCard

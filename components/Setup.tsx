@@ -1,22 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { supabaseBrowser } from '@/lib/supabase/client';
-import DepartmentHeads, { type Grant, type Person } from '@/components/DepartmentHeads';
-import HolidaysManager, { type HolidayRow } from '@/components/HolidaysManager';
-import SetupReferenceTabs from '@/components/SetupReferenceTabs';
-import SetupUsersAndAudit, {
-  SETUP_CELL_STYLE,
-  SETUP_INPUT_STYLE,
-  getSetupSaveLabel,
-  type OrgPosLite,
-  type SetupArea,
-  type SetupAuditLog,
-  type SetupOp,
-  type SetupShift,
-  type SetupUserProfile,
+import { getSetupSaveLabel, SETUP_CELL_STYLE, SETUP_INPUT_STYLE } from '@/lib/setup-constants';
+import type { Grant, Person } from '@/components/DepartmentHeads';
+import type { HolidayRow } from '@/components/HolidaysManager';
+import type {
+  OrgPosLite,
+  SetupArea,
+  SetupAuditLog,
+  SetupOp,
+  SetupShift,
+  SetupUserProfile,
 } from '@/components/SetupUsersAndAudit';
 import { Badge, SegmentedTabs } from '@/components/ui';
+
+const DepartmentHeads = dynamic(() => import('@/components/DepartmentHeads'), { ssr: false });
+const HolidaysManager = dynamic(() => import('@/components/HolidaysManager'), { ssr: false });
+const SetupReferenceTabs = dynamic(() => import('@/components/SetupReferenceTabs'), { ssr: false });
+const SetupUsersAndAudit = dynamic(() => import('@/components/SetupUsersAndAudit'), { ssr: false });
 
 type Op = SetupOp;
 type Shift = SetupShift;
@@ -84,6 +87,34 @@ export default function Setup(p: {
   const [dirty, setDirty] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState('');
   const [confirmDel, setConfirmDel] = useState<{ table: string; id: string; idx: number; label: string } | null>(null);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(p.auditLogs ?? []);
+  const [auditLoaded, setAuditLoaded] = useState<boolean>(Boolean(p.auditLogs));
+  const [auditLoading, setAuditLoading] = useState<boolean>(false);
+  const [auditError, setAuditError] = useState<string>('');
+
+  const loadAuditLogs = useCallback(async (force = false) => {
+    if (!p.isAdmin || (!force && auditLoaded)) return;
+    setAuditLoading(true);
+    setAuditError('');
+    const { data, error } = await supabaseBrowser()
+      .from('audit_logs')
+      .select('id, created_at, user_id, action, table_name, record_id, old_value, new_value')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    setAuditLoading(false);
+    if (error) {
+      setAuditError(error.message);
+      return;
+    }
+    setAuditLogs((data ?? []) as AuditLog[]);
+    setAuditLoaded(true);
+  }, [p.isAdmin, auditLoaded]);
+
+  useEffect(() => {
+    if (tab === 'audit' && !auditLoaded) {
+      void loadAuditLogs();
+    }
+  }, [tab, auditLoaded, loadAuditLogs]);
 
   async function saveRow<T extends { id?: string }>(
     table: string,
@@ -160,7 +191,6 @@ export default function Setup(p: {
   }
 
   const pendingUsers = users.filter((u) => !u.is_active).length;
-  const auditLogs = p.auditLogs ?? [];
   const userNameMap = new Map(users.map((u) => [u.id, u.full_name || u.id.slice(0, 8)]));
   const opNameMap = new Map(ops.filter((o) => o.id).map((o) => [o.id as string, o.full_name]));
   const shiftCodeMap = new Map(shifts.filter((s) => s.id).map((s) => [s.id as string, s.code]));
@@ -186,7 +216,7 @@ export default function Setup(p: {
             { id: 'holidays', label: `Holidays (${(p.holidays ?? []).length})` },
             { id: 'users', label: `Users & roles (${users.length}${pendingUsers ? ` · ${pendingUsers} pending` : ''})` },
             { id: 'heads', label: `Department heads (${(p.people ?? []).filter((x) => x.role === 'manager').length})` },
-            { id: 'audit', label: `Activity log (${auditLogs.length})` },
+            { id: 'audit', label: auditLoaded ? `Activity log (${auditLogs.length})` : 'Activity log' },
           ]}
         />
         {dirty.size > 0 && (
@@ -201,13 +231,13 @@ export default function Setup(p: {
         )}
       </div>
 
-      <div hidden={tab !== 'heads'}>
+      {tab === 'heads' && (
         <DepartmentHeads people={p.people ?? []} grants={p.grants ?? []} orgId={p.orgId} error={p.headsError ?? ''} />
-      </div>
+      )}
 
-      <div hidden={tab !== 'holidays'}>
+      {tab === 'holidays' && (
         <HolidaysManager initialHolidays={p.holidays ?? []} orgId={p.orgId} isAdmin={p.isAdmin} error={p.holidaysError} />
-      </div>
+      )}
 
       <div hidden={tab === 'heads' || tab === 'holidays'}>
       {/* Mobile Cards (<= 640px) */}
@@ -302,6 +332,9 @@ export default function Setup(p: {
             ops={ops}
             orgPositions={orgPositions}
             auditLogs={auditLogs}
+            auditLoading={auditLoading}
+            auditError={auditError}
+            onRefreshAudit={() => void loadAuditLogs(true)}
             userNameMap={userNameMap}
             opNameMap={opNameMap}
             shiftCodeMap={shiftCodeMap}
@@ -426,6 +459,9 @@ export default function Setup(p: {
             ops={ops}
             orgPositions={orgPositions}
             auditLogs={auditLogs}
+            auditLoading={auditLoading}
+            auditError={auditError}
+            onRefreshAudit={() => void loadAuditLogs(true)}
             userNameMap={userNameMap}
             opNameMap={opNameMap}
             shiftCodeMap={shiftCodeMap}
@@ -461,7 +497,7 @@ export default function Setup(p: {
               <button className="btn" onClick={() => setConfirmDel(null)}>
                 Cancel
               </button>
-              <button className="btn" style={{ background: '#b91c1c', borderColor: '#b91c1c', color: '#fff' }} onClick={executeDelete}>
+              <button className="btn" style={{ background: 'var(--danger)', borderColor: 'var(--danger)', color: '#fff' }} onClick={executeDelete}>
                 Delete
               </button>
             </div>

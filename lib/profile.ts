@@ -80,7 +80,7 @@ export type ChangeRequestItem = {
   created_at: string;
 };
 
-export const getProfile = cache(async () => {
+export const getAuthProfile = cache(async () => {
   const sb = await supabaseServer();
   const {
     data: { user },
@@ -90,6 +90,7 @@ export const getProfile = cache(async () => {
   type ProfRow = {
     full_name?: string | null;
     role?: string | null;
+    job_title?: string | null;
     is_active?: boolean | null;
     organization_id?: string | null;
     operator_id?: string | null;
@@ -104,7 +105,7 @@ export const getProfile = cache(async () => {
   if (user) {
     const res = await sb
       .from('user_profiles')
-      .select('full_name, role, is_active, organization_id, operator_id, can_approve, organizations(name, app_title)')
+      .select('full_name, role, job_title, is_active, organization_id, operator_id, can_approve, organizations(name, app_title)')
       .eq('id', user.id)
       .maybeSingle();
 
@@ -131,77 +132,97 @@ export const getProfile = cache(async () => {
   const orgId = (prof?.organization_id ?? '') as string;
   const isActive = Boolean(prof && prof.is_active !== false);
   const role = (prof?.role ?? 'viewer') as string;
-  const isAdmin = isActive && role === 'admin';
-  const isManager = isActive && role === 'manager';
+  const canApproveFlag = prof?.can_approve === true;
+  const jobTitle = (prof?.job_title ?? null) as string | null;
+  const perms = computePermissions({
+    role,
+    isActive,
+    canApproveFlag,
+    hasLiveEditGrant: false,
+  });
+
+  return {
+    sb,
+    user,
+    role,
+    isActive,
+    orgId,
+    orgName,
+    appTitle,
+    operatorId: (prof?.operator_id ?? null) as string | null,
+    name: (prof?.full_name ?? (user?.user_metadata?.full_name as string | undefined) ?? '') as string,
+    jobTitle,
+    canApproveFlag,
+    isAdmin: perms.isAdmin,
+    isManager: perms.isManager,
+    canApprove: perms.canApproveRequests,
+    canLogActivity: perms.canLogActivity,
+    canVerifyActivity: perms.canVerifyActivity,
+    canGenerate: perms.canGenerateSchedule,
+    canExportLeaveCsv: perms.canExportLeaveCsv,
+  };
+});
+
+export const getProfile = cache(async () => {
+  const auth = await getAuthProfile();
+  const { sb, user, role, isActive, orgId, orgName, appTitle, operatorId, name, jobTitle, canApproveFlag, isAdmin, isManager } =
+    auth;
+
+  const nowMs = Date.now();
+  const canApprove = auth.canApprove;
+
+  const [grantsRes, usersCountRes, reqCountRes, repCountRes] = await Promise.all([
+    user && isManager
+      ? sb
+          .from('edit_grants')
+          .select('starts_at, ends_at, date_from, date_to, note')
+          .eq('user_id', user.id)
+          .is('revoked_at', null)
+          .gt('ends_at', new Date(nowMs).toISOString())
+          .order('starts_at')
+      : Promise.resolve({ data: null }),
+    isAdmin && orgId
+      ? sb.from('user_profiles').select('id', { count: 'exact', head: true }).eq('is_active', false)
+      : Promise.resolve({ count: 0 }),
+    user && orgId && (canApprove || isManager)
+      ? canApprove
+        ? sb.from('change_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending')
+        : sb.from('change_requests').select('id', { count: 'exact', head: true }).eq('requester_id', user.id).in('status', ['draft', 'pending'])
+      : Promise.resolve({ count: 0 }),
+    user && orgId && isActive && ['admin', 'scheduler', 'manager'].includes(role)
+      ? (() => {
+          const q = sb
+            .from('accomplishment_reports')
+            .select('id', { count: 'exact', head: true })
+            .eq('organization_id', orgId)
+            .eq('status', 'submitted');
+          return role === 'manager' ? q.eq('assigned_head_id', user.id) : q;
+        })()
+      : Promise.resolve({ count: 0, error: null }),
+  ]);
 
   // Department heads are read-only unless an admin has opened an edit window for them. The database
   // enforces the window (and its date range) on every write; this only drives what the UI offers.
   let editGrant: EditGrant | null = null;
   let nextGrant: EditGrant | null = null;
-  if (user && isManager) {
-    const nowMs = Date.now();
-    const { data } = await sb
-      .from('edit_grants')
-      .select('starts_at, ends_at, date_from, date_to, note')
-      .eq('user_id', user.id)
-      .is('revoked_at', null)
-      .gt('ends_at', new Date(nowMs).toISOString())
-      .order('starts_at');
-    for (const g of (data ?? []) as EditGrant[]) {
-      if (new Date(g.starts_at).getTime() <= nowMs) {
-        if (!editGrant || new Date(g.ends_at) > new Date(editGrant.ends_at)) editGrant = g;
-      } else if (!nextGrant) {
-        nextGrant = g;
-      }
+  for (const g of (grantsRes.data ?? []) as EditGrant[]) {
+    if (new Date(g.starts_at).getTime() <= nowMs) {
+      if (!editGrant || new Date(g.ends_at) > new Date(editGrant.ends_at)) editGrant = g;
+    } else if (!nextGrant) {
+      nextGrant = g;
     }
   }
 
   const perms = computePermissions({
     role,
     isActive,
-    canApproveFlag: prof?.can_approve === true,
+    canApproveFlag,
     hasLiveEditGrant: editGrant !== null,
   });
-  const canApprove = perms.canApproveRequests;
-  const canPropose = perms.canProposeRequests;
 
-  let pendingUsersCount = 0;
-  if (isAdmin && orgId) {
-    const { count } = await sb
-      .from('user_profiles')
-      .select('id', { count: 'exact', head: true })
-      .eq('is_active', false);
-    pendingUsersCount = count ?? 0;
-  }
-
-  let pendingRequestsCount = 0;
-  if (user && orgId) {
-    if (canApprove) {
-      const { count } = await sb
-        .from('change_requests')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'pending');
-      pendingRequestsCount = count ?? 0;
-    } else if (isManager) {
-      const { count } = await sb
-        .from('change_requests')
-        .select('id', { count: 'exact', head: true })
-        .eq('requester_id', user.id)
-        .in('status', ['draft', 'pending']);
-      pendingRequestsCount = count ?? 0;
-    }
-  }
-
-  let pendingReportsCount = 0;
-  if (user && orgId && isActive && ['admin', 'scheduler', 'manager'].includes(role)) {
-    const q = sb
-      .from('accomplishment_reports')
-      .select('id', { count: 'exact', head: true })
-      .eq('organization_id', orgId)
-      .eq('status', 'submitted');
-    const { count, error: repErr } = role === 'manager' ? await q.eq('assigned_head_id', user.id) : await q;
-    if (!repErr) pendingReportsCount = count ?? 0;
-  }
+  const pendingUsersCount = usersCountRes.count ?? 0;
+  const pendingRequestsCount = reqCountRes.count ?? 0;
+  const pendingReportsCount = !('error' in repCountRes && repCountRes.error) ? (repCountRes.count ?? 0) : 0;
 
   return {
     sb,
@@ -214,10 +235,11 @@ export const getProfile = cache(async () => {
     orgId,
     orgName,
     appTitle,
-    operatorId: (prof?.operator_id ?? null) as string | null,
-    name: (prof?.full_name ?? (user?.user_metadata?.full_name as string | undefined) ?? '') as string,
+    operatorId,
+    name,
+    jobTitle,
     canEdit: perms.canEditSchedule,
-    canPropose,
+    canPropose: perms.canProposeRequests,
     canClosePm: perms.canClosePm,
     /** Only operators and admins can submit daily field activity logs. */
     canLogActivity: perms.canLogActivity,
@@ -226,7 +248,7 @@ export const getProfile = cache(async () => {
     /** Bulk schedule generation stays with admins and schedulers. */
     canGenerate: perms.canGenerateSchedule,
     /** Admins, plus anyone an admin has delegated approval to. */
-    canApprove,
+    canApprove: perms.canApproveRequests,
     canExportLeaveCsv: perms.canExportLeaveCsv,
     isAdmin,
     isManager,

@@ -7,8 +7,16 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  poweredByHeader: false,
   async headers() {
     return [
+      {
+        source: '/(bpwi-logo\\.png|bpwi-logo\\.svg|icon-192\\.png|icon-512\\.png)',
+        headers: [
+          ...securityHeaders,
+          { key: 'Cache-Control', value: 'public, max-age=604800, immutable' },
+        ],
+      },
       {
         source: '/(.*)',
         headers: securityHeaders,

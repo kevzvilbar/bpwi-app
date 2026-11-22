@@ -259,7 +259,7 @@ export type DailyActivityRow = {
   photo_storage_paths: string[];
   photos_expires_at: string | null;
   photos_purged_at: string | null;
-  signature_data: string | null;
+  signature_data?: string | null;
   verified_by: string | null;
   verified_at: string | null;
   review_note: string | null;

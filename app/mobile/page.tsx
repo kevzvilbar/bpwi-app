@@ -1,5 +1,11 @@
 import { getProfile } from '@/lib/profile';
 import { manilaNowMinutes, manilaToday } from '@/lib/date';
+import {
+  buildOwnActivityOrFilter,
+  DAILY_ACTIVITY_LIST_COLUMNS,
+  PM_TASK_COLUMNS,
+} from '@/lib/query-columns';
+import type { DailyActivityRow } from '@/lib/activity-types';
 import MobileView from '@/components/MobileView';
 
 export const dynamic = 'force-dynamic';
@@ -19,33 +25,51 @@ export default async function MobilePage({ searchParams }: { searchParams: Promi
   const nowMinutes = manilaNowMinutes();
   const pmFrom = addDays(date, -14);
   const pmTo = addDays(date, 30);
+  const ownActFilter = !canVerifyActivity ? buildOwnActivityOrFilter(user?.id, operatorId) : null;
 
-  const areasPrimary = await sb.from('area_codes').select('id, code, name, category, sub_sites');
-  const areas = areasPrimary.error
-    ? await sb.from('area_codes').select('id, code, name, category')
-    : areasPrimary;
-
-  const [ops, shifts, asg, prevAsg, standby, tasks, actTypes, dailyActs] = await Promise.all([
+  const [areasPrimary, ops, shifts, allAsg, standby, tasks, actTypes, dailyActs] = await Promise.all([
+    sb.from('area_codes').select('id, code, name, category, sub_sites'),
     sb
       .from('operators')
       .select('id, full_name, position, phone_number, default_station')
       .eq('is_active', true)
       .order('sort_order'),
     sb.from('shift_types').select('id, code, description, start_time, end_time, background_color, text_color, is_off').order('code'),
-    sb.from('schedule_assignments').select('operator_id, shift_type_id, area_code_id').eq('schedule_date', date),
-    sb.from('schedule_assignments').select('operator_id, shift_type_id, area_code_id').eq('schedule_date', prevDate),
+    sb
+      .from('schedule_assignments')
+      .select('operator_id, schedule_date, shift_type_id, area_code_id')
+      .in('schedule_date', [date, prevDate]),
     sb.from('standby_assignments').select('operator_id, standby_type').eq('schedule_date', date),
-    sb.from('pm_tasks').select('*').gte('scheduled_date', pmFrom).lte('scheduled_date', pmTo).order('scheduled_date'),
+    sb.from('pm_tasks').select(PM_TASK_COLUMNS).gte('scheduled_date', pmFrom).lte('scheduled_date', pmTo).order('scheduled_date'),
     sb.from('pm_activity_types').select('code, label, short_label, color'),
-    sb.from('daily_activities').select('*').eq('activity_date', date).order('created_at', { ascending: false }),
+    (() => {
+      let q = sb
+        .from('daily_activities')
+        .select(DAILY_ACTIVITY_LIST_COLUMNS)
+        .eq('activity_date', date)
+        .order('created_at', { ascending: false });
+      if (ownActFilter) q = q.or(ownActFilter);
+      return q;
+    })(),
   ]);
+
+  const areas = areasPrimary.error
+    ? await sb.from('area_codes').select('id, code, name, category')
+    : areasPrimary;
+
+  const asgRows = allAsg.data ?? [];
+  const todayAsg = asgRows
+    .filter((r) => r.schedule_date === date)
+    .map(({ operator_id, shift_type_id, area_code_id }) => ({ operator_id, shift_type_id, area_code_id }));
+  const prevAsg = asgRows
+    .filter((r) => r.schedule_date === prevDate)
+    .map(({ operator_id, shift_type_id, area_code_id }) => ({ operator_id, shift_type_id, area_code_id }));
 
   const error =
     ops.error?.message ||
     shifts.error?.message ||
     areas.error?.message ||
-    asg.error?.message ||
-    prevAsg.error?.message ||
+    allAsg.error?.message ||
     standby.error?.message ||
     tasks.error?.message ||
     '';
@@ -66,12 +90,12 @@ export default async function MobilePage({ searchParams }: { searchParams: Promi
       operators={ops.data ?? []}
       shifts={shifts.data ?? []}
       areas={areas.data ?? []}
-      assignments={asg.data ?? []}
-      yesterdayAssignments={prevAsg.data ?? []}
+      assignments={todayAsg}
+      yesterdayAssignments={prevAsg}
       standby={standby.data ?? []}
       tasks={tasks.data ?? []}
       activityTypes={actTypes.error ? [] : (actTypes.data ?? [])}
-      initialActivities={dailyActs.error ? [] : (dailyActs.data ?? [])}
+      initialActivities={dailyActs.error ? [] : ((dailyActs.data ?? []) as DailyActivityRow[])}
       error={error}
     />
   );

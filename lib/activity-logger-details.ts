@@ -401,3 +401,35 @@ export function buildActivityDetailsPayload(
   }
   return {};
 }
+
+export function currentManilaHHMM(): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Manila',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  const h = parts.find((p) => p.type === 'hour')?.value ?? '08';
+  const m = parts.find((p) => p.type === 'minute')?.value ?? '00';
+  return `${h === '24' ? '00' : h}:${m}`;
+}
+
+export function toManilaTimestampIso(ymd: string, hhmm: string): string | null {
+  if (!ymd || !hhmm || !/^\d{2}:\d{2}$/.test(hhmm)) return null;
+  try {
+    return new Date(`${ymd}T${hhmm}:00+08:00`).toISOString();
+  } catch {
+    return null;
+  }
+}
+
+export function calcDurationMinutes(startHHMM: string, endHHMM: string): string {
+  if (!/^\d{2}:\d{2}$/.test(startHHMM) || !/^\d{2}:\d{2}$/.test(endHHMM)) return '';
+  const [sh, sm] = startHHMM.split(':').map(Number);
+  const [eh, em] = endHHMM.split(':').map(Number);
+  const startM = sh * 60 + sm;
+  let endM = eh * 60 + em;
+  if (endM < startM) endM += 24 * 60;
+  const diff = endM - startM;
+  return diff > 0 ? String(diff) : '';
+}

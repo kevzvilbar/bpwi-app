@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getProfile, fetchAll } from '@/lib/profile';
+import { CHANGE_REQUEST_ITEM_COLUMNS } from '@/lib/query-columns';
 import ChangeRequests from '@/components/ChangeRequests';
 import type { ChangeRequest, ChangeRequestItem } from '@/lib/profile';
 import { cellKey, chunk, emptySnapshot, evaluateItem } from '@/lib/change-request-conflicts';
@@ -37,47 +38,76 @@ export default async function RequestsPage() {
     redirect('/');
   }
 
-  // Load operators, shifts, areas for displaying labels
-  const [opsRes, shiftsRes, areasRes] = await Promise.all([
+  const REQ_COLS =
+    'id, organization_id, requester_id, title, note, status, submitted_at, reviewed_at, reviewed_by, review_notes, created_at, updated_at';
+
+  // Load operators, shifts, areas, user profiles, all open change requests, and recent closed history in parallel
+  const [opsRes, shiftsRes, areasRes, userProfilesRes, openReqRes, closedReqRes] = await Promise.all([
     sb.from('operators').select('id, full_name, position').eq('is_active', true).order('sort_order'),
     sb.from('shift_types').select('id, code, description, background_color, text_color, is_off').order('code'),
     sb.from('area_codes').select('id, code, name, category, background_color, text_color').order('code'),
+    sb.from('user_profiles').select('id, full_name, role'),
+    fetchAll<RawRequest>((from, to) => {
+      let q = sb
+        .from('change_requests')
+        .select(REQ_COLS)
+        .in('status', ['pending', 'partially_approved'])
+        .order('created_at', { ascending: false })
+        .order('id');
+      if (!canApprove && isManager) q = q.eq('requester_id', user.id);
+      return q.range(from, to);
+    }),
+    (() => {
+      let q = sb
+        .from('change_requests')
+        .select(REQ_COLS)
+        .in('status', ['approved', 'rejected', 'cancelled'])
+        .order('created_at', { ascending: false })
+        .order('id')
+        .limit(50);
+      if (!canApprove && isManager) q = q.eq('requester_id', user.id);
+      return q;
+    })(),
   ]);
 
-  // Load change requests (paged past PostgREST's 1000-row cap): approvers see all in org; managers see own
-  const REQ_COLS =
-    'id, organization_id, requester_id, title, note, status, submitted_at, reviewed_at, reviewed_by, review_notes, created_at, updated_at';
-  const reqRes = await fetchAll<RawRequest>((from, to) => {
-    let q = sb.from('change_requests').select(REQ_COLS).order('created_at', { ascending: false }).order('id');
-    if (!canApprove && isManager) q = q.eq('requester_id', user.id);
-    return q.range(from, to);
-  });
-  if (reqRes.error) console.error('Error fetching change requests:', reqRes.error);
-  const rawRequests = reqRes.data;
+  if (openReqRes.error) console.error('Error fetching open change requests:', openReqRes.error);
+  if (closedReqRes.error) console.error('Error fetching closed change requests:', closedReqRes.error);
+
+  const rawRequests: RawRequest[] = [
+    ...openReqRes.data,
+    ...((closedReqRes.data ?? []) as RawRequest[]),
+  ].sort((a, b) => b.created_at.localeCompare(a.created_at) || a.id.localeCompare(b.id));
+
   // Set when the request list or any batch of items failed to load. The screen then refuses to act: a request
   // shown without its items looks empty, and the reject RPC acts on every pending item regardless of what loaded.
-  let loadFailed = Boolean(reqRes.error);
+  let loadFailed = Boolean(openReqRes.error || closedReqRes.error);
 
-  // Load user profiles to get requester and reviewer names
-  const { data: userProfiles } = await sb.from('user_profiles').select('id, full_name, role');
-  const userMap = new Map((userProfiles ?? []).map((u) => [u.id, u]));
+  const userMap = new Map((userProfilesRes.data ?? []).map((u) => [u.id, u]));
 
-  // Load all items, in request-id chunks so the query string stays short as history grows
+  // Load items only for the loaded requests, in chunks so query strings stay compact
   const requestIds = rawRequests.map((r) => r.id);
   const rawItems: ChangeRequestItem[] = [];
-  const itemResults = await Promise.all(
-    chunk(requestIds, 40).map((ids) =>
-      fetchAll<ChangeRequestItem>((from, to) =>
-        sb.from('change_request_items').select('*').in('request_id', ids).order('created_at', { ascending: true }).order('id').range(from, to),
+  if (requestIds.length > 0) {
+    const itemResults = await Promise.all(
+      chunk(requestIds, 40).map((ids) =>
+        fetchAll<ChangeRequestItem>((from, to) =>
+          sb
+            .from('change_request_items')
+            .select(CHANGE_REQUEST_ITEM_COLUMNS)
+            .in('request_id', ids)
+            .order('created_at', { ascending: true })
+            .order('id')
+            .range(from, to),
+        ),
       ),
-    ),
-  );
-  for (const r of itemResults) {
-    if (r.error) {
-      console.error('Error fetching change request items:', r.error);
-      loadFailed = true;
-    } else {
-      rawItems.push(...r.data);
+    );
+    for (const r of itemResults) {
+      if (r.error) {
+        console.error('Error fetching change request items:', r.error);
+        loadFailed = true;
+      } else {
+        rawItems.push(...r.data);
+      }
     }
   }
 

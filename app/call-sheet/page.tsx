@@ -16,7 +16,7 @@ export default async function CallSheetPage() {
   const yesterday = addDays(today, -1);
   const nowMinutes = manilaNowMinutes();
 
-  const [ops, shifts, areas, asg, prevAsg, standby, heads] = await Promise.all([
+  const [ops, shifts, areas, allAsg, standby, heads] = await Promise.all([
     sb
       .from('operators')
       .select('id, full_name, position, phone_number, default_station')
@@ -24,18 +24,27 @@ export default async function CallSheetPage() {
       .order('sort_order'),
     sb.from('shift_types').select('id, code, description, start_time, end_time, background_color, text_color, is_off'),
     sb.from('area_codes').select('id, code, name, category'),
-    sb.from('schedule_assignments').select('operator_id, shift_type_id, area_code_id').eq('schedule_date', today),
-    sb.from('schedule_assignments').select('operator_id, shift_type_id, area_code_id').eq('schedule_date', yesterday),
+    sb
+      .from('schedule_assignments')
+      .select('operator_id, schedule_date, shift_type_id, area_code_id')
+      .in('schedule_date', [today, yesterday]),
     sb.from('standby_assignments').select('operator_id, standby_type').eq('schedule_date', today),
     sb.from('user_profiles').select('id, full_name, job_title, phone_number').eq('role', 'manager').eq('is_active', true).order('full_name'),
   ]);
+
+  const asgRows = allAsg.data ?? [];
+  const asg = asgRows
+    .filter((r) => r.schedule_date === today)
+    .map(({ operator_id, shift_type_id, area_code_id }) => ({ operator_id, shift_type_id, area_code_id }));
+  const prevAsg = asgRows
+    .filter((r) => r.schedule_date === yesterday)
+    .map(({ operator_id, shift_type_id, area_code_id }) => ({ operator_id, shift_type_id, area_code_id }));
 
   const error =
     ops.error?.message ||
     shifts.error?.message ||
     areas.error?.message ||
-    asg.error?.message ||
-    prevAsg.error?.message ||
+    allAsg.error?.message ||
     standby.error?.message ||
     '';
 
@@ -46,8 +55,8 @@ export default async function CallSheetPage() {
       operators={ops.data ?? []}
       shifts={shifts.data ?? []}
       areas={areas.data ?? []}
-      assignments={asg.data ?? []}
-      yesterdayAssignments={prevAsg.data ?? []}
+      assignments={asg}
+      yesterdayAssignments={prevAsg}
       standby={standby.data ?? []}
       heads={heads.data ?? []}
       error={error}

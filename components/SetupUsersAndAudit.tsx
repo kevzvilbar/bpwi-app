@@ -1,6 +1,13 @@
 'use client';
 
 import type { Dispatch, SetStateAction } from 'react';
+import {
+  getSetupSaveLabel,
+  SETUP_CELL_STYLE,
+  SETUP_INPUT_STYLE,
+} from '@/lib/setup-constants';
+
+export { getSetupSaveLabel, SETUP_CELL_STYLE, SETUP_INPUT_STYLE };
 
 export type SetupOp = {
   id?: string;
@@ -62,22 +69,6 @@ export type OrgPosLite = {
   holder_user_id: string | null;
   is_vacant: boolean;
 };
-
-export const SETUP_CELL_STYLE = { padding: 4, borderBottom: '1px solid var(--border-light)' };
-
-export const SETUP_INPUT_STYLE = {
-  width: '100%',
-  padding: '5px 7px',
-  border: '1px solid var(--border)',
-  borderRadius: 4,
-  fontSize: 12.5,
-  background: 'var(--surface)',
-  color: 'var(--text)',
-} as const;
-
-export function getSetupSaveLabel(key: string, busy: string, savedKey: string, dirty: Set<string>) {
-  return savedKey === key ? 'Saved ✓' : busy === key ? '…' : dirty.has(key) ? 'Save *' : 'Save';
-}
 
 const SUFFIXES = new Set(['jr', 'sr', 'ii', 'iii', 'iv']);
 
@@ -228,6 +219,9 @@ interface SetupUsersAndAuditProps {
   ops: SetupOp[];
   orgPositions: OrgPosLite[];
   auditLogs: SetupAuditLog[];
+  auditLoading?: boolean;
+  auditError?: string;
+  onRefreshAudit?: () => void;
   userNameMap: Map<string, string>;
   opNameMap: Map<string, string>;
   shiftCodeMap: Map<string, string>;
@@ -255,6 +249,9 @@ export default function SetupUsersAndAudit({
   ops,
   orgPositions,
   auditLogs,
+  auditLoading,
+  auditError,
+  onRefreshAudit,
   userNameMap,
   opNameMap,
   shiftCodeMap,
@@ -375,35 +372,54 @@ export default function SetupUsersAndAudit({
       );
     }
 
-    return auditLogs.length === 0 ? (
-      <div className="card" style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>
-        No recent activity recorded yet.
-      </div>
-    ) : (
+    return (
       <>
-        {auditLogs.map((log) => (
-          <div key={log.id} className="card" style={{ padding: 12, display: 'grid', gap: 4, fontSize: 12.5 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontWeight: 700 }}>{log.user_id ? userNameMap.get(log.user_id) ?? 'System' : 'System'}</span>
-              <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{formatManilaTimestamp(log.created_at)}</span>
-            </div>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-              <span
-                style={{
-                  padding: '1px 7px',
-                  borderRadius: 999,
-                  fontSize: 10.5,
-                  fontWeight: 700,
-                  ...getAuditBadgeStyle(log.action),
-                }}
-              >
-                {log.action}
-              </span>
-              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{log.table_name}</span>
-            </div>
-            <div style={{ color: 'var(--text)' }}>{summarizeAudit(log, opNameMap, shiftCodeMap, areaCodeMap)}</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+            {auditLoading ? 'Loading recent changes…' : `Showing latest ${auditLogs.length} audit entries`}
+          </span>
+          {onRefreshAudit && (
+            <button type="button" className="btn" style={{ minHeight: 30, padding: '3px 10px', fontSize: 12 }} disabled={auditLoading} onClick={onRefreshAudit}>
+              {auditLoading ? 'Loading…' : '↻ Refresh'}
+            </button>
+          )}
+        </div>
+        {auditError && (
+          <div className="card" style={{ padding: 10, color: 'var(--danger)', fontSize: 12.5 }}>{auditError}</div>
+        )}
+        {auditLoading && auditLogs.length === 0 ? (
+          <div className="card" style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>
+            Loading activity log…
           </div>
-        ))}
+        ) : auditLogs.length === 0 ? (
+          <div className="card" style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>
+            No recent activity recorded yet.
+          </div>
+        ) : (
+          auditLogs.map((log) => (
+            <div key={log.id} className="card" style={{ padding: 12, display: 'grid', gap: 4, fontSize: 12.5 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontWeight: 700 }}>{log.user_id ? userNameMap.get(log.user_id) ?? 'System' : 'System'}</span>
+                <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{formatManilaTimestamp(log.created_at)}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span
+                  style={{
+                    padding: '1px 7px',
+                    borderRadius: 999,
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    ...getAuditBadgeStyle(log.action),
+                  }}
+                >
+                  {log.action}
+                </span>
+                <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{log.table_name}</span>
+              </div>
+              <div style={{ color: 'var(--text)' }}>{summarizeAudit(log, opNameMap, shiftCodeMap, areaCodeMap)}</div>
+            </div>
+          ))
+        )}
       </>
     );
   }
@@ -571,53 +587,72 @@ export default function SetupUsersAndAudit({
   }
 
   return (
-    <table className="data-table">
-      <thead>
-        <tr>
-          {['Time (Manila)', 'User', 'Action', 'Area / Table', 'Details'].map((h) => (
-            <th key={h} style={{ ...SETUP_CELL_STYLE, padding: '8px 8px', textAlign: 'left', background: 'var(--surface-muted)', color: 'var(--text)' }}>
-              {h}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {auditLogs.length === 0 ? (
-          <tr>
-            <td colSpan={5} style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)' }}>
-              No recent activity recorded yet.
-            </td>
-          </tr>
-        ) : (
-          auditLogs.map((log) => (
-            <tr key={log.id}>
-              <td style={{ ...SETUP_CELL_STYLE, padding: '6px 8px', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
-                {formatManilaTimestamp(log.created_at)}
-              </td>
-              <td style={{ ...SETUP_CELL_STYLE, padding: '6px 8px', fontWeight: 600 }}>
-                {log.user_id ? userNameMap.get(log.user_id) ?? log.user_id.slice(0, 8) : 'System'}
-              </td>
-              <td style={{ ...SETUP_CELL_STYLE, padding: '6px 8px' }}>
-                <span
-                  style={{
-                    padding: '2px 8px',
-                    borderRadius: 999,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    ...getAuditBadgeStyle(log.action),
-                  }}
-                >
-                  {log.action}
-                </span>
-              </td>
-              <td style={{ ...SETUP_CELL_STYLE, padding: '6px 8px', fontFamily: 'ui-monospace, monospace', fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                {log.table_name}
-              </td>
-              <td style={{ ...SETUP_CELL_STYLE, padding: '6px 8px' }}>{summarizeAudit(log, opNameMap, shiftCodeMap, areaCodeMap)}</td>
-            </tr>
-          ))
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '8px 10px', borderBottom: '1px solid var(--border-light)' }}>
+        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+          {auditLoading ? 'Loading recent changes…' : `Showing latest ${auditLogs.length} audit entries`}
+          {auditError && <span style={{ color: 'var(--danger)', marginLeft: 8 }}>{auditError}</span>}
+        </span>
+        {onRefreshAudit && (
+          <button type="button" className="btn" style={{ padding: '4px 10px', fontSize: 12 }} disabled={auditLoading} onClick={onRefreshAudit}>
+            {auditLoading ? 'Loading…' : '↻ Refresh'}
+          </button>
         )}
-      </tbody>
-    </table>
+      </div>
+      <table className="data-table">
+        <thead>
+          <tr>
+            {['Time (Manila)', 'User', 'Action', 'Area / Table', 'Details'].map((h) => (
+              <th key={h} style={{ ...SETUP_CELL_STYLE, padding: '8px 8px', textAlign: 'left', background: 'var(--surface-muted)', color: 'var(--text)' }}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {auditLoading && auditLogs.length === 0 ? (
+            <tr>
+              <td colSpan={5} style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)' }}>
+                Loading activity log…
+              </td>
+            </tr>
+          ) : auditLogs.length === 0 ? (
+            <tr>
+              <td colSpan={5} style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)' }}>
+                No recent activity recorded yet.
+              </td>
+            </tr>
+          ) : (
+            auditLogs.map((log) => (
+              <tr key={log.id}>
+                <td style={{ ...SETUP_CELL_STYLE, padding: '6px 8px', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
+                  {formatManilaTimestamp(log.created_at)}
+                </td>
+                <td style={{ ...SETUP_CELL_STYLE, padding: '6px 8px', fontWeight: 600 }}>
+                  {log.user_id ? userNameMap.get(log.user_id) ?? log.user_id.slice(0, 8) : 'System'}
+                </td>
+                <td style={{ ...SETUP_CELL_STYLE, padding: '6px 8px' }}>
+                  <span
+                    style={{
+                      padding: '2px 8px',
+                      borderRadius: 999,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      ...getAuditBadgeStyle(log.action),
+                    }}
+                  >
+                    {log.action}
+                  </span>
+                </td>
+                <td style={{ ...SETUP_CELL_STYLE, padding: '6px 8px', fontFamily: 'ui-monospace, monospace', fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                  {log.table_name}
+                </td>
+                <td style={{ ...SETUP_CELL_STYLE, padding: '6px 8px' }}>{summarizeAudit(log, opNameMap, shiftCodeMap, areaCodeMap)}</td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
   );
 }

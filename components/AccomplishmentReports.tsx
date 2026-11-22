@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { enqueueOfflineReport } from '@/lib/offline-queue';
 import { getErrorMessage } from '@/lib/error-utils';
+import { buildOwnActivityOrFilter, DAILY_ACTIVITY_REPORT_COLUMNS } from '@/lib/query-columns';
 import type { DailyActivityRow } from '@/lib/activity-types';
 import {
   activityToAccomplishmentEntry,
@@ -153,12 +154,15 @@ export default function AccomplishmentReports(p: Props) {
 
   async function fetchAndSyncActivitiesForDate(targetDate: string, baseEntries: AccomplishmentEntry[], isEditable: boolean) {
     if (!isEditable) return;
-    const { data, error } = await sb
+    const ownFilter = buildOwnActivityOrFilter(p.userId, p.operatorId);
+    let q = sb
       .from('daily_activities')
-      .select('*')
+      .select(DAILY_ACTIVITY_REPORT_COLUMNS)
       .eq('organization_id', p.orgId)
       .eq('activity_date', targetDate)
       .order('started_at', { ascending: true });
+    if (ownFilter) q = q.or(ownFilter);
+    const { data, error } = await q;
     if (error || !data) return;
     const mine = (data as DailyActivityRow[]).filter(
       (a) =>
@@ -209,19 +213,22 @@ export default function AccomplishmentReports(p: Props) {
   async function pullActivitiesForDate() {
     setBusy(true);
     setMsg(null);
-    const { data, error } = await sb
+    const ownFilter = buildOwnActivityOrFilter(p.userId, p.operatorId);
+    let q = sb
       .from('daily_activities')
-      .select('*')
+      .select(DAILY_ACTIVITY_REPORT_COLUMNS)
       .eq('organization_id', p.orgId)
       .eq('activity_date', reportDate)
       .order('started_at', { ascending: true });
+    if (ownFilter) q = q.or(ownFilter);
+    const { data, error } = await q;
     setBusy(false);
     if (error) {
       setMsg({ kind: 'err', text: error.message });
       return;
     }
-    const mine = (data ?? []).filter(
-      (a: DailyActivityRow) =>
+    const mine = ((data ?? []) as DailyActivityRow[]).filter(
+      (a) =>
         a.logged_by === p.userId ||
         (p.operatorId && (a.lead_operator_id === p.operatorId || a.crew_operator_ids?.includes(p.operatorId))),
     );
@@ -229,7 +236,7 @@ export default function AccomplishmentReports(p: Props) {
       setMsg({ kind: 'err', text: `No logged activities found for ${reportDate}. You can add rows manually below.` });
       return;
     }
-    const mapped = mine.map((a: DailyActivityRow) =>
+    const mapped = mine.map((a) =>
       activityToAccomplishmentEntry(a, a.area_code_id ? areaById.get(a.area_code_id)?.code : undefined),
     );
     setEntries(mapped);
