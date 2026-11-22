@@ -118,7 +118,7 @@ export default function AccomplishmentEntryEditor({ entries, isLocked, onUpdate,
 
       {/* Desktop Editable Rows Table */}
       <div className="responsive-table-wrap" style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <table className="data-table" style={{ fontSize: 12 }}>
           <thead>
             <tr style={{ background: 'var(--surface-muted)', textAlign: 'left' }}>
               <th style={{ padding: '6px 8px' }}>Form Column</th>

@@ -218,7 +218,7 @@ export default function SetupReferenceTabs({
 
   if (tab === 'shifts') {
     return (
-      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5 }}>
+      <table className="data-table">
         <thead>
           <tr>
             {['Code', 'Description', 'Start', 'End', 'Hours', 'Off day', 'BG', 'Text', 'Preview', ''].map((h) => (
@@ -304,7 +304,7 @@ export default function SetupReferenceTabs({
   }
 
   return (
-    <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5 }}>
+    <table className="data-table">
       <thead>
         <tr>
           {['Code', 'Name', 'Category', 'Sub-sites / Wells', 'BG', 'Text', 'Preview', ''].map((h) => (

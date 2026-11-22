@@ -12,6 +12,7 @@ import {
 } from '@/lib/accomplishment-form';
 import AccomplishmentFormSheet from '@/components/AccomplishmentFormSheet';
 import AccomplishmentEntryEditor from '@/components/AccomplishmentEntryEditor';
+import { AlertBanner, SegmentedTabs } from '@/components/ui';
 
 export interface HeadOption {
   id: string;
@@ -408,22 +409,16 @@ export default function AccomplishmentReports(p: Props) {
         </div>
 
         {p.canVerify && (
-          <div style={{ display: 'flex', gap: 6, marginLeft: 8 }}>
-            <button
-              type="button"
-              className={`btn ${tab === 'inbox' ? 'btn-primary' : ''}`}
-              onClick={() => setTab('inbox')}
-            >
-              Head Inbox {pendingCount > 0 ? `(${pendingCount})` : ''}
-            </button>
-            <button
-              type="button"
-              className={`btn ${tab === 'my' ? 'btn-primary' : ''}`}
-              onClick={() => setTab('my')}
-            >
-              My Shift Report
-            </button>
-          </div>
+          <SegmentedTabs
+            ariaLabel="Accomplishment report view"
+            size="sm"
+            value={tab}
+            onChange={setTab}
+            items={[
+              { id: 'inbox', label: `Head Inbox${pendingCount > 0 ? ` (${pendingCount})` : ''}` },
+              { id: 'my', label: 'My Shift Report' },
+            ]}
+          />
         )}
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -444,60 +439,45 @@ export default function AccomplishmentReports(p: Props) {
       </div>
 
       {p.migrationMissing && (
-        <div className="no-print card" style={{ padding: 12, borderLeft: '4px solid #d97706', background: 'rgba(217,119,6,0.08)', fontSize: 12.5 }}>
+        <AlertBanner className="no-print" tone="warn">
           Database migration <code>014_accomplishment_reports.sql</code> has not been applied yet. You can preview and print forms, and once you run migration <code>014</code> in Supabase SQL Editor, saving and sending to heads will be live.
-        </div>
+        </AlertBanner>
       )}
 
       {msg && (
-        <div
-          className="no-print card"
-          role="alert"
-          style={{
-            padding: '8px 12px',
-            fontSize: 12.5,
-            borderLeft: `4px solid ${msg.kind === 'err' ? '#dc2626' : '#16a34a'}`,
-            color: msg.kind === 'err' ? '#b91c1c' : '#15803d',
-          }}
-        >
+        <AlertBanner className="no-print" tone={msg.kind === 'err' ? 'danger' : 'ok'}>
           {msg.text}
-        </div>
+        </AlertBanner>
       )}
 
       {/* HEAD INBOX TAB */}
       {tab === 'inbox' && p.canVerify && (
         <div style={{ display: 'grid', gap: 12 }}>
           <div className="no-print card" style={{ padding: 12, display: 'grid', gap: 10 }}>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 12.5, fontWeight: 600 }}>Scope:</span>
-              <button
-                type="button"
-                className={`btn ${inboxScope === 'mine' ? 'btn-primary' : ''}`}
-                style={{ fontSize: 12, padding: '4px 10px' }}
-                onClick={() => setInboxScope('mine')}
-              >
-                Assigned to Me
-              </button>
-              <button
-                type="button"
-                className={`btn ${inboxScope === 'org' ? 'btn-primary' : ''}`}
-                style={{ fontSize: 12, padding: '4px 10px' }}
-                onClick={() => setInboxScope('org')}
-              >
-                All Org
-              </button>
-              <span style={{ fontSize: 12.5, fontWeight: 600, marginLeft: 8 }}>Status:</span>
-              {(['pending', 'checked', 'all'] as const).map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  className={`btn ${inboxFilter === f ? 'btn-primary' : ''}`}
-                  style={{ fontSize: 12, padding: '4px 10px' }}
-                  onClick={() => setInboxFilter(f)}
-                >
-                  {f === 'pending' ? `Pending Review (${pendingCount})` : f === 'checked' ? 'Checked' : 'All Submitted'}
-                </button>
-              ))}
+              <SegmentedTabs
+                ariaLabel="Report inbox scope"
+                size="sm"
+                value={inboxScope}
+                onChange={setInboxScope}
+                items={[
+                  { id: 'mine', label: 'Assigned to Me' },
+                  { id: 'org', label: 'All Org' },
+                ]}
+              />
+              <span style={{ fontSize: 12.5, fontWeight: 600 }}>Status:</span>
+              <SegmentedTabs
+                ariaLabel="Report status filter"
+                size="sm"
+                value={inboxFilter}
+                onChange={setInboxFilter}
+                items={[
+                  { id: 'pending', label: `Pending Review (${pendingCount})` },
+                  { id: 'checked', label: 'Checked' },
+                  { id: 'all', label: 'All Submitted' },
+                ]}
+              />
             </div>
 
             {!inboxReports.length ? (

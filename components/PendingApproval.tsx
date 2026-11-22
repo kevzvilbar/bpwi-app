@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import { Badge } from '@/components/ui';
 
 export default function PendingApproval({
   pending,
@@ -43,22 +44,10 @@ export default function PendingApproval({
           border: '1px solid var(--warn-border)',
         }}
       >
-        <div
-          style={{
-            display: 'inline-block',
-            width: 'fit-content',
-            padding: '3px 10px',
-            borderRadius: 999,
-            background: 'var(--warn-bg)',
-            color: 'var(--warn-fg)',
-            fontSize: 11.5,
-            fontWeight: 700,
-            textTransform: 'uppercase',
-          }}
-        >
-          Pending Approval
+        <div>
+          <Badge tone="warn">Pending Approval</Badge>
         </div>
-        <h1 style={{ margin: 0, fontSize: 19, color: 'var(--text)' }}>Account waiting for administrator approval</h1>
+        <h1 className="page-title" style={{ fontSize: 19 }}>Account waiting for administrator approval</h1>
         <p style={{ margin: 0, fontSize: 13.5, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
           Hi <b>{userName || userEmail || 'there'}</b>
           {userEmail && userName ? ` (${userEmail})` : ''}, your account has been created but has not been activated yet.

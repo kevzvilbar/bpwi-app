@@ -60,7 +60,7 @@ export default function EditAccessBanner(p: { active: Grant | null; next: Grant 
       {p.active ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
           <div>
-            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#16a34a', marginRight: 6 }} />
+            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: 'var(--ok-fg)', marginRight: 6 }} />
             Edit window open until {formatManila(p.active.ends_at)} ({remaining(Date.parse(p.active.ends_at) - now)}) · Dates: {rangeText(p.active)}
             {p.active.note ? ` · ${p.active.note}` : ''} · Changes save directly.
           </div>
@@ -68,7 +68,7 @@ export default function EditAccessBanner(p: { active: Grant | null; next: Grant 
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
           <div>
-            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', marginRight: 6 }} />
+            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: 'var(--status-pending)', marginRight: 6 }} />
             <strong>Propose mode:</strong> Outside an edit window, changes queue as pending requests for admin review.
             {p.next ? ` Next window: ${formatManila(p.next.starts_at)} – ${formatManila(p.next.ends_at)} (${rangeText(p.next)}).` : ''}
           </div>

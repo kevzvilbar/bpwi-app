@@ -16,6 +16,7 @@ import SetupUsersAndAudit, {
   type SetupShift,
   type SetupUserProfile,
 } from '@/components/SetupUsersAndAudit';
+import { Badge, SegmentedTabs } from '@/components/ui';
 
 type Op = SetupOp;
 type Shift = SetupShift;
@@ -158,21 +159,6 @@ export default function Setup(p: {
     return <p style={{ padding: 20, color: 'var(--text-secondary)' }}>Only admins can manage operators and setup.</p>;
   }
 
-  const tabBtn = (t: Tab, l: string) => (
-    <button
-      className="btn"
-      onClick={() => setTab(t)}
-      aria-current={tab === t ? 'page' : undefined}
-      style={{
-        fontWeight: 700,
-        background: tab === t ? 'var(--primary)' : 'var(--surface)',
-        color: tab === t ? 'var(--primary-fg)' : 'var(--text)',
-      }}
-    >
-      {l}
-    </button>
-  );
-
   const pendingUsers = users.filter((u) => !u.is_active).length;
   const auditLogs = p.auditLogs ?? [];
   const userNameMap = new Map(users.map((u) => [u.id, u.full_name || u.id.slice(0, 8)]));
@@ -187,18 +173,26 @@ export default function Setup(p: {
       <h1 className="page-title" style={{ marginBottom: 10 }}>
         Operators, Users &amp; Setup
       </h1>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        {tabBtn('operators', `Operators (${ops.length})`)}
-        {tabBtn('shifts', `Shift types (${shifts.length})`)}
-        {tabBtn('areas', `Areas & leave (${areas.length})`)}
-        {tabBtn('holidays', `Holidays (${(p.holidays ?? []).length})`)}
-        {tabBtn('users', `Users & roles (${users.length}${pendingUsers ? ` · ${pendingUsers} pending` : ''})`)}
-        {tabBtn('heads', `Department heads (${(p.people ?? []).filter((x) => x.role === 'manager').length})`)}
-        {tabBtn('audit', `Activity log (${auditLogs.length})`)}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <SegmentedTabs
+          ariaLabel="Setup sections"
+          size="sm"
+          value={tab}
+          onChange={setTab}
+          items={[
+            { id: 'operators', label: `Operators (${ops.length})` },
+            { id: 'shifts', label: `Shift types (${shifts.length})` },
+            { id: 'areas', label: `Areas & leave (${areas.length})` },
+            { id: 'holidays', label: `Holidays (${(p.holidays ?? []).length})` },
+            { id: 'users', label: `Users & roles (${users.length}${pendingUsers ? ` · ${pendingUsers} pending` : ''})` },
+            { id: 'heads', label: `Department heads (${(p.people ?? []).filter((x) => x.role === 'manager').length})` },
+            { id: 'audit', label: `Activity log (${auditLogs.length})` },
+          ]}
+        />
         {dirty.size > 0 && (
-          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--warn-fg)', background: 'var(--warn-bg)', border: '1px solid var(--warn-border)', padding: '3px 9px', borderRadius: 999 }}>
+          <Badge tone="warn">
             {dirty.size} unsaved {dirty.size === 1 ? 'row' : 'rows'}
-          </span>
+          </Badge>
         )}
         {msg && (
           <span role="alert" style={{ color: 'var(--danger)', fontSize: 12.5, fontWeight: 500 }}>
@@ -326,7 +320,7 @@ export default function Setup(p: {
       {/* Desktop Table (> 640px) */}
       <div className="card responsive-table-wrap" style={{ overflow: 'auto' }}>
         {tab === 'operators' && (
-          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5 }}>
+          <table className="data-table">
             <thead>
               <tr>
                 {['#', 'Full name', 'Position', 'Phone', 'Default station', 'Assigned Head', 'Active', ''].map((h) => (

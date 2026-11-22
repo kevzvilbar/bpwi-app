@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import type { DailyActivityRow, ShiftHandoverRow } from '@/lib/activity-types';
+import { Badge, EmptyState, StatCard } from '@/components/ui';
 
 type HoOp = { id: string; full_name: string };
 type HoArea = { id: string; code: string };
@@ -95,22 +96,18 @@ export default function ShiftHandoversTab({
         <div className="card" style={{ padding: 14, display: 'grid', gap: 10 }}>
           <strong style={{ fontSize: 15 }}>Daily Operations Huddle Brief ({date})</strong>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div style={{ padding: 10, borderRadius: 8, background: 'var(--surface-muted)' }}>
-              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Field Activities Today</div>
-              <div style={{ fontSize: 20, fontWeight: 800 }}>
-                {dateActivities.length}{' '}
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ok-fg)' }}>
-                  ({dateActivities.filter((a) => a.status === 'verified').length} verified)
-                </span>
-              </div>
-            </div>
-            <div style={{ padding: 10, borderRadius: 8, background: 'var(--surface-muted)' }}>
-              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Open Alerts</div>
-              <div style={{ fontSize: 13, fontWeight: 700, marginTop: 4 }}>
-                <div>{idleOnDutyCount} idle on-duty ops</div>
-                <div>{openHighJos} high-prio JO · {overduePms} overdue PM</div>
-              </div>
-            </div>
+            <StatCard
+              label="Field Activities Today"
+              value={dateActivities.length}
+              subtitle={`${dateActivities.filter((a) => a.status === 'verified').length} verified`}
+              subtitleTone="ok"
+            />
+            <StatCard
+              label="Open Alerts"
+              value={<span style={{ fontSize: 16 }}>{idleOnDutyCount} idle on-duty</span>}
+              subtitle={`${openHighJos} high-prio JO · ${overduePms} overdue PM`}
+              subtitleTone={openHighJos + overduePms > 0 ? 'warn' : 'default'}
+            />
           </div>
         </div>
 
@@ -184,7 +181,11 @@ export default function ShiftHandoversTab({
       <div className="card" style={{ padding: 14, display: 'grid', gap: 10 }}>
         <strong style={{ fontSize: 14.5 }}>Recent Shift Handovers (Last 14 Days)</strong>
         {handovers.length === 0 ? (
-          <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>No handover entries logged yet.</div>
+          <EmptyState
+            minHeight={160}
+            title="No handover entries logged yet."
+            description="Outgoing operators can log shift notes and pending items on the left."
+          />
         ) : (
           handovers.map((h) => {
             const area = h.area_code_id ? areaBy.get(h.area_code_id) : undefined;
@@ -207,9 +208,9 @@ export default function ShiftHandoversTab({
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <b>{h.handover_date} · {area ? area.code : 'All Stations'}</b>
-                  <span style={{ textTransform: 'uppercase', fontSize: 11, fontWeight: 800, color: statusColor }}>
-                    {h.plant_status}
-                  </span>
+                  <Badge size="sm" tone={h.plant_status === 'critical' ? 'danger' : h.plant_status === 'watch' ? 'warn' : 'ok'}>
+                    {h.plant_status.toUpperCase()}
+                  </Badge>
                 </div>
                 {(outOp || inOp) && (
                   <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>

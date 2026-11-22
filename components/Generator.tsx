@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { findOffShift, isOffPartnerArea } from '@/lib/roster-helpers';
+import { AlertBanner } from '@/components/ui';
 
 type Op = { id: string; full_name: string };
 type Shift = { id: string; code: string; description: string | null; is_off: boolean; background_color: string; text_color: string };
@@ -280,7 +281,7 @@ export default function Generator(p: {
             <div style={{ padding: '6px 10px', fontSize: 12, fontWeight: 700, background: 'var(--surface-muted)', borderBottom: '1px solid var(--border)' }}>
               Preview (first {previewDays.length} days · {Math.min(5, selectedOps.length)} of {selectedOps.length} operators)
             </div>
-            <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 11.5 }}>
+            <table className="data-table" style={{ fontSize: 11.5 }}>
               <thead>
                 <tr>
                   <th style={{ textAlign: 'left', padding: '5px 8px', borderBottom: '1px solid var(--border)' }}>Operator</th>
@@ -336,11 +337,7 @@ export default function Generator(p: {
           </span>
         </div>
 
-        {msg && (
-          <p role="alert" style={{ margin: 0, fontSize: 13, color: ok ? '#15803d' : 'var(--danger)' }}>
-            {msg}
-          </p>
-        )}
+        {msg && <AlertBanner tone={ok ? 'ok' : 'danger'}>{msg}</AlertBanner>}
       </div>
 
       {confirmOpen && (

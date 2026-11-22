@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { formatDateOnly, formatManila, manilaInputToIso, toManilaInput } from '@/lib/date';
+import { AlertBanner, Badge } from '@/components/ui';
 
 export type Person = {
   id: string;
@@ -44,16 +45,6 @@ function rangeText(g: Grant) {
   if (g.date_to) return `up to ${formatDateOnly(g.date_to)}`;
   return 'Any date';
 }
-
-const chip = (bg: string, fg: string): React.CSSProperties => ({
-  background: bg,
-  color: fg,
-  padding: '2px 8px',
-  borderRadius: 999,
-  fontSize: 11,
-  fontWeight: 700,
-  whiteSpace: 'nowrap',
-});
 
 export default function DepartmentHeads(p: { people: Person[]; grants: Grant[]; orgId: string; error: string }) {
   const [people, setPeople] = useState<Person[]>(p.people);
@@ -188,9 +179,9 @@ export default function DepartmentHeads(p: { people: Person[]; grants: Grant[]; 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
       {p.error && (
-        <div role="alert" className="card" style={{ padding: '10px 14px', color: 'var(--warn-fg)', background: 'var(--warn-bg)', borderColor: 'var(--warn-border)', fontSize: 13 }}>
+        <AlertBanner tone="warn">
           Could not load department head data: {p.error}. If this is a fresh update, run migrations 007 and then 008 in Supabase.
-        </div>
+        </AlertBanner>
       )}
       <div aria-live="polite" style={{ minHeight: 18, fontSize: 12.5 }}>
         {msg && (
@@ -217,11 +208,11 @@ export default function DepartmentHeads(p: { people: Person[]; grants: Grant[]; 
             <div key={h.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, display: 'grid', gap: 10 }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <strong>{h.full_name || 'Unnamed user'}</strong>
-                {!h.is_active && <span style={chip('var(--warn-bg)', 'var(--warn-fg)')}>Pending approval</span>}
+                {!h.is_active && <Badge size="sm" tone="warn">Pending approval</Badge>}
                 {live ? (
-                  <span style={chip('var(--ok-bg)', 'var(--ok-fg)')}>Can edit until {formatManila(live.ends_at)}</span>
+                  <Badge size="sm" tone="ok">Can edit until {formatManila(live.ends_at)}</Badge>
                 ) : (
-                  <span style={chip('var(--surface-muted)', 'var(--text-secondary)')}>Read-only</span>
+                  <Badge size="sm" tone="neutral">Read-only</Badge>
                 )}
               </div>
               <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
@@ -308,7 +299,7 @@ export default function DepartmentHeads(p: { people: Person[]; grants: Grant[]; 
           <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>No edit windows yet.</p>
         ) : (
           <div style={{ overflow: 'auto' }}>
-            <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5 }}>
+            <table className="data-table">
               <thead>
                 <tr>
                   {['Department head', 'Window (Manila)', 'Editable dates', 'Note', 'Status', ''].map((h) => (
@@ -322,24 +313,16 @@ export default function DepartmentHeads(p: { people: Person[]; grants: Grant[]; 
                   const live = st === 'Active' || st === 'Upcoming';
                   return (
                     <tr key={g.id}>
-                      <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-light)' }}>{nameOf.get(g.user_id)}</td>
-                      <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-light)' }}>
+                      <td style={{ padding: '6px 8px' }}>{nameOf.get(g.user_id)}</td>
+                      <td style={{ padding: '6px 8px' }}>
                         {formatManila(g.starts_at)} → {formatManila(g.ends_at)}
                       </td>
-                      <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-light)' }}>{rangeText(g)}</td>
-                      <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-light)' }}>{g.note ?? '—'}</td>
-                      <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-light)' }}>
-                        <span
-                          style={
-                            st === 'Active'
-                              ? chip('var(--ok-bg)', 'var(--ok-fg)')
-                              : st === 'Upcoming'
-                                ? chip('var(--info-bg)', 'var(--info-fg)')
-                                : chip('var(--surface-muted)', 'var(--text-secondary)')
-                          }
-                        >
+                      <td style={{ padding: '6px 8px' }}>{rangeText(g)}</td>
+                      <td style={{ padding: '6px 8px' }}>{g.note ?? '—'}</td>
+                      <td style={{ padding: '6px 8px' }}>
+                        <Badge size="sm" tone={st === 'Active' ? 'ok' : st === 'Upcoming' ? 'info' : 'neutral'}>
                           {st}
-                        </span>
+                        </Badge>
                       </td>
                       <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-light)' }}>
                         {live && (

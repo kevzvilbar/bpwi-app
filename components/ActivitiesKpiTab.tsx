@@ -9,6 +9,7 @@ import {
   type DailyActivityRow,
   type JobOrderRow,
 } from '@/lib/activity-types';
+import { SegmentedTabs, StatCard } from '@/components/ui';
 
 type KpiOp = { id: string; full_name: string; position: string | null };
 type KpiArea = { id: string; code: string; name: string | null; category: string };
@@ -225,45 +226,35 @@ export default function ActivitiesKpiTab(p: {
             Window: <b>{startDate}</b> to <b>{p.anchorDate}</b>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {([7, 30, 90] as const).map((d) => (
-            <button
-              key={d}
-              type="button"
-              className={`btn ${periodDays === d ? 'btn-primary' : ''}`}
-              onClick={() => setPeriodDays(d)}
-              style={{ fontSize: 12.5, fontWeight: 700 }}
-            >
-              {d} Days
-            </button>
-          ))}
-        </div>
+        <SegmentedTabs
+          ariaLabel="KPI time window"
+          size="sm"
+          value={String(periodDays) as '7' | '30' | '90'}
+          onChange={(v) => setPeriodDays(Number(v) as 7 | 30 | 90)}
+          items={[
+            { id: '7', label: '7 Days' },
+            { id: '30', label: '30 Days' },
+            { id: '90', label: '90 Days' },
+          ]}
+        />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
-        <div className="card" style={{ padding: 12 }}>
-          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', fontWeight: 600 }}>Activities Logged</div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--accent)' }}>{summary.totalActs}</div>
-          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-            {summary.verified} verified ({summary.verifiedRate}%)
-          </div>
-        </div>
-        <div className="card" style={{ padding: 12 }}>
-          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', fontWeight: 600 }}>PM Compliance</div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: '#0f766e' }}>
-            {summary.pmsDone}/{summary.pmsTotal}
-          </div>
-          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-            {summary.pmsTotal > 0 ? Math.round((summary.pmsDone / summary.pmsTotal) * 100) : 100}% closed in window
-          </div>
-        </div>
-        <div className="card" style={{ padding: 12 }}>
-          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', fontWeight: 600 }}>Job Orders Closed</div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--violet)' }}>{summary.josDone}</div>
-          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-            Avg TAT: {summary.avgJoTat !== null ? `${summary.avgJoTat} hrs` : '—'}
-          </div>
-        </div>
+        <StatCard
+          label="Activities Logged"
+          value={<span style={{ color: 'var(--accent)' }}>{summary.totalActs}</span>}
+          subtitle={`${summary.verified} verified (${summary.verifiedRate}%)`}
+        />
+        <StatCard
+          label="PM Compliance"
+          value={<span style={{ color: 'var(--teal)' }}>{summary.pmsDone}/{summary.pmsTotal}</span>}
+          subtitle={`${summary.pmsTotal > 0 ? Math.round((summary.pmsDone / summary.pmsTotal) * 100) : 100}% closed in window`}
+        />
+        <StatCard
+          label="Job Orders Closed"
+          value={<span style={{ color: 'var(--violet)' }}>{summary.josDone}</span>}
+          subtitle={`Avg TAT: ${summary.avgJoTat !== null ? `${summary.avgJoTat} hrs` : '—'}`}
+        />
       </div>
 
       {/* Breakdown Bars */}
@@ -295,7 +286,7 @@ export default function ActivitiesKpiTab(p: {
                   <span className="tabular-nums" style={{ fontWeight: 700 }}>{s.count}</span>
                 </div>
                 <div style={{ height: 8, background: 'var(--surface-muted)', borderRadius: 999, overflow: 'hidden' }}>
-                  <div style={{ width: `${s.pct}%`, height: '100%', background: '#0d9488', borderRadius: 999 }} />
+                  <div style={{ width: `${s.pct}%`, height: '100%', background: 'var(--teal)', borderRadius: 999 }} />
                 </div>
               </div>
             ))
@@ -308,20 +299,20 @@ export default function ActivitiesKpiTab(p: {
         <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-light)' }}>
           <strong style={{ fontSize: 14 }}>Employee Performance Leaderboard ({periodDays}-Day Window)</strong>
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+        <table className="data-table">
           <thead>
             <tr style={{ background: 'var(--surface-muted)', textAlign: 'left', fontSize: 11, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
-              <th style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>Operator</th>
-              <th style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Duty Days / Hrs</th>
-              <th style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Activities (Verified)</th>
-              <th style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>PM Done / Compliance</th>
-              <th style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>JOs Closed</th>
-              <th style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Avg JO TAT / On-Time</th>
+              <th style={{ padding: '8px 12px' }}>Operator</th>
+              <th style={{ padding: '8px 10px', textAlign: 'right' }}>Duty Days / Hrs</th>
+              <th style={{ padding: '8px 10px', textAlign: 'right' }}>Activities (Verified)</th>
+              <th style={{ padding: '8px 10px', textAlign: 'right' }}>PM Done / Compliance</th>
+              <th style={{ padding: '8px 10px', textAlign: 'right' }}>JOs Closed</th>
+              <th style={{ padding: '8px 12px', textAlign: 'right' }}>Avg JO TAT / On-Time</th>
             </tr>
           </thead>
           <tbody>
             {operatorRows.map((r) => (
-              <tr key={r.op.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+              <tr key={r.op.id}>
                 <td style={{ padding: '8px 12px' }}>
                   <div style={{ fontWeight: 700 }}>{r.op.full_name}</div>
                   {r.op.position && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{r.op.position}</div>}
@@ -340,7 +331,7 @@ export default function ActivitiesKpiTab(p: {
                         marginLeft: 4,
                         fontSize: 11,
                         fontWeight: 700,
-                        color: r.pmCompliance >= 80 ? '#16a34a' : '#d97706',
+                        color: r.pmCompliance >= 80 ? 'var(--ok-fg)' : 'var(--warn-fg)',
                       }}
                     >
                       ({r.pmCompliance}%)
@@ -353,7 +344,7 @@ export default function ActivitiesKpiTab(p: {
                 <td className="tabular-nums" style={{ padding: '8px 12px', textAlign: 'right' }}>
                   {r.avgTatHours !== null ? `${r.avgTatHours}h` : '—'}
                   {r.onTimePct !== null && (
-                    <span style={{ marginLeft: 4, fontSize: 11, color: r.onTimePct >= 80 ? '#16a34a' : '#dc2626', fontWeight: 700 }}>
+                    <span style={{ marginLeft: 4, fontSize: 11, color: r.onTimePct >= 80 ? 'var(--ok-fg)' : 'var(--danger)', fontWeight: 700 }}>
                       ({r.onTimePct}%)
                     </span>
                   )}
@@ -370,7 +361,7 @@ export default function ActivitiesKpiTab(p: {
           <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-light)' }}>
             <strong style={{ fontSize: 14 }}>Recent Genset Fuel &amp; Runtime Logs</strong>
           </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+          <table className="data-table">
             <thead>
               <tr style={{ background: 'var(--surface-muted)', textAlign: 'left', fontSize: 11, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
                 <th style={{ padding: '7px 12px', borderBottom: '1px solid var(--border)' }}>Date</th>

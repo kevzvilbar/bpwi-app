@@ -10,6 +10,7 @@ import {
   type ActivityCategory,
   type JobOrderRow,
 } from '@/lib/activity-types';
+import { Badge, EmptyState, SegmentedTabs } from '@/components/ui';
 
 type JoOp = { id: string; full_name: string };
 type JoArea = { id: string; code: string; name: string | null };
@@ -145,19 +146,17 @@ export default function JobOrdersTab({
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div className="card" style={{ padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {(['open', 'completed', 'all'] as const).map((f) => (
-            <button
-              key={f}
-              type="button"
-              className={`btn ${joFilter === f ? 'btn-primary' : ''}`}
-              onClick={() => onChangeJoFilter(f)}
-              style={{ fontSize: 12.5, fontWeight: 700, textTransform: 'capitalize' }}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
+        <SegmentedTabs
+          ariaLabel="Job order filter"
+          size="sm"
+          value={joFilter}
+          onChange={onChangeJoFilter}
+          items={[
+            { id: 'open', label: 'Open' },
+            { id: 'completed', label: 'Completed' },
+            { id: 'all', label: 'All' },
+          ]}
+        />
         {canManageJo && (
           <button type="button" className="btn btn-primary" onClick={() => setJoModalOpen(true)} style={{ fontWeight: 700 }}>
             + Dispatch Job Order
@@ -166,9 +165,7 @@ export default function JobOrdersTab({
       </div>
 
       {filteredJobOrders.length === 0 ? (
-        <div className="card" style={{ padding: 28, textAlign: 'center', color: 'var(--text-secondary)' }}>
-          No job orders in this filter.
-        </div>
+        <EmptyState minHeight={180} title="No job orders in this filter." description="Switch filters or dispatch a new job order above." />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))', gap: 12 }}>
           {filteredJobOrders.map((jo) => {
@@ -194,32 +191,12 @@ export default function JobOrdersTab({
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                   <strong style={{ fontSize: 13.5 }}>{jo.jo_number}</strong>
                   <div style={{ display: 'flex', gap: 5 }}>
-                    <span
-                      style={{
-                        padding: '2px 8px',
-                        borderRadius: 999,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        background: jo.priority === 'high' ? 'var(--danger-bg)' : jo.priority === 'medium' ? 'var(--warn-bg)' : 'var(--info-bg)',
-                        color: jo.priority === 'high' ? 'var(--danger-fg)' : jo.priority === 'medium' ? 'var(--warn-fg)' : 'var(--info-fg)',
-                      }}
-                    >
-                      {jo.priority}
-                    </span>
-                    <span
-                      style={{
-                        padding: '2px 8px',
-                        borderRadius: 999,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        background: jo.status === 'completed' ? 'var(--ok-bg)' : isOverdue ? 'var(--danger-bg)' : 'var(--surface-muted)',
-                        color: jo.status === 'completed' ? 'var(--ok-fg)' : isOverdue ? 'var(--danger-fg)' : 'var(--text)',
-                      }}
-                    >
-                      {isOverdue ? 'SLA Breach' : jo.status.replace('_', ' ')}
-                    </span>
+                    <Badge size="sm" tone={jo.priority === 'high' ? 'danger' : jo.priority === 'medium' ? 'warn' : 'info'}>
+                      {jo.priority.toUpperCase()}
+                    </Badge>
+                    <Badge size="sm" tone={jo.status === 'completed' ? 'ok' : isOverdue ? 'danger' : 'neutral'}>
+                      {(isOverdue ? 'SLA Breach' : jo.status.replace('_', ' ')).toUpperCase()}
+                    </Badge>
                   </div>
                 </div>
 

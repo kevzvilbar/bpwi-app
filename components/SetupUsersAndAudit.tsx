@@ -410,7 +410,7 @@ export default function SetupUsersAndAudit({
 
   if (tab === 'users') {
     return (
-      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5 }}>
+      <table className="data-table">
         <thead>
           <tr>
             {['Full name', 'Role', 'Org Position (Auto-Chart)', 'Linked Operator', 'Active (Approved)', 'User ID', ''].map((h) => (
@@ -571,7 +571,7 @@ export default function SetupUsersAndAudit({
   }
 
   return (
-    <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5 }}>
+    <table className="data-table">
       <thead>
         <tr>
           {['Time (Manila)', 'User', 'Action', 'Area / Table', 'Details'].map((h) => (

@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { formatDateOnly } from '@/lib/date';
+import { AlertBanner, Badge, type BadgeTone } from '@/components/ui';
 
 export type HolidayRow = {
   id: string;
@@ -11,10 +12,10 @@ export type HolidayRow = {
   holiday_type: 'regular' | 'special_non_working' | 'company';
 };
 
-const TYPE_META: Record<HolidayRow['holiday_type'], { label: string; bg: string; fg: string }> = {
-  regular: { label: 'Regular Holiday', bg: '#fee2e2', fg: '#991b1b' },
-  special_non_working: { label: 'Special Non-Working', bg: '#fef3c7', fg: '#92400e' },
-  company: { label: 'Company / Local', bg: '#e0f2fe', fg: '#0369a1' },
+const TYPE_META: Record<HolidayRow['holiday_type'], { label: string; tone: BadgeTone }> = {
+  regular: { label: 'Regular Holiday', tone: 'danger' },
+  special_non_working: { label: 'Special Non-Working', tone: 'warn' },
+  company: { label: 'Company / Local', tone: 'info' },
 };
 
 function lastMondayOfAugust(year: number) {
@@ -183,15 +184,11 @@ export default function HolidaysManager(p: {
           </form>
         )}
 
-        {msg && (
-          <div style={{ fontSize: 12.5, fontWeight: 600, color: msg.startsWith('✓') ? '#166534' : '#b91c1c' }}>
-            {msg}
-          </div>
-        )}
+        {msg && <AlertBanner tone={msg.startsWith('✓') ? 'ok' : 'danger'}>{msg}</AlertBanner>}
       </div>
 
       <div className="card" style={{ overflow: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <table className="data-table">
           <thead>
             <tr style={{ background: 'var(--header-bg)', color: 'var(--header-fg)', textAlign: 'left', fontSize: 12 }}>
               <th style={{ padding: '7px 12px' }}>Date</th>
@@ -211,15 +208,13 @@ export default function HolidaysManager(p: {
               visible.map((h) => {
                 const tm = TYPE_META[h.holiday_type] ?? TYPE_META.regular;
                 return (
-                  <tr key={h.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                  <tr key={h.id}>
                     <td className="tabular-nums" style={{ padding: '7px 12px', fontWeight: 700, whiteSpace: 'nowrap' }}>
                       {h.holiday_date} <span style={{ fontWeight: 400, color: 'var(--text-secondary)', fontSize: 11.5 }}>({formatDateOnly(h.holiday_date)})</span>
                     </td>
                     <td style={{ padding: '7px 10px', fontWeight: 600 }}>{h.name}</td>
                     <td style={{ padding: '7px 10px' }}>
-                      <span style={{ background: tm.bg, color: tm.fg, padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700 }}>
-                        {tm.label}
-                      </span>
+                      <Badge tone={tm.tone} size="sm">{tm.label}</Badge>
                     </td>
                     {p.isAdmin && (
                       <td style={{ padding: '7px 12px', textAlign: 'right' }}>

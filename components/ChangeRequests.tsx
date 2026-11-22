@@ -10,6 +10,7 @@ import { getErrorMessage } from '@/lib/error-utils';
 
 import { findOffShift, isOffPartnerArea } from '@/lib/roster-helpers';
 import { conflictLabel, describeReviewResult, overrideExplanation, toggleAllSelection, type ReviewRpcResult } from '@/lib/change-request-conflicts';
+import { AlertBanner, Badge, EmptyState, SegmentedTabs, type BadgeTone } from '@/components/ui';
 
 type Shift = { id: string; code: string; description?: string | null; background_color: string; text_color: string; is_off?: boolean };
 type Area = { id: string; code: string; name?: string | null; category?: string; background_color: string; text_color: string };
@@ -41,17 +42,16 @@ const hasOpenItems = (r: ChangeRequest) => getOpenItems(r).length > 0;
 const isOpenRequest = (r: ChangeRequest) => r.status === 'pending' || (r.status === 'partially_approved' && hasOpenItems(r));
 const isClosedApproved = (r: ChangeRequest) => r.status === 'approved' || (r.status === 'partially_approved' && !hasOpenItems(r));
 
-function statusBadge(status: string): CSSProperties {
-  const pick = (k: 'ok' | 'info' | 'warn' | 'danger') => ({ background: `var(--${k}-bg)`, color: `var(--${k}-fg)` });
+function statusTone(status: string): BadgeTone {
   switch (status) {
     case 'approved':
-      return pick('ok');
+      return 'ok';
     case 'partially_approved':
-      return pick('info');
+      return 'info';
     case 'rejected':
-      return pick('danger');
+      return 'danger';
     default:
-      return pick('warn'); // pending
+      return 'warn';
   }
 }
 
@@ -313,11 +313,7 @@ export default function ChangeRequests(p: Props) {
 
   // A failed action leaves its dialog open, and the page banner sits behind the overlay: show the error in the dialog.
   const dialogError =
-    actionMsg?.type === 'err' ? (
-      <div role="alert" style={{ padding: '8px 10px', borderRadius: 6, fontSize: 12.5, fontWeight: 600, background: 'var(--danger-bg)', color: 'var(--danger-fg)', border: '1px solid var(--danger-border)' }}>
-        {actionMsg.text}
-      </div>
-    ) : null;
+    actionMsg?.type === 'err' ? <AlertBanner tone="danger">{actionMsg.text}</AlertBanner> : null;
 
   // Opening a dialog starts clean, so it never shows an error from an earlier action.
   const openRejectDialog = (d: RejectDialog) => {
@@ -334,8 +330,8 @@ export default function ChangeRequests(p: Props) {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: 'var(--text)' }}>Change Requests &amp; Approvals</h1>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+          <h1 className="page-title">Change Requests &amp; Approvals</h1>
+          <p className="page-subtitle">
             Review, conflict-check, and apply schedule changes proposed by Department Heads outside edit windows.
           </p>
         </div>
@@ -354,76 +350,47 @@ export default function ChangeRequests(p: Props) {
       </div>
 
       {p.liveCheckFailed && (
-        <div role="status" style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 6, fontSize: 12.5, background: 'var(--warn-bg)', color: 'var(--warn-fg)', border: '1px solid var(--warn-border)' }}>
-          Live conflict check is unavailable right now, so conflicts are not highlighted here. The server still checks every item when you approve.
+        <div style={{ marginBottom: 12 }}>
+          <AlertBanner tone="warn">
+            Live conflict check is unavailable right now, so conflicts are not highlighted here. The server still checks every item when you approve.
+          </AlertBanner>
         </div>
       )}
 
       {p.loadFailed && (
-        <div role="alert" style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 6, fontSize: 12.5, fontWeight: 600, background: 'var(--danger-bg)', color: 'var(--danger-fg)', border: '1px solid var(--danger-border)' }}>
-          Some change requests or their items could not be loaded, so review actions are turned off to avoid acting on an incomplete list. Use Refresh to try again.
+        <div style={{ marginBottom: 12 }}>
+          <AlertBanner tone="danger">
+            Some change requests or their items could not be loaded, so review actions are turned off to avoid acting on an incomplete list. Use Refresh to try again.
+          </AlertBanner>
         </div>
       )}
 
       {actionMsg && (
-        <div
-          ref={msgRef}
-          role="alert"
-          style={{
-            marginBottom: 16,
-            padding: '10px 14px',
-            borderRadius: 6,
-            fontSize: 13,
-            fontWeight: 600,
-            background: actionMsg.type === 'ok' ? 'var(--ok-bg)' : actionMsg.type === 'warn' ? 'var(--warn-bg)' : 'var(--danger-bg)',
-            color: actionMsg.type === 'ok' ? 'var(--ok-fg)' : actionMsg.type === 'warn' ? 'var(--warn-fg)' : 'var(--danger-fg)',
-            border: `1px solid ${actionMsg.type === 'ok' ? 'var(--ok-border)' : actionMsg.type === 'warn' ? 'var(--warn-border)' : 'var(--danger-border)'}`,
-          }}
-        >
-          {actionMsg.text}
+        <div ref={msgRef} style={{ marginBottom: 16 }}>
+          <AlertBanner
+            tone={actionMsg.type === 'ok' ? 'ok' : actionMsg.type === 'warn' ? 'warn' : 'danger'}
+          >
+            {actionMsg.text}
+          </AlertBanner>
         </div>
       )}
 
       {/* Tabs */}
-      <div role="tablist" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', borderBottom: '1px solid var(--border)', paddingBottom: 8, marginBottom: 16 }}>
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
-            style={{
-              padding: '6px 12px',
-              borderRadius: 6,
-              border: 'none',
-              fontSize: 13,
-              fontWeight: tab === t.id ? 700 : 500,
-              cursor: 'pointer',
-              background: tab === t.id ? 'var(--primary)' : 'transparent',
-              color: tab === t.id ? 'var(--primary-fg)' : 'var(--text-secondary)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            {t.label}
-            {t.id === 'pending' && t.count > 0 ? (
-              <span style={{ background: tab === 'pending' ? 'rgba(255,255,255,0.25)' : '#f59e0b', color: '#ffffff', borderRadius: 999, padding: '1px 6px', fontSize: 11, fontWeight: 800 }}>
-                {t.count}
-              </span>
-            ) : (
-              <span style={{ opacity: 0.8 }}>({t.count})</span>
-            )}
-          </button>
-        ))}
+      <div style={{ marginBottom: 16 }}>
+        <SegmentedTabs
+          ariaLabel="Change request status filter"
+          value={tab}
+          onChange={setTab}
+          items={tabs.map((t) => ({ id: t.id, label: `${t.label} (${t.count})` }))}
+        />
       </div>
 
       {/* Requests List */}
       {filteredRequests.length === 0 ? (
-        <div className="card" style={{ padding: '36px 16px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-          <p style={{ margin: 0, fontSize: 14 }}>{tab === 'pending' ? 'No pending change requests awaiting approval.' : `No ${tab} change requests found.`}</p>
-        </div>
+        <EmptyState
+          minHeight={200}
+          title={tab === 'pending' ? 'No pending change requests awaiting approval.' : `No ${tab} change requests found.`}
+        />
       ) : (
         <div style={{ display: 'grid', gap: 16 }}>
           {filteredRequests.map((req) => {
@@ -452,12 +419,12 @@ export default function ChangeRequests(p: Props) {
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>{req.requester_name || 'Department Head'}</span>
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 999, background: 'var(--surface-muted)', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                        {req.requester_role === 'manager' ? 'Department Head' : req.requester_role}
-                      </span>
-                      <span style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 4, textTransform: 'uppercase', ...statusBadge(req.status) }}>
-                        {req.status.replace('_', ' ')}
-                      </span>
+                      <Badge size="sm" tone="neutral">
+                        {((req.requester_role === 'manager' ? 'Department Head' : req.requester_role) ?? '').toUpperCase()}
+                      </Badge>
+                      <Badge size="sm" tone={statusTone(req.status)}>
+                        {req.status.replace('_', ' ').toUpperCase()}
+                      </Badge>
                     </div>
 
                     <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
@@ -494,7 +461,7 @@ export default function ChangeRequests(p: Props) {
                         <button
                           type="button"
                           className="btn"
-                          style={{ background: '#16a34a', color: '#ffffff', fontWeight: 700 }}
+                          style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)', borderColor: 'var(--ok-border)', fontWeight: 700 }}
                           onClick={() => runReview(req, { approveIds: approvable.map((i) => i.id), note: notes[req.id] })}
                           disabled={busy}
                           title={isSelfRequest ? 'Explicit admin override to approve your own change request' : conflictCount > 0 ? 'Items in conflict are left open for individual review' : undefined}
@@ -507,8 +474,8 @@ export default function ChangeRequests(p: Props) {
                         <>
                           <button
                             type="button"
-                            className="btn"
-                            style={{ background: '#0284c7', color: '#ffffff', fontWeight: 700 }}
+                            className="btn btn-primary"
+                            style={{ fontWeight: 700 }}
                             onClick={() => runReview(req, { approveIds: selectedOpenIds, note: notes[req.id] })}
                             disabled={busy}
                           >
@@ -542,18 +509,19 @@ export default function ChangeRequests(p: Props) {
                 {canAct && (
                   <input
                     type="text"
+                    className="input"
                     aria-label="Approver note (optional)"
                     placeholder="Note for the requester (optional) — saved with this review"
                     value={notes[req.id] ?? ''}
                     onChange={(e) => setNotes((prev) => ({ ...prev, [req.id]: e.target.value }))}
                     maxLength={300}
-                    style={{ width: '100%', boxSizing: 'border-box', marginBottom: 12, padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13 }}
+                    style={{ marginBottom: 12, fontSize: 13 }}
                   />
                 )}
 
                 {/* Items Table */}
                 <div style={{ overflowX: 'auto', border: '1px solid var(--border-light)', borderRadius: 6 }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, textAlign: 'left' }}>
+                  <table className="data-table" style={{ textAlign: 'left' }}>
                     <thead>
                       <tr style={{ background: 'var(--surface-muted)', borderBottom: '1px solid var(--border)' }}>
                         {canAct && (
