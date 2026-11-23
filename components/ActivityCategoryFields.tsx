@@ -333,8 +333,8 @@ export default function ActivityCategoryFields({
             <strong style={{ fontSize: 12.5, color: 'var(--violet-fg)' }}>Water Hauling / Tanker Log</strong>
             <button
               type="button"
-              className="btn"
-              style={{ minHeight: 28, padding: '2px 8px', fontSize: 11.5 }}
+              className="btn btn-add"
+              style={{ minHeight: 30, padding: '3px 10px', fontSize: 12 }}
               onClick={() =>
                 setFields((prev) => ({
                   ...prev,

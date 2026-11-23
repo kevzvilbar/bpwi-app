@@ -648,7 +648,7 @@ export default function AccomplishmentReports(p: Props) {
               </button>
               <button
                 type="button"
-                className="btn"
+                className="btn btn-add"
                 disabled={isLocked}
                 onClick={() => setEntries((prev) => [...prev, emptyEntry(prev.length)])}
               >

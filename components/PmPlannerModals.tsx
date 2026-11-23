@@ -442,7 +442,7 @@ export default function PmPlannerModals({
                 Edit PM Activity Names &amp; Colors
               </h2>
               <button
-                className="btn"
+                className="btn btn-add"
                 onClick={() =>
                   setActDraft((a) => [
                     ...a,

@@ -257,6 +257,51 @@ a:focus-visible {
   opacity: 1;
 }
 
+.btn-add {
+  background: #0d9488;
+  color: #ffffff;
+  border-color: #0f766e;
+  font-weight: 700;
+}
+
+.btn-add:hover:not(:disabled) {
+  background: #0f766e;
+  border-color: #115e59;
+  opacity: 1;
+}
+
+[data-contrast='high'] .btn-add {
+  background: #115e59;
+  color: #ffffff;
+  border-color: #042f2e;
+}
+
+[data-theme='dark'] .btn-add {
+  background: #0d9488;
+  color: #ffffff;
+  border-color: #2dd4bf;
+  box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.25);
+}
+
+[data-theme='dark'] .btn-add:hover:not(:disabled) {
+  background: #14b8a6;
+  color: #042f2e;
+  border-color: #5eead4;
+  opacity: 1;
+}
+
+[data-theme='dark'][data-contrast='high'] .btn-add {
+  background: #2dd4bf;
+  color: #020617;
+  border-color: #99f6e4;
+}
+
+[data-theme='dark'][data-contrast='high'] .btn-add:hover:not(:disabled) {
+  background: #5eead4;
+  color: #020617;
+  border-color: #ccfbf1;
+}
+
 /* Base theme-safe defaults for unclassed native form controls */
 input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='color']):not([type='range']):not([type='hidden']),
 select,
