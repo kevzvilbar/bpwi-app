@@ -7,6 +7,7 @@ import {
 } from './tank-cleaning-types.ts';
 import { computeLeakVolumeLoss, hydrateLeakLossDetails } from './leak-volume-loss.ts';
 import { formatFlushingMeterStatusLabel, hydrateFlushingSummaryFromDetails } from './flushing-volume.ts';
+import { computeTotalDistributedLiters, hydrateFuelActivitiesDetails, isFuelActivityType } from './fuel-activities.ts';
 
 export function formatTelemetrySummary(act: DailyActivityRow): string[] {
   const d = act.details ?? {};
@@ -153,6 +154,43 @@ export function formatTelemetrySummary(act: DailyActivityRow): string[] {
     if (tc.phPost.trim()) parts.push(`pH: ${tc.phPost.trim()}`);
     const evalRes = evaluateTankWaterQuality(tc);
     if (evalRes.overall !== 'INCOMPLETE') parts.push(evalRes.overall);
+  }
+
+  if (isFuelActivityType(act.activity_type)) {
+    const f = hydrateFuelActivitiesDetails(d);
+    if (act.activity_type === 'vehicle_fueling') {
+      const veh = [str('vehicleType'), str('plateNumber') ? `(${str('plateNumber')})` : ''].filter(Boolean).join(' ');
+      if (veh) parts.push(veh);
+      if (f.litersAmount) parts.push(`+${f.litersAmount} L ${f.fuelType}`);
+      if (f.odometerKm) parts.push(`Odometer: ${f.odometerKm} km`);
+      if (f.supplierStation || f.receiptNumber) {
+        parts.push([f.supplierStation, f.receiptNumber ? `OR #${f.receiptNumber}` : ''].filter(Boolean).join(' · '));
+      }
+      if (f.totalCostPhp) parts.push(`Php ${f.totalCostPhp}`);
+    } else if (act.activity_type === 'genset_fuel_purchase') {
+      if (f.litersAmount) parts.push(`+${f.litersAmount} L ${f.fuelType}`);
+      if (f.containerDescription) parts.push(`Containers: ${f.containerDescription}`);
+      if (f.supplierStation || f.receiptNumber) {
+        parts.push([f.supplierStation, f.receiptNumber ? `OR #${f.receiptNumber}` : ''].filter(Boolean).join(' · '));
+      }
+      if (f.totalCostPhp) parts.push(`Php ${f.totalCostPhp}`);
+    } else if (act.activity_type === 'genset_fuel_distribution') {
+      const validDrops = f.fuelDistributions.filter((s) => s.destinationSite.trim() || s.liters.trim());
+      const { totalLiters, validStopCount } = computeTotalDistributedLiters(validDrops);
+      if (totalLiters > 0) {
+        parts.push(`Total Distributed: ${totalLiters} L ${f.fuelType} (${validStopCount} site(s))`);
+      }
+      if (validDrops.length > 0) {
+        parts.push(validDrops.map((s) => `${s.destinationSite || 'Site'}: ${s.liters || '—'}L`).join(', '));
+      }
+      const veh = [str('vehicleType'), str('plateNumber') ? `(${str('plateNumber')})` : ''].filter(Boolean).join(' ');
+      if (veh) parts.push(`Transport: ${veh}`);
+    } else if (act.activity_type === 'genset_fuel_refill') {
+      if (f.litersAmount) parts.push(`Refilled: +${f.litersAmount} L ${f.fuelType}`);
+      if (f.fuelBefore || f.fuelAfter) parts.push(`Level: ${f.fuelBefore || '—'} → ${f.fuelAfter || '—'}`);
+      if (f.fuelSource) parts.push(`Source: ${f.fuelSource}`);
+      if (f.hourMeterReading) parts.push(`Hour Meter: ${f.hourMeterReading}h`);
+    }
   }
 
   return parts;

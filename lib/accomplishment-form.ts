@@ -119,6 +119,14 @@ export function mapActivityToFormColumn(activityType: string): {
       return { column_id: null, others_specify: 'BACKWASH' };
     case 'genset_monitoring':
       return { column_id: null, others_specify: 'GENSET' };
+    case 'genset_fuel_refill':
+      return { column_id: null, others_specify: 'GENSET REFILL' };
+    case 'genset_fuel_purchase':
+      return { column_id: null, others_specify: 'FUEL PURCH' };
+    case 'genset_fuel_distribution':
+      return { column_id: null, others_specify: 'FUEL DIST' };
+    case 'vehicle_fueling':
+      return { column_id: null, others_specify: 'VEHICLE FUEL' };
     case 'thermal_scanning':
       return { column_id: null, others_specify: 'THERMAL' };
     case 'tank_opening':

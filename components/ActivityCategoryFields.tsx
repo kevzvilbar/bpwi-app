@@ -10,6 +10,8 @@ import WellPulloutFields from '@/components/WellPulloutFields';
 import TankCleaningFields from '@/components/TankCleaningFields';
 import LeakRepairFields from '@/components/LeakRepairFields';
 import FlushingFields from '@/components/FlushingFields';
+import FuelActivityFields from '@/components/FuelActivityFields';
+import { isFuelActivityType } from '@/lib/fuel-activities';
 
 interface ActivityCategoryFieldsProps {
   activityType: string;
@@ -110,6 +112,15 @@ export default function ActivityCategoryFields({
       )}
 
       {activityType === 'flushing' && <FlushingFields fields={fields} setFields={setFields} />}
+
+      {isFuelActivityType(activityType) && (
+        <FuelActivityFields
+          activityType={activityType}
+          fields={fields}
+          setFields={setFields}
+          leadOpName={leadOpName}
+        />
+      )}
 
       {activityType === 'meter_test' && (
         <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: 'var(--violet-border)' }}>

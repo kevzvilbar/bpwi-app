@@ -23,6 +23,13 @@ import {
   hydrateFlushingMeterStatus,
   type FlushingMeterStatus,
 } from './flushing-volume.ts';
+import {
+  INITIAL_FUEL_ACTIVITIES_STATE,
+  buildFuelActivityPayload,
+  hydrateFuelActivitiesDetails,
+  isFuelActivityType,
+  type FuelActivitiesFormState,
+} from './fuel-activities.ts';
 
 export type { WellPulloutFormDetails } from './well-pullout-types.ts';
 export { INITIAL_WELL_PULLOUT_DETAILS } from './well-pullout-types.ts';
@@ -31,6 +38,8 @@ export { INITIAL_TANK_CLEANING_DETAILS } from './tank-cleaning-types.ts';
 export type { LeakVolumeLossFormState } from './leak-volume-loss.ts';
 export { INITIAL_LEAK_LOSS_STATE } from './leak-volume-loss.ts';
 export type { FlushingMeterStatus } from './flushing-volume.ts';
+export type { FuelActivitiesFormState, FuelDistributionStop } from './fuel-activities.ts';
+export { INITIAL_FUEL_ACTIVITIES_STATE } from './fuel-activities.ts';
 
 export interface BlowOffItem {
   name: string;
@@ -134,6 +143,9 @@ export interface ActivityDetailFieldsState {
 
   // 10. Tank Cleaning & Sanitation
   tankCleaning: TankCleaningFormDetails;
+
+  // 11. Vehicle & Genset Fuel Operations
+  fuel: FuelActivitiesFormState;
 }
 
 export const INITIAL_ACTIVITY_DETAIL_FIELDS: ActivityDetailFieldsState = {
@@ -191,6 +203,7 @@ export const INITIAL_ACTIVITY_DETAIL_FIELDS: ActivityDetailFieldsState = {
   pwlMeters: '',
   wellPullout: INITIAL_WELL_PULLOUT_DETAILS,
   tankCleaning: INITIAL_TANK_CLEANING_DETAILS,
+  fuel: INITIAL_FUEL_ACTIVITIES_STATE,
 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -301,6 +314,7 @@ export function hydrateActivityDetailFields(
   if (d.pwlMeters != null) next.pwlMeters = String(d.pwlMeters);
   next.wellPullout = hydrateWellPulloutDetails(d);
   next.tankCleaning = hydrateTankCleaningDetails(d);
+  next.fuel = hydrateFuelActivitiesDetails(d);
 
   return next;
 }
@@ -485,6 +499,13 @@ export function buildActivityDetailsPayload(
   }
   if (activityType === 'tank_cleaning') {
     return buildTankCleaningPayload(f.tankCleaning);
+  }
+  if (isFuelActivityType(activityType)) {
+    return buildFuelActivityPayload(activityType, f.fuel, {
+      vehicleType: f.vehicleType,
+      plateNumber: f.plateNumber,
+      driverName: f.driverName,
+    });
   }
   return {};
 }

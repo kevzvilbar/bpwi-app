@@ -17,7 +17,7 @@ export const DAILY_ACTIVITY_KPI_COLUMNS =
 
 /** Minimal columns needed for recent genset fuel telemetry rows in the KPI tab. */
 export const DAILY_ACTIVITY_GENSET_COLUMNS =
-  'id, activity_date, area_code_id, site_or_well, details';
+  'id, activity_date, activity_type, area_code_id, site_or_well, details';
 
 export const JOB_ORDER_COLUMNS =
   'id, organization_id, jo_number, title, activity_type, priority, area_code_id, site_or_well, block_lot, account_number, account_name, contact_number, description, assigned_operator_ids, deadline, estimated_hours, status, tat_justification, created_by, completed_at, created_at, updated_at';

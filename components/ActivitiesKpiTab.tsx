@@ -42,6 +42,7 @@ type KpiAct = {
 type KpiGensetAct = {
   id: string;
   activity_date: string;
+  activity_type?: string;
   area_code_id: string | null;
   site_or_well: string | null;
   details: Record<string, unknown> | null;
@@ -139,7 +140,7 @@ export default function ActivitiesKpiTab(p: {
         sb
           .from('daily_activities')
           .select(DAILY_ACTIVITY_GENSET_COLUMNS)
-          .eq('activity_type', 'genset_monitoring')
+          .in('activity_type', ['genset_monitoring', 'genset_fuel_refill'])
           .gte('activity_date', fetchStart)
           .lte('activity_date', p.anchorDate)
           .order('activity_date', { ascending: false })
@@ -383,15 +384,21 @@ export default function ActivitiesKpiTab(p: {
       .slice(0, 12)
       .map((a) => {
         const d = a.details ?? {};
+        const isRefill = a.activity_type === 'genset_fuel_refill';
         return {
           id: a.id,
           date: a.activity_date,
           station: a.area_code_id ? (areaBy.get(a.area_code_id)?.code ?? '—') : '—',
           site: a.site_or_well ?? 'Main Genset',
-          initialFuel: prim(d.gensetInitialFuel),
-          finalFuel: prim(d.gensetFinalFuel),
-          runningHours: prim(d.runningHours),
-          cause: typeof d.gensetCause === 'string' ? d.gensetCause : 'Routine',
+          initialFuel: isRefill ? prim(d.fuelBefore) : prim(d.gensetInitialFuel),
+          refilledLiters: isRefill ? prim(d.litersAdded) : null,
+          finalFuel: isRefill ? prim(d.fuelAfter) : prim(d.gensetFinalFuel),
+          runningHours: isRefill ? prim(d.hourMeterReading) : prim(d.runningHours),
+          cause: isRefill
+            ? `Refill (${typeof d.fuelSource === 'string' && d.fuelSource ? d.fuelSource : 'Fuel'})`
+            : typeof d.gensetCause === 'string'
+              ? d.gensetCause
+              : 'Routine',
         };
       });
   }, [dataset, startDate, p.anchorDate, areaBy]);
@@ -580,8 +587,9 @@ export default function ActivitiesKpiTab(p: {
                 <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)' }}>Station / Unit</th>
                 <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)' }}>Cause</th>
                 <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Initial Fuel</th>
+                <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Refilled (L)</th>
                 <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Final Fuel</th>
-                <th style={{ padding: '7px 12px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Run Hours</th>
+                <th style={{ padding: '7px 12px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Run / Hr Meter</th>
               </tr>
             </thead>
             <tbody>
@@ -591,6 +599,9 @@ export default function ActivitiesKpiTab(p: {
                   <td style={{ padding: '7px 10px', fontWeight: 600 }}>{g.station} · {g.site}</td>
                   <td style={{ padding: '7px 10px' }}>{g.cause}</td>
                   <td className="tabular-nums" style={{ padding: '7px 10px', textAlign: 'right' }}>{g.initialFuel ?? '—'}</td>
+                  <td className="tabular-nums" style={{ padding: '7px 10px', textAlign: 'right', color: g.refilledLiters !== null ? 'var(--ok-fg)' : undefined, fontWeight: g.refilledLiters !== null ? 700 : undefined }}>
+                    {g.refilledLiters !== null ? `+${g.refilledLiters}` : '—'}
+                  </td>
                   <td className="tabular-nums" style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700 }}>{g.finalFuel ?? '—'}</td>
                   <td className="tabular-nums" style={{ padding: '7px 12px', textAlign: 'right' }}>{g.runningHours ?? '—'}</td>
                 </tr>

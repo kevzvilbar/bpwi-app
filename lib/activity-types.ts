@@ -14,13 +14,16 @@ export const ACTIVITY_CATEGORY_LABELS: Record<ActivityCategory, string> = {
   plant: 'Plant & Pump Ops',
   network: 'Network & Distribution',
   metering: 'Customer & Metering',
-  grounds: 'Grounds & General',
+  grounds: 'Grounds, Fleet & General',
 };
 
 export const ACTIVITY_TYPES: ActivityTypeDef[] = [
   // Plant & Pump Ops
   { id: 'pump_monitoring', label: 'Pump House Monitoring', shortLabel: 'Pump Mon', category: 'plant', color: '#0369a1' },
   { id: 'genset_monitoring', label: 'Genset Monitoring', shortLabel: 'Genset', category: 'plant', color: '#b45309' },
+  { id: 'genset_fuel_refill', label: 'Genset Fuel Refilling', shortLabel: 'Genset Refill', category: 'plant', color: '#d97706' },
+  { id: 'genset_fuel_purchase', label: 'Genset Fuel Purchase', shortLabel: 'Fuel Purchase', category: 'plant', color: '#92400e' },
+  { id: 'genset_fuel_distribution', label: 'Genset Fuel Distribution', shortLabel: 'Fuel Distrib', category: 'plant', color: '#b45309' },
   { id: 'backwash', label: 'Backwash / MMF Backwashing', shortLabel: 'Backwash', category: 'plant', color: '#7c3aed' },
   { id: 'thermal_scanning', label: 'Thermal Scanning', shortLabel: 'Thermal Scan', category: 'plant', color: '#ea580c' },
   { id: 'water_level_monitoring', label: 'Water Level Monitoring (SWL/PWL)', shortLabel: 'SWL & PWL', category: 'plant', color: '#ca8a04' },
@@ -48,7 +51,8 @@ export const ACTIVITY_TYPES: ActivityTypeDef[] = [
   { id: 'meter_check_indiv', label: 'Meter Checking (Individual)', shortLabel: 'Indiv Meter', category: 'metering', color: '#7e22ce' },
   { id: 'reconnection', label: 'Reconnection', shortLabel: 'Reconnect', category: 'metering', color: '#059669' },
 
-  // Grounds & General
+  // Grounds, Fleet & General
+  { id: 'vehicle_fueling', label: 'Vehicle Refueling', shortLabel: 'Vehicle Fuel', category: 'grounds', color: '#0f766e' },
   { id: 'garbage_collection', label: 'Garbage Collection', shortLabel: 'Garbage', category: 'grounds', color: '#475569' },
   { id: 'plant_watering', label: 'Plant Watering', shortLabel: 'Grounds', category: 'grounds', color: '#65a30d' },
 ];
@@ -101,6 +105,10 @@ export function resolveActivityTypeFromPm(
   if (/pull[-_\s]?out|well\s*pull/.test(combined)) return 'well_pull_out';
   if (/thermal|thermograph/.test(combined)) return 'thermal_scanning';
   if (/water\s*level|swl|pwl/.test(combined)) return 'water_level_monitoring';
+  if (/genset.*dist|fuel.*dist/.test(combined)) return 'genset_fuel_distribution';
+  if (/genset.*purch|fuel.*purch/.test(combined)) return 'genset_fuel_purchase';
+  if (/genset.*refill|refill.*genset/.test(combined)) return 'genset_fuel_refill';
+  if (/vehicle.*fuel|refuel.*vehicle/.test(combined)) return 'vehicle_fueling';
   if (/genset|generator/.test(combined)) return 'genset_monitoring';
   if (/chlorin|sampl|water\s*qual/.test(combined)) return 'water_sampling';
   if (/hydro/.test(combined)) return 'hydro_testing';

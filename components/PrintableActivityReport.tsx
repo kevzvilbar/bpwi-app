@@ -188,6 +188,11 @@ export default function PrintableActivityReport(p: {
                     }
                     return String(b.name ?? 'Blow-off');
                   }
+                  if (key === 'fuelDistributions' && typeof item === 'object' && item !== null) {
+                    const s = item as { destinationSite?: unknown; liters?: unknown; containerNote?: unknown };
+                    const note = typeof s.containerNote === 'string' && s.containerNote.trim() ? ` (${s.containerNote.trim()})` : '';
+                    return `${String(s.destinationSite ?? 'Site')}: ${String(s.liters ?? '—')} L${note}`;
+                  }
                   return typeof item === 'object' && item !== null ? Object.values(item).filter(Boolean).join(' · ') : String(item);
                 })
                 .join('; ')
