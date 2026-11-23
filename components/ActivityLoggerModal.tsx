@@ -176,10 +176,13 @@ export default function ActivityLoggerModal(p: {
   const [joTatJustification, setJoTatJustification] = useState('');
   const [openAtMs, setOpenAtMs] = useState(0);
   const lastParsedRef = useRef('');
+  const initCtxRef = useRef({ p, asgByOp, stationAreas, stationIdSet });
+  initCtxRef.current = { p, asgByOp, stationAreas, stationIdSet };
 
   // Initialize defaults whenever modal opens
   useEffect(() => {
     if (!p.open) return;
+    const { p: props, asgByOp: asgMap, stationAreas: stAreas, stationIdSet: stIdSet } = initCtxRef.current;
     setErrMsg('');
     setJoTatJustification('');
     setOpenAtMs(Date.now());
@@ -199,13 +202,13 @@ export default function ActivityLoggerModal(p: {
     // Reset all activity-specific telemetry fields so previous submissions never bleed over
     setDetails({
       ...INITIAL_ACTIVITY_DETAIL_FIELDS,
-      ...(p.linkedPmTask && resolveActivityTypeFromPm(p.linkedPmTask, p.pmActivityTypes) === 'genset_monitoring' ? { gensetCause: 'PMS' as const } : {}),
-      accountNumber: p.linkedJobOrder?.account_number ?? '',
-      accountName: p.linkedJobOrder?.account_name ?? '',
+      ...(props.linkedPmTask && resolveActivityTypeFromPm(props.linkedPmTask, props.pmActivityTypes) === 'genset_monitoring' ? { gensetCause: 'PMS' as const } : {}),
+      accountNumber: props.linkedJobOrder?.account_number ?? '',
+      accountName: props.linkedJobOrder?.account_name ?? '',
     });
 
-    if (p.editingActivity) {
-      const ea = p.editingActivity;
+    if (props.editingActivity) {
+      const ea = props.editingActivity;
       const d = (ea.details ?? {}) as Record<string, unknown>;
       setActivityType(ea.activity_type);
       setLeadOpId(ea.lead_operator_id ?? '');
@@ -225,11 +228,7 @@ export default function ActivityLoggerModal(p: {
         (ea.photo_urls ?? []).map((u, idx) => {
           const sp = ea.photo_storage_paths?.[idx] ?? null;
           const resolved = resolveActivityPhotoUrl(u, sp);
-          return {
-            url: resolved,
-            storagePath: sp,
-            preview: resolved,
-          };
+          return { url: resolved, storagePath: sp, preview: resolved };
         }),
       );
       const toHHMM = (iso: string | null) => {
@@ -277,59 +276,44 @@ export default function ActivityLoggerModal(p: {
     }
 
     // Determine initial activity type (reconciles preset codes, custom PM types, and title keywords)
-    const pmMapped = p.linkedPmTask
-      ? resolveActivityTypeFromPm(p.linkedPmTask, p.pmActivityTypes)
-      : undefined;
-    const initAct =
-      p.linkedJobOrder?.activity_type ||
-      pmMapped ||
-      p.initialActivityType ||
-      'pump_monitoring';
+    const pmMapped = props.linkedPmTask ? resolveActivityTypeFromPm(props.linkedPmTask, props.pmActivityTypes) : undefined;
+    const initAct = props.linkedJobOrder?.activity_type || pmMapped || props.initialActivityType || 'pump_monitoring';
     setActivityType(ACTIVITY_TYPES.some((a) => a.id === initAct) ? initAct : 'pump_monitoring');
 
-    const pmDefaults = p.linkedPmTask ? getDefaultPmPerformers(p.linkedPmTask, p.operatorId) : [];
-    const defaultLead =
-      p.initialLeadOperatorId ??
-      p.linkedJobOrder?.assigned_operator_ids?.[0] ??
-      pmDefaults[0] ??
-      p.operatorId ??
-      '';
+    const pmDefaults = props.linkedPmTask ? getDefaultPmPerformers(props.linkedPmTask, props.operatorId) : [];
+    const defaultLead = props.initialLeadOperatorId ?? props.linkedJobOrder?.assigned_operator_ids?.[0] ?? pmDefaults[0] ?? props.operatorId ?? '';
     setLeadOpId(defaultLead);
-    const linkedCrew = p.linkedJobOrder?.assigned_operator_ids ?? pmDefaults;
+    const linkedCrew = props.linkedJobOrder?.assigned_operator_ids ?? pmDefaults;
     setCrewOpIds(linkedCrew.filter((id) => id && id !== defaultLead));
 
     // Area & Shift from linked JO, PM location match, or Roster assignment
-    const asg = defaultLead ? asgByOp.get(defaultLead) : undefined;
+    const asg = defaultLead ? asgMap.get(defaultLead) : undefined;
     setShiftTypeId(asg?.shift_type_id ?? '');
-    const pmLocText = (p.linkedPmTask?.locations ?? []).join(' ').toLowerCase();
+    const pmLocText = (props.linkedPmTask?.locations ?? []).join(' ').toLowerCase();
     const pmMatchedArea = pmLocText
-      ? stationAreas.find(
-          (a) =>
-            pmLocText.includes(a.code.toLowerCase()) ||
-            (a.name && pmLocText.includes(a.name.toLowerCase())),
-        )
+      ? stAreas.find((a) => pmLocText.includes(a.code.toLowerCase()) || (a.name && pmLocText.includes(a.name.toLowerCase())))
       : undefined;
 
-    if (p.linkedJobOrder?.area_code_id) {
-      setAreaCodeId(p.linkedJobOrder.area_code_id);
+    if (props.linkedJobOrder?.area_code_id) {
+      setAreaCodeId(props.linkedJobOrder.area_code_id);
       setAreaTouched(true);
     } else if (pmMatchedArea) {
       setAreaCodeId(pmMatchedArea.id);
       setAreaTouched(true);
-    } else if (asg?.area_code_id && stationIdSet.has(asg.area_code_id)) {
+    } else if (asg?.area_code_id && stIdSet.has(asg.area_code_id)) {
       setAreaCodeId(asg.area_code_id);
     } else {
-      setAreaCodeId(stationAreas[0]?.id ?? '');
+      setAreaCodeId(stAreas[0]?.id ?? '');
     }
 
     // Site / BlockLot / Account fields
     setSiteOrWell(
-      p.linkedJobOrder?.site_or_well ??
-        (p.linkedPmTask
-          ? [p.linkedPmTask.locations?.join(', '), p.linkedPmTask.asset].filter(Boolean).join(' · ')
+      props.linkedJobOrder?.site_or_well ??
+        (props.linkedPmTask
+          ? [props.linkedPmTask.locations?.join(', '), props.linkedPmTask.asset].filter(Boolean).join(' · ')
           : ''),
     );
-    setBlockLot(p.linkedJobOrder?.block_lot ?? '');
+    setBlockLot(props.linkedJobOrder?.block_lot ?? '');
 
     // Clear signature canvas if present
     setTimeout(() => {
@@ -339,7 +323,7 @@ export default function ActivityLoggerModal(p: {
         ctx?.clearRect(0, 0, cv.width, cv.height);
       }
     }, 50);
-  }, [p.open]);
+  }, [p.open, p.editingActivity?.id, p.linkedPmTask?.id, p.linkedJobOrder?.id, p.initialActivityType, p.initialLeadOperatorId]);
 
   // Sync shift & area when Lead Operator changes
   useEffect(() => {

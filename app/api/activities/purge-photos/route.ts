@@ -3,7 +3,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { supabaseServer } from '@/lib/supabase/server';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 import { getErrorMessage } from '@/lib/error-utils';
-import { ACTIVITY_MEDIA_BUCKET, extractActivityStoragePath } from '@/lib/activity-media';
+import { ACTIVITY_MEDIA_BUCKET, extractActivityStoragePath, isStoragePathOwnedByOrg } from '@/lib/activity-media';
 
 async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
   const nowMs = Date.now();
@@ -11,7 +11,7 @@ async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
   const cutoffIso = new Date(nowMs - 30 * 24 * 60 * 60 * 1000).toISOString();
   let query = db
     .from('daily_activities')
-    .select('id, photo_storage_paths, photo_urls')
+    .select('id, organization_id, photo_storage_paths, photo_urls')
     .is('photos_purged_at', null)
     .or(`photos_expires_at.lt.${nowIso},and(photos_expires_at.is.null,created_at.lt.${cutoffIso})`);
 
@@ -39,17 +39,25 @@ async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
   const pathsByRow = new Map<string, string[]>();
   const allPaths: string[] = [];
   for (const row of rowsWithMedia) {
+    const rowOrgId = typeof row.organization_id === 'string' ? row.organization_id : '';
     const pathSet = new Set<string>();
+    const acceptPath = (candidate: string | null) => {
+      if (!candidate) return;
+      if (!rowOrgId || !isStoragePathOwnedByOrg(candidate, rowOrgId)) {
+        console.warn(`[purge-photos] Skipped storage path outside row org (${rowOrgId || 'unknown'}): ${candidate}`);
+        return;
+      }
+      pathSet.add(candidate);
+    };
     if (Array.isArray(row.photo_storage_paths)) {
       for (const p of row.photo_storage_paths) {
-        if (typeof p === 'string' && p.trim()) pathSet.add(p.trim());
+        if (typeof p === 'string' && p.trim()) acceptPath(p.trim());
       }
     }
     if (Array.isArray(row.photo_urls)) {
       for (const u of row.photo_urls) {
         if (typeof u === 'string') {
-          const extracted = extractActivityStoragePath(u);
-          if (extracted) pathSet.add(extracted);
+          acceptPath(extractActivityStoragePath(u));
         }
       }
     }

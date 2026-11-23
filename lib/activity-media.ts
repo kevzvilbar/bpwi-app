@@ -12,6 +12,20 @@ export function isValidActivityStoragePath(storagePath: string): boolean {
   return STORAGE_PATH_RE.test(trimmed);
 }
 
+/**
+ * Verifies that a validated storage path belongs to the specified organization
+ * (the first path segment must match `orgId` case-insensitively).
+ */
+export function isStoragePathOwnedByOrg(storagePath: string, orgId: string): boolean {
+  const cleanOrg = orgId.trim().toLowerCase();
+  if (!cleanOrg) return false;
+  const trimmedPath = storagePath.trim();
+  if (!isValidActivityStoragePath(trimmedPath)) return false;
+  const slashIdx = trimmedPath.indexOf('/');
+  if (slashIdx <= 0) return false;
+  return trimmedPath.slice(0, slashIdx).toLowerCase() === cleanOrg;
+}
+
 export function getActivityPhotoContentType(
   storagePath: string,
 ): 'image/webp' | 'image/png' | 'image/jpeg' {

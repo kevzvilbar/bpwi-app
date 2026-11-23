@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import { clearOfflineQueues } from '@/lib/offline-queue';
 import { Badge } from '@/components/ui';
 
 export default function PendingApproval({
@@ -21,6 +22,7 @@ export default function PendingApproval({
   }
 
   async function signOut() {
+    await clearOfflineQueues();
     await supabaseBrowser().auth.signOut();
     localStorage.removeItem('bpwi-last-sync');
     if ('caches' in window) {

@@ -76,7 +76,8 @@ export async function GET(req: NextRequest) {
       : tasksPrimary;
 
   if (tasksRes.error) {
-    return NextResponse.json({ error: tasksRes.error }, { status: 500 });
+    console.error('[pm/export] Failed to query pm_tasks:', tasksRes.error);
+    return NextResponse.json({ error: 'Failed to export PM schedule' }, { status: 500 });
   }
 
   const actLabelByCode = new Map<string, string>(Object.entries(PRESET_LABELS));

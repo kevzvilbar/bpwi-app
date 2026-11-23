@@ -182,8 +182,8 @@ describe('approve/reject change request: conflicts, overrides, partial flow (023
     await db.query(`update user_profiles set role='viewer', is_active=true where id=$1`, [VIEWER]);
 
     const org = (await db.query<{ o: string }>(`select organization_id o from user_profiles where id=$1`, [ADMIN])).rows[0].o;
-    const org2 = (await db.query<{ id: string }>(`insert into organizations (name) values ('Second Org') returning id`)).rows[0].id;
     await db.query(`insert into auth.users (id,email,raw_user_meta_data) values ($1,'a2@t','{"full_name":"Other Admin"}'::jsonb)`, [OTHER_ADMIN]);
+    const org2 = (await db.query<{ id: string }>(`insert into organizations (name) values ('Second Org') returning id`)).rows[0].id;
     await db.query(`update user_profiles set organization_id=$2, role='admin', is_active=true where id=$1`, [OTHER_ADMIN, org2]);
 
     const op = (await db.query<{ id: string }>(`insert into operators (organization_id,full_name) values ($1,'Op 1') returning id`, [org])).rows[0].id;

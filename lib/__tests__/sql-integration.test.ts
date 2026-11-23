@@ -31,6 +31,7 @@ async function initSupabaseShim(db: PGlite) {
       id uuid primary key default gen_random_uuid(),
       email text,
       raw_user_meta_data jsonb default '{}'::jsonb,
+      raw_app_meta_data jsonb default '{}'::jsonb,
       created_at timestamptz not null default now()
     );
 
@@ -65,8 +66,8 @@ async function setAuthUid(db: PGlite, uid: string | null) {
   await db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [uid ?? '']);
 }
 
-describe('PGlite SQL migrations 001–029 execution & security invariants', () => {
-  it('executes all 001–029 migrations cleanly and enforces sign-up, change-request, storage, org-seed, station-code, PM credit, PM locations, and hardened service-role route store invariants', async () => {
+describe('PGlite SQL migrations 001–030 execution & security invariants', () => {
+  it('executes all 001–030 migrations cleanly and enforces sign-up, change-request, storage, org-seed, station-code, PM credit, PM locations, route store, and audit invariants', async () => {
     const db = new PGlite({ extensions: { pgcrypto } });
     await initSupabaseShim(db);
 
@@ -75,7 +76,7 @@ describe('PGlite SQL migrations 001–029 execution & security invariants', () =
       .filter((f) => f.endsWith('.sql'))
       .sort();
 
-    assert.ok(files.length >= 29, `Expected >= 29 migrations, found ${files.length}`);
+    assert.ok(files.length >= 30, `Expected >= 30 migrations, found ${files.length}`);
 
     for (const f of files) {
       const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8');
@@ -593,14 +594,14 @@ describe('PGlite SQL migrations 001–029 execution & security invariants', () =
 
     const subUserId = '44444444-4444-4444-8444-444444444444';
     const assignedUserId = '55555555-5555-4555-8555-555555555555';
-    await db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, 'subop@bpwi.test', $2::jsonb)`, [
-      subUserId,
-      JSON.stringify({ full_name: 'Substitute Op' }),
-    ]);
-    await db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, 'assignedop@bpwi.test', $2::jsonb)`, [
-      assignedUserId,
-      JSON.stringify({ full_name: 'Op One' }),
-    ]);
+    await db.query(
+      `insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data) values ($1, 'subop@bpwi.test', $2::jsonb, $3::jsonb)`,
+      [subUserId, JSON.stringify({ full_name: 'Substitute Op' }), JSON.stringify({ organization_id: orgId })],
+    );
+    await db.query(
+      `insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data) values ($1, 'assignedop@bpwi.test', $2::jsonb, $3::jsonb)`,
+      [assignedUserId, JSON.stringify({ full_name: 'Op One' }), JSON.stringify({ organization_id: orgId })],
+    );
     const subOpRes = await db.query<{ id: string }>(
       `insert into operators (organization_id, full_name) values ($1, 'Substitute Op') returning id`,
       [orgId],
@@ -922,5 +923,66 @@ describe('PGlite SQL migrations 001–029 execution & security invariants', () =
     // Re-running 029 migration is idempotent
     const sql29 = fs.readFileSync(path.join(MIGRATIONS_DIR, '029_harden_route_compute_store.sql'), 'utf8');
     await db.exec(sql29);
+
+    // 15. 030 Sign-up lockdown & user_profiles audit trigger
+    await setAuthUid(db, adminId);
+    await db.query(`update user_profiles set role = 'scheduler', can_approve = true where id = $1`, [mgr1Id]);
+    const profAudit = await db.query<{ action: string; old_role: string; new_role: string; new_can_approve: boolean }>(
+      `select action, old_value->>'role' as old_role, new_value->>'role' as new_role, (new_value->>'can_approve')::boolean as new_can_approve
+       from audit_logs
+       where table_name = 'user_profiles' and record_id = $1 and action = 'UPDATE'
+       order by id desc limit 1`,
+      [mgr1Id],
+    );
+    assert.equal(profAudit.rows[0]?.action, 'UPDATE');
+    assert.equal(profAudit.rows[0]?.old_role, 'manager');
+    assert.equal(profAudit.rows[0]?.new_role, 'scheduler');
+    assert.equal(profAudit.rows[0]?.new_can_approve, true);
+
+    // Multi-org: uninvited user creation fails instead of defaulting to org limit 1
+    const uninvitedId = '66666666-6666-4666-8666-666666666666';
+    await assert.rejects(
+      () =>
+        db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, 'stray@example.com', '{}'::jsonb)`, [
+          uninvitedId,
+        ]),
+      /Multiple organizations exist; new users must be invited with an organization_id/i,
+    );
+
+    // Multi-org: invited user creation routes into the invited organization as inactive viewer
+    const invitedId = '77777777-7777-4777-8777-777777777777';
+    await db.query(
+      `insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data) values ($1, 'invited@org2.test', $2::jsonb, $3::jsonb)`,
+      [invitedId, JSON.stringify({ full_name: 'Invited User' }), JSON.stringify({ organization_id: org2Id })],
+    );
+    const invitedProf = await db.query<{ organization_id: string; role: string; is_active: boolean }>(
+      `select organization_id, role::text, is_active from user_profiles where id = $1`,
+      [invitedId],
+    );
+    assert.deepEqual(invitedProf.rows[0], { organization_id: org2Id, role: 'viewer', is_active: false });
+
+    // Single-org email domain allowlist enforcement
+    await db.query(`delete from organizations where id = $1`, [org2Id]);
+    await db.query(`update organizations set allowed_signup_domains = array['bpwaterworks.com'] where id = $1`, [orgId]);
+
+    const badDomainId = '88888888-8888-4888-8888-888888888888';
+    await assert.rejects(
+      () =>
+        db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, 'outsider@gmail.com', '{}'::jsonb)`, [
+          badDomainId,
+        ]),
+      /Sign-up restricted to approved email domains/i,
+    );
+
+    const goodDomainId = '99999999-9999-4999-8999-999999999999';
+    await db.query(
+      `insert into auth.users (id, email, raw_user_meta_data) values ($1, 'staff@bpwaterworks.com', $2::jsonb)`,
+      [goodDomainId, JSON.stringify({ full_name: 'Approved Domain User' })],
+    );
+    const goodProf = await db.query<{ organization_id: string; role: string; is_active: boolean }>(
+      `select organization_id, role::text, is_active from user_profiles where id = $1`,
+      [goodDomainId],
+    );
+    assert.deepEqual(goodProf.rows[0], { organization_id: orgId, role: 'viewer', is_active: false });
   });
 });

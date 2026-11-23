@@ -134,7 +134,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Server secret key (SUPABASE_SECRET_KEY) is not configured' }, { status: 503 });
     }
 
-    const rawBody: unknown = await req.json();
+    const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
+    const contentLength = Number(req.headers.get('content-length') ?? '0');
+    if (Number.isFinite(contentLength) && contentLength > MAX_IMPORT_BYTES) {
+      return NextResponse.json({ error: 'Import payload exceeds 10 MB limit' }, { status: 413 });
+    }
+    const rawText = await req.text();
+    if (Buffer.byteLength(rawText, 'utf8') > MAX_IMPORT_BYTES) {
+      return NextResponse.json({ error: 'Import payload exceeds 10 MB limit' }, { status: 413 });
+    }
+    let rawBody: unknown;
+    try {
+      rawBody = JSON.parse(rawText);
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
+    }
     if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
       return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
     }
@@ -288,7 +302,7 @@ export async function POST(req: Request) {
       });
     }
     if (activityRows.length > 0) {
-      await db.from('pm_activity_types').upsert(activityRows, { onConflict: 'organization_id,code' });
+      await must(db.from('pm_activity_types').upsert(activityRows, { onConflict: 'organization_id,code' }));
     }
 
     const pm = (st.pmTasks ?? []).map((t) => ({

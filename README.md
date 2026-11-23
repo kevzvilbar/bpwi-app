@@ -7,7 +7,7 @@
 4. Import your data: in the old HTML app use **Export JSON**, then (logged in as admin):
    `curl -X POST http://localhost:3000/api/import -H "Content-Type: application/json" -H "Cookie: <your session cookie>" --data @backup.json`
    (or call it from a small admin page). Re-running is safe.
-5. Deploy: import the repo in Vercel, add the three env vars (`SUPABASE_SECRET_KEY` server-only).
+5. Deploy: import the repo in Vercel, add the env vars (`SUPABASE_SECRET_KEY` server-only). In Supabase Authentication settings, disable **Allow new users to sign up** for invite-only production deployments (keep `NEXT_PUBLIC_ALLOW_PUBLIC_SIGNUP=false`), or configure `organizations.allowed_signup_domains` (migration `030`) for domain-restricted self sign-ups. Also ensures `user_profiles` changes (role, approval, active status) are recorded by `audit_user_profiles`.
 
 ## Department heads (migrations 007, 008 & 009)
 Run `007_manager_role.sql` **on its own first** (PostgreSQL cannot use a new enum value in the transaction that adds it), then `008_department_heads.sql`, followed by `009_change_requests.sql`.

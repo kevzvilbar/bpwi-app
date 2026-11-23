@@ -1,6 +1,6 @@
 # Supabase Migrations (`bpwi-app`)
 
-Migrations in this folder are strictly numbered (`001`–`029`) and verified by `npm test` (`lib/__tests__/migrations.test.ts`), which checks:
+Migrations in this folder are strictly numbered (`001`–`030`) and verified by `npm test` (`lib/__tests__/migrations.test.ts`), which checks:
 - Sequential numbering with no gaps or duplicates.
 - Every newly created table enables Row Level Security (`ENABLE ROW LEVEL SECURITY`).
 
@@ -13,7 +13,7 @@ supabase db push
 ```
 
 ### Option B — Supabase SQL Editor (Manual)
-Run each file in ascending numeric order (`001_init.sql` → `029_harden_route_compute_store.sql`). All migrations are written idempotently (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
+Run each file in ascending numeric order (`001_init.sql` → `030_security_hardening_signup_audit.sql`). All migrations are written idempotently (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
 
 ## Optional Local Seeds
 Org-chart structural templates do not commit employee names in migrations. To assign local directory names outside version control, copy `supabase/seeds/org_chart.example.sql` to `supabase/seeds/org_chart.local.sql` (gitignored) or assign holders in `/org-chart`.
@@ -39,3 +39,4 @@ Org-chart structural templates do not commit employee names in migrations. To as
 - `027`: Add saved PM locations/sites table (`pm_locations`) with case-insensitive org uniqueness, RLS policies for org read & admin/scheduler/granted-manager writes, and idempotent backfill from station `area_codes.sub_sites` and existing `pm_tasks.locations`.
 - `028`: Add Postgres-backed shared route compute cache & per-user sliding-window rate-limit store (`route_compute_cache`, `route_compute_rate_hits`, `check_route_compute_rate_limit`, `get_route_compute_cache`, `set_route_compute_cache`), and restrict operator PM completion attribution to the closing operator plus originally assigned operators.
 - `029`: Harden shared route compute store: drop `authenticated`-callable `028` RPC overloads, restrict all route cache/rate-limit RPCs to `service_role`, partition `route_compute_cache` by `organization_id` with payload byte/element caps and per-org entry bounds, hardcode rate-limit windows/thresholds inside SQL, and add cross-user expired sweeps + `purge_expired_route_compute_state()` for scheduled cron cleanup.
+- `030`: Harden user sign-up provisioning (`organizations.allowed_signup_domains`, invite-only multi-tenant enforcement in `handle_new_user()`) and add `audit_user_profiles` trigger on `user_profiles` to log role, approval, and active-status changes.

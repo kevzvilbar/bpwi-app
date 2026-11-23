@@ -12,7 +12,7 @@ describe('Supabase SQL migrations integrity', () => {
     .sort();
 
   it('has strictly sequential 3-digit prefixes with no gaps or duplicates', () => {
-    assert.ok(files.length >= 29, `Expected at least 29 migrations, found ${files.length}`);
+    assert.ok(files.length >= 30, `Expected at least 30 migrations, found ${files.length}`);
     const nums = files.map((f) => {
       const m = f.match(/^(\d{3})_/);
       assert.ok(m, `Migration filename must start with 3-digit prefix: ${f}`);
@@ -48,7 +48,7 @@ describe('Supabase SQL migrations integrity', () => {
     }
   });
 
-  it('documents 019–029 in supabase/migrations/README.md', () => {
+  it('documents 019–030 in supabase/migrations/README.md', () => {
     const readme = fs.readFileSync(path.join(MIGRATIONS_DIR, 'README.md'), 'utf8');
     assert.match(readme, /\b019\b/);
     assert.match(readme, /\b020\b/);
@@ -61,6 +61,22 @@ describe('Supabase SQL migrations integrity', () => {
     assert.match(readme, /\b027\b/);
     assert.match(readme, /\b028\b/);
     assert.match(readme, /\b029\b/);
+    assert.match(readme, /\b030\b/);
+  });
+
+  it('hardens sign-up provisioning and adds user_profiles audit trigger in 030_security_hardening_signup_audit.sql', () => {
+    const sql30 = fs.readFileSync(path.join(MIGRATIONS_DIR, '030_security_hardening_signup_audit.sql'), 'utf8');
+    for (const required of [
+      'allowed_signup_domains',
+      'audit_user_profiles',
+      'after insert or update or delete on user_profiles',
+      'Multiple organizations exist; new users must be invited with an organization_id',
+      'Sign-up restricted to approved email domains',
+    ]) {
+      assert.ok(sql30.includes(required), `030_security_hardening_signup_audit.sql missing required construct: ${required}`);
+    }
+    const legacyHtmlPath = path.resolve(process.cwd(), 'legacy', 'legacy-standalone.html');
+    assert.equal(fs.existsSync(legacyHtmlPath), false, 'legacy/legacy-standalone.html must not exist in repository');
   });
 
   it('hardens route compute store to service_role, org keys, size caps, and cron purge in 029_harden_route_compute_store.sql', () => {

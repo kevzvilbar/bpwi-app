@@ -4,6 +4,7 @@ import {
   buildActivityPhotoUrl,
   extractActivityStoragePath,
   getActivityPhotoContentType,
+  isStoragePathOwnedByOrg,
   isValidActivityStoragePath,
   resolveActivityPhotoUrl,
 } from '../activity-media.ts';
@@ -62,5 +63,15 @@ describe('activity-media helpers', () => {
     assert.equal(getActivityPhotoContentType('a/b/c.webp'), 'image/webp');
     assert.equal(getActivityPhotoContentType('a/b/c.png'), 'image/png');
     assert.equal(getActivityPhotoContentType('a/b/c.jpg'), 'image/jpeg');
+  });
+
+  it('enforces organization prefix ownership on storage paths', () => {
+    const orgA = '11111111-1111-4111-8111-111111111111';
+    const orgB = '22222222-2222-4222-8222-222222222222';
+    assert.equal(isStoragePathOwnedByOrg(validPath, orgA), true);
+    assert.equal(isStoragePathOwnedByOrg(validPath, orgA.toUpperCase()), true);
+    assert.equal(isStoragePathOwnedByOrg(validPath, orgB), false);
+    assert.equal(isStoragePathOwnedByOrg('../evil/2026-11-19/file.webp', orgA), false);
+    assert.equal(isStoragePathOwnedByOrg(validPath, ''), false);
   });
 });

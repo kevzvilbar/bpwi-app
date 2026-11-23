@@ -11,6 +11,7 @@ function LoginForm() {
   const params = useSearchParams();
   const urlError = params.get('error');
   const { isConfigured } = getSupabaseEnv();
+  const publicSignupEnabled = process.env.NEXT_PUBLIC_ALLOW_PUBLIC_SIGNUP === 'true';
 
   const [mode, setMode] = useState<'signin' | 'signup' | 'forgot' | 'reset'>('signin');
   const [fullName, setFullName] = useState('');
@@ -48,7 +49,7 @@ function LoginForm() {
         : '';
 
   function switchMode(next: 'signin' | 'signup' | 'forgot' | 'reset') {
-    setMode(next);
+    setMode(next === 'signup' && !publicSignupEnabled ? 'signin' : next);
     setErr('');
     setInfo('');
   }
@@ -95,6 +96,11 @@ function LoginForm() {
         setInfo('Password updated! Redirecting…');
         window.location.href = '/';
       } else {
+        if (!publicSignupEnabled) {
+          setErr('Public self sign-up is disabled. Ask an administrator for an account invitation.');
+          setLoading(false);
+          return;
+        }
         const { data, error } = await sb.auth.signUp({
           email,
           password,
@@ -158,17 +164,23 @@ function LoginForm() {
         </p>
 
         {(mode === 'signin' || mode === 'signup') ? (
-          <SegmentedTabs
-            ariaLabel="Authentication mode"
-            fullWidth
-            value={mode}
-            onChange={switchMode}
-            items={[
-              { id: 'signin', label: 'Sign in' },
-              { id: 'signup', label: 'Sign up' },
-            ]}
-            className="login-mode-tabs"
-          />
+          publicSignupEnabled ? (
+            <SegmentedTabs
+              ariaLabel="Authentication mode"
+              fullWidth
+              value={mode}
+              onChange={switchMode}
+              items={[
+                { id: 'signin', label: 'Sign in' },
+                { id: 'signup', label: 'Sign up' },
+              ]}
+              className="login-mode-tabs"
+            />
+          ) : (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
+              Invite-only access: contact a BP Waterworks administrator for an account.
+            </div>
+          )
         ) : (
           <button
             type="button"
