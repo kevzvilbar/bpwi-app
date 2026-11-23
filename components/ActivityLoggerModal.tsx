@@ -14,6 +14,7 @@ import {
 } from '@/lib/activity-types';
 import { getErrorMessage } from '@/lib/error-utils';
 import { resolveActivityPhotoUrl } from '@/lib/activity-media';
+import { extractGpsMetadata, type GpsSource } from '@/lib/gps-accuracy';
 import { DAILY_ACTIVITY_LIST_COLUMNS } from '@/lib/query-columns';
 import {
   buildActivityDetailsPayload,
@@ -149,7 +150,8 @@ export default function ActivityLoggerModal(p: {
   // GPS state
   const [gpsLat, setGpsLat] = useState<number | null>(null);
   const [gpsLng, setGpsLng] = useState<number | null>(null);
-  const [gpsStatus, setGpsStatus] = useState<string>('');
+  const [gpsAccuracyM, setGpsAccuracyM] = useState<number | null>(null);
+  const [gpsSource, setGpsSource] = useState<GpsSource | null>(null);
 
   // Photos state
   const [photos, setPhotos] = useState<ActivityPhotoEntry[]>([]);
@@ -178,7 +180,8 @@ export default function ActivityLoggerModal(p: {
     setOpenAtMs(Date.now());
     setGpsLat(null);
     setGpsLng(null);
-    setGpsStatus('');
+    setGpsAccuracyM(null);
+    setGpsSource(null);
     setPhotos([]);
     setSavedBytesTotal(0);
     setHasSignature(false);
@@ -209,6 +212,9 @@ export default function ActivityLoggerModal(p: {
       setNotes(ea.notes ?? '');
       setGpsLat(ea.gps_lat);
       setGpsLng(ea.gps_lng);
+      const gpsMeta = extractGpsMetadata(d);
+      setGpsAccuracyM(gpsMeta.gpsAccuracyM);
+      setGpsSource(gpsMeta.gpsSource ?? (ea.gps_lat != null && ea.gps_lng != null ? 'gps' : null));
       setPhotos(
         (ea.photo_urls ?? []).map((u, idx) => {
           const sp = ea.photo_storage_paths?.[idx] ?? null;
@@ -403,25 +409,6 @@ export default function ActivityLoggerModal(p: {
     setCrewOpIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
-  function handleCaptureGps() {
-    if (!navigator.geolocation) {
-      setGpsStatus('Geolocation not supported in this browser.');
-      return;
-    }
-    setGpsStatus('Acquiring GPS fix…');
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setGpsLat(Number(pos.coords.latitude.toFixed(6)));
-        setGpsLng(Number(pos.coords.longitude.toFixed(6)));
-        setGpsStatus(`±${Math.round(pos.coords.accuracy)}m`);
-      },
-      (err) => {
-        setGpsStatus(`GPS unavailable: ${err.message}`);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
-    );
-  }
-
   async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -528,6 +515,14 @@ export default function ActivityLoggerModal(p: {
       DailyActivityRow,
       'id' | 'verified_by' | 'verified_at' | 'review_note' | 'photos_purged_at' | 'created_at' | 'updated_at'
     >;
+    const baseDetails = buildActivityDetailsPayload(activityType, detailsForSubmit, meterCalc);
+    const gpsMetaPayload =
+      gpsLat !== null && gpsLng !== null
+        ? {
+            ...(gpsSource ? { gpsSource } : {}),
+            ...(gpsAccuracyM !== null ? { gpsAccuracyM } : {}),
+          }
+        : {};
     const payload: ActivitySubmitPayload = {
       organization_id: p.orgId,
       activity_date: p.date,
@@ -546,7 +541,7 @@ export default function ActivityLoggerModal(p: {
       gps_lat: gpsLat,
       gps_lng: gpsLng,
       notes: resolvedNotes,
-      details: buildActivityDetailsPayload(activityType, detailsForSubmit, meterCalc),
+      details: { ...baseDetails, ...gpsMetaPayload },
       photo_urls: photos.map((ph) => ph.url),
       photo_storage_paths: photos.map((ph) => ph.storagePath).filter((sp): sp is string => Boolean(sp)),
       photos_expires_at: photos.length > 0 ? preservedExpiry : null,
@@ -959,7 +954,16 @@ export default function ActivityLoggerModal(p: {
 
         {/* GPS & 30-day Expiring Photo Capture */}
         <ActivityMediaCapture
-          gpsLat={gpsLat} gpsLng={gpsLng} gpsStatus={gpsStatus} onCaptureGps={handleCaptureGps}
+          gpsLat={gpsLat}
+          gpsLng={gpsLng}
+          gpsAccuracyM={gpsAccuracyM}
+          gpsSource={gpsSource}
+          onGpsChange={(fix) => {
+            setGpsLat(fix.lat);
+            setGpsLng(fix.lng);
+            setGpsAccuracyM(fix.accuracyM);
+            setGpsSource(fix.source);
+          }}
           uploadingPhoto={uploadingPhoto} onPhotoUpload={handlePhotoUpload} savedBytesTotal={savedBytesTotal}
           photos={photos} onRemovePhoto={(idx) => setPhotos((prev) => prev.filter((_, i) => i !== idx))}
           maxPhotos={MAX_ACTIVITY_PHOTOS}

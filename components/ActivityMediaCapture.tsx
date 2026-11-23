@@ -1,5 +1,15 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
+import {
+  startHighAccuracyGpsCapture,
+  type GpsSource,
+} from '@/lib/gps-accuracy';
+import { Badge } from '@/components/ui';
+
+const GpsPinPickerModal = dynamic(() => import('@/components/GpsPinPickerModal'), { ssr: false });
+
 export interface ActivityPhotoEntry {
   url: string;
   storagePath: string | null;
@@ -9,8 +19,14 @@ export interface ActivityPhotoEntry {
 interface ActivityMediaCaptureProps {
   gpsLat: number | null;
   gpsLng: number | null;
-  gpsStatus: string;
-  onCaptureGps: () => void;
+  gpsAccuracyM: number | null;
+  gpsSource: GpsSource | null;
+  onGpsChange: (fix: {
+    lat: number | null;
+    lng: number | null;
+    accuracyM: number | null;
+    source: GpsSource | null;
+  }) => void;
   uploadingPhoto: boolean;
   onPhotoUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   savedBytesTotal: number;
@@ -23,8 +39,9 @@ interface ActivityMediaCaptureProps {
 export default function ActivityMediaCapture({
   gpsLat,
   gpsLng,
-  gpsStatus,
-  onCaptureGps,
+  gpsAccuracyM,
+  gpsSource,
+  onGpsChange,
   uploadingPhoto,
   onPhotoUpload,
   savedBytesTotal,
@@ -34,13 +51,113 @@ export default function ActivityMediaCapture({
   helperNote,
 }: ActivityMediaCaptureProps) {
   const limitReached = photos.length >= maxPhotos;
+  const cancelGpsRef = useRef<(() => void) | null>(null);
+  const [capturing, setCapturing] = useState(false);
+  const [liveStatus, setLiveStatus] = useState('');
+  const [gpsError, setGpsError] = useState('');
+  const [hintCoords, setHintCoords] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null);
+  const [pinModalOpen, setPinModalOpen] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      cancelGpsRef.current?.();
+      cancelGpsRef.current = null;
+    };
+  }, []);
+
+  function stopGpsCapture() {
+    cancelGpsRef.current?.();
+    cancelGpsRef.current = null;
+    setCapturing(false);
+    setLiveStatus('');
+  }
+
+  function handleStartGps() {
+    if (capturing) {
+      stopGpsCapture();
+      return;
+    }
+    setGpsError('');
+    setCapturing(true);
+    setLiveStatus('Warming up satellites (target ≤3m, max 10m)…');
+
+    cancelGpsRef.current = startHighAccuracyGpsCapture({
+      onProgress: (prog) => {
+        setHintCoords({ ...prog.lastCoords, accuracy: prog.bestAccuracy });
+        if (prog.validCount > 0) {
+          setLiveStatus(`Refining GPS… ±${prog.currentAccuracy}m (${prog.validCount}/${prog.targetSamples} tight fixes)`);
+        } else {
+          setLiveStatus(`Locking GPS… ±${prog.currentAccuracy}m (waiting for ≤10m · ${prog.elapsedSec}s)`);
+        }
+      },
+      onLocked: (res) => {
+        cancelGpsRef.current = null;
+        setCapturing(false);
+        setLiveStatus('');
+        setGpsError('');
+        setHintCoords({ lat: res.lat, lng: res.lng, accuracy: res.accuracy });
+        onGpsChange({ lat: res.lat, lng: res.lng, accuracyM: res.accuracy, source: 'gps' });
+      },
+      onError: (failure) => {
+        cancelGpsRef.current = null;
+        setCapturing(false);
+        setLiveStatus('');
+        if (failure.lastCoords) {
+          setHintCoords({ ...failure.lastCoords, accuracy: failure.bestAccuracy });
+        }
+        setGpsError(failure.message);
+      },
+    });
+  }
+
+  function handleClearGps() {
+    stopGpsCapture();
+    setGpsError('');
+    onGpsChange({ lat: null, lng: null, accuracyM: null, source: null });
+  }
+
   return (
     <div style={{ display: 'grid', gap: 8, padding: 10, borderRadius: 8, border: '1px solid var(--border)' }}>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-        <button type="button" className="btn" onClick={onCaptureGps} style={{ fontSize: 12 }}>
-          {gpsLat !== null ? `📍 ${gpsLat}, ${gpsLng}` : '📍 Attach GPS Location'}
-        </button>
-        {gpsStatus && <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{gpsStatus}</span>}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button type="button" className="btn" onClick={handleStartGps} style={{ fontSize: 12 }}>
+            {capturing
+              ? '🛰️ Locking ≤10m… (Cancel)'
+              : gpsLat !== null && gpsLng !== null
+                ? `📍 ${gpsLat}, ${gpsLng}`
+                : '📍 Attach GPS (≤10m)'}
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              stopGpsCapture();
+              setPinModalOpen(true);
+            }}
+            style={{ fontSize: 12 }}
+          >
+            🗺️ Pin on Map
+          </button>
+          {gpsLat !== null && (
+            <button
+              type="button"
+              className="btn"
+              onClick={handleClearGps}
+              aria-label="Clear GPS location"
+              title="Clear location"
+              style={{ fontSize: 11.5, padding: '4px 8px' }}
+            >
+              ✕
+            </button>
+          )}
+          {gpsSource === 'map_pin' ? (
+            <Badge size="sm" tone="warn">Map Pin (manual)</Badge>
+          ) : gpsLat !== null && gpsAccuracyM !== null ? (
+            <Badge size="sm" tone={gpsAccuracyM <= 3 ? 'ok' : 'info'}>
+              GPS ±{gpsAccuracyM}m
+            </Badge>
+          ) : null}
+        </div>
 
         <label
           className="btn"
@@ -66,6 +183,40 @@ export default function ActivityMediaCapture({
           />
         </label>
       </div>
+
+      {liveStatus && (
+        <div style={{ fontSize: 11.5, color: 'var(--accent)', fontWeight: 600 }}>
+          {liveStatus}
+        </div>
+      )}
+
+      {gpsError && (
+        <div
+          style={{
+            fontSize: 11.5,
+            padding: '6px 9px',
+            borderRadius: 6,
+            background: 'var(--warn-bg)',
+            color: 'var(--warn-fg)',
+            border: '1px solid var(--warn-border)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 8,
+            flexWrap: 'wrap',
+          }}
+        >
+          <span>{gpsError}</span>
+          <button
+            type="button"
+            className="btn"
+            style={{ fontSize: 11.5, minHeight: 28, padding: '2px 8px', fontWeight: 700 }}
+            onClick={() => setPinModalOpen(true)}
+          >
+            Pin on Satellite Map
+          </button>
+        </div>
+      )}
 
       <div style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
         <span>{helperNote ?? 'Compressed client-side · Photos auto-deleted after 30 days to conserve storage limits.'}</span>
@@ -109,6 +260,21 @@ export default function ActivityMediaCapture({
             </div>
           ))}
         </div>
+      )}
+      {pinModalOpen && (
+        <GpsPinPickerModal
+          open={pinModalOpen}
+          initialLat={gpsLat}
+          initialLng={gpsLng}
+          hintCoords={hintCoords}
+          title="Pin Activity Location (Satellite Map)"
+          onClose={() => setPinModalOpen(false)}
+          onConfirm={({ lat, lng }) => {
+            setPinModalOpen(false);
+            setGpsError('');
+            onGpsChange({ lat, lng, accuracyM: null, source: 'map_pin' });
+          }}
+        />
       )}
     </div>
   );

@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type * as LeafletNS from 'leaflet';
 import { fmtTimeManila } from '@/lib/date';
+import { formatGpsBadgeLabel } from '@/lib/gps-accuracy';
 import type { LatLng, RouteStop } from '@/lib/route-footprints';
 
 export type FreeMapStyle = 'street' | 'satellite';
@@ -88,7 +89,8 @@ function buildStopPopupElement(stop: RouteStop): HTMLDivElement {
   coordsRow.style.fontSize = '11px';
   coordsRow.style.color = 'var(--text-muted)';
   coordsRow.style.fontFamily = 'monospace';
-  coordsRow.textContent = `${stop.lat.toFixed(5)}, ${stop.lng.toFixed(5)}`;
+  const gpsQuality = formatGpsBadgeLabel(stop.activity?.details);
+  coordsRow.textContent = `${stop.lat.toFixed(5)}, ${stop.lng.toFixed(5)}${gpsQuality ? ` · ${gpsQuality}` : ''}`;
   root.appendChild(coordsRow);
 
   const linksRow = document.createElement('div');

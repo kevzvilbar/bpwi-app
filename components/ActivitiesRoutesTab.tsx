@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import type { DailyActivityRow } from '@/lib/activity-types';
 import { fmtTimeManila } from '@/lib/date';
+import { startHighAccuracyGpsCapture } from '@/lib/gps-accuracy';
 import {
   buildRouteCacheKey,
   buildStraightLineRoute,
@@ -23,6 +25,8 @@ import {
 import FreeRouteMap, { type FreeMapStyle } from '@/components/FreeRouteMap';
 import RoutesTeamOverview from '@/components/RoutesTeamOverview';
 import { AlertBanner, EmptyState, SegmentedTabs, StatCard } from '@/components/ui';
+
+const GpsPinPickerModal = dynamic(() => import('@/components/GpsPinPickerModal'), { ssr: false });
 
 type RouteOp = {
   id: string;
@@ -66,6 +70,17 @@ export default function ActivitiesRoutesTab(p: {
   const [baseHqLngStr, setBaseHqLngStr] = useState('');
   const [hqEditorOpen, setHqEditorOpen] = useState(false);
   const [hqStatusMsg, setHqStatusMsg] = useState('');
+  const [capturingHqGps, setCapturingHqGps] = useState(false);
+  const [hqPinModalOpen, setHqPinModalOpen] = useState(false);
+  const [hqHintCoords, setHqHintCoords] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null);
+  const cancelHqGpsRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => {
+      cancelHqGpsRef.current?.();
+      cancelHqGpsRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -298,26 +313,45 @@ export default function ActivitiesRoutesTab(p: {
   );
 
   const captureCurrentHqGps = () => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setHqStatusMsg('Browser geolocation is unavailable on this device.');
+    if (capturingHqGps) {
+      cancelHqGpsRef.current?.();
+      cancelHqGpsRef.current = null;
+      setCapturingHqGps(false);
+      setHqStatusMsg('Cancelled GPS capture.');
       return;
     }
-    setHqStatusMsg('Capturing device GPS…');
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const latStr = pos.coords.latitude.toFixed(6);
-        const lngStr = pos.coords.longitude.toFixed(6);
+    setCapturingHqGps(true);
+    setHqStatusMsg('Locking high-accuracy GPS (target ≤3m, max 10m)…');
+    cancelHqGpsRef.current = startHighAccuracyGpsCapture({
+      onProgress: (prog) => {
+        setHqHintCoords({ ...prog.lastCoords, accuracy: prog.bestAccuracy });
+        setHqStatusMsg(
+          prog.validCount > 0
+            ? `Refining Base HQ… ±${prog.currentAccuracy}m (${prog.validCount}/${prog.targetSamples} tight fixes)`
+            : `Locking Base HQ… ±${prog.currentAccuracy}m (waiting for ≤10m · ${prog.elapsedSec}s)`,
+        );
+      },
+      onLocked: (res) => {
+        cancelHqGpsRef.current = null;
+        setCapturingHqGps(false);
+        const latStr = res.lat.toFixed(6);
+        const lngStr = res.lng.toFixed(6);
+        setHqHintCoords({ lat: res.lat, lng: res.lng, accuracy: res.accuracy });
         setBaseHqLatStr(latStr);
         setBaseHqLngStr(lngStr);
         setBaseHqEnabled(true);
         saveHqConfig({ enabled: true, label: baseHqLabel, latStr, lngStr });
-        setHqStatusMsg(`✓ Captured Base HQ (${latStr}, ${lngStr})`);
+        setHqStatusMsg(`✓ Captured Base HQ (${latStr}, ${lngStr} · GPS ±${res.accuracy}m)`);
       },
-      (err) => {
-        setHqStatusMsg(`GPS capture failed: ${err.message}`);
+      onError: (failure) => {
+        cancelHqGpsRef.current = null;
+        setCapturingHqGps(false);
+        if (failure.lastCoords) {
+          setHqHintCoords({ ...failure.lastCoords, accuracy: failure.bestAccuracy });
+        }
+        setHqStatusMsg(failure.message);
       },
-      { enableHighAccuracy: true, timeout: 10000 },
-    );
+    });
   };
 
   const copyHqFromFirstStop = () => {
@@ -525,7 +559,20 @@ export default function ActivitiesRoutesTab(p: {
                 onClick={captureCurrentHqGps}
                 style={{ minHeight: 34, fontSize: 12 }}
               >
-                Use Current Device GPS
+                {capturingHqGps ? '🛰️ Locking ≤10m… (Cancel)' : 'Use Device GPS (≤10m)'}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  cancelHqGpsRef.current?.();
+                  cancelHqGpsRef.current = null;
+                  setCapturingHqGps(false);
+                  setHqPinModalOpen(true);
+                }}
+                style={{ minHeight: 34, fontSize: 12 }}
+              >
+                🗺️ Pin HQ on Map
               </button>
               {footprint.stops.some((s) => s.kind === 'activity') && (
                 <button
@@ -558,6 +605,26 @@ export default function ActivitiesRoutesTab(p: {
               <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{hqStatusMsg}</div>
             )}
           </div>
+        )}
+        {hqPinModalOpen && (
+          <GpsPinPickerModal
+            open={hqPinModalOpen}
+            initialLat={parsedHqCoords?.lat ?? null}
+            initialLng={parsedHqCoords?.lng ?? null}
+            hintCoords={hqHintCoords}
+            title="Pin Base HQ Location"
+            onClose={() => setHqPinModalOpen(false)}
+            onConfirm={({ lat, lng }) => {
+              const latStr = lat.toFixed(6);
+              const lngStr = lng.toFixed(6);
+              setHqPinModalOpen(false);
+              setBaseHqLatStr(latStr);
+              setBaseHqLngStr(lngStr);
+              setBaseHqEnabled(true);
+              saveHqConfig({ enabled: true, label: baseHqLabel, latStr, lngStr });
+              setHqStatusMsg(`✓ Pinned Base HQ (${latStr}, ${lngStr})`);
+            }}
+          />
         )}
       </div>
 

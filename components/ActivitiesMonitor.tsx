@@ -9,6 +9,7 @@ import { DAILY_ACTIVITY_LIST_COLUMNS } from '@/lib/query-columns';
 import { getErrorMessage } from '@/lib/error-utils';
 import { addIsoDays as addDays, fmtTimeManila } from '@/lib/date';
 import { isValidCoordinate } from '@/lib/route-footprints';
+import { extractGpsMetadata, formatGpsBadgeLabel } from '@/lib/gps-accuracy';
 import { resolveActivityPhotoUrl } from '@/lib/activity-media';
 import {
   ACTIVITY_BY_ID,
@@ -729,18 +730,29 @@ export default function ActivitiesMonitor(p: {
                       </div>
                     )}
 
-                    {act.gps_lat != null && act.gps_lng != null && (
-                      <div style={{ fontSize: 11.5 }}>
-                        <a
-                          href={`https://maps.google.com/?q=${act.gps_lat},${act.gps_lng}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          style={{ color: 'var(--accent)', fontWeight: 600 }}
-                        >
-                          📍 GPS: {act.gps_lat}, {act.gps_lng}
-                        </a>
-                      </div>
-                    )}
+                    {act.gps_lat != null && act.gps_lng != null && (() => {
+                      const gpsMeta = extractGpsMetadata(act.details);
+                      const gpsLabel = formatGpsBadgeLabel(act.details);
+                      const gpsTone =
+                        gpsMeta.gpsSource === 'map_pin'
+                          ? 'warn'
+                          : (gpsMeta.gpsAccuracyM ?? 99) <= 5
+                            ? 'ok'
+                            : 'info';
+                      return (
+                        <div style={{ fontSize: 11.5, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <a
+                            href={`https://maps.google.com/?q=${act.gps_lat},${act.gps_lng}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ color: 'var(--accent)', fontWeight: 600 }}
+                          >
+                            📍 GPS: {act.gps_lat}, {act.gps_lng}
+                          </a>
+                          {gpsLabel && <Badge size="sm" tone={gpsTone}>{gpsLabel}</Badge>}
+                        </div>
+                      );
+                    })()}
 
                     {/* Photo thumbnails or purged notice */}
                     {act.photos_purged_at ? (

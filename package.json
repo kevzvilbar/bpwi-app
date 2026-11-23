@@ -8,7 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "next lint",
-    "test": "node --test lib/__tests__/activity-types.test.ts lib/__tests__/accomplishment-form.test.ts lib/__tests__/csv.test.ts lib/__tests__/org-chart.test.ts lib/__tests__/permissions.test.ts lib/__tests__/migrations.test.ts lib/__tests__/middleware-rules.test.ts lib/__tests__/activity-media.test.ts lib/__tests__/activity-logger-details.test.ts lib/__tests__/roster-helpers.test.ts lib/__tests__/sql-integration.test.ts lib/__tests__/change-request-approval.test.ts lib/__tests__/change-request-conflicts.test.ts lib/__tests__/offline-sync.test.ts lib/__tests__/route-footprints.test.ts lib/__tests__/performance-helpers.test.ts lib/__tests__/job-order-sla.test.ts"
+    "test": "node --test lib/__tests__/activity-types.test.ts lib/__tests__/accomplishment-form.test.ts lib/__tests__/csv.test.ts lib/__tests__/org-chart.test.ts lib/__tests__/permissions.test.ts lib/__tests__/migrations.test.ts lib/__tests__/middleware-rules.test.ts lib/__tests__/activity-media.test.ts lib/__tests__/activity-logger-details.test.ts lib/__tests__/roster-helpers.test.ts lib/__tests__/sql-integration.test.ts lib/__tests__/change-request-approval.test.ts lib/__tests__/change-request-conflicts.test.ts lib/__tests__/offline-sync.test.ts lib/__tests__/route-footprints.test.ts lib/__tests__/performance-helpers.test.ts lib/__tests__/job-order-sla.test.ts lib/__tests__/gps-accuracy.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
