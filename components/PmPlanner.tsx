@@ -6,13 +6,13 @@ import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { subscribeVisibilityAwareChannel } from '@/lib/supabase/realtime';
 import { isMissingCompletedByColumnError } from '@/lib/pm-credit';
+import { createInitialRecurrence, generatePmRepeatDates } from '@/lib/pm-recurrence';
 import PmDayInspector from '@/components/PmDayInspector';
 
 const PmExportModal = dynamic(() => import('@/components/PmExportModal'), { ssr: false });
 const PmCompleteModal = dynamic(() => import('@/components/PmCompleteModal'), { ssr: false });
 import PmPlannerModals, {
   addPmDays as addDays,
-  addPmMonths as addMonths,
   buildPmCalendarIcs,
   diffPmDays as diffDays,
   formatPmDayHeading as formatDayHeading,
@@ -264,8 +264,7 @@ export default function PmPlanner(p: {
     date,
     status: 'planned',
     remarks: '',
-    repeat: 'none',
-    count: 4,
+    recurrence: createInitialRecurrence(date),
   });
 
   const edit = (t: Task): Draft => ({
@@ -280,8 +279,7 @@ export default function PmPlanner(p: {
     date: t.scheduled_date,
     status: t.status,
     remarks: t.remarks ?? '',
-    repeat: 'none',
-    count: 1,
+    recurrence: createInitialRecurrence(t.scheduled_date),
   });
 
   async function save() {
@@ -308,16 +306,27 @@ export default function PmPlanner(p: {
       remarks: draft.remarks.trim() || null,
       completed_at: draft.status === 'done' ? p.today : null,
     };
+    const repeatDates = draft.id ? [draft.date] : generatePmRepeatDates(draft.date, draft.recurrence);
+    if (!draft.id && repeatDates.length === 0) {
+      setMsg('No valid dates generated — check your repeat settings and end date.');
+      return;
+    }
     const writeTask = async (withCompletedBy: boolean) => {
       const sb = supabaseBrowser();
       const body = withCompletedBy ? { ...base, completed_by_operator_ids: completedBy } : base;
       if (draft.id) return sb.from('pm_tasks').update({ ...body, scheduled_date: draft.date }).eq('id', draft.id);
       const series = `S${Date.now().toString(36)}`;
-      const n = draft.repeat === 'none' ? 1 : Math.min(Math.max(draft.count, 1), 60);
-      const rows = Array.from({ length: n }, (_, i) => ({
+      const rows = repeatDates.map((d, i) => ({
         ...body,
-        legacy_key: `${series}-${i}`,
-        scheduled_date: draft.repeat === 'weekly' ? addDays(draft.date, 7 * i) : draft.repeat === 'monthly' ? addMonths(draft.date, i) : draft.date,
+        ...(i > 0
+          ? {
+              status: 'planned' as const,
+              completed_at: null,
+              ...(withCompletedBy ? { completed_by_operator_ids: [] as string[] } : {}),
+            }
+          : {}),
+        legacy_key: repeatDates.length > 1 ? `${series}-${i}` : null,
+        scheduled_date: d,
       }));
       return sb.from('pm_tasks').insert(rows);
     };

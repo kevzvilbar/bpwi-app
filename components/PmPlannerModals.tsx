@@ -1,6 +1,11 @@
 'use client';
 
 import { resolvePmCreditedOperators } from '@/lib/pm-credit';
+import {
+  syncRecurrenceForStartDate,
+  type PmRecurrenceConfig,
+} from '@/lib/pm-recurrence';
+import PmRepeatBuilder from '@/components/PmRepeatBuilder';
 
 export const PM_PRESETS: Record<string, { label: string; short: string; color: string }> = {
   FLUSH: { label: 'Line Flushing', short: 'Flushing', color: '#0284c7' },
@@ -136,8 +141,7 @@ export type PmDraft = {
   date: string;
   status: PmTask['status'];
   remarks: string;
-  repeat: 'none' | 'weekly' | 'monthly';
-  count: number;
+  recurrence: PmRecurrenceConfig;
 };
 
 export type PmConfirmDelete = {
@@ -215,10 +219,14 @@ export default function PmPlannerModals({
                   setDraft({
                     ...draft,
                     typeKey: nextKey,
-                    ...(isGensetNew
+                    ...(isGensetNew && draft.recurrence.mode === 'none'
                       ? {
-                          repeat: 'weekly' as const,
-                          count: draft.repeat === 'weekly' && draft.count >= 2 ? draft.count : 4,
+                          recurrence: {
+                            ...draft.recurrence,
+                            mode: 'weekly' as const,
+                            endMode: 'count' as const,
+                            count: 4,
+                          },
                         }
                       : {}),
                   });
@@ -249,7 +257,22 @@ export default function PmPlannerModals({
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
               <label style={{ fontSize: 13, flex: 1 }}>
-                Date <input type="date" className="input" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} />
+                Date{' '}
+                <input
+                  type="date"
+                  className="input"
+                  value={draft.date}
+                  onChange={(e) => {
+                    const nextDate = e.target.value;
+                    setDraft({
+                      ...draft,
+                      date: nextDate,
+                      recurrence: nextDate
+                        ? syncRecurrenceForStartDate(draft.recurrence, draft.date, nextDate)
+                        : draft.recurrence,
+                    });
+                  }}
+                />
               </label>
               <label style={{ fontSize: 13, flex: 1 }}>
                 Status
@@ -378,34 +401,28 @@ export default function PmPlannerModals({
                 onChange={(e) => setDraft({ ...draft, remarks: e.target.value })}
               />
             </label>
-            {!draft.id && (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'end' }}>
-                <label style={{ fontSize: 13, flex: 1 }}>
-                  Repeat
-                  <select
-                    className="input"
-                    value={draft.repeat}
-                    onChange={(e) => setDraft({ ...draft, repeat: e.target.value as PmDraft['repeat'] })}
-                  >
-                    <option value="none">Once</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="monthly">Monthly</option>
-                  </select>
-                </label>
-                {draft.repeat !== 'none' && (
-                  <label style={{ fontSize: 13, width: 120 }}>
-                    Occurrences
-                    <input
-                      type="number"
-                      min={2}
-                      max={60}
-                      className="input"
-                      value={draft.count}
-                      onChange={(e) => setDraft({ ...draft, count: +e.target.value })}
-                    />
-                  </label>
-                )}
+            {draft.id && draft.legacy_key?.startsWith('S') && (
+              <div
+                style={{
+                  fontSize: 12,
+                  padding: '6px 10px',
+                  borderRadius: 6,
+                  background: 'var(--info-bg)',
+                  color: 'var(--info-fg)',
+                  border: '1px solid var(--info-border)',
+                  fontWeight: 600,
+                }}
+              >
+                ↻ Part of a recurring PM series. Edits apply to this occurrence; use delete actions below to remove following tasks or the entire series.
               </div>
+            )}
+            {!draft.id && (
+              <PmRepeatBuilder
+                startDate={draft.date}
+                recurrence={draft.recurrence}
+                onChange={(recurrence) => setDraft({ ...draft, recurrence })}
+                holidayByDate={holidayByDate}
+              />
             )}
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'space-between' }}>
               <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
