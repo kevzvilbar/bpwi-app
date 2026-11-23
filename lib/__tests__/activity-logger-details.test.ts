@@ -215,6 +215,21 @@ describe('activity-logger-details helpers', () => {
       gensetFinalFuel: 75,
       runningHours: 2.5,
       gensetCause: 'PMS',
+      gensetUnitFuelType: 'Diesel',
+      gensetRunMode: 'no_load_pms',
+      gensetRunDurationMin: null,
+      gensetOilLevel: 'Normal / Full',
+      gensetCoolantLevel: 'Normal',
+      gensetBatteryStatus: 'Good / Strong Crank',
+      gensetBatteryVoltageV: null,
+      gensetLeaksObserved: 'None',
+      gensetNoiseVibration: 'Normal',
+      gensetExhaustSmoke: 'Clear / Normal',
+      gensetOutputVoltageV: null,
+      gensetFrequencyHz: null,
+      gensetStandbyNote: null,
+      gensetStandbyVerdict: 'READY',
+      gensetFindings: [],
     });
 
     assert.deepEqual(buildActivityDetailsPayload('pump_monitoring', base, SAMPLE_METER_CALC), {

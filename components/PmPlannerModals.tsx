@@ -8,6 +8,7 @@ export const PM_PRESETS: Record<string, { label: string; short: string; color: s
   PULL: { label: 'Deep Well Pump & Motor Pull-out', short: 'Pull-out', color: '#db2777' },
   THERM: { label: 'Thermal Scanning', short: 'Thermal Scan', color: '#ea580c' },
   LEVEL: { label: 'Water Level Monitoring', short: 'SWL&PWL', color: '#ca8a04' },
+  GENSET: { label: 'Genset Monitoring', short: 'Genset PMS', color: '#b45309' },
 };
 
 const PM_CUSTOM_PALETTE = ['#7c3aed', '#4f46e5', '#059669', '#be185d', '#0369a1'];
@@ -203,7 +204,26 @@ export default function PmPlannerModals({
             </h2>
             <label style={{ fontSize: 13 }}>
               Activity
-              <select className="input" value={draft.typeKey} onChange={(e) => setDraft({ ...draft, typeKey: e.target.value })}>
+              <select
+                className="input"
+                value={draft.typeKey}
+                onChange={(e) => {
+                  const nextKey = e.target.value;
+                  const nextLabel = activityChips.find((c) => c.type === nextKey)?.label ?? '';
+                  const isGensetNew =
+                    !draft.id && (/genset|generator/i.test(nextKey) || /genset|generator/i.test(nextLabel));
+                  setDraft({
+                    ...draft,
+                    typeKey: nextKey,
+                    ...(isGensetNew
+                      ? {
+                          repeat: 'weekly' as const,
+                          count: draft.repeat === 'weekly' && draft.count >= 2 ? draft.count : 4,
+                        }
+                      : {}),
+                  });
+                }}
+              >
                 {activityChips.map((c) => (
                   <option key={c.type} value={c.type}>
                     {c.label}
@@ -328,8 +348,35 @@ export default function PmPlannerModals({
                 })}
               </fieldset>
             )}
+            {(/genset|generator/i.test(draft.typeKey) ||
+              /genset|generator/i.test(activityChips.find((c) => c.type === draft.typeKey)?.label ?? '')) && (
+              <div
+                style={{
+                  fontSize: 12,
+                  padding: '6px 10px',
+                  borderRadius: 6,
+                  background: 'var(--warn-bg)',
+                  color: 'var(--warn-fg)',
+                  border: '1px solid var(--warn-border)',
+                  lineHeight: 1.4,
+                }}
+              >
+                <strong>Weekly Genset PMS Standard:</strong> Run <b>15–20 min no-load</b> weekly when unused (or log{' '}
+                <i>Inspection Only</i> if already run on outage); check oil, coolant/battery, fuel level, leaks, noise &amp; smoke.
+              </div>
+            )}
             <label style={{ fontSize: 13 }}>
-              Remarks <input className="input" value={draft.remarks} onChange={(e) => setDraft({ ...draft, remarks: e.target.value })} />
+              Remarks{' '}
+              <input
+                className="input"
+                placeholder={
+                  /genset|generator/i.test(draft.typeKey)
+                    ? 'e.g. Weekly 15–20m no-load exercise, oil/fuel check'
+                    : undefined
+                }
+                value={draft.remarks}
+                onChange={(e) => setDraft({ ...draft, remarks: e.target.value })}
+              />
             </label>
             {!draft.id && (
               <div style={{ display: 'flex', gap: 8, alignItems: 'end' }}>

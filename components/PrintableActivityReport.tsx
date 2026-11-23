@@ -14,6 +14,14 @@ import {
   formatFlushingMeterStatusLabel,
   hydrateFlushingSummaryFromDetails,
 } from '@/lib/flushing-volume';
+import {
+  GENSET_INTERNAL_DETAIL_KEYS,
+  evaluateGensetDurationGuidance,
+  evaluateGensetHealth,
+  formatGensetRunModeLabel,
+  hasGensetChecklistDetails,
+  hydrateGensetMonitoringDetails,
+} from '@/lib/genset-monitoring';
 import { computeJobOrderSlaStatus, formatSlaDurationLabel } from '@/lib/job-order-sla';
 import WellPulloutReportSheet from '@/components/WellPulloutReportSheet';
 import TankCleaningReportSheet from '@/components/TankCleaningReportSheet';
@@ -154,13 +162,23 @@ export default function PrintableActivityReport(p: {
   const leakLossState = isLeakRepairEligible && act ? hydrateLeakLossDetails(det) : null;
   const leakLossCalc = leakLossState ? computeLeakVolumeLoss(leakLossState) : null;
   const flushingSummary = isFlushingEligible && act ? hydrateFlushingSummaryFromDetails(det) : null;
+  const isGensetMonitoringEligible = act?.activity_type === 'genset_monitoring';
+  const gensetChecklist =
+    isGensetMonitoringEligible && act && hasGensetChecklistDetails(det)
+      ? hydrateGensetMonitoringDetails(det)
+      : null;
+  const gensetHealth = gensetChecklist ? evaluateGensetHealth(gensetChecklist) : null;
+  const gensetGuidance = gensetChecklist
+    ? evaluateGensetDurationGuidance(gensetChecklist.runMode, gensetChecklist.runDurationMin, gensetChecklist.unitFuelType)
+    : null;
   const telemetryEntries = act
     ? Object.entries(det)
         .filter(
           ([key]) =>
             !GPS_INTERNAL_DETAIL_KEYS.has(key) &&
             !LEAK_INTERNAL_DETAIL_KEYS.has(key) &&
-            !FLUSHING_INTERNAL_DETAIL_KEYS.has(key),
+            !FLUSHING_INTERNAL_DETAIL_KEYS.has(key) &&
+            !(gensetChecklist && GENSET_INTERNAL_DETAIL_KEYS.has(key)),
         )
         .map(([key, val]) => {
           if (val === null || val === undefined || val === '') return null;
@@ -553,6 +571,90 @@ export default function PrintableActivityReport(p: {
                     {flushingSummary.totalVolumeM3 !== null ? `${flushingSummary.totalVolumeM3.toFixed(2)} m³` : 'Not computed'}
                   </div>
                 </div>
+              </div>
+            )}
+
+            {act && gensetChecklist && gensetHealth && (
+              <div style={{ border: '1px solid #334155', padding: 12, background: '#f8fafc', display: 'grid', gap: 6 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: 11, color: '#334155' }}>
+                    Genset Weekly PMS Inspection Checklist
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: 4,
+                      background:
+                        gensetHealth.verdict === 'READY'
+                          ? '#dcfce7'
+                          : gensetHealth.verdict === 'NEEDS_ATTENTION'
+                            ? '#fef3c7'
+                            : '#fee2e2',
+                      color:
+                        gensetHealth.verdict === 'READY'
+                          ? '#166534'
+                          : gensetHealth.verdict === 'NEEDS_ATTENTION'
+                            ? '#92400e'
+                            : '#991b1b',
+                      border: '1px solid #cbd5e1',
+                    }}
+                  >
+                    {gensetHealth.verdictLabel}
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  <div><b>Unit Type:</b> {gensetChecklist.unitFuelType}</div>
+                  <div><b>Run Mode:</b> {formatGensetRunModeLabel(gensetChecklist.runMode)}</div>
+                  <div>
+                    <b>Run Duration:</b>{' '}
+                    {gensetChecklist.runMode === 'skipped_ran_outage'
+                      ? 'Skipped (Already Ran on Outage)'
+                      : gensetChecklist.runDurationMin
+                        ? `${gensetChecklist.runDurationMin} mins`
+                        : '—'}
+                  </div>
+                  <div>
+                    <b>Hour Meter:</b>{' '}
+                    {det.runningHours != null && String(det.runningHours).trim() !== '' ? `${String(det.runningHours)} hrs` : '—'}
+                  </div>
+                  <div>
+                    <b>Fuel Level (Init → Final):</b>{' '}
+                    {det.gensetInitialFuel != null && String(det.gensetInitialFuel).trim() !== '' ? String(det.gensetInitialFuel) : '—'} →{' '}
+                    {det.gensetFinalFuel != null && String(det.gensetFinalFuel).trim() !== '' ? String(det.gensetFinalFuel) : '—'}
+                  </div>
+                  <div><b>Engine Oil Level:</b> {gensetChecklist.oilLevel}</div>
+                  <div><b>Coolant Level:</b> {gensetChecklist.coolantLevel}</div>
+                  <div>
+                    <b>Battery &amp; Cranking:</b> {gensetChecklist.batteryStatus}
+                    {gensetChecklist.batteryVoltageV ? ` (${gensetChecklist.batteryVoltageV} V)` : ''}
+                  </div>
+                  <div><b>Leaks Observed:</b> {gensetChecklist.leaksObserved}</div>
+                  <div><b>Noise / Vibration:</b> {gensetChecklist.noiseVibration}</div>
+                  <div><b>Exhaust Smoke:</b> {gensetChecklist.exhaustSmoke}</div>
+                  <div>
+                    <b>Output Voltage / Freq:</b>{' '}
+                    {gensetChecklist.outputVoltageV || gensetChecklist.frequencyHz
+                      ? `${gensetChecklist.outputVoltageV || '—'} V / ${gensetChecklist.frequencyHz || '—'} Hz`
+                      : '—'}
+                  </div>
+                </div>
+                {gensetGuidance && (
+                  <div style={{ fontSize: 11, color: '#475569' }}>
+                    <b>Exercise Standard Check:</b> {gensetGuidance.message}
+                  </div>
+                )}
+                {gensetHealth.findings.length > 0 && (
+                  <div style={{ fontSize: 11, color: gensetHealth.verdict === 'CRITICAL' ? '#991b1b' : '#92400e' }}>
+                    <b>Flagged Findings:</b> {gensetHealth.findings.join(' · ')}
+                  </div>
+                )}
+                {gensetChecklist.standbyNote && (
+                  <div style={{ fontSize: 11 }}>
+                    <b>Standby Observation Notes:</b> {gensetChecklist.standbyNote}
+                  </div>
+                )}
               </div>
             )}
 

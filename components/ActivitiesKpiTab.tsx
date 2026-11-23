@@ -17,6 +17,13 @@ import {
   type ActivityCategory,
 } from '@/lib/activity-types';
 import { AlertBanner, SegmentedTabs, StatCard } from '@/components/ui';
+import {
+  evaluateGensetHealth,
+  formatGensetRunModeShort,
+  hasGensetChecklistDetails,
+  hydrateGensetMonitoringDetails,
+  type GensetStandbyVerdict,
+} from '@/lib/genset-monitoring';
 
 type KpiOp = { id: string; full_name: string; position: string | null };
 type KpiArea = { id: string; code: string; name: string | null; category: string };
@@ -375,7 +382,7 @@ export default function ActivitiesKpiTab(p: {
     return list.slice(0, 8).map((x) => ({ ...x, pct: Math.round((x.count / maxCount) * 100) }));
   }, [periodActs, areaBy]);
 
-  // Genset Fuel Telemetry logs
+  // Genset Fuel & PMS Inspection Telemetry logs
   const gensetLogs = useMemo(() => {
     const prim = (v: unknown): string | number | null =>
       typeof v === 'string' || typeof v === 'number' ? v : null;
@@ -385,6 +392,24 @@ export default function ActivitiesKpiTab(p: {
       .map((a) => {
         const d = a.details ?? {};
         const isRefill = a.activity_type === 'genset_fuel_refill';
+        const hasChecklist = !isRefill && hasGensetChecklistDetails(d);
+        const gState = hasChecklist ? hydrateGensetMonitoringDetails(d) : null;
+        const health = gState ? evaluateGensetHealth(gState) : null;
+        const runSummary = gState
+          ? gState.runMode === 'skipped_ran_outage'
+            ? 'Insp. only'
+            : gState.runDurationMin
+              ? `${gState.runDurationMin}m`
+              : formatGensetRunModeShort(gState.runMode)
+          : null;
+        const standbyLabel =
+          health?.verdict === 'READY'
+            ? 'Ready'
+            : health?.verdict === 'NEEDS_ATTENTION'
+              ? 'Attention'
+              : health?.verdict === 'CRITICAL'
+                ? 'Critical'
+                : null;
         return {
           id: a.id,
           date: a.activity_date,
@@ -396,12 +421,31 @@ export default function ActivitiesKpiTab(p: {
           runningHours: isRefill ? prim(d.hourMeterReading) : prim(d.runningHours),
           cause: isRefill
             ? `Refill (${typeof d.fuelSource === 'string' && d.fuelSource ? d.fuelSource : 'Fuel'})`
-            : typeof d.gensetCause === 'string'
-              ? d.gensetCause
-              : 'Routine',
+            : gState
+              ? `${gState.unitFuelType} · ${formatGensetRunModeShort(gState.runMode)}`
+              : typeof d.gensetCause === 'string'
+                ? d.gensetCause
+                : 'Routine',
+          runSummary,
+          oilLevel: gState ? gState.oilLevel : null,
+          standbyVerdict: (health?.verdict ?? null) as GensetStandbyVerdict | null,
+          standbyLabel,
+          findingsText: health?.findings.join(', ') ?? '',
         };
       });
   }, [dataset, startDate, p.anchorDate, areaBy]);
+
+  const gensetHealthCounts = useMemo(() => {
+    let ready = 0;
+    let attention = 0;
+    let critical = 0;
+    for (const row of gensetLogs) {
+      if (row.standbyVerdict === 'READY') ready += 1;
+      else if (row.standbyVerdict === 'NEEDS_ATTENTION') attention += 1;
+      else if (row.standbyVerdict === 'CRITICAL') critical += 1;
+    }
+    return { ready, attention, critical, totalChecklist: ready + attention + critical };
+  }, [gensetLogs]);
 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
@@ -574,22 +618,41 @@ export default function ActivitiesKpiTab(p: {
         </table>
       </div>
 
-      {/* Genset Fuel Trend Table */}
+      {/* Genset Fuel & Weekly PMS Health Table */}
       {gensetLogs.length > 0 && (
         <div className="card" style={{ overflow: 'auto' }}>
-          <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-light)' }}>
-            <strong style={{ fontSize: 14 }}>Recent Genset Fuel &amp; Runtime Logs</strong>
+          <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <strong style={{ fontSize: 14 }}>Recent Genset Fuel &amp; PMS Logs</strong>
+            {gensetHealthCounts.totalChecklist > 0 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 11.5, fontWeight: 700 }}>
+                <span style={{ padding: '2px 8px', borderRadius: 999, background: 'var(--ok-bg)', color: 'var(--ok-fg)', border: '1px solid var(--ok-border)' }}>
+                  Ready: {gensetHealthCounts.ready}
+                </span>
+                {gensetHealthCounts.attention > 0 && (
+                  <span style={{ padding: '2px 8px', borderRadius: 999, background: 'var(--warn-bg)', color: 'var(--warn-fg)', border: '1px solid var(--warn-border)' }}>
+                    Attention: {gensetHealthCounts.attention}
+                  </span>
+                )}
+                {gensetHealthCounts.critical > 0 && (
+                  <span style={{ padding: '2px 8px', borderRadius: 999, background: 'var(--danger-bg)', color: 'var(--danger-fg)', border: '1px solid var(--danger-border)' }}>
+                    Critical: {gensetHealthCounts.critical}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           <table className="data-table">
             <thead>
               <tr style={{ background: 'var(--surface-muted)', textAlign: 'left', fontSize: 11, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
                 <th style={{ padding: '7px 12px', borderBottom: '1px solid var(--border)' }}>Date</th>
                 <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)' }}>Station / Unit</th>
-                <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)' }}>Cause</th>
+                <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)' }}>Cause / Mode</th>
                 <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Initial Fuel</th>
                 <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Refilled (L)</th>
                 <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Final Fuel</th>
-                <th style={{ padding: '7px 12px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Run / Hr Meter</th>
+                <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)' }}>Run / Oil</th>
+                <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Hr Meter</th>
+                <th style={{ padding: '7px 12px', borderBottom: '1px solid var(--border)' }}>Standby Health</th>
               </tr>
             </thead>
             <tbody>
@@ -603,7 +666,67 @@ export default function ActivitiesKpiTab(p: {
                     {g.refilledLiters !== null ? `+${g.refilledLiters}` : '—'}
                   </td>
                   <td className="tabular-nums" style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700 }}>{g.finalFuel ?? '—'}</td>
-                  <td className="tabular-nums" style={{ padding: '7px 12px', textAlign: 'right' }}>{g.runningHours ?? '—'}</td>
+                  <td style={{ padding: '7px 10px', fontSize: 12 }}>
+                    {g.runSummary || g.oilLevel ? (
+                      <>
+                        {g.runSummary && <span>{g.runSummary}</span>}
+                        {g.runSummary && g.oilLevel && <span> · </span>}
+                        {g.oilLevel && (
+                          <span
+                            style={{
+                              color:
+                                g.oilLevel === 'Critical / Empty'
+                                  ? 'var(--danger-fg)'
+                                  : g.oilLevel !== 'Normal / Full'
+                                    ? 'var(--warn-fg)'
+                                    : undefined,
+                              fontWeight: g.oilLevel !== 'Normal / Full' ? 700 : undefined,
+                            }}
+                          >
+                            {g.oilLevel}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                  <td className="tabular-nums" style={{ padding: '7px 10px', textAlign: 'right' }}>{g.runningHours ?? '—'}</td>
+                  <td style={{ padding: '7px 12px' }} title={g.findingsText || undefined}>
+                    {g.standbyLabel ? (
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          padding: '2px 8px',
+                          borderRadius: 999,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          background:
+                            g.standbyVerdict === 'READY'
+                              ? 'var(--ok-bg)'
+                              : g.standbyVerdict === 'NEEDS_ATTENTION'
+                                ? 'var(--warn-bg)'
+                                : 'var(--danger-bg)',
+                          color:
+                            g.standbyVerdict === 'READY'
+                              ? 'var(--ok-fg)'
+                              : g.standbyVerdict === 'NEEDS_ATTENTION'
+                                ? 'var(--warn-fg)'
+                                : 'var(--danger-fg)',
+                          border:
+                            g.standbyVerdict === 'READY'
+                              ? '1px solid var(--ok-border)'
+                              : g.standbyVerdict === 'NEEDS_ATTENTION'
+                                ? '1px solid var(--warn-border)'
+                                : '1px solid var(--danger-border)',
+                        }}
+                      >
+                        {g.standbyLabel}
+                      </span>
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)' }}>—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -11,6 +11,7 @@ import TankCleaningFields from '@/components/TankCleaningFields';
 import LeakRepairFields from '@/components/LeakRepairFields';
 import FlushingFields from '@/components/FlushingFields';
 import FuelActivityFields from '@/components/FuelActivityFields';
+import GensetMonitoringFields from '@/components/GensetMonitoringFields';
 import { isFuelActivityType } from '@/lib/fuel-activities';
 
 interface ActivityCategoryFieldsProps {
@@ -56,35 +57,7 @@ export default function ActivityCategoryFields({
   return (
     <>
       {activityType === 'genset_monitoring' && (
-        <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: 'var(--warn-border)' }}>
-          <strong style={{ fontSize: 12.5, color: 'var(--warn-fg)' }}>Genset Monitoring Telemetry</strong>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
-            <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-              Initial Fuel (L / %)
-              <input className="input" type="number" step="0.1" value={fields.gensetInitialFuel} onChange={(e) => patch({ gensetInitialFuel: e.target.value })} />
-            </label>
-            <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-              Final Fuel (L / %)
-              <input className="input" type="number" step="0.1" value={fields.gensetFinalFuel} onChange={(e) => patch({ gensetFinalFuel: e.target.value })} />
-            </label>
-            <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-              Running Hours
-              <input className="input" type="number" step="0.1" value={fields.runningHours} onChange={(e) => patch({ runningHours: e.target.value })} />
-            </label>
-            <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-              Run Cause
-              <select
-                className="input"
-                value={fields.gensetCause}
-                onChange={(e) => patch({ gensetCause: e.target.value as ActivityDetailFieldsState['gensetCause'] })}
-              >
-                <option value="Routine">Routine Test</option>
-                <option value="Power Outage">Power Outage</option>
-                <option value="PMS">PMS</option>
-              </select>
-            </label>
-          </div>
-        </div>
+        <GensetMonitoringFields fields={fields} setFields={setFields} />
       )}
 
       {activityType === 'pump_monitoring' && (

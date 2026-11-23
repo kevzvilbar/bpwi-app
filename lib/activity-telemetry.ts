@@ -8,6 +8,12 @@ import {
 import { computeLeakVolumeLoss, hydrateLeakLossDetails } from './leak-volume-loss.ts';
 import { formatFlushingMeterStatusLabel, hydrateFlushingSummaryFromDetails } from './flushing-volume.ts';
 import { computeTotalDistributedLiters, hydrateFuelActivitiesDetails, isFuelActivityType } from './fuel-activities.ts';
+import {
+  evaluateGensetHealth,
+  formatGensetRunModeShort,
+  hasGensetChecklistDetails,
+  hydrateGensetMonitoringDetails,
+} from './genset-monitoring.ts';
 
 export function formatTelemetrySummary(act: DailyActivityRow): string[] {
   const d = act.details ?? {};
@@ -19,12 +25,35 @@ export function formatTelemetrySummary(act: DailyActivityRow): string[] {
   if (act.activity_type === 'genset_monitoring') {
     const initFuel = prim('gensetInitialFuel');
     const finalFuel = prim('gensetFinalFuel');
-    if (initFuel !== null || finalFuel !== null) {
-      parts.push(`Fuel: ${initFuel ?? '—'} → ${finalFuel ?? '—'}`);
-    }
     const runH = prim('runningHours');
-    if (runH !== null) parts.push(`Run: ${runH}h`);
-    if (str('gensetCause')) parts.push(`Cause: ${str('gensetCause')}`);
+
+    if (!hasGensetChecklistDetails(d)) {
+      if (initFuel !== null || finalFuel !== null) {
+        parts.push(`Fuel: ${initFuel ?? '—'} → ${finalFuel ?? '—'}`);
+      }
+      if (runH !== null) parts.push(`Run: ${runH}h`);
+      if (str('gensetCause')) parts.push(`Cause: ${str('gensetCause')}`);
+    } else {
+      const g = hydrateGensetMonitoringDetails(d);
+      const health = evaluateGensetHealth(g);
+      const durText = g.runMode !== 'skipped_ran_outage' && g.runDurationMin ? ` (${g.runDurationMin}m)` : '';
+      parts.push(`${g.unitFuelType} · ${formatGensetRunModeShort(g.runMode)}${durText}`);
+      if (initFuel !== null || finalFuel !== null) {
+        parts.push(`Fuel: ${initFuel ?? '—'} → ${finalFuel ?? '—'}`);
+      }
+      if (runH !== null) parts.push(`Hr: ${runH}h`);
+      parts.push(`Oil: ${g.oilLevel}`);
+      if (g.batteryVoltageV) {
+        parts.push(`Bat: ${g.batteryVoltageV}V (${g.batteryStatus})`);
+      } else if (g.batteryStatus !== 'Good / Strong Crank') {
+        parts.push(`Bat: ${g.batteryStatus}`);
+      }
+      if (health.findings.length > 0) {
+        parts.push(`${health.verdict === 'CRITICAL' ? 'CRITICAL' : 'Attention'}: ${health.findings.join(', ')}`);
+      } else {
+        parts.push('Standby: Ready');
+      }
+    }
   } else if (act.activity_type === 'pump_monitoring') {
     if (prim('pressurePsi') !== null) parts.push(`${prim('pressurePsi')} PSI`);
     if (prim('flowLps') !== null) parts.push(`${prim('flowLps')} LPS`);

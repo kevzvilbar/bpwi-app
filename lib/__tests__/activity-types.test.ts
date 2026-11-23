@@ -81,5 +81,6 @@ describe('resolveActivityTypeFromPm', () => {
     assert.equal(resolveActivityTypeFromPm({ activity_type: 'PULL', title: 'Deep Well Pull-out' }), 'well_pull_out');
     assert.equal(resolveActivityTypeFromPm({ activity_type: 'THERM', title: 'Thermal Scanning' }), 'thermal_scanning');
     assert.equal(resolveActivityTypeFromPm({ activity_type: 'LEVEL', title: 'SWL & PWL' }), 'water_level_monitoring');
+    assert.equal(resolveActivityTypeFromPm({ activity_type: 'GENSET', title: 'Genset PMS' }), 'genset_monitoring');
   });
 });

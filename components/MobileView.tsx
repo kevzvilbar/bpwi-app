@@ -49,6 +49,7 @@ const PRESET_COLOR: Record<string, string> = {
   PULL: '#db2777',
   THERM: '#ea580c',
   LEVEL: '#ca8a04',
+  GENSET: '#b45309',
 };
 
 function toMinutes(t: string | null) {

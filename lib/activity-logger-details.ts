@@ -30,6 +30,12 @@ import {
   isFuelActivityType,
   type FuelActivitiesFormState,
 } from './fuel-activities.ts';
+import {
+  INITIAL_GENSET_MONITORING_STATE,
+  buildGensetMonitoringPayload,
+  hydrateGensetMonitoringDetails,
+  type GensetMonitoringFormState,
+} from './genset-monitoring.ts';
 
 export type { WellPulloutFormDetails } from './well-pullout-types.ts';
 export { INITIAL_WELL_PULLOUT_DETAILS } from './well-pullout-types.ts';
@@ -40,6 +46,8 @@ export { INITIAL_LEAK_LOSS_STATE } from './leak-volume-loss.ts';
 export type { FlushingMeterStatus } from './flushing-volume.ts';
 export type { FuelActivitiesFormState, FuelDistributionStop } from './fuel-activities.ts';
 export { INITIAL_FUEL_ACTIVITIES_STATE } from './fuel-activities.ts';
+export type { GensetMonitoringFormState } from './genset-monitoring.ts';
+export { INITIAL_GENSET_MONITORING_STATE } from './genset-monitoring.ts';
 
 export interface BlowOffItem {
   name: string;
@@ -73,6 +81,7 @@ export interface ActivityDetailFieldsState {
   gensetFinalFuel: string;
   runningHours: string;
   gensetCause: 'Routine' | 'Power Outage' | 'PMS';
+  genset: GensetMonitoringFormState;
 
   // 2. Pump Monitoring
   pressurePsi: string;
@@ -153,6 +162,7 @@ export const INITIAL_ACTIVITY_DETAIL_FIELDS: ActivityDetailFieldsState = {
   gensetFinalFuel: '',
   runningHours: '',
   gensetCause: 'Routine',
+  genset: INITIAL_GENSET_MONITORING_STATE,
   pressurePsi: '',
   flowLps: '',
   totalizerReading: '',
@@ -228,6 +238,7 @@ export function hydrateActivityDetailFields(
   if (d.gensetCause === 'Routine' || d.gensetCause === 'Power Outage' || d.gensetCause === 'PMS') {
     next.gensetCause = d.gensetCause;
   }
+  next.genset = hydrateGensetMonitoringDetails(d);
   if (d.pressurePsi != null) next.pressurePsi = String(d.pressurePsi);
   if (d.flowLps != null) next.flowLps = String(d.flowLps);
   if (d.totalizerReading != null) next.totalizerReading = String(d.totalizerReading);
@@ -336,12 +347,15 @@ export function buildActivityDetailsPayload(
   meterCalc: MeterTestCalculation,
 ): Record<string, unknown> {
   if (activityType === 'genset_monitoring') {
-    return {
-      gensetInitialFuel: f.gensetInitialFuel ? Number(f.gensetInitialFuel) : null,
-      gensetFinalFuel: f.gensetFinalFuel ? Number(f.gensetFinalFuel) : null,
-      runningHours: f.runningHours ? Number(f.runningHours) : null,
-      gensetCause: f.gensetCause,
-    };
+    return buildGensetMonitoringPayload(
+      {
+        gensetInitialFuel: f.gensetInitialFuel,
+        gensetFinalFuel: f.gensetFinalFuel,
+        runningHours: f.runningHours,
+        gensetCause: f.gensetCause,
+      },
+      f.genset,
+    );
   }
   if (activityType === 'pump_monitoring') {
     return {

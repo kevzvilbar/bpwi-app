@@ -199,6 +199,7 @@ export default function ActivityLoggerModal(p: {
     // Reset all activity-specific telemetry fields so previous submissions never bleed over
     setDetails({
       ...INITIAL_ACTIVITY_DETAIL_FIELDS,
+      ...(p.linkedPmTask && resolveActivityTypeFromPm(p.linkedPmTask, p.pmActivityTypes) === 'genset_monitoring' ? { gensetCause: 'PMS' as const } : {}),
       accountNumber: p.linkedJobOrder?.account_number ?? '',
       accountName: p.linkedJobOrder?.account_name ?? '',
     });
