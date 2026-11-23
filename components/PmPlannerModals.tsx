@@ -1,5 +1,7 @@
 'use client';
 
+import { resolvePmCreditedOperators } from '@/lib/pm-credit';
+
 export const PM_PRESETS: Record<string, { label: string; short: string; color: string }> = {
   FLUSH: { label: 'Line Flushing', short: 'Flushing', color: '#0284c7' },
   TANK: { label: 'Tank Cleaning', short: 'Tank Cleaning', color: '#0d9488' },
@@ -61,13 +63,24 @@ export function buildPmCalendarIcs(tasks: PmTask[], opBy: Map<string, PmOp>): st
     const dt = t.scheduled_date.replace(/-/g, '');
     const nextDt = addPmDays(t.scheduled_date, 1).replace(/-/g, '');
     const crew = t.assigned_operator_ids.map((id) => opBy.get(id)?.full_name).filter(Boolean).join(', ');
+    const credited =
+      t.status === 'done'
+        ? resolvePmCreditedOperators(t).map((id) => opBy.get(id)?.full_name).filter(Boolean).join(', ')
+        : '';
     lines.push(
       'BEGIN:VEVENT',
       `UID:${t.id}@bpwi`,
       `DTSTART;VALUE=DATE:${dt}`,
       `DTEND;VALUE=DATE:${nextDt}`,
       `SUMMARY:${t.title}${t.locations.length ? ' - ' + t.locations.join(', ') : ''}`,
-      `DESCRIPTION:${[crew ? 'Crew: ' + crew : '', t.asset ? 'Asset: ' + t.asset : '', t.remarks ?? ''].filter(Boolean).join(' | ')}`,
+      `DESCRIPTION:${[
+        crew ? 'Planned: ' + crew : '',
+        credited && credited !== crew ? 'Performed by: ' + credited : '',
+        t.asset ? 'Asset: ' + t.asset : '',
+        t.remarks ?? '',
+      ]
+        .filter(Boolean)
+        .join(' | ')}`,
       'END:VEVENT',
     );
   }
@@ -83,6 +96,7 @@ export type PmTask = {
   locations: string[];
   asset: string | null;
   assigned_operator_ids: string[];
+  completed_by_operator_ids?: string[];
   scheduled_date: string;
   status: 'planned' | 'done' | 'postponed';
   completed_at: string | null;
@@ -117,6 +131,7 @@ export type PmDraft = {
   locations: string;
   asset: string;
   assignees: string[];
+  completedBy: string[];
   date: string;
   status: PmTask['status'];
   remarks: string;
@@ -221,7 +236,17 @@ export default function PmPlannerModals({
                 <select
                   className="input"
                   value={draft.status}
-                  onChange={(e) => setDraft({ ...draft, status: e.target.value as PmTask['status'] })}
+                  onChange={(e) => {
+                    const nextStatus = e.target.value as PmTask['status'];
+                    setDraft({
+                      ...draft,
+                      status: nextStatus,
+                      completedBy:
+                        nextStatus === 'done' && draft.completedBy.length === 0
+                          ? draft.assignees
+                          : draft.completedBy,
+                    });
+                  }}
                 >
                   <option value="planned">Planned</option>
                   <option value="done">Done</option>
@@ -235,7 +260,7 @@ export default function PmPlannerModals({
               </div>
             )}
             <fieldset style={{ border: '1px solid var(--border-light)', borderRadius: 8, maxHeight: 120, overflow: 'auto', fontSize: 12 }}>
-              <legend>Assignees</legend>
+              <legend>Planned Assignees</legend>
               {operators.map((o) => {
                 const cReason = getOperatorConflict(draft.date, o.id);
                 return (
@@ -267,6 +292,42 @@ export default function PmPlannerModals({
                 );
               })}
             </fieldset>
+            {draft.status === 'done' && (
+              <fieldset style={{ border: '1px solid var(--border-light)', borderRadius: 8, maxHeight: 120, overflow: 'auto', fontSize: 12 }}>
+                <legend>Actual Performers (Credited for KPI)</legend>
+                {operators.map((o) => {
+                  const isPlanned = draft.assignees.includes(o.id);
+                  const checked = draft.completedBy.includes(o.id);
+                  return (
+                    <label
+                      key={o.id}
+                      style={{
+                        display: 'inline-flex',
+                        gap: 4,
+                        margin: '2px 10px 2px 0',
+                        color: checked && !isPlanned ? 'var(--warn-fg)' : undefined,
+                        fontWeight: checked && !isPlanned ? 700 : undefined,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            completedBy: e.target.checked
+                              ? [...draft.completedBy, o.id]
+                              : draft.completedBy.filter((x) => x !== o.id),
+                          })
+                        }
+                      />
+                      {o.full_name}
+                      {!isPlanned && checked ? ' (Sub)' : ''}
+                    </label>
+                  );
+                })}
+              </fieldset>
+            )}
             <label style={{ fontSize: 13 }}>
               Remarks <input className="input" value={draft.remarks} onChange={(e) => setDraft({ ...draft, remarks: e.target.value })} />
             </label>

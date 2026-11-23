@@ -6,7 +6,10 @@ import {
   DAILY_ACTIVITY_GENSET_COLUMNS,
   DAILY_ACTIVITY_KPI_COLUMNS,
   JOB_ORDER_KPI_COLUMNS,
+  PM_TASK_KPI_COLUMNS,
+  PM_TASK_KPI_COLUMNS_LEGACY,
 } from '@/lib/query-columns';
+import { computeOperatorPmKpis, isMissingCompletedByColumnError } from '@/lib/pm-credit';
 import {
   ACTIVITY_BY_ID,
   ACTIVITY_CATEGORIES,
@@ -19,7 +22,14 @@ type KpiOp = { id: string; full_name: string; position: string | null };
 type KpiArea = { id: string; code: string; name: string | null; category: string };
 type KpiShift = { id: string; code: string; duration_hours: number; is_off: boolean };
 type KpiAsg = { operator_id: string; schedule_date: string; shift_type_id: string | null; area_code_id: string | null };
-type KpiPm = { id: string; scheduled_date: string; completed_at: string | null; status: string; assigned_operator_ids: string[] };
+type KpiPm = {
+  id: string;
+  scheduled_date: string;
+  completed_at: string | null;
+  status: string;
+  assigned_operator_ids: string[];
+  completed_by_operator_ids?: string[] | null;
+};
 type KpiAct = {
   id: string;
   activity_date: string;
@@ -103,7 +113,20 @@ export default function ActivitiesKpiTab(p: {
       const fetchStart = subtractDays(p.anchorDate, periodDays - 1);
       const sb = supabaseBrowser();
 
-      const [actsRes, gensetRes, asgRes, pmRes, joRes] = await Promise.all([
+      const fetchPmTasks = (withCompletedBy: boolean) =>
+        fetchAllClient<KpiPm>(async (from, to) => {
+          const base = withCompletedBy
+            ? sb.from('pm_tasks').select(PM_TASK_KPI_COLUMNS)
+            : sb.from('pm_tasks').select(PM_TASK_KPI_COLUMNS_LEGACY);
+          const { data, error } = await base
+            .gte('scheduled_date', fetchStart)
+            .lte('scheduled_date', p.anchorDate)
+            .order('scheduled_date')
+            .range(from, to);
+          return { data: data as KpiPm[] | null, error };
+        });
+
+      const [actsRes, gensetRes, asgRes, pmPrimaryRes, joRes] = await Promise.all([
         fetchAllClient<KpiAct>((from, to) =>
           sb
             .from('daily_activities')
@@ -130,15 +153,7 @@ export default function ActivitiesKpiTab(p: {
             .order('schedule_date')
             .range(from, to),
         ),
-        fetchAllClient<KpiPm>((from, to) =>
-          sb
-            .from('pm_tasks')
-            .select('id, scheduled_date, completed_at, status, assigned_operator_ids')
-            .gte('scheduled_date', fetchStart)
-            .lte('scheduled_date', p.anchorDate)
-            .order('scheduled_date')
-            .range(from, to),
-        ),
+        fetchPmTasks(true),
         fetchAllClient<KpiJo>((from, to) =>
           sb
             .from('job_orders')
@@ -148,6 +163,11 @@ export default function ActivitiesKpiTab(p: {
             .range(from, to),
         ),
       ]);
+
+      const pmRes =
+        pmPrimaryRes.error && isMissingCompletedByColumnError({ message: pmPrimaryRes.error })
+          ? await fetchPmTasks(false)
+          : pmPrimaryRes;
 
       if (!active) return;
 
@@ -234,9 +254,10 @@ export default function ActivitiesKpiTab(p: {
       );
       const verifiedActs = opActs.filter((a) => a.status === 'verified').length;
 
-      const assignedPms = periodPms.filter((t) => (t.assigned_operator_ids ?? []).includes(op.id));
-      const donePms = assignedPms.filter((t) => t.status === 'done').length;
-      const pmCompliance = assignedPms.length > 0 ? Math.round((donePms / assignedPms.length) * 100) : null;
+      const pmStats = computeOperatorPmKpis(op.id, periodPms);
+      const assignedPmsCount = pmStats.assignedCount;
+      const donePms = pmStats.doneCount;
+      const pmCompliance = pmStats.compliancePct;
 
       const opJos = periodJos.filter((j) => (j.assigned_operator_ids ?? []).includes(op.id));
       const doneJos = opJos.filter((j) => j.status === 'completed');
@@ -273,7 +294,10 @@ export default function ActivitiesKpiTab(p: {
         actCount: opActs.length,
         verifiedActs,
         donePms,
-        assignedPms: assignedPms.length,
+        assignedPms: assignedPmsCount,
+        plannedDonePms: pmStats.plannedDoneCount,
+        substituteDonePms: pmStats.substituteDoneCount,
+        missedAssignedPms: pmStats.missedAssignedCount,
         pmCompliance,
         doneJos: doneJos.length,
         assignedJos: opJos.length,
@@ -492,7 +516,11 @@ export default function ActivitiesKpiTab(p: {
                 <td className="tabular-nums" style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700 }}>
                   {r.actCount} <span style={{ fontWeight: 400, color: 'var(--text-secondary)' }}>({r.verifiedActs} ✓)</span>
                 </td>
-                <td className="tabular-nums" style={{ padding: '8px 10px', textAlign: 'right' }}>
+                <td
+                  className="tabular-nums"
+                  style={{ padding: '8px 10px', textAlign: 'right' }}
+                  title={`Planned & Done: ${r.plannedDonePms} · Unlisted Substitute Done: ${r.substituteDonePms} · Assigned Not Participating: ${r.missedAssignedPms}`}
+                >
                   {r.donePms}/{r.assignedPms}{' '}
                   {r.pmCompliance !== null && (
                     <span
@@ -504,6 +532,21 @@ export default function ActivitiesKpiTab(p: {
                       }}
                     >
                       ({r.pmCompliance}%)
+                    </span>
+                  )}
+                  {r.substituteDonePms > 0 && (
+                    <span
+                      style={{
+                        marginLeft: 4,
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        padding: '1px 5px',
+                        borderRadius: 999,
+                        background: 'var(--warn-bg)',
+                        color: 'var(--warn-fg)',
+                      }}
+                    >
+                      +{r.substituteDonePms} sub
                     </span>
                   )}
                 </td>

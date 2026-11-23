@@ -5,9 +5,11 @@ import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { subscribeVisibilityAwareChannel } from '@/lib/supabase/realtime';
+import { isMissingCompletedByColumnError } from '@/lib/pm-credit';
 import PmDayInspector from '@/components/PmDayInspector';
 
 const PmExportModal = dynamic(() => import('@/components/PmExportModal'), { ssr: false });
+const PmCompleteModal = dynamic(() => import('@/components/PmCompleteModal'), { ssr: false });
 import PmPlannerModals, {
   addPmDays as addDays,
   addPmMonths as addMonths,
@@ -53,6 +55,7 @@ export default function PmPlanner(p: {
   standby: Standby[];
   holidays?: Array<{ holiday_date: string; name: string; holiday_type: string }>;
   orgId: string;
+  operatorId?: string | null;
   canEdit: boolean;
   canExportCsv?: boolean;
   error: string;
@@ -81,6 +84,8 @@ export default function PmPlanner(p: {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [exportCsvOpen, setExportCsvOpen] = useState(false);
   const [confirmDel, setConfirmDel] = useState<PmConfirmDelete | null>(null);
+  const [completeModal, setCompleteModal] = useState<{ task: Task; mode: 'complete' | 'edit' } | null>(null);
+  const [completeBusy, setCompleteBusy] = useState(false);
 
   useEffect(() => setTasks(p.tasks), [p.tasks]);
   useEffect(() => setActTypes(p.activityTypes), [p.activityTypes]);
@@ -107,6 +112,7 @@ export default function PmPlanner(p: {
               locations: rec.locations ?? [],
               asset: rec.asset ?? null,
               assigned_operator_ids: rec.assigned_operator_ids ?? [],
+              completed_by_operator_ids: rec.completed_by_operator_ids ?? [],
               scheduled_date: rec.scheduled_date ?? '',
               status: (rec.status as Task['status']) ?? 'planned',
               completed_at: rec.completed_at ?? null,
@@ -254,6 +260,7 @@ export default function PmPlanner(p: {
     locations: '',
     asset: '',
     assignees: [],
+    completedBy: [],
     date,
     status: 'planned',
     remarks: '',
@@ -269,6 +276,7 @@ export default function PmPlanner(p: {
     locations: t.locations.join(', '),
     asset: t.asset ?? '',
     assignees: t.assigned_operator_ids,
+    completedBy: t.completed_by_operator_ids ?? [],
     date: t.scheduled_date,
     status: t.status,
     remarks: t.remarks ?? '',
@@ -287,6 +295,8 @@ export default function PmPlanner(p: {
       ? draft.custom.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').slice(0, 30)
       : draft.typeKey;
     const title = isCustom ? draft.custom.trim() : (activityMeta.get(draft.typeKey)?.label ?? draft.typeKey);
+    const completedBy =
+      draft.status === 'done' ? (draft.completedBy.length > 0 ? draft.completedBy : draft.assignees) : [];
     const base = {
       organization_id: p.orgId,
       activity_type,
@@ -298,27 +308,23 @@ export default function PmPlanner(p: {
       remarks: draft.remarks.trim() || null,
       completed_at: draft.status === 'done' ? p.today : null,
     };
-    setBusy(true);
-    setMsg('');
-    const sb = supabaseBrowser();
-    let error;
-    if (draft.id) {
-      ({ error } = await sb.from('pm_tasks').update({ ...base, scheduled_date: draft.date }).eq('id', draft.id));
-    } else {
+    const writeTask = async (withCompletedBy: boolean) => {
+      const sb = supabaseBrowser();
+      const body = withCompletedBy ? { ...base, completed_by_operator_ids: completedBy } : base;
+      if (draft.id) return sb.from('pm_tasks').update({ ...body, scheduled_date: draft.date }).eq('id', draft.id);
       const series = `S${Date.now().toString(36)}`;
       const n = draft.repeat === 'none' ? 1 : Math.min(Math.max(draft.count, 1), 60);
       const rows = Array.from({ length: n }, (_, i) => ({
-        ...base,
+        ...body,
         legacy_key: `${series}-${i}`,
-        scheduled_date:
-          draft.repeat === 'weekly'
-            ? addDays(draft.date, 7 * i)
-            : draft.repeat === 'monthly'
-              ? addMonths(draft.date, i)
-              : draft.date,
+        scheduled_date: draft.repeat === 'weekly' ? addDays(draft.date, 7 * i) : draft.repeat === 'monthly' ? addMonths(draft.date, i) : draft.date,
       }));
-      ({ error } = await sb.from('pm_tasks').insert(rows));
-    }
+      return sb.from('pm_tasks').insert(rows);
+    };
+    setBusy(true);
+    setMsg('');
+    let { error } = await writeTask(true);
+    if (error && isMissingCompletedByColumnError(error)) ({ error } = await writeTask(false));
     setBusy(false);
     if (error) {
       setMsg(error.message);
@@ -355,18 +361,33 @@ export default function PmPlanner(p: {
     setConfirmDel({ scope, target });
   }
 
-  async function updateTask(t: Task, patch: Partial<Pick<Task, 'status' | 'assigned_operator_ids'>>) {
+  async function updateTask(
+    t: Task,
+    patch: Partial<Pick<Task, 'status' | 'assigned_operator_ids' | 'completed_by_operator_ids' | 'remarks'>>,
+  ): Promise<boolean> {
     const nextCompleted =
-      patch.status !== undefined ? (patch.status === 'done' ? p.today : null) : t.completed_at;
-    setTasks((ts) => ts.map((x) => (x.id === t.id ? { ...x, ...patch, completed_at: nextCompleted } : x)));
-    const { error } = await supabaseBrowser()
-      .from('pm_tasks')
-      .update({ ...patch, completed_at: nextCompleted })
-      .eq('id', t.id);
+      patch.status !== undefined ? (patch.status === 'done' ? (t.completed_at ?? p.today) : null) : t.completed_at;
+    const nextPerformed =
+      patch.completed_by_operator_ids !== undefined
+        ? patch.completed_by_operator_ids
+        : patch.status !== undefined && patch.status !== 'done'
+          ? []
+          : t.completed_by_operator_ids;
+    const fullPatch = { ...patch, completed_at: nextCompleted, ...(nextPerformed !== undefined ? { completed_by_operator_ids: nextPerformed } : {}) };
+    setTasks((ts) => ts.map((x) => (x.id === t.id ? { ...x, ...fullPatch } : x)));
+    const sb = supabaseBrowser();
+    let { error } = await sb.from('pm_tasks').update(fullPatch).eq('id', t.id);
+    if (error && isMissingCompletedByColumnError(error)) {
+      const { completed_by_operator_ids: _drop, ...legacyPatch } = fullPatch;
+      void _drop;
+      ({ error } = await sb.from('pm_tasks').update(legacyPatch).eq('id', t.id));
+    }
     if (error) {
       setMsg(error.message);
       router.refresh();
+      return false;
     }
+    return true;
   }
 
   async function rescheduleTask(taskId: string, newDate: string) {
@@ -763,19 +784,7 @@ export default function PmPlanner(p: {
                   <div
                     className="pm-desktop-pill"
                     title={`${hol.name} (${hol.holiday_type.replace(/_/g, ' ')})`}
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 700,
-                      color: 'var(--danger-fg)',
-                      background: 'var(--danger-bg)',
-                      borderRadius: 4,
-                      padding: '1px 5px',
-                      marginBottom: 3,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      textAlign: 'center',
-                    }}
+                    style={{ fontSize: 10, fontWeight: 700, color: 'var(--danger-fg)', background: 'var(--danger-bg)', borderRadius: 4, padding: '1px 5px', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' }}
                   >
                     ★ {hol.name}
                   </div>
@@ -787,18 +796,7 @@ export default function PmPlanner(p: {
                     {list.map((t) => {
                       const meta = activityMeta.get(t.activity_type);
                       const color = meta?.color ?? activityColor(t.activity_type, t.title);
-                      return (
-                        <span
-                          key={t.id}
-                          style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: '50%',
-                            background: t.status === 'done' ? 'transparent' : color,
-                            border: `2px solid ${color}`,
-                          }}
-                        />
-                      );
+                      return <span key={t.id} style={{ width: 8, height: 8, borderRadius: '50%', background: t.status === 'done' ? 'transparent' : color, border: `2px solid ${color}` }} />;
                     })}
                   </div>
                 )}
@@ -827,28 +825,15 @@ export default function PmPlanner(p: {
                         .map((id) => opBy.get(id)?.full_name)
                         .filter(Boolean)
                         .join(', ')}${conflict ? '\n⚠ Crew conflict (RD/off/leave)' : ''}`}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        background: isDone ? 'var(--surface)' : color,
-                        color: isDone ? color : '#ffffff',
-                        border: `1.5px solid ${color}`,
-                        borderRadius: 999,
-                        padding: '2px 6px',
-                        margin: '2px 0',
-                        fontSize: 10.5,
-                        fontWeight: 700,
-                        lineHeight: 1.25,
-                        cursor: 'pointer',
-                        overflow: 'hidden',
-                      }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, background: isDone ? 'var(--surface)' : color, color: isDone ? color : '#ffffff', border: `1.5px solid ${color}`, borderRadius: 999, padding: '2px 6px', margin: '2px 0', fontSize: 10.5, fontWeight: 700, lineHeight: 1.25, cursor: 'pointer', overflow: 'hidden' }}
                     >
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (p.canEdit) updateTask(t, { status: isDone ? 'planned' : 'done' });
+                          if (!p.canEdit) return;
+                          if (isDone) void updateTask(t, { status: 'planned' });
+                          else setCompleteModal({ task: t, mode: 'complete' });
                         }}
                         title={isDone ? 'Mark as planned' : 'Mark as done'}
                         style={{
@@ -922,6 +907,7 @@ export default function PmPlanner(p: {
           getOperatorConflict={getOperatorConflict}
           canEdit={p.canEdit}
           onUpdateTask={(t, patch) => void updateTask(t, patch)}
+          onRequestComplete={(t, mode) => setCompleteModal({ task: t, mode })}
           onEditTask={(t) => setDraft(edit(t))}
           onRemoveTask={(target) => remove('one', target)}
           onCreateNewTask={() => setDraft(blank(selectedDate))}
@@ -957,6 +943,23 @@ export default function PmPlanner(p: {
           statusFilter={statusFilter}
           areaFilter={areaFilter}
           onClose={() => setExportCsvOpen(false)}
+        />
+      )}
+      {completeModal && (
+        <PmCompleteModal
+          open
+          mode={completeModal.mode}
+          task={completeModal.task}
+          operators={p.operators}
+          currentOperatorId={p.operatorId}
+          busy={completeBusy}
+          onCancel={() => setCompleteModal(null)}
+          onConfirm={async ({ completedByIds, remarks }) => {
+            setCompleteBusy(true);
+            const ok = await updateTask(completeModal.task, { status: 'done', completed_by_operator_ids: completedByIds, remarks });
+            setCompleteBusy(false);
+            if (ok) setCompleteModal(null);
+          }}
         />
       )}
     </div>

@@ -13,9 +13,15 @@ import MobileActivitiesAndSchedule, {
 } from '@/components/MobileActivitiesAndSchedule';
 import { ACTIVITY_BY_ID, type DailyActivityRow } from '@/lib/activity-types';
 import { enqueueOfflineActivity, flushOfflineQueue, getOfflineQueue, type PendingOfflineActivity } from '@/lib/offline-queue';
+import {
+  buildPmActualPerformerIds,
+  classifyPmCompletionRoles,
+  isMissingCompletedByColumnError,
+} from '@/lib/pm-credit';
 import { AlertBanner, Badge, SegmentedTabs } from '@/components/ui';
 
 const ActivityLoggerModal = dynamic(() => import('@/components/ActivityLoggerModal'), { ssr: false });
+const PmCompleteModal = dynamic(() => import('@/components/PmCompleteModal'), { ssr: false });
 
 type Op = MobileOp;
 type Shift = MobileShift;
@@ -29,6 +35,7 @@ type Task = {
   locations: string[];
   asset: string | null;
   assigned_operator_ids: string[];
+  completed_by_operator_ids?: string[];
   scheduled_date: string;
   status: 'planned' | 'done' | 'postponed';
   completed_at: string | null;
@@ -120,8 +127,10 @@ export default function MobileView(p: {
     task: Task;
     prevStatus: Task['status'];
     prevCompletedAt: string | null;
+    prevCompletedByIds: string[];
     prevRemarks: string | null;
   } | null>(null);
+  const [completeModal, setCompleteModal] = useState<{ task: Task; mode: 'complete' | 'edit' } | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => setTasks(p.tasks), [p.tasks]);
@@ -148,6 +157,7 @@ export default function MobileView(p: {
               locations: rec.locations ?? [],
               asset: rec.asset ?? null,
               assigned_operator_ids: rec.assigned_operator_ids ?? [],
+              completed_by_operator_ids: rec.completed_by_operator_ids ?? [],
               scheduled_date: rec.scheduled_date ?? '',
               status: (rec.status as Task['status']) ?? 'planned',
               completed_at: rec.completed_at ?? null,
@@ -264,7 +274,13 @@ export default function MobileView(p: {
   const scopedTasks = useMemo(() => {
     const q = search.trim().toLowerCase();
     return tasks.filter((t) => {
-      if (selectedOp && !t.assigned_operator_ids.includes(selectedOp)) return false;
+      if (
+        selectedOp &&
+        !t.assigned_operator_ids.includes(selectedOp) &&
+        !(t.completed_by_operator_ids ?? []).includes(selectedOp)
+      ) {
+        return false;
+      }
       if (!q) return true;
       return (
         t.title.toLowerCase().includes(q) ||
@@ -326,13 +342,19 @@ export default function MobileView(p: {
   async function toggleTaskStatus(
     t: Task,
     nextStatus: Task['status'],
-    opts?: { completedAt?: string | null; remarks?: string | null; showUndo?: boolean },
+    opts?: {
+      completedAt?: string | null;
+      completedByIds?: string[];
+      remarks?: string | null;
+      showUndo?: boolean;
+    },
   ) {
     if (!p.canClosePm) return;
     setBusyId(t.id);
     setMsg('');
     const prevStatus = t.status;
     const prevCompletedAt = t.completed_at;
+    const prevCompletedByIds = t.completed_by_operator_ids ?? [];
     const prevRemarks = t.remarks;
     const nextRemarks =
       opts?.remarks !== undefined
@@ -341,23 +363,40 @@ export default function MobileView(p: {
           ? remarksDraft[t.id].trim() || null
           : t.remarks;
     const completedAt = opts?.completedAt !== undefined ? opts.completedAt : nextStatus === 'done' ? p.today : null;
+    const nextCompletedByIds =
+      nextStatus === 'done'
+        ? (opts?.completedByIds ?? t.completed_by_operator_ids ?? [])
+        : (opts?.completedByIds ?? []);
 
-    const { error } = await supabaseBrowser()
+    const basePayload = { status: nextStatus, completed_at: completedAt, remarks: nextRemarks };
+    const sb = supabaseBrowser();
+    let { error } = await sb
       .from('pm_tasks')
-      .update({ status: nextStatus, completed_at: completedAt, remarks: nextRemarks })
+      .update({ ...basePayload, completed_by_operator_ids: nextCompletedByIds })
       .eq('id', t.id);
+
+    if (error && isMissingCompletedByColumnError(error)) {
+      ({ error } = await sb.from('pm_tasks').update(basePayload).eq('id', t.id));
+    }
 
     setBusyId('');
     if (error) {
       setMsg(error.message);
       return;
     }
-    const updatedTask: Task = { ...t, status: nextStatus, completed_at: completedAt, remarks: nextRemarks };
+    setCompleteModal(null);
+    const updatedTask: Task = {
+      ...t,
+      status: nextStatus,
+      completed_at: completedAt,
+      completed_by_operator_ids: nextCompletedByIds,
+      remarks: nextRemarks,
+    };
     setTasks((list) => list.map((x) => (x.id === t.id ? updatedTask : x)));
 
     if (nextStatus === 'done' && opts?.showUndo !== false) {
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-      setUndoToast({ task: updatedTask, prevStatus, prevCompletedAt, prevRemarks });
+      setUndoToast({ task: updatedTask, prevStatus, prevCompletedAt, prevCompletedByIds, prevRemarks });
       undoTimerRef.current = setTimeout(() => setUndoToast(null), 6000);
     } else if (opts?.showUndo === false) {
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
@@ -372,8 +411,8 @@ export default function MobileView(p: {
     const isOverdue = !isDone && t.scheduled_date < p.today;
     const isToday = t.scheduled_date === p.today;
     const crew = t.assigned_operator_ids.map((id) => opBy.get(id)?.full_name).filter(Boolean);
-    const canCloseThis =
-      p.canClosePm && (p.role !== 'operator' || Boolean(p.operatorId && t.assigned_operator_ids.includes(p.operatorId)));
+    const roles = classifyPmCompletionRoles(t);
+    const canCloseThis = p.canClosePm && (p.role !== 'operator' || Boolean(p.operatorId));
 
     return (
       <div
@@ -407,8 +446,48 @@ export default function MobileView(p: {
         {t.locations.length > 0 && <div style={{ fontSize: 14, fontWeight: 700 }}>{t.locations.join(', ')}</div>}
         {t.asset && <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>Asset: {t.asset}</div>}
         <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
-          Assigned: <b>{crew.length ? crew.join(', ') : 'Unassigned'}</b>
+          {isDone ? 'Planned: ' : 'Assigned: '}
+          <b>{crew.length ? crew.join(', ') : 'Unassigned'}</b>
         </div>
+        {isDone && (
+          <div style={{ fontSize: 12.5, display: 'grid', gap: 2 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4 }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Performed by:</span>
+              {roles.creditedIds.length === 0 ? (
+                <span style={{ color: 'var(--text-muted)' }}>Not recorded</span>
+              ) : (
+                roles.creditedIds.map((id) => {
+                  const name = opBy.get(id)?.full_name ?? 'Unknown';
+                  const isSub = roles.substituteIds.includes(id);
+                  return (
+                    <span
+                      key={id}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 3,
+                        padding: '1px 7px',
+                        borderRadius: 999,
+                        fontSize: 11.5,
+                        fontWeight: 700,
+                        background: isSub ? 'var(--warn-bg)' : 'var(--ok-bg)',
+                        color: isSub ? 'var(--warn-fg)' : 'var(--ok-fg)',
+                      }}
+                    >
+                      {name}
+                      {isSub ? ' · Sub' : ''}
+                    </span>
+                  );
+                })
+              )}
+            </div>
+            {roles.absentPlannedIds.length > 0 && (
+              <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                Planned not participating: {roles.absentPlannedIds.map((id) => opBy.get(id)?.full_name ?? id).join(', ')}
+              </div>
+            )}
+          </div>
+        )}
 
         {canCloseThis ? (
           <>
@@ -442,10 +521,25 @@ export default function MobileView(p: {
                   📋 Log &amp; Complete
                 </button>
               )}
+              {isDone && (
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={busyId === t.id}
+                  onClick={() => setCompleteModal({ task: t, mode: 'edit' })}
+                  style={{ flex: 1, minHeight: 42, fontSize: 13, fontWeight: 700 }}
+                >
+                  Edit Crew
+                </button>
+              )}
               <button
                 className="btn"
                 disabled={busyId === t.id}
-                onClick={() => toggleTaskStatus(t, isDone ? 'planned' : 'done')}
+                onClick={() =>
+                  isDone
+                    ? void toggleTaskStatus(t, 'planned', { completedByIds: [] })
+                    : setCompleteModal({ task: t, mode: 'complete' })
+                }
                 style={{
                   flex: 1,
                   minHeight: 42,
@@ -508,12 +602,12 @@ export default function MobileView(p: {
           {(tab === 'tasks' || (tab === 'activities' && p.canVerifyActivity)) && (
             <select
               className="input"
-              aria-label="Filter by assigned employee"
+              aria-label="Filter by employee"
               value={selectedOp}
               onChange={(e) => setSelectedOp(e.target.value)}
               style={{ flex: '1 1 140px', minWidth: 0 }}
             >
-              <option value="">All employees</option>
+              <option value="">{tab === 'tasks' ? 'All employees (incl. substitute coverage)' : 'All employees'}</option>
               {p.operators.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.full_name}
@@ -600,7 +694,7 @@ export default function MobileView(p: {
           )}
           {p.role === 'operator' && !p.operatorId && (
             <div className="card" style={{ padding: '8px 12px', marginBottom: 12, fontSize: 12.5, color: 'var(--warn-fg)', background: 'var(--warn-bg)', borderColor: 'var(--warn-border)' }}>
-              Your user account is not linked to an operator profile yet. Ask an admin to link your account under Operators &amp; Setup to close assigned PM tasks.
+              Your user account is not linked to an operator profile yet. Ask an admin to link your account under Operators &amp; Setup to close PM tasks.
             </div>
           )}
 
@@ -742,6 +836,7 @@ export default function MobileView(p: {
             onClick={() =>
               void toggleTaskStatus(undoToast.task, undoToast.prevStatus, {
                 completedAt: undoToast.prevCompletedAt,
+                completedByIds: undoToast.prevCompletedByIds,
                 remarks: undoToast.prevRemarks,
                 showUndo: false,
               })
@@ -788,10 +883,19 @@ export default function MobileView(p: {
               );
             }
             if (linkedPmForLog) {
+              const performedByIds =
+                opts?.completedByIds ??
+                buildPmActualPerformerIds(act.lead_operator_id, act.crew_operator_ids);
               setTasks((prev) =>
                 prev.map((x) =>
                   x.id === linkedPmForLog.id
-                    ? { ...x, status: 'done', completed_at: p.date, remarks: act.notes || x.remarks }
+                    ? {
+                        ...x,
+                        status: 'done',
+                        completed_at: p.date,
+                        completed_by_operator_ids: performedByIds,
+                        remarks: act.notes || x.remarks,
+                      }
                     : x,
                 ),
               );
@@ -810,6 +914,26 @@ export default function MobileView(p: {
           editingActivity={editingActivity}
         />
       )}
+      <PmCompleteModal
+        open={Boolean(completeModal)}
+        mode={completeModal?.mode ?? 'complete'}
+        task={completeModal?.task ?? null}
+        operators={p.operators}
+        currentOperatorId={p.operatorId}
+        initialRemarks={completeModal ? (remarksDraft[completeModal.task.id] ?? completeModal.task.remarks ?? '') : ''}
+        busy={Boolean(completeModal && busyId === completeModal.task.id)}
+        onCancel={() => setCompleteModal(null)}
+        onConfirm={async ({ completedByIds, remarks }) => {
+          if (!completeModal) return;
+          const target = completeModal.task;
+          await toggleTaskStatus(target, 'done', {
+            completedAt: target.status === 'done' ? (target.completed_at ?? p.today) : p.today,
+            completedByIds,
+            remarks,
+            showUndo: completeModal.mode === 'complete',
+          });
+        }}
+      />
     </div>
   );
 }

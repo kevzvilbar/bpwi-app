@@ -4,8 +4,11 @@ import {
   buildOwnActivityOrFilter,
   DAILY_ACTIVITY_LIST_COLUMNS,
   JOB_ORDER_COLUMNS,
+  PM_TASK_MONITOR_COLUMNS,
+  PM_TASK_MONITOR_COLUMNS_LEGACY,
   SHIFT_HANDOVER_COLUMNS,
 } from '@/lib/query-columns';
+import { isMissingCompletedByColumnError } from '@/lib/pm-credit';
 import type { DailyActivityRow, JobOrderRow, ShiftHandoverRow } from '@/lib/activity-types';
 import ActivitiesMonitor from '@/components/ActivitiesMonitor';
 
@@ -26,7 +29,7 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
   const joFrom = addDays(date, -30);
   const ownActFilter = !p.canVerifyActivity ? buildOwnActivityOrFilter(p.user?.id, p.operatorId) : null;
 
-  const [areasPrimary, opsRes, shiftsRes, asgRes, standbyRes, pmRes, actRes, joRes, hoRes] = await Promise.all([
+  const [areasPrimary, opsRes, shiftsRes, asgRes, standbyRes, pmPrimary, actRes, joRes, hoRes] = await Promise.all([
     p.sb
       .from('area_codes')
       .select('id, code, name, category, background_color, text_color, sub_sites')
@@ -47,7 +50,7 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
     p.sb.from('standby_assignments').select('operator_id, standby_type').eq('schedule_date', date),
     p.sb
       .from('pm_tasks')
-      .select('id, activity_type, title, scheduled_date, completed_at, status, assigned_operator_ids')
+      .select(PM_TASK_MONITOR_COLUMNS)
       .or(`completed_at.eq.${date},and(status.neq.done,scheduled_date.lt.${date})`)
       .order('scheduled_date'),
     (() => {
@@ -73,6 +76,18 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
       .order('created_at', { ascending: false })
       .limit(30),
   ]);
+
+  let pmTasksData = pmPrimary.data ?? [];
+  let pmError = pmPrimary.error;
+  if (isMissingCompletedByColumnError(pmPrimary.error)) {
+    const legacyPm = await p.sb
+      .from('pm_tasks')
+      .select(PM_TASK_MONITOR_COLUMNS_LEGACY)
+      .or(`completed_at.eq.${date},and(status.neq.done,scheduled_date.lt.${date})`)
+      .order('scheduled_date');
+    pmTasksData = (legacyPm.data ?? []).map((t) => ({ ...t, completed_by_operator_ids: [] as string[] }));
+    pmError = legacyPm.error;
+  }
 
   const areasRes = areasPrimary.error
     ? await p.sb
@@ -100,7 +115,7 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
       areasRes.error?.message ||
       asgRes.error?.message ||
       standbyRes.error?.message ||
-      pmRes.error?.message ||
+      pmError?.message ||
       actRes.error?.message ||
       joRes.error?.message ||
       hoRes.error?.message ||
@@ -125,7 +140,7 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
       areas={areasRes.data ?? []}
       assignments={asgRes.data ?? []}
       standby={standbyRes.data ?? []}
-      pmTasks={pmRes.data ?? []}
+      pmTasks={pmTasksData}
       activities={actRes.error ? [] : ((actRes.data ?? []) as DailyActivityRow[])}
       jobOrders={joRes.error ? [] : ((joRes.data ?? []) as JobOrderRow[])}
       handovers={hoRes.error ? [] : ((hoRes.data ?? []) as ShiftHandoverRow[])}

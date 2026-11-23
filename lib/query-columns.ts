@@ -29,7 +29,22 @@ export const SHIFT_HANDOVER_COLUMNS =
   'id, organization_id, handover_date, shift_type_id, area_code_id, outgoing_operator_id, incoming_operator_id, plant_status, summary, pending_items, chemical_fuel_notes, created_by, created_at';
 
 export const PM_TASK_COLUMNS =
+  'id, legacy_key, activity_type, title, locations, asset, assigned_operator_ids, completed_by_operator_ids, scheduled_date, status, completed_at, remarks';
+
+export const PM_TASK_COLUMNS_LEGACY =
   'id, legacy_key, activity_type, title, locations, asset, assigned_operator_ids, scheduled_date, status, completed_at, remarks';
+
+export const PM_TASK_KPI_COLUMNS =
+  'id, scheduled_date, completed_at, status, assigned_operator_ids, completed_by_operator_ids';
+
+export const PM_TASK_KPI_COLUMNS_LEGACY =
+  'id, scheduled_date, completed_at, status, assigned_operator_ids';
+
+export const PM_TASK_MONITOR_COLUMNS =
+  'id, activity_type, title, scheduled_date, completed_at, status, assigned_operator_ids, completed_by_operator_ids';
+
+export const PM_TASK_MONITOR_COLUMNS_LEGACY =
+  'id, activity_type, title, scheduled_date, completed_at, status, assigned_operator_ids';
 
 export const ACCOMPLISHMENT_REPORT_COLUMNS =
   'id, organization_id, report_date, shift_type_id, operator_id, submitted_by, assigned_head_id, prepared_by_name, prepared_by_title, checked_by_name, checked_by_title, status, entries, summary_notes, head_remarks, submitted_at, checked_by, checked_at, created_at, updated_at';

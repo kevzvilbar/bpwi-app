@@ -133,11 +133,50 @@ export function extractGpsMetadata(details: Record<string, unknown> | null | und
   return { gpsAccuracyM: parsedAcc, gpsSource };
 }
 
+export const GPS_INTERNAL_DETAIL_KEYS: ReadonlySet<string> = new Set(['gpsSource', 'gpsAccuracyM']);
+
+export interface TaggedGpsDisplay {
+  coords: string;
+  sourceLabel: string;
+  fullText: string;
+  mapUrl: string;
+}
+
 export function formatGpsBadgeLabel(details: Record<string, unknown> | null | undefined): string | null {
   const { gpsAccuracyM, gpsSource } = extractGpsMetadata(details);
   if (gpsSource === 'map_pin') return 'Map Pin';
   if (gpsAccuracyM !== null) return `GPS ±${gpsAccuracyM}m`;
   return null;
+}
+
+/**
+ * Formats an activity's tagged latitude/longitude and capture metadata for printable reports
+ * and detail views. Returns `null` when coordinates are missing or invalid.
+ */
+export function formatTaggedGpsPosition(
+  lat: number | null | undefined,
+  lng: number | null | undefined,
+  details?: Record<string, unknown> | null,
+): TaggedGpsDisplay | null {
+  if (typeof lat !== 'number' || typeof lng !== 'number' || !isValidCoordinate(lat, lng)) {
+    return null;
+  }
+  const latStr = lat.toFixed(6);
+  const lngStr = lng.toFixed(6);
+  const coords = `${latStr}, ${lngStr}`;
+  const { gpsAccuracyM, gpsSource } = extractGpsMetadata(details);
+  const sourceLabel =
+    gpsSource === 'map_pin'
+      ? 'Map Pin'
+      : gpsAccuracyM !== null
+        ? `GPS (±${gpsAccuracyM}m)`
+        : 'GPS';
+  return {
+    coords,
+    sourceLabel,
+    fullText: `${coords} (${sourceLabel})`,
+    mapUrl: `https://www.google.com/maps?q=${latStr},${lngStr}`,
+  };
 }
 
 export interface HighAccuracyGpsCaptureOptions {

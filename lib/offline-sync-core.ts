@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { buildPmActualPerformerIds, isMissingCompletedByColumnError } from './pm-credit.ts';
 
 export type PhotoUploader = (
   sb: SupabaseClient,
@@ -141,11 +142,24 @@ export async function syncQueuedActivity(
     const activityDate = typeof payload.activity_date === 'string' ? payload.activity_date : null;
     const notes = typeof payload.notes === 'string' ? payload.notes : '';
     const type = typeof payload.activity_type === 'string' ? payload.activity_type : 'activity';
-    const r = await sb
+    const leadId = typeof payload.lead_operator_id === 'string' ? payload.lead_operator_id : null;
+    const crewIds = Array.isArray(payload.crew_operator_ids)
+      ? payload.crew_operator_ids.filter((id): id is string => typeof id === 'string')
+      : [];
+    const performedBy = buildPmActualPerformerIds(leadId, crewIds);
+    const basePmPatch = {
+      status: 'done',
+      completed_at: activityDate,
+      remarks: notes || `Synced from offline activity (${type})`,
+    };
+    let r = await sb
       .from('pm_tasks')
-      .update({ status: 'done', completed_at: activityDate, remarks: notes || `Synced from offline activity (${type})` })
+      .update(performedBy.length > 0 ? { ...basePmPatch, completed_by_operator_ids: performedBy } : basePmPatch)
       .eq('id', pmTaskId)
       .neq('status', 'done');
+    if (r.error && performedBy.length > 0 && isMissingCompletedByColumnError(r.error)) {
+      r = await sb.from('pm_tasks').update(basePmPatch).eq('id', pmTaskId).neq('status', 'done');
+    }
     if (r.error) throw new Error(r.error.message);
   }
   const jobOrderId = typeof payload.job_order_id === 'string' ? payload.job_order_id : null;

@@ -1,13 +1,14 @@
 import { getProfile } from '@/lib/profile';
 import { manilaToday } from '@/lib/date';
-import { PM_TASK_COLUMNS } from '@/lib/query-columns';
+import { PM_TASK_COLUMNS, PM_TASK_COLUMNS_LEGACY } from '@/lib/query-columns';
+import { isMissingCompletedByColumnError } from '@/lib/pm-credit';
 import PmPlanner from '@/components/PmPlanner';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PmPage({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
   const sp = await searchParams;
-  const { sb, orgId, canEdit, isAdmin, isManager } = await getProfile();
+  const { sb, orgId, operatorId, canEdit, isAdmin, isManager } = await getProfile();
   const today = manilaToday();
   const month = /^\d{4}-\d{2}$/.test(sp.m ?? '') ? sp.m! : today.slice(0, 7);
   const [y, mo] = month.split('-').map(Number);
@@ -23,7 +24,7 @@ export default async function PmPage({ searchParams }: { searchParams: Promise<{
   const first = gridStart.toISOString().slice(0, 10);
   const last = gridEnd.toISOString().slice(0, 10);
 
-  const [tasks, activityTypes, ops, shifts, areas, asg, standby, holidaysRes] = await Promise.all([
+  const [tasksPrimary, activityTypes, ops, shifts, areas, asg, standby, holidaysRes] = await Promise.all([
     sb.from('pm_tasks').select(PM_TASK_COLUMNS).gte('scheduled_date', first).lte('scheduled_date', last).order('scheduled_date'),
     sb.from('pm_activity_types').select('id, code, label, short_label, color, sort_order').order('sort_order').order('code'),
     sb.from('operators').select('id, full_name, phone_number').eq('is_active', true).order('sort_order'),
@@ -46,8 +47,21 @@ export default async function PmPage({ searchParams }: { searchParams: Promise<{
       .lte('holiday_date', last),
   ]);
 
+  let tasksData = tasksPrimary.data ?? [];
+  let tasksError = tasksPrimary.error;
+  if (isMissingCompletedByColumnError(tasksPrimary.error)) {
+    const legacyRes = await sb
+      .from('pm_tasks')
+      .select(PM_TASK_COLUMNS_LEGACY)
+      .gte('scheduled_date', first)
+      .lte('scheduled_date', last)
+      .order('scheduled_date');
+    tasksData = (legacyRes.data ?? []).map((t) => ({ ...t, completed_by_operator_ids: [] as string[] }));
+    tasksError = legacyRes.error;
+  }
+
   const error =
-    tasks.error?.message ||
+    tasksError?.message ||
     ops.error?.message ||
     shifts.error?.message ||
     areas.error?.message ||
@@ -60,7 +74,7 @@ export default async function PmPage({ searchParams }: { searchParams: Promise<{
       key={month}
       month={month}
       today={today}
-      tasks={tasks.data ?? []}
+      tasks={tasksData}
       activityTypes={activityTypes.error ? [] : (activityTypes.data ?? [])}
       operators={ops.data ?? []}
       shifts={shifts.data ?? []}
@@ -69,6 +83,7 @@ export default async function PmPage({ searchParams }: { searchParams: Promise<{
       standby={standby.data ?? []}
       holidays={holidaysRes.error ? [] : (holidaysRes.data ?? [])}
       orgId={orgId}
+      operatorId={operatorId}
       canEdit={canEdit}
       canExportCsv={isAdmin || isManager}
       error={error}

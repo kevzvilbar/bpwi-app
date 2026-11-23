@@ -4,7 +4,9 @@ import {
   buildOwnActivityOrFilter,
   DAILY_ACTIVITY_LIST_COLUMNS,
   PM_TASK_COLUMNS,
+  PM_TASK_COLUMNS_LEGACY,
 } from '@/lib/query-columns';
+import { isMissingCompletedByColumnError } from '@/lib/pm-credit';
 import type { DailyActivityRow } from '@/lib/activity-types';
 import MobileView from '@/components/MobileView';
 
@@ -27,7 +29,7 @@ export default async function MobilePage({ searchParams }: { searchParams: Promi
   const pmTo = addDays(date, 30);
   const ownActFilter = !canVerifyActivity ? buildOwnActivityOrFilter(user?.id, operatorId) : null;
 
-  const [areasPrimary, ops, shifts, allAsg, standby, tasks, actTypes, dailyActs] = await Promise.all([
+  const [areasPrimary, ops, shifts, allAsg, standby, tasksPrimary, actTypes, dailyActs] = await Promise.all([
     sb.from('area_codes').select('id, code, name, category, sub_sites'),
     sb
       .from('operators')
@@ -53,6 +55,19 @@ export default async function MobilePage({ searchParams }: { searchParams: Promi
     })(),
   ]);
 
+  let tasksData = tasksPrimary.data ?? [];
+  let tasksError = tasksPrimary.error;
+  if (isMissingCompletedByColumnError(tasksPrimary.error)) {
+    const legacyRes = await sb
+      .from('pm_tasks')
+      .select(PM_TASK_COLUMNS_LEGACY)
+      .gte('scheduled_date', pmFrom)
+      .lte('scheduled_date', pmTo)
+      .order('scheduled_date');
+    tasksData = (legacyRes.data ?? []).map((t) => ({ ...t, completed_by_operator_ids: [] as string[] }));
+    tasksError = legacyRes.error;
+  }
+
   const areas = areasPrimary.error
     ? await sb.from('area_codes').select('id, code, name, category')
     : areasPrimary;
@@ -71,7 +86,7 @@ export default async function MobilePage({ searchParams }: { searchParams: Promi
     areas.error?.message ||
     allAsg.error?.message ||
     standby.error?.message ||
-    tasks.error?.message ||
+    tasksError?.message ||
     '';
 
   return (
@@ -93,7 +108,7 @@ export default async function MobilePage({ searchParams }: { searchParams: Promi
       assignments={todayAsg}
       yesterdayAssignments={prevAsg}
       standby={standby.data ?? []}
-      tasks={tasks.data ?? []}
+      tasks={tasksData}
       activityTypes={actTypes.error ? [] : (actTypes.data ?? [])}
       initialActivities={dailyActs.error ? [] : ((dailyActs.data ?? []) as DailyActivityRow[])}
       error={error}

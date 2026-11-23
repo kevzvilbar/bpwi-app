@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { ACTIVITY_BY_ID, type DailyActivityRow, type JobOrderRow } from '@/lib/activity-types';
+import { formatTaggedGpsPosition, GPS_INTERNAL_DETAIL_KEYS } from '@/lib/gps-accuracy';
 import { computeJobOrderSlaStatus, formatSlaDurationLabel } from '@/lib/job-order-sla';
 import WellPulloutReportSheet from '@/components/WellPulloutReportSheet';
 import TankCleaningReportSheet from '@/components/TankCleaningReportSheet';
@@ -127,6 +128,25 @@ export default function PrintableActivityReport(p: {
   );
   const hideGenericHeader = showPulloutSheet || showTankCleaningSheet;
   const areaLabel = areaObj ? `${areaObj.code}${areaObj.name ? ` · ${areaObj.name}` : ''}` : '';
+  const gpsInfo = act ? formatTaggedGpsPosition(act.gps_lat, act.gps_lng, det) : null;
+  const telemetryEntries = act
+    ? Object.entries(det)
+        .filter(([key]) => !GPS_INTERNAL_DETAIL_KEYS.has(key))
+        .map(([key, val]) => {
+          if (val === null || val === undefined || val === '') return null;
+          const formattedVal = Array.isArray(val)
+            ? val
+                .map((item) =>
+                  typeof item === 'object' && item !== null ? Object.values(item).filter(Boolean).join(' · ') : String(item),
+                )
+                .join('; ')
+            : typeof val === 'object'
+              ? JSON.stringify(val)
+              : String(val);
+          return formattedVal ? { key, formattedVal } : null;
+        })
+        .filter((entry): entry is { key: string; formattedVal: string } => Boolean(entry))
+    : [];
 
   return (
     <div
@@ -286,6 +306,15 @@ export default function PrintableActivityReport(p: {
               <div><b>Meter Serial #:</b> {detPrim('meterSerialNumber') ?? 'N/A'}</div>
               <div><b>Meter Size:</b> {detPrim('meterSize') ?? '1/2"'} ({detPrim('meterNature') ?? 'Old'})</div>
               <div><b>Test Type:</b> {detPrim('testNature') ?? 'Re-testing'} (Ref: {detPrim('refVolumeM3') ?? 0.01} m³)</div>
+              {gpsInfo && (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <b>GPS Position:</b>{' '}
+                  <a href={gpsInfo.mapUrl} target="_blank" rel="noreferrer" style={{ color: '#0f172a', textDecoration: 'underline' }}>
+                    {gpsInfo.coords}
+                  </a>{' '}
+                  ({gpsInfo.sourceLabel})
+                </div>
+              )}
             </div>
 
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -380,6 +409,21 @@ export default function PrintableActivityReport(p: {
               <div><b>Turnaround Time:</b> {calcTatHours(jo?.created_at ?? act?.started_at, jo?.completed_at ?? act?.completed_at) ?? 'N/A'}</div>
               <div><b>Started / Created:</b> {fmtTs(jo?.created_at ?? act?.started_at ?? act?.created_at)}</div>
               <div><b>Completed:</b> {fmtTs(jo?.completed_at ?? act?.completed_at)}</div>
+              {act && (
+                <>
+                  <div>
+                    <b>GPS Position:</b>{' '}
+                    {gpsInfo ? (
+                      <a href={gpsInfo.mapUrl} target="_blank" rel="noreferrer" style={{ color: '#0f172a', textDecoration: 'underline' }}>
+                        {gpsInfo.coords}
+                      </a>
+                    ) : (
+                      'Not tagged'
+                    )}
+                  </div>
+                  <div><b>GPS Tag Method:</b> {gpsInfo ? gpsInfo.sourceLabel : 'N/A'}</div>
+                </>
+              )}
               {jo && (
                 <>
                   <div><b>SLA Target:</b> {formatSlaDurationLabel(jo.estimated_hours)}</div>
@@ -403,7 +447,7 @@ export default function PrintableActivityReport(p: {
               </div>
             )}
 
-            {act && Object.keys(det).length > 0 && (
+            {act && telemetryEntries.length > 0 && (
               <div>
                 <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: 11, marginBottom: 6, color: '#334155' }}>
                   Recorded Field Telemetry &amp; Parameters
@@ -416,23 +460,14 @@ export default function PrintableActivityReport(p: {
                     </tr>
                   </thead>
                   <tbody>
-                    {Object.entries(det).map(([key, val]) => {
-                      if (val === null || val === undefined || val === '') return null;
-                      const formattedVal = Array.isArray(val)
-                        ? val.map((item) => (typeof item === 'object' && item !== null ? Object.values(item).filter(Boolean).join(' · ') : String(item))).join('; ')
-                        : typeof val === 'object'
-                          ? JSON.stringify(val)
-                          : String(val);
-                      if (!formattedVal) return null;
-                      return (
-                        <tr key={key}>
-                          <td style={{ border: '1px solid #334155', padding: '5px 8px', fontWeight: 600, textTransform: 'capitalize' }}>
-                            {key.replace(/([A-Z])/g, ' $1')}
-                          </td>
-                          <td style={{ border: '1px solid #334155', padding: '5px 8px' }}>{formattedVal}</td>
-                        </tr>
-                      );
-                    })}
+                    {telemetryEntries.map(({ key, formattedVal }) => (
+                      <tr key={key}>
+                        <td style={{ border: '1px solid #334155', padding: '5px 8px', fontWeight: 600, textTransform: 'capitalize' }}>
+                          {key.replace(/([A-Z])/g, ' $1')}
+                        </td>
+                        <td style={{ border: '1px solid #334155', padding: '5px 8px' }}>{formattedVal}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>

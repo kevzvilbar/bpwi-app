@@ -1,6 +1,7 @@
 'use client';
 
 import type { PmActivityChip, PmOp, PmTask } from '@/components/PmPlannerModals';
+import { classifyPmCompletionRoles } from '@/lib/pm-credit';
 
 interface PmDayInspectorProps {
   selectedDate: string;
@@ -18,7 +19,11 @@ interface PmDayInspectorProps {
   fallbackColor: (type: string, title?: string) => string;
   getOperatorConflict: (date: string, opId: string) => string | null;
   canEdit: boolean;
-  onUpdateTask: (t: PmTask, patch: Partial<Pick<PmTask, 'status' | 'assigned_operator_ids'>>) => void;
+  onUpdateTask: (
+    t: PmTask,
+    patch: Partial<Pick<PmTask, 'status' | 'assigned_operator_ids' | 'completed_by_operator_ids' | 'remarks'>>,
+  ) => void;
+  onRequestComplete?: (t: PmTask, mode: 'complete' | 'edit') => void;
   onEditTask: (t: PmTask) => void;
   onRemoveTask: (target: { id: string; legacy_key: string | null; date: string }) => void;
   onCreateNewTask: () => void;
@@ -41,6 +46,7 @@ export default function PmDayInspector({
   getOperatorConflict,
   canEdit,
   onUpdateTask,
+  onRequestComplete,
   onEditTask,
   onRemoveTask,
   onCreateNewTask,
@@ -137,6 +143,7 @@ export default function PmDayInspector({
             const meta = activityMeta.get(t.activity_type);
             const color = meta?.color ?? fallbackColor(t.activity_type, t.title);
             const availableOps = operators.filter((o) => !t.assigned_operator_ids.includes(o.id));
+            const roles = classifyPmCompletionRoles(t);
             return (
               <div
                 key={t.id}
@@ -224,13 +231,56 @@ export default function PmDayInspector({
                   })}
                 </div>
 
+                {t.status === 'done' && (
+                  <div style={{ display: 'grid', gap: 3, fontSize: 11 }}>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>Performed by:</span>
+                      {roles.creditedIds.length === 0 ? (
+                        <span style={{ color: 'var(--text-muted)' }}>None recorded</span>
+                      ) : (
+                        roles.creditedIds.map((id) => {
+                          const op = opBy.get(id);
+                          const isSub = roles.substituteIds.includes(id);
+                          return (
+                            <span
+                              key={id}
+                              style={{
+                                background: isSub ? 'var(--warn-bg)' : 'var(--info-bg)',
+                                color: isSub ? 'var(--warn-fg)' : 'var(--info-fg)',
+                                borderRadius: 999,
+                                padding: '1px 7px',
+                                fontWeight: 700,
+                              }}
+                            >
+                              {op?.full_name ?? id}
+                              {isSub ? ' · Sub' : ''}
+                            </span>
+                          );
+                        })
+                      )}
+                    </div>
+                    {roles.absentPlannedIds.length > 0 && (
+                      <div style={{ color: 'var(--text-muted)', fontSize: 10.5 }}>
+                        Planned not participating: {roles.absentPlannedIds.map((id) => opBy.get(id)?.full_name ?? id).join(', ')}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {canEdit && (
                   <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                     <select
                       className="btn"
                       style={{ padding: '3px 6px', fontSize: 11 }}
                       value={t.status}
-                      onChange={(e) => onUpdateTask(t, { status: e.target.value as PmTask['status'] })}
+                      onChange={(e) => {
+                        const next = e.target.value as PmTask['status'];
+                        if (next === 'done' && onRequestComplete) {
+                          onRequestComplete(t, 'complete');
+                          return;
+                        }
+                        onUpdateTask(t, { status: next });
+                      }}
                     >
                       <option value="planned">Planned</option>
                       <option value="done">Done</option>
@@ -260,7 +310,17 @@ export default function PmDayInspector({
                 )}
 
                 {canEdit && (
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {t.status === 'done' && onRequestComplete && (
+                      <button
+                        type="button"
+                        className="btn"
+                        style={{ padding: '2px 8px', fontSize: 11 }}
+                        onClick={() => onRequestComplete(t, 'edit')}
+                      >
+                        Edit crew
+                      </button>
+                    )}
                     <button className="btn" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => onEditTask(t)}>
                       Edit
                     </button>

@@ -119,6 +119,25 @@ describe('offline activity sync is idempotent', () => {
     await assert.rejects(() => syncQueuedActivity(f.sb, 'q-5', p, okUpload), /pm failed/);
     assert.equal(f.rows.size, 1);
   });
+
+  it('writes lead and crew operators into completed_by_operator_ids when syncing a linked PM activity', async () => {
+    const f = fakeSb();
+    const p = {
+      ...payload(),
+      pm_task_id: 'pm-sub-1',
+      activity_date: '2026-11-20',
+      lead_operator_id: 'op-sub',
+      crew_operator_ids: ['op-helper', 'op-sub'],
+    };
+    await syncQueuedActivity(f.sb, 'q-6', p, okUpload);
+    assert.equal(f.pm.length, 1);
+    assert.deepEqual(f.pm[0].patch, {
+      status: 'done',
+      completed_at: '2026-11-20',
+      remarks: 'x',
+      completed_by_operator_ids: ['op-sub', 'op-helper'],
+    });
+  });
 });
 
 describe('offline accomplishment report sync is idempotent', () => {

@@ -12,7 +12,7 @@ describe('Supabase SQL migrations integrity', () => {
     .sort();
 
   it('has strictly sequential 3-digit prefixes with no gaps or duplicates', () => {
-    assert.ok(files.length >= 22, `Expected at least 22 migrations, found ${files.length}`);
+    assert.ok(files.length >= 24, `Expected at least 24 migrations, found ${files.length}`);
     const nums = files.map((f) => {
       const m = f.match(/^(\d{3})_/);
       assert.ok(m, `Migration filename must start with 3-digit prefix: ${f}`);
@@ -48,12 +48,26 @@ describe('Supabase SQL migrations integrity', () => {
     }
   });
 
-  it('documents 019, 020, 021, and 022 in supabase/migrations/README.md', () => {
+  it('documents 019–024 in supabase/migrations/README.md', () => {
     const readme = fs.readFileSync(path.join(MIGRATIONS_DIR, 'README.md'), 'utf8');
     assert.match(readme, /\b019\b/);
     assert.match(readme, /\b020\b/);
     assert.match(readme, /\b021\b/);
     assert.match(readme, /\b022\b/);
+    assert.match(readme, /\b023\b/);
+    assert.match(readme, /\b024\b/);
+  });
+
+  it('tracks actual PM performers safely in 024_pm_actual_performers.sql', () => {
+    const sql24 = fs.readFileSync(path.join(MIGRATIONS_DIR, '024_pm_actual_performers.sql'), 'utf8');
+    for (const required of [
+      'completed_by_operator_ids',
+      'pm_tasks operator close',
+      'enforce_operator_pm_update',
+      'assigned_operator_ids is distinct from old.assigned_operator_ids',
+    ]) {
+      assert.ok(sql24.includes(required), `024_pm_actual_performers.sql missing required construct: ${required}`);
+    }
   });
 
   it('consolidates station codes cleanly in 022_consolidate_station_codes.sql', () => {

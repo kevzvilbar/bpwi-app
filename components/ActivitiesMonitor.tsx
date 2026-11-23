@@ -10,6 +10,7 @@ import { getErrorMessage } from '@/lib/error-utils';
 import { addIsoDays as addDays, fmtTimeManila } from '@/lib/date';
 import { isValidCoordinate } from '@/lib/route-footprints';
 import { extractGpsMetadata, formatGpsBadgeLabel } from '@/lib/gps-accuracy';
+import { resolvePmCreditedOperators } from '@/lib/pm-credit';
 import { resolveActivityPhotoUrl } from '@/lib/activity-media';
 import {
   ACTIVITY_BY_ID,
@@ -36,7 +37,7 @@ type MonShift = { id: string; code: string; description: string | null; duration
 type MonArea = { id: string; code: string; name: string | null; category: string; background_color: string; text_color: string; sub_sites?: string[] };
 type MonAsg = { operator_id: string; schedule_date: string; shift_type_id: string | null; area_code_id: string | null };
 type MonStandby = { operator_id: string; standby_type: string };
-type MonPm = { id: string; activity_type: string; title: string; scheduled_date: string; completed_at: string | null; status: string; assigned_operator_ids: string[] };
+type MonPm = { id: string; activity_type: string; title: string; scheduled_date: string; completed_at: string | null; status: string; assigned_operator_ids: string[]; completed_by_operator_ids?: string[] | null };
 
 function daysUntil(iso: string | null | undefined) {
   if (!iso) return null;
@@ -236,7 +237,7 @@ export default function ActivitiesMonitor(p: {
           (a) => a.lead_operator_id === op.id || (a.crew_operator_ids ?? []).includes(op.id),
         );
         const pmsClosedToday = p.pmTasks.filter(
-          (t) => t.status === 'done' && t.completed_at === p.date && (t.assigned_operator_ids ?? []).includes(op.id),
+          (t) => t.status === 'done' && t.completed_at === p.date && resolvePmCreditedOperators(t).includes(op.id),
         ).length;
         const lastTimestamp = opActs[0]?.completed_at ?? opActs[0]?.created_at ?? null;
 

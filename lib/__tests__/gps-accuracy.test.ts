@@ -5,6 +5,8 @@ import {
   extractGpsMetadata,
   filterSpatialOutliers,
   formatGpsBadgeLabel,
+  formatTaggedGpsPosition,
+  GPS_INTERNAL_DETAIL_KEYS,
   isAcceptableGpsSample,
   type GpsSample,
 } from '../gps-accuracy.ts';
@@ -59,5 +61,28 @@ describe('high-accuracy GPS filtering & weighted averaging', () => {
     assert.equal(formatGpsBadgeLabel({}), null);
     assert.equal(formatGpsBadgeLabel({ gpsSource: 'gps', gpsAccuracyM: 3.4 }), 'GPS ±3.4m');
     assert.equal(formatGpsBadgeLabel({ gpsSource: 'map_pin', gpsAccuracyM: null }), 'Map Pin');
+  });
+
+  it('formats tagged GPS position and internal detail keys for printable reports', () => {
+    assert.equal(formatTaggedGpsPosition(null, null, {}), null);
+    assert.equal(formatTaggedGpsPosition(0, 0, { gpsSource: 'gps' }), null);
+
+    const mapPin = formatTaggedGpsPosition(10.72025, 122.56215, { gpsSource: 'map_pin' });
+    assert.deepEqual(mapPin, {
+      coords: '10.720250, 122.562150',
+      sourceLabel: 'Map Pin',
+      fullText: '10.720250, 122.562150 (Map Pin)',
+      mapUrl: 'https://www.google.com/maps?q=10.720250,122.562150',
+    });
+
+    const gpsPrecise = formatTaggedGpsPosition(10.72025, 122.56215, { gpsSource: 'gps', gpsAccuracyM: 3.2 });
+    assert.equal(gpsPrecise?.sourceLabel, 'GPS (±3.2m)');
+    assert.equal(gpsPrecise?.fullText, '10.720250, 122.562150 (GPS (±3.2m))');
+
+    const bareGps = formatTaggedGpsPosition(10.72025, 122.56215, null);
+    assert.equal(bareGps?.sourceLabel, 'GPS');
+
+    assert.equal(GPS_INTERNAL_DETAIL_KEYS.has('gpsSource'), true);
+    assert.equal(GPS_INTERNAL_DETAIL_KEYS.has('gpsAccuracyM'), true);
   });
 });

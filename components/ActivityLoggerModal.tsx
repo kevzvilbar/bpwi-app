@@ -15,6 +15,7 @@ import {
 import { getErrorMessage } from '@/lib/error-utils';
 import { resolveActivityPhotoUrl } from '@/lib/activity-media';
 import { extractGpsMetadata, type GpsSource } from '@/lib/gps-accuracy';
+import { buildPmActualPerformerIds, getDefaultPmPerformers, isMissingCompletedByColumnError } from '@/lib/pm-credit';
 import { DAILY_ACTIVITY_LIST_COLUMNS } from '@/lib/query-columns';
 import {
   buildActivityDetailsPayload,
@@ -92,7 +93,10 @@ export type LinkedJobOrder = {
 export default function ActivityLoggerModal(p: {
   open: boolean;
   onClose: () => void;
-  onSaved: (activity: DailyActivityRow, opts?: { offline?: boolean; tatJustification?: string | null }) => void;
+  onSaved: (
+    activity: DailyActivityRow,
+    opts?: { offline?: boolean; tatJustification?: string | null; completedByIds?: string[] },
+  ) => void;
   orgId: string;
   userId: string;
   operatorId: string | null;
@@ -281,20 +285,15 @@ export default function ActivityLoggerModal(p: {
       'pump_monitoring';
     setActivityType(ACTIVITY_TYPES.some((a) => a.id === initAct) ? initAct : 'pump_monitoring');
 
-    // Lead operator
+    const pmDefaults = p.linkedPmTask ? getDefaultPmPerformers(p.linkedPmTask, p.operatorId) : [];
     const defaultLead =
       p.initialLeadOperatorId ??
       p.linkedJobOrder?.assigned_operator_ids?.[0] ??
-      p.linkedPmTask?.assigned_operator_ids?.[0] ??
+      pmDefaults[0] ??
       p.operatorId ??
       '';
     setLeadOpId(defaultLead);
-
-    // Pre-populate crew from linked PM or JO (excluding lead)
-    const linkedCrew =
-      p.linkedJobOrder?.assigned_operator_ids ??
-      p.linkedPmTask?.assigned_operator_ids ??
-      [];
+    const linkedCrew = p.linkedJobOrder?.assigned_operator_ids ?? pmDefaults;
     setCrewOpIds(linkedCrew.filter((id) => id && id !== defaultLead));
 
     // Area & Shift from linked JO, PM location match, or Roster assignment
@@ -611,15 +610,20 @@ export default function ActivityLoggerModal(p: {
       const { data, error } = await sb.from('daily_activities').insert(payload).select(DAILY_ACTIVITY_LIST_COLUMNS).single();
       if (error) throw error;
 
+      const pmPerformers = p.linkedPmTask?.id ? buildPmActualPerformerIds(leadOpId, crewOpIds) : undefined;
       if (p.linkedPmTask?.id) {
-        await sb
+        const pmBase = {
+          status: 'done',
+          completed_at: p.date,
+          remarks: notes.trim() || `Logged via field activity (${activityType})`,
+        };
+        const pmRes = await sb
           .from('pm_tasks')
-          .update({
-            status: 'done',
-            completed_at: p.date,
-            remarks: notes.trim() || `Logged via field activity (${activityType})`,
-          })
+          .update({ ...pmBase, completed_by_operator_ids: pmPerformers })
           .eq('id', p.linkedPmTask.id);
+        if (isMissingCompletedByColumnError(pmRes.error)) {
+          await sb.from('pm_tasks').update(pmBase).eq('id', p.linkedPmTask.id);
+        }
       }
 
       const trimmedTat = joTatJustification.trim() || null;
@@ -639,7 +643,7 @@ export default function ActivityLoggerModal(p: {
         ...(data as unknown as DailyActivityRow),
         ...(sigData !== null ? { signature_data: sigData } : {}),
       };
-      p.onSaved(savedRow, { tatJustification: trimmedTat });
+      p.onSaved(savedRow, { tatJustification: trimmedTat, completedByIds: pmPerformers });
       p.onClose();
     } catch (err: unknown) {
       // Fall back to offline queue if network failure and callback available

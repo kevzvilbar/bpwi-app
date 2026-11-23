@@ -65,8 +65,8 @@ async function setAuthUid(db: PGlite, uid: string | null) {
   await db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [uid ?? '']);
 }
 
-describe('PGlite SQL migrations 001–022 execution & security invariants', () => {
-  it('executes all 001–022 migrations cleanly and enforces sign-up, change-request, storage, org-seed, and station-code hardening', async () => {
+describe('PGlite SQL migrations 001–024 execution & security invariants', () => {
+  it('executes all 001–024 migrations cleanly and enforces sign-up, change-request, storage, org-seed, station-code, and PM credit hardening', async () => {
     const db = new PGlite({ extensions: { pgcrypto } });
     await initSupabaseShim(db);
 
@@ -75,7 +75,7 @@ describe('PGlite SQL migrations 001–022 execution & security invariants', () =
       .filter((f) => f.endsWith('.sql'))
       .sort();
 
-    assert.ok(files.length >= 22, `Expected >= 22 migrations, found ${files.length}`);
+    assert.ok(files.length >= 24, `Expected >= 24 migrations, found ${files.length}`);
 
     for (const f of files) {
       const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8');
@@ -573,5 +573,61 @@ describe('PGlite SQL migrations 001–022 execution & security invariants', () =
       { full_name: 'Legacy PW Op', default_station: 'PL' },
       { full_name: 'Legacy RM Op', default_station: 'FD' },
     ]);
+
+    // 12. 024 PM actual performers: unlisted active operator in org can close & receive credit while assigned_operator_ids stays locked
+    const pmPolicy = await db.query<{ qual: string | null }>(
+      `select qual from pg_policies where schemaname = 'public' and tablename = 'pm_tasks' and policyname = 'pm_tasks operator close'`,
+    );
+    assert.equal(pmPolicy.rows.length, 1);
+    assert.ok(!(pmPolicy.rows[0].qual ?? '').includes('assigned_operator_ids'));
+
+    const subUserId = '44444444-4444-4444-8444-444444444444';
+    await db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, 'subop@bpwi.test', $2::jsonb)`, [
+      subUserId,
+      JSON.stringify({ full_name: 'Substitute Op' }),
+    ]);
+    const subOpRes = await db.query<{ id: string }>(
+      `insert into operators (organization_id, full_name) values ($1, 'Substitute Op') returning id`,
+      [orgId],
+    );
+    const subOpId = subOpRes.rows[0].id;
+    await db.query(`update user_profiles set role = 'operator', is_active = true, operator_id = $2 where id = $1`, [
+      subUserId,
+      subOpId,
+    ]);
+
+    await setAuthUid(db, adminId);
+    const pmTaskRes = await db.query<{ id: string }>(
+      `insert into pm_tasks (organization_id, activity_type, title, scheduled_date, assigned_operator_ids, status)
+       values ($1, 'FLUSH', 'Line Flushing', '2026-12-15', array[$2]::uuid[], 'planned') returning id`,
+      [orgId, opId],
+    );
+    const pmTaskId = pmTaskRes.rows[0].id;
+
+    // Unlisted operator steps in to close task and record themselves as actual performer
+    await setAuthUid(db, subUserId);
+    await db.query(
+      `update pm_tasks
+       set status = 'done', completed_at = '2026-12-15', remarks = 'Covered by substitute', completed_by_operator_ids = array[$2]::uuid[]
+       where id = $1`,
+      [pmTaskId, subOpId],
+    );
+    const updatedPm = await db.query<{ assigned: string[]; performed: string[]; status: string }>(
+      `select assigned_operator_ids as assigned, completed_by_operator_ids as performed, status::text from pm_tasks where id = $1`,
+      [pmTaskId],
+    );
+    assert.equal(updatedPm.rows[0]?.status, 'done');
+    assert.deepEqual(updatedPm.rows[0]?.assigned, [opId]);
+    assert.deepEqual(updatedPm.rows[0]?.performed, [subOpId]);
+
+    // Operator cannot tamper with planned assigned_operator_ids or insert cross-org performers
+    await assert.rejects(
+      () => db.query(`update pm_tasks set assigned_operator_ids = array[$2]::uuid[] where id = $1`, [pmTaskId, subOpId]),
+      /may only update status, completed_at, remarks, and completed_by_operator_ids/i,
+    );
+    await assert.rejects(
+      () => db.query(`update pm_tasks set completed_by_operator_ids = array[$2]::uuid[] where id = $1`, [pmTaskId, foreignOpId]),
+      /does not belong to this organization/i,
+    );
   });
 });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthProfile, fetchAll } from '@/lib/profile';
 import { manilaToday } from '@/lib/date';
 import { csvQuote } from '@/lib/csv';
+import { classifyPmCompletionRoles, isMissingCompletedByColumnError } from '@/lib/pm-credit';
 
 const PRESET_LABELS: Record<string, string> = {
   FLUSH: 'Line Flushing',
@@ -34,32 +35,45 @@ export async function GET(req: NextRequest) {
   const areaFilter = (sp.get('area') ?? '').trim();
   const rawLabel = (sp.get('label') ?? `${from}_to_${to}`).replace(/[^a-zA-Z0-9_-]/g, '-');
 
-  const [tasksRes, actTypesRes, opsRes] = await Promise.all([
-    fetchAll<{
-      scheduled_date: string;
-      activity_type: string;
-      title: string;
-      locations: string[] | null;
-      asset: string | null;
-      assigned_operator_ids: string[] | null;
-      status: string;
-      completed_at: string | null;
-      remarks: string | null;
-    }>((start, end) => {
-      let q = sb
-        .from('pm_tasks')
-        .select('scheduled_date, activity_type, title, locations, asset, assigned_operator_ids, status, completed_at, remarks')
-        .gte('scheduled_date', from)
-        .lte('scheduled_date', to)
-        .order('scheduled_date', { ascending: true })
-        .range(start, end);
+  type PmExportRow = {
+    scheduled_date: string;
+    activity_type: string;
+    title: string;
+    locations: string[] | null;
+    asset: string | null;
+    assigned_operator_ids: string[] | null;
+    completed_by_operator_ids?: string[] | null;
+    status: string;
+    completed_at: string | null;
+    remarks: string | null;
+  };
+
+  const fetchPmExport = (withCompletedBy: boolean) =>
+    fetchAll<PmExportRow>(async (start, end) => {
+      let q = withCompletedBy
+        ? sb.from('pm_tasks').select(
+            'scheduled_date, activity_type, title, locations, asset, assigned_operator_ids, completed_by_operator_ids, status, completed_at, remarks',
+          )
+        : sb.from('pm_tasks').select(
+            'scheduled_date, activity_type, title, locations, asset, assigned_operator_ids, status, completed_at, remarks',
+          );
+      q = q.gte('scheduled_date', from).lte('scheduled_date', to).order('scheduled_date', { ascending: true }).range(start, end);
       if (typeFilter) q = q.eq('activity_type', typeFilter);
       if (statusFilter) q = q.eq('status', statusFilter);
-      return q;
-    }),
+      const { data, error } = await q;
+      return { data: data as PmExportRow[] | null, error };
+    });
+
+  const [tasksPrimary, actTypesRes, opsRes] = await Promise.all([
+    fetchPmExport(true),
     sb.from('pm_activity_types').select('code, label'),
     sb.from('operators').select('id, full_name'),
   ]);
+
+  const tasksRes =
+    tasksPrimary.error && isMissingCompletedByColumnError({ message: tasksPrimary.error })
+      ? await fetchPmExport(false)
+      : tasksPrimary;
 
   if (tasksRes.error) {
     return NextResponse.json({ error: tasksRes.error }, { status: 500 });
@@ -82,15 +96,24 @@ export async function GET(req: NextRequest) {
     'Title',
     'Locations',
     'Asset',
-    'Assigned Operators',
+    'Assigned Operators (Planned)',
+    'Performed By (Credited)',
+    'Unlisted Substitutes',
+    'Planned Not Participating',
     'Status',
     'Completed At',
     'Remarks',
   ];
   const lines = [headers.map(csvQuote).join(',')];
 
+  const joinNames = (ids: string[]) => ids.map((id) => opById.get(id) ?? id).join('; ');
+
   for (const t of rows) {
-    const assigned = (t.assigned_operator_ids ?? []).map((id) => opById.get(id) ?? id).join('; ');
+    const roles = classifyPmCompletionRoles({
+      status: t.status,
+      assigned_operator_ids: t.assigned_operator_ids,
+      completed_by_operator_ids: t.completed_by_operator_ids,
+    });
     lines.push(
       [
         t.scheduled_date,
@@ -99,7 +122,10 @@ export async function GET(req: NextRequest) {
         t.title,
         (t.locations ?? []).join('; '),
         t.asset ?? '',
-        assigned,
+        joinNames(roles.plannedIds),
+        joinNames(roles.creditedIds),
+        joinNames(roles.substituteIds),
+        joinNames(roles.absentPlannedIds),
         t.status,
         t.completed_at ?? '',
         t.remarks ?? '',
