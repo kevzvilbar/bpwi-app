@@ -65,8 +65,8 @@ async function setAuthUid(db: PGlite, uid: string | null) {
   await db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [uid ?? '']);
 }
 
-describe('PGlite SQL migrations 001–026 execution & security invariants', () => {
-  it('executes all 001–026 migrations cleanly and enforces sign-up, change-request, storage, org-seed, station-code, and PM credit hardening', async () => {
+describe('PGlite SQL migrations 001–027 execution & security invariants', () => {
+  it('executes all 001–027 migrations cleanly and enforces sign-up, change-request, storage, org-seed, station-code, PM credit, and PM locations invariants', async () => {
     const db = new PGlite({ extensions: { pgcrypto } });
     await initSupabaseShim(db);
 
@@ -75,7 +75,7 @@ describe('PGlite SQL migrations 001–026 execution & security invariants', () =
       .filter((f) => f.endsWith('.sql'))
       .sort();
 
-    assert.ok(files.length >= 26, `Expected >= 26 migrations, found ${files.length}`);
+    assert.ok(files.length >= 27, `Expected >= 27 migrations, found ${files.length}`);
 
     for (const f of files) {
       const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8');
@@ -724,5 +724,57 @@ describe('PGlite SQL migrations 001–026 execution & security invariants', () =
     ]);
     const adminReopened = await db.query<{ status: string }>(`select status::text from pm_tasks where id = $1`, [pmTaskId]);
     assert.equal(adminReopened.rows[0]?.status, 'planned');
+
+    // 13. 027 PM Locations catalog: backfill, case-insensitive uniqueness & operator read-only RLS
+    await db.query(
+      `update pm_tasks set locations = array['Pavia Plant', 'Custom Site X'] where id = $1`,
+      [pmTaskId],
+    );
+    const sql27 = fs.readFileSync(path.join(MIGRATIONS_DIR, '027_pm_locations.sql'), 'utf8');
+    await db.exec(sql27);
+
+    const backfilled = await db.query<{ name: string }>(
+      `select name from pm_locations where organization_id = $1 order by name`,
+      [orgId],
+    );
+    assert.deepEqual(
+      backfilled.rows.map((r) => r.name),
+      ['Custom Site X', 'Pavia Plant', 'Pump A', 'Valve 1', 'Zone 1'],
+    );
+
+    // Case-insensitive unique index prevents duplicate casing
+    await assert.rejects(
+      () => db.query(`insert into pm_locations (organization_id, name) values ($1, '  pavia plant  ')`, [orgId]),
+      /duplicate key|pm_locations_org_name_lower_uidx/i,
+    );
+
+    // Operator can read org pm_locations, but cannot insert or delete
+    await setAuthUid(db, subUserId);
+    await db.exec('begin; set local role authenticated;');
+    const opReadLocs = await db.query<{ name: string }>(
+      `select name from pm_locations where organization_id = $1`,
+      [orgId],
+    );
+    assert.equal(opReadLocs.rowCount, 5);
+    await assert.rejects(
+      () => db.query(`insert into pm_locations (organization_id, name) values ($1, 'Unauthorized Site')`, [orgId]),
+      /row-level security policy/i,
+    );
+    await db.exec('rollback;');
+
+    // Admin can insert and delete saved PM locations
+    await setAuthUid(db, adminId);
+    await db.exec('begin; set local role authenticated;');
+    const adminIns = await db.query<{ id: string }>(
+      `insert into pm_locations (organization_id, name, sort_order) values ($1, 'Wakeboard Plant', 10) returning id`,
+      [orgId],
+    );
+    assert.equal(adminIns.rowCount, 1);
+    const adminDel = await db.query(
+      `delete from pm_locations where id = $1`,
+      [adminIns.rows[0].id],
+    );
+    assert.equal(adminDel.rowCount, 1);
+    await db.exec('commit;');
   });
 });

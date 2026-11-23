@@ -7,10 +7,18 @@ import { supabaseBrowser } from '@/lib/supabase/client';
 import { subscribeVisibilityAwareChannel } from '@/lib/supabase/realtime';
 import { isMissingCompletedByColumnError } from '@/lib/pm-credit';
 import { createInitialRecurrence, generatePmRepeatDates } from '@/lib/pm-recurrence';
+import {
+  buildPmSeriesPrefix,
+  buildSavedLocationCatalog,
+  expandPmTaskGroups,
+  validateSelectedLocations,
+  type PmLocationRow,
+} from '@/lib/pm-locations';
 import PmDayInspector from '@/components/PmDayInspector';
 
 const PmExportModal = dynamic(() => import('@/components/PmExportModal'), { ssr: false });
 const PmCompleteModal = dynamic(() => import('@/components/PmCompleteModal'), { ssr: false });
+const PmLocationsManagerModal = dynamic(() => import('@/components/PmLocationsManagerModal'), { ssr: false });
 import PmPlannerModals, {
   addPmDays as addDays,
   buildPmCalendarIcs,
@@ -30,7 +38,7 @@ import PmPlannerModals, {
 type Task = PmTask;
 type Op = PmOp;
 type Shift = { id: string; is_off: boolean };
-type Area = { id: string; code: string; name: string | null; category: string };
+type Area = { id: string; code: string; name: string | null; category: string; sub_sites?: string[] | null };
 type Asg = { operator_id: string; schedule_date: string; shift_type_id: string | null; area_code_id: string | null };
 type Standby = { operator_id: string; schedule_date: string; standby_type: string };
 type ActivityType = PmActivityType;
@@ -54,6 +62,8 @@ export default function PmPlanner(p: {
   assignments: Asg[];
   standby: Standby[];
   holidays?: Array<{ holiday_date: string; name: string; holiday_type: string }>;
+  savedLocations?: PmLocationRow[];
+  pmLocationsTableReady?: boolean;
   orgId: string;
   operatorId?: string | null;
   canEdit: boolean;
@@ -86,9 +96,12 @@ export default function PmPlanner(p: {
   const [confirmDel, setConfirmDel] = useState<PmConfirmDelete | null>(null);
   const [completeModal, setCompleteModal] = useState<{ task: Task; mode: 'complete' | 'edit' } | null>(null);
   const [completeBusy, setCompleteBusy] = useState(false);
+  const [pmLocations, setPmLocations] = useState<PmLocationRow[]>(p.savedLocations ?? []);
+  const [manageLocsOpen, setManageLocsOpen] = useState(false);
 
   useEffect(() => setTasks(p.tasks), [p.tasks]);
   useEffect(() => setActTypes(p.activityTypes), [p.activityTypes]);
+  useEffect(() => setPmLocations(p.savedLocations ?? []), [p.savedLocations]);
   useEffect(() => {
     const sb = supabaseBrowser();
     return subscribeVisibilityAwareChannel({
@@ -139,11 +152,14 @@ export default function PmPlanner(p: {
   const shiftBy = useMemo(() => new Map(p.shifts.map((s) => [s.id, s])), [p.shifts]);
   const areaBy = useMemo(() => new Map(p.areas.map((a) => [a.id, a])), [p.areas]);
 
+  const savedLocationCatalog = useMemo(() => buildSavedLocationCatalog(pmLocations, p.areas), [pmLocations, p.areas]);
+
   const allLocations = useMemo(() => {
     const s = new Set<string>();
+    savedLocationCatalog.forEach((l) => s.add(l.name));
     tasks.forEach((t) => t.locations.forEach((l) => s.add(l)));
     return Array.from(s).sort();
-  }, [tasks]);
+  }, [savedLocationCatalog, tasks]);
 
   const activityChips = useMemo(() => {
     const map = new Map<string, PmActivityChip>();
@@ -254,32 +270,23 @@ export default function PmPlanner(p: {
     return false;
   }
 
+  const openDraft = (next: Draft) => {
+    setMsg('');
+    setDraft(next);
+  };
+
   const blank = (date: string): Draft => ({
-    typeKey: 'FLUSH',
-    custom: '',
-    locations: '',
-    asset: '',
-    assignees: [],
-    completedBy: [],
-    date,
-    status: 'planned',
-    remarks: '',
+    typeKey: 'FLUSH', custom: '', locations: [], locationQuery: '', splitLocations: false,
+    asset: '', assignees: [], completedBy: [], date, status: 'planned', remarks: '',
     recurrence: createInitialRecurrence(date),
   });
 
   const edit = (t: Task): Draft => ({
-    id: t.id,
-    legacy_key: t.legacy_key,
-    typeKey: activityMeta.has(t.activity_type) ? t.activity_type : '__custom',
-    custom: activityMeta.has(t.activity_type) ? '' : t.title,
-    locations: t.locations.join(', '),
-    asset: t.asset ?? '',
-    assignees: t.assigned_operator_ids,
-    completedBy: t.completed_by_operator_ids ?? [],
-    date: t.scheduled_date,
-    status: t.status,
-    remarks: t.remarks ?? '',
-    recurrence: createInitialRecurrence(t.scheduled_date),
+    id: t.id, legacy_key: t.legacy_key, typeKey: activityMeta.has(t.activity_type) ? t.activity_type : '__custom',
+    custom: activityMeta.has(t.activity_type) ? '' : t.title, locations: t.locations, locationQuery: '',
+    splitLocations: false, originalLocations: t.locations, asset: t.asset ?? '',
+    assignees: t.assigned_operator_ids, completedBy: t.completed_by_operator_ids ?? [],
+    date: t.scheduled_date, status: t.status, remarks: t.remarks ?? '', recurrence: createInitialRecurrence(t.scheduled_date),
   });
 
   async function save() {
@@ -287,6 +294,21 @@ export default function PmPlanner(p: {
     const isCustom = draft.typeKey === '__custom';
     if (isCustom && !draft.custom.trim()) {
       setMsg('Enter a name for the custom activity.');
+      return;
+    }
+    const locCheck = validateSelectedLocations(
+      draft.locations,
+      savedLocationCatalog,
+      draft.locationQuery,
+      draft.originalLocations,
+    );
+    if (!locCheck.ok) {
+      setMsg(locCheck.error);
+      return;
+    }
+    const repeatDates = draft.id ? [draft.date] : generatePmRepeatDates(draft.date, draft.recurrence);
+    if (!draft.id && repeatDates.length === 0) {
+      setMsg('No valid dates generated — check your repeat settings and end date.');
       return;
     }
     const activity_type = isCustom
@@ -299,35 +321,35 @@ export default function PmPlanner(p: {
       organization_id: p.orgId,
       activity_type,
       title,
-      locations: draft.locations.split(',').map((s) => s.trim()).filter(Boolean),
+      locations: locCheck.locations,
       asset: draft.asset.trim() || null,
       assigned_operator_ids: draft.assignees,
       status: draft.status,
       remarks: draft.remarks.trim() || null,
       completed_at: draft.status === 'done' ? p.today : null,
     };
-    const repeatDates = draft.id ? [draft.date] : generatePmRepeatDates(draft.date, draft.recurrence);
-    if (!draft.id && repeatDates.length === 0) {
-      setMsg('No valid dates generated — check your repeat settings and end date.');
-      return;
-    }
     const writeTask = async (withCompletedBy: boolean) => {
       const sb = supabaseBrowser();
       const body = withCompletedBy ? { ...base, completed_by_operator_ids: completedBy } : base;
       if (draft.id) return sb.from('pm_tasks').update({ ...body, scheduled_date: draft.date }).eq('id', draft.id);
-      const series = `S${Date.now().toString(36)}`;
-      const rows = repeatDates.map((d, i) => ({
-        ...body,
-        ...(i > 0
-          ? {
-              status: 'planned' as const,
-              completed_at: null,
-              ...(withCompletedBy ? { completed_by_operator_ids: [] as string[] } : {}),
-            }
-          : {}),
-        legacy_key: repeatDates.length > 1 ? `${series}-${i}` : null,
-        scheduled_date: d,
-      }));
+      const locationGroups = expandPmTaskGroups(locCheck.locations, draft.splitLocations);
+      const ts = Date.now().toString(36);
+      const rows = locationGroups.flatMap((locs, locIdx) => {
+        const series = buildPmSeriesPrefix(ts, locIdx, locationGroups.length);
+        return repeatDates.map((d, i) => ({
+          ...body,
+          locations: locs,
+          ...(i > 0
+            ? {
+                status: 'planned' as const,
+                completed_at: null,
+                ...(withCompletedBy ? { completed_by_operator_ids: [] as string[] } : {}),
+              }
+            : {}),
+          legacy_key: repeatDates.length > 1 ? `${series}-${i}` : null,
+          scheduled_date: d,
+        }));
+      });
       return sb.from('pm_tasks').insert(rows);
     };
     setBusy(true);
@@ -420,7 +442,7 @@ export default function PmPlanner(p: {
   }
 
   useEffect(() => {
-    if (!draft && !editActsOpen) return;
+    if ((!draft && !editActsOpen) || manageLocsOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !busy && !savingActs) {
         setDraft(null);
@@ -429,7 +451,7 @@ export default function PmPlanner(p: {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [busy, draft, editActsOpen, savingActs]);
+  }, [busy, draft, editActsOpen, manageLocsOpen, savingActs]);
 
   function openEditActivities() {
     setActDraft(
@@ -649,7 +671,7 @@ export default function PmPlanner(p: {
             {p.canEdit && (
               <button
                 className="btn btn-add"
-                onClick={() => setDraft(blank(selectedDate))}
+                onClick={() => openDraft(blank(selectedDate))}
               >
                 + Schedule PM
               </button>
@@ -916,9 +938,9 @@ export default function PmPlanner(p: {
           canEdit={p.canEdit}
           onUpdateTask={(t, patch) => void updateTask(t, patch)}
           onRequestComplete={(t, mode) => setCompleteModal({ task: t, mode })}
-          onEditTask={(t) => setDraft(edit(t))}
+          onEditTask={(t) => openDraft(edit(t))}
           onRemoveTask={(target) => remove('one', target)}
-          onCreateNewTask={() => setDraft(blank(selectedDate))}
+          onCreateNewTask={() => openDraft(blank(selectedDate))}
         />
       </div>
 
@@ -942,7 +964,18 @@ export default function PmPlanner(p: {
         operators={p.operators}
         holidayByDate={holidayByDate}
         getOperatorConflict={getOperatorConflict}
+        savedLocationCatalog={savedLocationCatalog}
+        onOpenManageLocations={() => setManageLocsOpen(true)}
+        modalError={msg}
       />
+
+      {manageLocsOpen && (
+        <PmLocationsManagerModal
+          open orgId={p.orgId} canEdit={p.canEdit} tableReady={p.pmLocationsTableReady ?? true}
+          pmLocations={pmLocations} setPmLocations={setPmLocations} areas={p.areas}
+          onClose={() => setManageLocsOpen(false)}
+        />
+      )}
 
       {exportCsvOpen && p.canExportCsv && (
         <PmExportModal

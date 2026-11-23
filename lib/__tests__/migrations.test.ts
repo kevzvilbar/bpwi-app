@@ -12,7 +12,7 @@ describe('Supabase SQL migrations integrity', () => {
     .sort();
 
   it('has strictly sequential 3-digit prefixes with no gaps or duplicates', () => {
-    assert.ok(files.length >= 26, `Expected at least 26 migrations, found ${files.length}`);
+    assert.ok(files.length >= 27, `Expected at least 27 migrations, found ${files.length}`);
     const nums = files.map((f) => {
       const m = f.match(/^(\d{3})_/);
       assert.ok(m, `Migration filename must start with 3-digit prefix: ${f}`);
@@ -48,7 +48,7 @@ describe('Supabase SQL migrations integrity', () => {
     }
   });
 
-  it('documents 019–026 in supabase/migrations/README.md', () => {
+  it('documents 019–027 in supabase/migrations/README.md', () => {
     const readme = fs.readFileSync(path.join(MIGRATIONS_DIR, 'README.md'), 'utf8');
     assert.match(readme, /\b019\b/);
     assert.match(readme, /\b020\b/);
@@ -58,6 +58,20 @@ describe('Supabase SQL migrations integrity', () => {
     assert.match(readme, /\b024\b/);
     assert.match(readme, /\b025\b/);
     assert.match(readme, /\b026\b/);
+    assert.match(readme, /\b027\b/);
+  });
+
+  it('adds pm_locations catalog, uniqueness index, and RLS policies in 027_pm_locations.sql', () => {
+    const sql27 = fs.readFileSync(path.join(MIGRATIONS_DIR, '027_pm_locations.sql'), 'utf8');
+    for (const required of [
+      'create table if not exists pm_locations',
+      'pm_locations_org_name_lower_uidx',
+      'enable row level security',
+      'pm_locations read',
+      'pm_locations write',
+    ]) {
+      assert.ok(sql27.includes(required), `027_pm_locations.sql missing required construct: ${required}`);
+    }
   });
 
   it('fixes unchanged target re-validation on item status updates in 026_fix_change_request_item_org_trigger.sql', () => {

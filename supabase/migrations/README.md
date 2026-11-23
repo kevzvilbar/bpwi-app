@@ -1,6 +1,6 @@
 # Supabase Migrations (`bpwi-app`)
 
-Migrations in this folder are strictly numbered (`001`–`026`) and verified by `npm test` (`lib/__tests__/migrations.test.ts`), which checks:
+Migrations in this folder are strictly numbered (`001`–`027`) and verified by `npm test` (`lib/__tests__/migrations.test.ts`), which checks:
 - Sequential numbering with no gaps or duplicates.
 - Every newly created table enables Row Level Security (`ENABLE ROW LEVEL SECURITY`).
 
@@ -13,7 +13,7 @@ supabase db push
 ```
 
 ### Option B — Supabase SQL Editor (Manual)
-Run each file in ascending numeric order (`001_init.sql` → `026_fix_change_request_item_org_trigger.sql`). All migrations are written idempotently (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
+Run each file in ascending numeric order (`001_init.sql` → `027_pm_locations.sql`). All migrations are written idempotently (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
 
 ## Optional Local Seeds
 Org-chart structural templates do not commit employee names in migrations. To assign local directory names outside version control, copy `supabase/seeds/org_chart.example.sql` to `supabase/seeds/org_chart.local.sql` (gitignored) or assign holders in `/org-chart`.
@@ -36,3 +36,4 @@ Org-chart structural templates do not commit employee names in migrations. To as
 - `024`: PM actual performer attribution (`pm_tasks.completed_by_operator_ids`, historical backfill, org-wide active operator completion RLS, and trigger locking `assigned_operator_ids` for audit while validating org membership of actual performers).
 - `025`: Harden PM operator completion RLS & trigger (allow substitutes only to close open tasks as `done`, block operators from reopening or modifying `done` tasks, and require the closing operator to appear in `completed_by_operator_ids`).
 - `026`: Fix `validate_change_request_item_org()` trigger so status/review updates on `change_request_items` with unchanged target references succeed even if a referenced `leave_records` or `pm_tasks` row was deleted while pending.
+- `027`: Add saved PM locations/sites table (`pm_locations`) with case-insensitive org uniqueness, RLS policies for org read & admin/scheduler/granted-manager writes, and idempotent backfill from station `area_codes.sub_sites` and existing `pm_tasks.locations`.

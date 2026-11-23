@@ -5,7 +5,9 @@ import {
   syncRecurrenceForStartDate,
   type PmRecurrenceConfig,
 } from '@/lib/pm-recurrence';
+import { type PmLocationOption } from '@/lib/pm-locations';
 import PmRepeatBuilder from '@/components/PmRepeatBuilder';
+import PmLocationPicker from '@/components/PmLocationPicker';
 
 export const PM_PRESETS: Record<string, { label: string; short: string; color: string }> = {
   FLUSH: { label: 'Line Flushing', short: 'Flushing', color: '#0284c7' },
@@ -134,7 +136,10 @@ export type PmDraft = {
   legacy_key?: string | null;
   typeKey: string;
   custom: string;
-  locations: string;
+  locations: string[];
+  locationQuery: string;
+  splitLocations: boolean;
+  originalLocations?: string[];
   asset: string;
   assignees: string[];
   completedBy: string[];
@@ -169,9 +174,13 @@ interface PmPlannerModalsProps {
   operators: PmOp[];
   holidayByDate: Map<string, { holiday_date: string; name: string; holiday_type: string }>;
   getOperatorConflict: (date: string, opId: string) => string | null;
+  savedLocationCatalog: PmLocationOption[];
+  onOpenManageLocations: () => void;
+  modalError?: string;
 }
 
 export default function PmPlannerModals({
+  canEdit,
   draft,
   setDraft,
   busy,
@@ -190,6 +199,9 @@ export default function PmPlannerModals({
   operators,
   holidayByDate,
   getOperatorConflict,
+  savedLocationCatalog,
+  onOpenManageLocations,
+  modalError,
 }: PmPlannerModalsProps) {
   return (
     <>
@@ -206,6 +218,22 @@ export default function PmPlannerModals({
             <h2 id="pm-dialog-title" style={{ margin: 0, fontSize: 17 }}>
               {draft.id ? 'Edit task' : 'Schedule PM task'}
             </h2>
+            {modalError && (
+              <div
+                role="alert"
+                style={{
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  padding: '8px 10px',
+                  borderRadius: 6,
+                  background: 'var(--danger-bg)',
+                  color: 'var(--danger-fg)',
+                  border: '1px solid var(--danger-border)',
+                }}
+              >
+                {modalError}
+              </div>
+            )}
             <label style={{ fontSize: 13 }}>
               Activity
               <select
@@ -248,10 +276,19 @@ export default function PmPlannerModals({
                 onChange={(e) => setDraft({ ...draft, custom: e.target.value })}
               />
             )}
-            <label style={{ fontSize: 13 }}>
-              Locations / sites (comma-separated)
-              <input className="input" value={draft.locations} onChange={(e) => setDraft({ ...draft, locations: e.target.value })} />
-            </label>
+            <PmLocationPicker
+              selected={draft.locations}
+              query={draft.locationQuery}
+              catalog={savedLocationCatalog}
+              splitLocations={draft.splitLocations}
+              showSplitOption={!draft.id}
+              canManage={canEdit}
+              legacyExisting={draft.originalLocations}
+              onChangeSelected={(locations) => setDraft({ ...draft, locations })}
+              onChangeQuery={(locationQuery) => setDraft({ ...draft, locationQuery })}
+              onChangeSplit={(splitLocations) => setDraft({ ...draft, splitLocations })}
+              onOpenManage={onOpenManageLocations}
+            />
             <label style={{ fontSize: 13 }}>
               Asset <input className="input" value={draft.asset} onChange={(e) => setDraft({ ...draft, asset: e.target.value })} />
             </label>

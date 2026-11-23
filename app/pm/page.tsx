@@ -2,6 +2,7 @@ import { getProfile } from '@/lib/profile';
 import { manilaToday } from '@/lib/date';
 import { PM_TASK_COLUMNS, PM_TASK_COLUMNS_LEGACY } from '@/lib/query-columns';
 import { isMissingCompletedByColumnError } from '@/lib/pm-credit';
+import { isMissingPmLocationsTableError, type PmLocationRow } from '@/lib/pm-locations';
 import PmPlanner from '@/components/PmPlanner';
 
 export const dynamic = 'force-dynamic';
@@ -24,12 +25,12 @@ export default async function PmPage({ searchParams }: { searchParams: Promise<{
   const first = gridStart.toISOString().slice(0, 10);
   const last = gridEnd.toISOString().slice(0, 10);
 
-  const [tasksPrimary, activityTypes, ops, shifts, areas, asg, standby, holidaysRes] = await Promise.all([
+  const [tasksPrimary, activityTypes, ops, shifts, areas, asg, standby, holidaysRes, locationsRes] = await Promise.all([
     sb.from('pm_tasks').select(PM_TASK_COLUMNS).gte('scheduled_date', first).lte('scheduled_date', last).order('scheduled_date'),
     sb.from('pm_activity_types').select('id, code, label, short_label, color, sort_order').order('sort_order').order('code'),
     sb.from('operators').select('id, full_name, phone_number').eq('is_active', true).order('sort_order'),
     sb.from('shift_types').select('id, is_off'),
-    sb.from('area_codes').select('id, code, name, category'),
+    sb.from('area_codes').select('id, code, name, category, sub_sites'),
     sb
       .from('schedule_assignments')
       .select('operator_id, schedule_date, shift_type_id, area_code_id')
@@ -45,7 +46,11 @@ export default async function PmPage({ searchParams }: { searchParams: Promise<{
       .select('holiday_date, name, holiday_type')
       .gte('holiday_date', first)
       .lte('holiday_date', last),
+    sb.from('pm_locations').select('id, name, sort_order').order('sort_order').order('name'),
   ]);
+
+  const pmLocationsTableReady = !isMissingPmLocationsTableError(locationsRes.error);
+  const savedLocations: PmLocationRow[] = locationsRes.error ? [] : (locationsRes.data ?? []);
 
   let tasksData = tasksPrimary.data ?? [];
   let tasksError = tasksPrimary.error;
@@ -82,6 +87,8 @@ export default async function PmPage({ searchParams }: { searchParams: Promise<{
       assignments={asg.data ?? []}
       standby={standby.data ?? []}
       holidays={holidaysRes.error ? [] : (holidaysRes.data ?? [])}
+      savedLocations={savedLocations}
+      pmLocationsTableReady={pmLocationsTableReady}
       orgId={orgId}
       operatorId={operatorId}
       canEdit={canEdit}
