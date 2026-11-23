@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { getAuthProfile } from '@/lib/profile';
+import { getSupabaseEnv } from '@/lib/supabase/env';
 import {
+  DegradedStoreAlertGate,
   RouteResultCache,
   SlidingWindowRateLimiter,
+  buildOrgScopedRouteCacheKey,
+  formatSharedStoreDegradedNotice,
+  isCacheableRoutePayload,
   resolveRoutingPolicy,
   shouldUseRemainingBudget,
+  type RouteStoreDegradedReason,
 } from '@/lib/route-compute-guard';
 import {
   buildRouteCacheKey,
@@ -62,21 +69,63 @@ type SharedCachePayload = {
   encodedPolylines: string[];
 };
 
-type RouteRpcClient = Awaited<ReturnType<typeof getAuthProfile>>['sb'];
+const degradedAlertGate = new DegradedStoreAlertGate(5 * 60_000);
+let cachedServiceClient: { keySig: string; client: SupabaseClient } | null = null;
+
+function getServiceRouteClient(): SupabaseClient | null {
+  const { url } = getSupabaseEnv();
+  const secretKey = (
+    process.env.SUPABASE_SECRET_KEY ??
+    process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    ''
+  ).trim();
+  if (!url || !secretKey) return null;
+  const sig = `${url}::${secretKey}`;
+  if (cachedServiceClient && cachedServiceClient.keySig === sig) {
+    return cachedServiceClient.client;
+  }
+  const client = createClient(url, secretKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  cachedServiceClient = { keySig: sig, client };
+  return client;
+}
+
+function logStoreDegradation(reason: RouteStoreDegradedReason, detail?: string) {
+  const key = detail ? `${reason}:${detail}` : reason;
+  if (degradedAlertGate.shouldAlert(key)) {
+    console.warn(
+      `[route-compute] Shared store degraded (${reason})${detail ? ` — ${detail}` : ''}; falling back to per-instance memory.`,
+    );
+  }
+}
 
 async function checkSharedRateLimit(
-  sb: RouteRpcClient,
+  serviceDb: SupabaseClient | null,
   bucket: 'total' | 'upstream',
-  limit: number,
-  windowSeconds: number,
   fallback: SlidingWindowRateLimiter,
   userId: string,
-): Promise<{ allowed: boolean; retryAfterSeconds: number; store: 'shared' | 'memory' }> {
+): Promise<{
+  allowed: boolean;
+  retryAfterSeconds: number;
+  store: 'shared' | 'memory';
+  degradedReason: RouteStoreDegradedReason | null;
+}> {
+  if (!serviceDb) {
+    logStoreDegradation('missing_service_key');
+    const local = fallback.check(userId);
+    return {
+      allowed: local.allowed,
+      retryAfterSeconds: local.retryAfterSeconds,
+      store: 'memory',
+      degradedReason: 'missing_service_key',
+    };
+  }
+
   try {
-    const { data, error } = await sb.rpc('check_route_compute_rate_limit', {
+    const { data, error } = await serviceDb.rpc('check_route_compute_rate_limit', {
+      p_user_id: userId,
       p_bucket: bucket,
-      p_limit: limit,
-      p_window_seconds: windowSeconds,
     });
     if (!error && Array.isArray(data) && data[0]) {
       const row = data[0] as { allowed?: unknown; retry_after_seconds?: unknown };
@@ -85,65 +134,109 @@ async function checkSharedRateLimit(
           allowed: row.allowed,
           retryAfterSeconds: Math.max(1, Number(row.retry_after_seconds) || 1),
           store: 'shared',
+          degradedReason: null,
         };
       }
     }
-  } catch {
-    // Fall back to process-local rate limiter if migration 028 is not applied yet
+    logStoreDegradation('rpc_unavailable', error?.message ?? 'empty RPC result');
+  } catch (err) {
+    logStoreDegradation('rpc_unavailable', err instanceof Error ? err.message : 'RPC exception');
   }
+
   const local = fallback.check(userId);
   return {
     allowed: local.allowed,
     retryAfterSeconds: local.retryAfterSeconds,
     store: 'memory',
+    degradedReason: 'rpc_unavailable',
   };
 }
 
 async function readSharedRouteCache(
-  sb: RouteRpcClient,
-  cacheKey: string,
-): Promise<{ hit: SharedCachePayload | null; store: 'shared' | 'memory' }> {
-  const mem = routeCache.get(cacheKey);
+  serviceDb: SupabaseClient | null,
+  orgId: string,
+  scopedCacheKey: string,
+  memKey: string,
+): Promise<{
+  hit: SharedCachePayload | null;
+  store: 'shared' | 'memory';
+  degradedReason: RouteStoreDegradedReason | null;
+}> {
+  const mem = routeCache.get(memKey);
   if (mem) {
-    return { hit: mem, store: 'memory' };
+    return {
+      hit: mem,
+      store: serviceDb ? 'shared' : 'memory',
+      degradedReason: serviceDb ? null : 'missing_service_key',
+    };
   }
+  if (!serviceDb) {
+    logStoreDegradation('missing_service_key');
+    return { hit: null, store: 'memory', degradedReason: 'missing_service_key' };
+  }
+
   try {
-    const { data, error } = await sb.rpc('get_route_compute_cache', {
-      p_cache_key: cacheKey,
+    const { data, error } = await serviceDb.rpc('get_route_compute_cache', {
+      p_org_id: orgId,
+      p_cache_key: scopedCacheKey,
     });
-    if (!error && Array.isArray(data) && data[0]) {
+    if (error) {
+      logStoreDegradation('rpc_unavailable', error.message);
+      return { hit: null, store: 'memory', degradedReason: 'rpc_unavailable' };
+    }
+    if (Array.isArray(data) && data[0]) {
       const row = data[0] as { routed_legs?: unknown; encoded_polylines?: unknown };
       if (Array.isArray(row.routed_legs) && Array.isArray(row.encoded_polylines)) {
         const payload: SharedCachePayload = {
           routedLegs: row.routed_legs as RouteLegEstimate[],
           encodedPolylines: row.encoded_polylines.filter((p): p is string => typeof p === 'string'),
         };
-        routeCache.set(cacheKey, payload);
-        return { hit: payload, store: 'shared' };
+        routeCache.set(memKey, payload);
+        return { hit: payload, store: 'shared', degradedReason: null };
       }
     }
-    return { hit: null, store: error ? 'memory' : 'shared' };
-  } catch {
-    return { hit: null, store: 'memory' };
+    return { hit: null, store: 'shared', degradedReason: null };
+  } catch (err) {
+    logStoreDegradation('rpc_unavailable', err instanceof Error ? err.message : 'cache read error');
+    return { hit: null, store: 'memory', degradedReason: 'rpc_unavailable' };
   }
 }
 
 async function writeSharedRouteCache(
-  sb: RouteRpcClient,
-  cacheKey: string,
+  serviceDb: SupabaseClient | null,
+  orgId: string,
+  scopedCacheKey: string,
+  memKey: string,
   payload: SharedCachePayload,
-): Promise<'shared' | 'memory'> {
-  routeCache.set(cacheKey, payload);
+): Promise<{ store: 'shared' | 'memory'; degradedReason: RouteStoreDegradedReason | null }> {
+  if (!isCacheableRoutePayload(scopedCacheKey, payload.routedLegs, payload.encodedPolylines)) {
+    return {
+      store: serviceDb ? 'shared' : 'memory',
+      degradedReason: serviceDb ? null : 'missing_service_key',
+    };
+  }
+
+  routeCache.set(memKey, payload);
+  if (!serviceDb) {
+    logStoreDegradation('missing_service_key');
+    return { store: 'memory', degradedReason: 'missing_service_key' };
+  }
+
   try {
-    const { error } = await sb.rpc('set_route_compute_cache', {
-      p_cache_key: cacheKey,
+    const { error } = await serviceDb.rpc('set_route_compute_cache', {
+      p_org_id: orgId,
+      p_cache_key: scopedCacheKey,
       p_routed_legs: payload.routedLegs,
       p_encoded_polylines: payload.encodedPolylines,
-      p_ttl_seconds: 1800,
     });
-    return error ? 'memory' : 'shared';
-  } catch {
-    return 'memory';
+    if (error) {
+      logStoreDegradation('rpc_unavailable', error.message);
+      return { store: 'memory', degradedReason: 'rpc_unavailable' };
+    }
+    return { store: 'shared', degradedReason: null };
+  } catch (err) {
+    logStoreDegradation('rpc_unavailable', err instanceof Error ? err.message : 'cache write error');
+    return { store: 'memory', degradedReason: 'rpc_unavailable' };
   }
 }
 
@@ -152,15 +245,22 @@ export async function POST(req: NextRequest) {
   if (!profile.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  if (!profile.isActive) {
+  if (!profile.isActive || !profile.orgId) {
     return NextResponse.json({ error: 'Account pending approval' }, { status: 403 });
   }
 
-  const totalRate = await checkSharedRateLimit(profile.sb, 'total', 60, 300, totalLimiter, profile.user.id);
+  const serviceDb = getServiceRouteClient();
+  const totalRate = await checkSharedRateLimit(serviceDb, 'total', totalLimiter, profile.user.id);
   if (!totalRate.allowed) {
     return NextResponse.json(
       { error: 'Too many route calculations. Please wait before trying again.' },
-      { status: 429, headers: { 'Retry-After': String(totalRate.retryAfterSeconds) } },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(totalRate.retryAfterSeconds),
+          'X-Route-Store': totalRate.store,
+        },
+      },
     );
   }
 
@@ -214,40 +314,60 @@ export async function POST(req: NextRequest) {
 
   if (endpoints.length === 0) {
     const fallback = buildStraightLineRoute(stops);
-    return NextResponse.json({
-      source: 'straight-line',
-      fallbackReason: 'Road routing server is not configured (set OSRM_BASE_URL to a self-hosted OSRM instance).',
-      totalDistanceMeters: fallback.totalDistanceMeters,
-      totalDurationSeconds: 0,
-      legs: fallback.legs,
-      encodedPolylines: [],
-      travelMode,
-    });
+    return NextResponse.json(
+      {
+        source: 'straight-line',
+        routeStore: totalRate.store,
+        ...(profile.isAdmin && totalRate.degradedReason
+          ? { storeWarning: formatSharedStoreDegradedNotice(totalRate.degradedReason) }
+          : {}),
+        fallbackReason: 'Road routing server is not configured (set OSRM_BASE_URL to a self-hosted OSRM instance).',
+        totalDistanceMeters: fallback.totalDistanceMeters,
+        totalDurationSeconds: 0,
+        legs: fallback.legs,
+        encodedPolylines: [],
+        travelMode,
+      },
+      { headers: { 'X-Route-Store': totalRate.store } },
+    );
   }
 
-  const cacheKey = `${endpoints.join(',')}::${buildRouteCacheKey(uniqueStops, travelMode)}`;
-  const cachedLookup = await readSharedRouteCache(profile.sb, cacheKey);
+  const stopKey = buildRouteCacheKey(uniqueStops, travelMode);
+  const scopedCacheKey = `${endpoints.join(',')}::${stopKey}`;
+  const memKey = buildOrgScopedRouteCacheKey(profile.orgId, endpoints, stopKey);
+
+  const cachedLookup = await readSharedRouteCache(serviceDb, profile.orgId, scopedCacheKey, memKey);
   if (cachedLookup.hit) {
+    const degraded = totalRate.degradedReason ?? cachedLookup.degradedReason;
+    const effectiveStore = degraded ? 'memory' : 'shared';
     const legs = expandCompressedLegs(legMap, cachedLookup.hit.routedLegs, stops);
     return NextResponse.json(
       {
         source: 'osrm',
         cached: true,
+        routeStore: effectiveStore,
+        ...(profile.isAdmin && degraded ? { storeWarning: formatSharedStoreDegradedNotice(degraded) } : {}),
         totalDistanceMeters: legs.reduce((sum, l) => sum + l.distanceMeters, 0),
         totalDurationSeconds: legs.reduce((sum, l) => sum + l.durationSeconds, 0),
         legs,
         encodedPolylines: cachedLookup.hit.encodedPolylines,
         travelMode,
       },
-      { headers: { 'X-Route-Cache': 'HIT', 'X-Route-Store': cachedLookup.store } },
+      { headers: { 'X-Route-Cache': 'HIT', 'X-Route-Store': effectiveStore } },
     );
   }
 
-  const upstreamRate = await checkSharedRateLimit(profile.sb, 'upstream', 20, 300, upstreamLimiter, profile.user.id);
+  const upstreamRate = await checkSharedRateLimit(serviceDb, 'upstream', upstreamLimiter, profile.user.id);
   if (!upstreamRate.allowed) {
     return NextResponse.json(
       { error: 'Rate limit reached for road routing requests. Please wait a few minutes.' },
-      { status: 429, headers: { 'Retry-After': String(upstreamRate.retryAfterSeconds) } },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(upstreamRate.retryAfterSeconds),
+          'X-Route-Store': upstreamRate.store,
+        },
+      },
     );
   }
 
@@ -332,20 +452,35 @@ export async function POST(req: NextRequest) {
     }
 
     if (!chunkSucceeded) {
+      const degraded = totalRate.degradedReason ?? upstreamRate.degradedReason;
+      const effectiveStore = degraded ? 'memory' : 'shared';
       const fallback = buildStraightLineRoute(stops);
-      return NextResponse.json({
-        source: 'straight-line',
-        fallbackReason: lastError || 'Road routing service is temporarily unavailable.',
-        totalDistanceMeters: fallback.totalDistanceMeters,
-        totalDurationSeconds: 0,
-        legs: fallback.legs,
-        encodedPolylines: [],
-        travelMode,
-      });
+      return NextResponse.json(
+        {
+          source: 'straight-line',
+          routeStore: effectiveStore,
+          ...(profile.isAdmin && degraded ? { storeWarning: formatSharedStoreDegradedNotice(degraded) } : {}),
+          fallbackReason: lastError || 'Road routing service is temporarily unavailable.',
+          totalDistanceMeters: fallback.totalDistanceMeters,
+          totalDurationSeconds: 0,
+          legs: fallback.legs,
+          encodedPolylines: [],
+          travelMode,
+        },
+        { headers: { 'X-Route-Store': effectiveStore } },
+      );
     }
   }
 
-  const cacheStore = await writeSharedRouteCache(profile.sb, cacheKey, { routedLegs, encodedPolylines });
+  const writeResult = await writeSharedRouteCache(
+    serviceDb,
+    profile.orgId,
+    scopedCacheKey,
+    memKey,
+    { routedLegs, encodedPolylines },
+  );
+  const degraded = totalRate.degradedReason ?? upstreamRate.degradedReason ?? writeResult.degradedReason;
+  const effectiveStore = degraded ? 'memory' : 'shared';
 
   const legs = expandCompressedLegs(legMap, routedLegs, stops);
   const totalDistanceMeters = legs.reduce((sum, l) => sum + l.distanceMeters, 0);
@@ -355,12 +490,14 @@ export async function POST(req: NextRequest) {
     {
       source: 'osrm',
       cached: false,
+      routeStore: effectiveStore,
+      ...(profile.isAdmin && degraded ? { storeWarning: formatSharedStoreDegradedNotice(degraded) } : {}),
       totalDistanceMeters,
       totalDurationSeconds,
       legs,
       encodedPolylines,
       travelMode,
     },
-    { headers: { 'X-Route-Cache': 'MISS', 'X-Route-Store': cacheStore } },
+    { headers: { 'X-Route-Cache': 'MISS', 'X-Route-Store': effectiveStore } },
   );
 }

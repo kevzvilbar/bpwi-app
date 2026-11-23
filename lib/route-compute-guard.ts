@@ -157,3 +157,79 @@ export function shouldUseRemainingBudget(
   if (remaining < 500) return 0;
   return Math.min(attemptCapMs, Math.floor(remaining));
 }
+
+export const MAX_ROUTE_CACHE_KEY_LEN = 4096;
+export const MAX_ROUTE_CACHE_LEGS = 60;
+export const MAX_ROUTE_CACHE_LEGS_BYTES = 16_384;
+export const MAX_ROUTE_CACHE_POLYLINES = 10;
+export const MAX_ROUTE_CACHE_POLYLINES_BYTES = 131_072;
+
+export type RouteStoreDegradedReason = 'missing_service_key' | 'rpc_unavailable';
+
+/**
+ * Builds an organization-isolated route cache key so two tenants can never share or
+ * collide on cached route entries.
+ */
+export function buildOrgScopedRouteCacheKey(
+  orgId: string,
+  endpoints: readonly string[],
+  stopCacheKey: string,
+): string {
+  const cleanOrg = orgId.trim();
+  if (!cleanOrg) {
+    throw new Error('Organization ID is required to build a route cache key');
+  }
+  return `${cleanOrg}::${endpoints.join(',')}::${stopCacheKey}`;
+}
+
+/**
+ * Verifies that a computed route fits within strict database & memory size caps
+ * before attempting to store it in the cache.
+ */
+export function isCacheableRoutePayload(
+  cacheKey: string,
+  routedLegs: readonly unknown[],
+  encodedPolylines: readonly string[],
+): boolean {
+  const trimmedKey = cacheKey.trim();
+  if (trimmedKey.length < 1 || trimmedKey.length > MAX_ROUTE_CACHE_KEY_LEN) return false;
+  if (routedLegs.length > MAX_ROUTE_CACHE_LEGS) return false;
+  if (encodedPolylines.length > MAX_ROUTE_CACHE_POLYLINES) return false;
+
+  const legsBytes = Buffer.byteLength(JSON.stringify(routedLegs), 'utf8');
+  if (legsBytes > MAX_ROUTE_CACHE_LEGS_BYTES) return false;
+
+  const polyBytes = Buffer.byteLength(JSON.stringify(encodedPolylines), 'utf8');
+  if (polyBytes > MAX_ROUTE_CACHE_POLYLINES_BYTES) return false;
+
+  return true;
+}
+
+/**
+ * Throttles server-side `console.warn` alerts when the shared Supabase store degrades
+ * so operators/logs are alerted immediately without log-flooding on burst traffic.
+ */
+export class DegradedStoreAlertGate {
+  private readonly cooldownMs: number;
+  private readonly lastWarnedAt = new Map<string, number>();
+
+  constructor(cooldownMs = 5 * 60_000) {
+    this.cooldownMs = Math.max(1_000, Math.floor(cooldownMs));
+  }
+
+  shouldAlert(reasonKey: string, nowMs = Date.now()): boolean {
+    const prev = this.lastWarnedAt.get(reasonKey);
+    if (prev !== undefined && nowMs - prev < this.cooldownMs) {
+      return false;
+    }
+    this.lastWarnedAt.set(reasonKey, nowMs);
+    return true;
+  }
+}
+
+export function formatSharedStoreDegradedNotice(reason: RouteStoreDegradedReason): string {
+  if (reason === 'missing_service_key') {
+    return 'SUPABASE_SECRET_KEY is not configured on the server; route rate limits and cache fell back to per-instance memory.';
+  }
+  return 'Shared route store RPCs failed (ensure migration 029_harden_route_compute_store.sql is applied); route rate limits and cache fell back to per-instance memory.';
+}

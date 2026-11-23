@@ -12,7 +12,7 @@ describe('Supabase SQL migrations integrity', () => {
     .sort();
 
   it('has strictly sequential 3-digit prefixes with no gaps or duplicates', () => {
-    assert.ok(files.length >= 28, `Expected at least 28 migrations, found ${files.length}`);
+    assert.ok(files.length >= 29, `Expected at least 29 migrations, found ${files.length}`);
     const nums = files.map((f) => {
       const m = f.match(/^(\d{3})_/);
       assert.ok(m, `Migration filename must start with 3-digit prefix: ${f}`);
@@ -48,7 +48,7 @@ describe('Supabase SQL migrations integrity', () => {
     }
   });
 
-  it('documents 019–028 in supabase/migrations/README.md', () => {
+  it('documents 019–029 in supabase/migrations/README.md', () => {
     const readme = fs.readFileSync(path.join(MIGRATIONS_DIR, 'README.md'), 'utf8');
     assert.match(readme, /\b019\b/);
     assert.match(readme, /\b020\b/);
@@ -60,6 +60,24 @@ describe('Supabase SQL migrations integrity', () => {
     assert.match(readme, /\b026\b/);
     assert.match(readme, /\b027\b/);
     assert.match(readme, /\b028\b/);
+    assert.match(readme, /\b029\b/);
+  });
+
+  it('hardens route compute store to service_role, org keys, size caps, and cron purge in 029_harden_route_compute_store.sql', () => {
+    const sql29 = fs.readFileSync(path.join(MIGRATIONS_DIR, '029_harden_route_compute_store.sql'), 'utf8');
+    for (const required of [
+      'drop function if exists check_route_compute_rate_limit(text, int, int)',
+      'drop function if exists get_route_compute_cache(text)',
+      'drop function if exists set_route_compute_cache(text, jsonb, jsonb, int)',
+      'add column organization_id uuid not null references organizations(id)',
+      'route_compute_cache_legs_chk',
+      'route_compute_cache_polys_chk',
+      'purge_expired_route_compute_state',
+      'revoke all on function set_route_compute_cache(uuid, text, jsonb, jsonb) from public, anon, authenticated',
+      'grant execute on function set_route_compute_cache(uuid, text, jsonb, jsonb) to service_role',
+    ]) {
+      assert.ok(sql29.includes(required), `029_harden_route_compute_store.sql missing required construct: ${required}`);
+    }
   });
 
   it('adds shared route cache/rate-limit store and substitute colleague restriction in 028_route_compute_store_and_pm_sub_limit.sql', () => {

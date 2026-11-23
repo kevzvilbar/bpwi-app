@@ -124,6 +124,8 @@ export async function GET(req: Request) {
     }
 
     const db = createClient(url, secretKey, { auth: { persistSession: false } });
+    // Also sweep expired shared route cache & rate-limit entries during scheduled cron runs
+    await db.rpc('purge_expired_route_compute_state').then(() => undefined, () => undefined);
     const res = await executePhotoPurge(db);
     if ('error' in res) {
       return NextResponse.json({ error: res.error }, { status: res.status });
@@ -163,7 +165,11 @@ export async function POST() {
     const orgId = prof.organization_id as string;
     const { url } = getSupabaseEnv();
     const secretKey = (process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? '').trim();
-    const db = url && secretKey ? createClient(url, secretKey, { auth: { persistSession: false } }) : me;
+    const serviceDb = url && secretKey ? createClient(url, secretKey, { auth: { persistSession: false } }) : null;
+    if (serviceDb) {
+      await serviceDb.rpc('purge_expired_route_compute_state').then(() => undefined, () => undefined);
+    }
+    const db = serviceDb ?? me;
 
     const res = await executePhotoPurge(db, orgId);
     if ('error' in res) {

@@ -202,6 +202,7 @@ export default function ActivitiesRoutesTab(p: {
     loading: false,
     error: null,
   });
+  const [storeWarning, setStoreWarning] = useState<string | null>(null);
   const routeCacheRef = useRef<Record<string, ComputedRouteResult>>({});
 
   useEffect(() => {
@@ -246,6 +247,7 @@ export default function ActivitiesRoutesTab(p: {
         const json = (await res.json()) as {
           source?: RouteSource;
           fallbackReason?: string;
+          storeWarning?: string;
           totalDistanceMeters?: number;
           totalDurationSeconds?: number;
           legs?: RouteLegEstimate[];
@@ -258,6 +260,8 @@ export default function ActivitiesRoutesTab(p: {
         }
 
         if (controller.signal.aborted) return;
+
+        setStoreWarning(typeof json.storeWarning === 'string' && json.storeWarning ? json.storeWarning : null);
 
         const paths = (json.encodedPolylines ?? [])
           .map((enc) => decodeEncodedPolyline(enc))
@@ -701,6 +705,11 @@ export default function ActivitiesRoutesTab(p: {
 
       {/* Route Warning / Fallback Notice */}
       {routeStatus.error && <AlertBanner tone="warn">{routeStatus.error}</AlertBanner>}
+      {p.isAdmin && storeWarning && (
+        <AlertBanner tone="warn">
+          <strong>Shared route store degraded:</strong> {storeWarning}
+        </AlertBanner>
+      )}
 
       {/* Interactive Free Map Canvas */}
       {effectiveOpId && (

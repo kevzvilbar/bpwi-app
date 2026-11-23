@@ -65,8 +65,8 @@ async function setAuthUid(db: PGlite, uid: string | null) {
   await db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [uid ?? '']);
 }
 
-describe('PGlite SQL migrations 001–028 execution & security invariants', () => {
-  it('executes all 001–028 migrations cleanly and enforces sign-up, change-request, storage, org-seed, station-code, PM credit, PM locations, and shared route store invariants', async () => {
+describe('PGlite SQL migrations 001–029 execution & security invariants', () => {
+  it('executes all 001–029 migrations cleanly and enforces sign-up, change-request, storage, org-seed, station-code, PM credit, PM locations, and hardened service-role route store invariants', async () => {
     const db = new PGlite({ extensions: { pgcrypto } });
     await initSupabaseShim(db);
 
@@ -75,7 +75,7 @@ describe('PGlite SQL migrations 001–028 execution & security invariants', () =
       .filter((f) => f.endsWith('.sql'))
       .sort();
 
-    assert.ok(files.length >= 28, `Expected >= 28 migrations, found ${files.length}`);
+    assert.ok(files.length >= 29, `Expected >= 29 migrations, found ${files.length}`);
 
     for (const f of files) {
       const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8');
@@ -819,35 +819,29 @@ describe('PGlite SQL migrations 001–028 execution & security invariants', () =
       [pmTaskId, colleagueOpId],
     );
 
-    // 14d. Authenticated user can use shared route rate-limit & cache RPCs, not raw tables
+    // 14d. 029 Hardening: authenticated users CANNOT execute any route cache/rate-limit RPCs or access raw tables
     await setAuthUid(db, subUserId);
     await db.exec('begin; set local role authenticated;');
-    const r1 = await db.query<{ allowed: boolean; remaining: number; retry_after_seconds: number }>(
-      `select * from check_route_compute_rate_limit('total', 2, 300)`,
+    await assert.rejects(
+      () => db.query(`select * from check_route_compute_rate_limit($1::uuid, 'upstream')`, [subUserId]),
+      /permission denied/i,
     );
-    const r2 = await db.query<{ allowed: boolean; remaining: number; retry_after_seconds: number }>(
-      `select * from check_route_compute_rate_limit('total', 2, 300)`,
-    );
-    const r3 = await db.query<{ allowed: boolean; remaining: number; retry_after_seconds: number }>(
-      `select * from check_route_compute_rate_limit('total', 2, 300)`,
-    );
-    assert.equal(r1.rows[0]?.allowed, true);
-    assert.equal(r1.rows[0]?.remaining, 1);
-    assert.equal(r2.rows[0]?.allowed, true);
-    assert.equal(r2.rows[0]?.remaining, 0);
-    assert.equal(r3.rows[0]?.allowed, false);
-    assert.ok((r3.rows[0]?.retry_after_seconds ?? 0) >= 1);
+    await db.exec('rollback;');
 
-    await db.query(
-      `select set_route_compute_cache('k-test-1', $1::jsonb, $2::jsonb, 600)`,
-      [JSON.stringify([{ distanceMeters: 1200, durationSeconds: 95 }]), JSON.stringify(['abcPolyline'])],
+    await db.exec('begin; set local role authenticated;');
+    await assert.rejects(
+      () =>
+        db.query(`select set_route_compute_cache($1::uuid, 'poison-key', '[]'::jsonb, '[]'::jsonb)`, [orgId]),
+      /permission denied/i,
     );
-    const cachedRoute = await db.query<{ routed_legs: Array<{ distanceMeters: number; durationSeconds: number }>; encoded_polylines: string[] }>(
-      `select * from get_route_compute_cache('k-test-1')`,
+    await db.exec('rollback;');
+
+    await db.exec('begin; set local role authenticated;');
+    await assert.rejects(
+      () => db.query(`select * from get_route_compute_cache($1::uuid, 'k-test-1')`, [orgId]),
+      /permission denied/i,
     );
-    assert.deepEqual(cachedRoute.rows[0]?.routed_legs, [{ distanceMeters: 1200, durationSeconds: 95 }]);
-    assert.deepEqual(cachedRoute.rows[0]?.encoded_polylines, ['abcPolyline']);
-    await db.exec('commit;');
+    await db.exec('rollback;');
 
     await db.exec('begin; set local role authenticated;');
     await assert.rejects(() => db.query(`select * from route_compute_cache`), /permission denied/i);
@@ -856,5 +850,77 @@ describe('PGlite SQL migrations 001–028 execution & security invariants', () =
     await db.exec('begin; set local role authenticated;');
     await assert.rejects(() => db.query(`select * from route_compute_rate_hits`), /permission denied/i);
     await db.exec('rollback;');
+
+    // 14e. 029 Hardening: service_role enforces org-isolated cache, size caps, fixed rate limits, and periodic cleanup
+    await setAuthUid(db, null);
+    await db.exec('begin; set local role service_role;');
+    await db.query(
+      `select set_route_compute_cache($1::uuid, 'k-test-1', $2::jsonb, $3::jsonb)`,
+      [orgId, JSON.stringify([{ distanceMeters: 1200, durationSeconds: 95 }]), JSON.stringify(['abcPolyline'])],
+    );
+
+    // Org 2 cannot see Org 1's cached route even with identical cache_key
+    const crossOrgCache = await db.query(
+      `select * from get_route_compute_cache($1::uuid, 'k-test-1')`,
+      [org2Id],
+    );
+    assert.equal(crossOrgCache.rowCount, 0);
+
+    const ownOrgCache = await db.query<{
+      routed_legs: Array<{ distanceMeters: number; durationSeconds: number }>;
+      encoded_polylines: string[];
+    }>(`select * from get_route_compute_cache($1::uuid, 'k-test-1')`, [orgId]);
+    assert.deepEqual(ownOrgCache.rows[0]?.routed_legs, [{ distanceMeters: 1200, durationSeconds: 95 }]);
+    assert.deepEqual(ownOrgCache.rows[0]?.encoded_polylines, ['abcPolyline']);
+
+    // Fixed upstream limit (20 per 5 min) cannot be overridden by caller
+    for (let i = 0; i < 20; i += 1) {
+      const okHit = await db.query<{ allowed: boolean; remaining: number }>(
+        `select * from check_route_compute_rate_limit($1::uuid, 'upstream')`,
+        [subUserId],
+      );
+      assert.equal(okHit.rows[0]?.allowed, true);
+      assert.equal(okHit.rows[0]?.remaining, 19 - i);
+    }
+    const blocked21st = await db.query<{ allowed: boolean; remaining: number; retry_after_seconds: number }>(
+      `select * from check_route_compute_rate_limit($1::uuid, 'upstream')`,
+      [subUserId],
+    );
+    assert.equal(blocked21st.rows[0]?.allowed, false);
+    assert.ok((blocked21st.rows[0]?.retry_after_seconds ?? 0) >= 1);
+    await db.exec('commit;');
+
+    // Payload element/byte caps reject oversized route arrays
+    const oversizedLegs = JSON.stringify(
+      Array.from({ length: 65 }, () => ({ distanceMeters: 100, durationSeconds: 10 })),
+    );
+    await db.exec('begin; set local role service_role;');
+    await assert.rejects(
+      () => db.query(`select set_route_compute_cache($1::uuid, 'oversized', $2::jsonb, '[]'::jsonb)`, [orgId, oversizedLegs]),
+      /exceeds size or element bounds/i,
+    );
+    await db.exec('rollback;');
+
+    // Periodic cleanup sweeps stale hits from inactive users and expired cache rows
+    await db.query(
+      `insert into route_compute_rate_hits (user_id, bucket, created_at) values ($1, 'total', now() - interval '10 minutes')`,
+      [mgr1Id],
+    );
+    await db.query(
+      `insert into route_compute_cache (organization_id, cache_key, routed_legs, encoded_polylines, expires_at)
+       values ($1, 'expired-key', '[]'::jsonb, '[]'::jsonb, now() - interval '1 minute')`,
+      [orgId],
+    );
+    await db.exec('begin; set local role service_role;');
+    const sweepRes = await db.query<{ purged_cache_rows: number; purged_rate_hits: number }>(
+      `select * from purge_expired_route_compute_state()`,
+    );
+    assert.equal(sweepRes.rows[0]?.purged_cache_rows, 1);
+    assert.equal(sweepRes.rows[0]?.purged_rate_hits, 1);
+    await db.exec('commit;');
+
+    // Re-running 029 migration is idempotent
+    const sql29 = fs.readFileSync(path.join(MIGRATIONS_DIR, '029_harden_route_compute_store.sql'), 'utf8');
+    await db.exec(sql29);
   });
 });
