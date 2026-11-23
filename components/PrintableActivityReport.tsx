@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { ACTIVITY_BY_ID, type DailyActivityRow, type JobOrderRow } from '@/lib/activity-types';
+import { computeJobOrderSlaStatus, formatSlaDurationLabel } from '@/lib/job-order-sla';
 import WellPulloutReportSheet from '@/components/WellPulloutReportSheet';
 import TankCleaningReportSheet from '@/components/TankCleaningReportSheet';
 
@@ -379,14 +380,25 @@ export default function PrintableActivityReport(p: {
               <div><b>Turnaround Time:</b> {calcTatHours(jo?.created_at ?? act?.started_at, jo?.completed_at ?? act?.completed_at) ?? 'N/A'}</div>
               <div><b>Started / Created:</b> {fmtTs(jo?.created_at ?? act?.started_at ?? act?.created_at)}</div>
               <div><b>Completed:</b> {fmtTs(jo?.completed_at ?? act?.completed_at)}</div>
+              {jo && (
+                <>
+                  <div><b>SLA Target:</b> {formatSlaDurationLabel(jo.estimated_hours)}</div>
+                  <div><b>Deadline / Status:</b> {jo.deadline ? `${fmtTs(jo.deadline)} (${computeJobOrderSlaStatus(jo).badgeLabel})` : 'None'}</div>
+                </>
+              )}
             </div>
 
-            {(jo?.description || act?.notes) && (
+            {(jo?.description || jo?.tat_justification || act?.notes) && (
               <div style={{ border: '1px solid #334155', padding: 12 }}>
                 <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: 11, marginBottom: 4, color: '#334155' }}>
                   Work Description &amp; Field Observations
                 </div>
                 {jo?.description && <div style={{ marginBottom: 6 }}>{jo.description}</div>}
+                {jo?.tat_justification && (
+                  <div style={{ marginBottom: 6 }}>
+                    <b>TAT / SLA Justification:</b> {jo.tat_justification}
+                  </div>
+                )}
                 {act?.notes && <div><i>&ldquo;{act.notes}&rdquo;</i></div>}
               </div>
             )}

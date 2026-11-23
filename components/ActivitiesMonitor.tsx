@@ -936,7 +936,14 @@ export default function ActivitiesMonitor(p: {
             if (linkedJoForLog) {
               setJobOrders((prev) =>
                 prev.map((j) =>
-                  j.id === linkedJoForLog.id ? { ...j, status: 'completed', completed_at: new Date().toISOString() } : j,
+                  j.id === linkedJoForLog.id
+                    ? {
+                        ...j,
+                        status: 'completed',
+                        completed_at: new Date().toISOString(),
+                        ...(opts?.tatJustification ? { tat_justification: opts.tatJustification } : {}),
+                      }
+                    : j,
                 ),
               );
             }

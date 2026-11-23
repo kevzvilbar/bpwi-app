@@ -32,6 +32,9 @@ export const ACTIVITY_TYPES: ActivityTypeDef[] = [
   // Network & Distribution
   { id: 'leak_repair', label: 'Leak Repair', shortLabel: 'Leak Repair', category: 'network', color: '#dc2626' },
   { id: 'leak_detection', label: 'Leak Detection', shortLabel: 'Leak Detect', category: 'network', color: '#ea580c' },
+  { id: 'low_pressure', label: 'Low Pressure Complaint', shortLabel: 'Low Press', category: 'network', color: '#0369a1' },
+  { id: 'no_water_supply', label: 'No Water Supply Complaint', shortLabel: 'No Water', category: 'network', color: '#b91c1c' },
+  { id: 'valve_replacement', label: 'Valve Replacement', shortLabel: 'Valve Repl', category: 'network', color: '#0f766e' },
   { id: 'flushing', label: 'Line Flushing', shortLabel: 'Flushing', category: 'network', color: '#0284c7' },
   { id: 'hydro_testing', label: 'Hydro Testing', shortLabel: 'Hydro Test', category: 'network', color: '#4f46e5' },
   { id: 'tankering', label: 'Water Hauling', shortLabel: 'Hauling', category: 'network', color: '#7c3aed' },
@@ -39,6 +42,7 @@ export const ACTIVITY_TYPES: ActivityTypeDef[] = [
   // Customer & Metering
   { id: 'meter_inst', label: 'Meter Installation', shortLabel: 'Meter Inst', category: 'metering', color: '#16a34a' },
   { id: 'meter_replacement', label: 'Meter Replacement', shortLabel: 'Meter Repl', category: 'metering', color: '#15803d' },
+  { id: 'meter_relocation', label: 'Meter Relocation', shortLabel: 'Meter Reloc', category: 'metering', color: '#15803d' },
   { id: 'meter_test', label: 'Meter Test', shortLabel: 'Meter Test', category: 'metering', color: '#9333ea' },
   { id: 'meter_check_bulk', label: 'Meter Checking (Bulk)', shortLabel: 'Bulk Meter', category: 'metering', color: '#6d28d9' },
   { id: 'meter_check_indiv', label: 'Meter Checking (Individual)', shortLabel: 'Indiv Meter', category: 'metering', color: '#7e22ce' },
@@ -102,8 +106,12 @@ export function resolveActivityTypeFromPm(
   if (/hydro/.test(combined)) return 'hydro_testing';
   if (/leak.*detect/.test(combined)) return 'leak_detection';
   if (/leak/.test(combined)) return 'leak_repair';
+  if (/low\s*press/.test(combined)) return 'low_pressure';
+  if (/no\s*water/.test(combined)) return 'no_water_supply';
+  if (/valve.*repl|repl.*valve/.test(combined)) return 'valve_replacement';
   if (/haul|tanker/.test(combined)) return 'tankering';
   if (/meter.*test/.test(combined)) return 'meter_test';
+  if (/meter.*reloc|reloc.*meter/.test(combined)) return 'meter_relocation';
   if (/meter.*repl/.test(combined)) return 'meter_replacement';
   if (/meter.*inst/.test(combined)) return 'meter_inst';
   if (/meter.*bulk/.test(combined)) return 'meter_check_bulk';

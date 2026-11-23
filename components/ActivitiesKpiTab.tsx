@@ -295,6 +295,8 @@ export default function ActivitiesKpiTab(p: {
     const pmsDone = periodPms.filter((t) => t.status === 'done').length;
     const josDone = periodJos.filter((j) => j.status === 'completed');
     let avgJoTat: number | null = null;
+    let joSlaChecked = 0;
+    let joSlaMet = 0;
     if (josDone.length > 0) {
       let sum = 0;
       let cnt = 0;
@@ -306,10 +308,17 @@ export default function ActivitiesKpiTab(p: {
             cnt += 1;
           }
         }
+        if (j.deadline && j.completed_at) {
+          joSlaChecked += 1;
+          if (new Date(j.completed_at).getTime() <= new Date(j.deadline).getTime()) {
+            joSlaMet += 1;
+          }
+        }
       }
       if (cnt > 0) avgJoTat = Math.round((sum / cnt) * 10) / 10;
     }
-    return { totalActs, verified, verifiedRate, pmsDone, pmsTotal: periodPms.length, josDone: josDone.length, avgJoTat };
+    const joSlaCompliancePct = joSlaChecked > 0 ? Math.round((joSlaMet / joSlaChecked) * 100) : null;
+    return { totalActs, verified, verifiedRate, pmsDone, pmsTotal: periodPms.length, josDone: josDone.length, avgJoTat, joSlaCompliancePct };
   }, [periodActs, periodPms, periodJos]);
 
   // Breakdown by category
@@ -413,7 +422,7 @@ export default function ActivitiesKpiTab(p: {
         <StatCard
           label="Job Orders Closed"
           value={<span style={{ color: 'var(--violet)' }}>{summary.josDone}</span>}
-          subtitle={`Avg TAT: ${summary.avgJoTat !== null ? `${summary.avgJoTat} hrs` : '—'}`}
+          subtitle={`Avg TAT: ${summary.avgJoTat !== null ? `${summary.avgJoTat} hrs` : '—'}${summary.joSlaCompliancePct !== null ? ` · ${summary.joSlaCompliancePct}% within SLA` : ''}`}
         />
       </div>
 

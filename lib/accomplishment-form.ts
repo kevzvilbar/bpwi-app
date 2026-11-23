@@ -93,6 +93,10 @@ export function mapActivityToFormColumn(activityType: string): {
     case 'meter_inst':
     case 'meter_replacement':
       return { column_id: 'meter_installation', others_specify: '' };
+    case 'meter_relocation':
+      return { column_id: null, others_specify: 'METER RELOC' };
+    case 'valve_replacement':
+      return { column_id: null, others_specify: 'VALVE REPL' };
     case 'hydro_testing':
       return { column_id: 'pm_testing', others_specify: '' };
     case 'reconnection':
@@ -101,6 +105,10 @@ export function mapActivityToFormColumn(activityType: string): {
       return { column_id: 'ps_mon', others_specify: '' };
     case 'water_sampling':
       return { column_id: 'wq_insp', others_specify: '' };
+    case 'low_pressure':
+      return { column_id: 'lp_insp', others_specify: '' };
+    case 'no_water_supply':
+      return { column_id: 'nw_insp', others_specify: '' };
     case 'meter_test':
     case 'meter_check_bulk':
     case 'meter_check_indiv':

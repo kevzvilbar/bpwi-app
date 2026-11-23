@@ -84,12 +84,14 @@ export type LinkedJobOrder = {
   account_number?: string | null;
   account_name?: string | null;
   assigned_operator_ids?: string[];
+  deadline?: string | null;
+  estimated_hours?: number | null;
 };
 
 export default function ActivityLoggerModal(p: {
   open: boolean;
   onClose: () => void;
-  onSaved: (activity: DailyActivityRow, opts?: { offline?: boolean }) => void;
+  onSaved: (activity: DailyActivityRow, opts?: { offline?: boolean; tatJustification?: string | null }) => void;
   orgId: string;
   userId: string;
   operatorId: string | null;
@@ -164,12 +166,16 @@ export default function ActivityLoggerModal(p: {
 
   const [submitting, setSubmitting] = useState(false);
   const [errMsg, setErrMsg] = useState('');
+  const [joTatJustification, setJoTatJustification] = useState('');
+  const [openAtMs, setOpenAtMs] = useState(0);
   const lastParsedRef = useRef('');
 
   // Initialize defaults whenever modal opens
   useEffect(() => {
     if (!p.open) return;
     setErrMsg('');
+    setJoTatJustification('');
+    setOpenAtMs(Date.now());
     setGpsLat(null);
     setGpsLng(null);
     setGpsStatus('');
@@ -621,12 +627,14 @@ export default function ActivityLoggerModal(p: {
           .eq('id', p.linkedPmTask.id);
       }
 
+      const trimmedTat = joTatJustification.trim() || null;
       if (p.linkedJobOrder?.id) {
         await sb
           .from('job_orders')
           .update({
             status: 'completed',
             completed_at: new Date().toISOString(),
+            ...(trimmedTat ? { tat_justification: trimmedTat } : {}),
           })
           .eq('id', p.linkedJobOrder.id);
       }
@@ -636,7 +644,7 @@ export default function ActivityLoggerModal(p: {
         ...(data as unknown as DailyActivityRow),
         ...(sigData !== null ? { signature_data: sigData } : {}),
       };
-      p.onSaved(savedRow);
+      p.onSaved(savedRow, { tatJustification: trimmedTat });
       p.onClose();
     } catch (err: unknown) {
       // Fall back to offline queue if network failure and callback available
@@ -957,6 +965,13 @@ export default function ActivityLoggerModal(p: {
           maxPhotos={MAX_ACTIVITY_PHOTOS}
           helperNote={activityType === 'tank_cleaning' ? 'Photo 1 = Start (Pre-Cleaning) · Photo 2 = End (Post-Cleaning). Auto-deleted after 30 days.' : undefined}
         />
+
+        {p.linkedJobOrder?.deadline && openAtMs > new Date(p.linkedJobOrder.deadline).getTime() && (
+          <label className="card" style={{ padding: 10, display: 'grid', gap: 4, fontSize: 12, fontWeight: 600, background: 'var(--warn-bg)', borderColor: 'var(--warn-border)', color: 'var(--warn-fg)' }}>
+            <span>⚠️ Job Order {p.linkedJobOrder.jo_number} is past its SLA deadline — TAT Justification (optional)</span>
+            <input className="input" value={joTatJustification} onChange={(e) => setJoTatJustification(e.target.value)} placeholder="e.g. Awaited customer access / materials…" />
+          </label>
+        )}
 
         {errMsg && <p role="alert" style={{ margin: 0, fontSize: 12.5, color: 'var(--danger)', fontWeight: 600 }}>{errMsg}</p>}
 

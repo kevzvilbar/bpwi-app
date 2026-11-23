@@ -274,6 +274,7 @@ export function isMeterFieldActivity(activityType: string): boolean {
   return (
     activityType === 'meter_inst' ||
     activityType === 'meter_replacement' ||
+    activityType === 'meter_relocation' ||
     activityType === 'meter_check_indiv' ||
     activityType === 'meter_check_bulk' ||
     activityType === 'reconnection'
@@ -344,11 +345,18 @@ export function buildActivityDetailsPayload(
       newMeterReading: f.newMeterReading !== '' ? Number(f.newMeterReading) : null,
     };
   }
-  if (activityType === 'leak_repair' || activityType === 'leak_detection') {
+  if (activityType === 'leak_repair' || activityType === 'leak_detection' || activityType === 'valve_replacement') {
     return {
       pipeSize: f.pipeSize.trim() || null,
       leakType: f.leakType.trim() || null,
       usedMaterials: f.usedMaterials.filter((m) => m.item.trim() !== ''),
+    };
+  }
+  if (activityType === 'low_pressure' || activityType === 'no_water_supply') {
+    return {
+      accountNumber: f.accountNumber.trim() || null,
+      accountName: f.accountName.trim() || null,
+      pressurePsi: f.pressurePsi !== '' ? Number(f.pressurePsi) : null,
     };
   }
   if (activityType === 'tankering') {

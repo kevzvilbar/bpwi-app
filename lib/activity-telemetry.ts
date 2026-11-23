@@ -44,13 +44,17 @@ export function formatTelemetrySummary(act: DailyActivityRow): string[] {
     parts.push(`Acct: ${[str('accountNumber'), str('accountName')].filter(Boolean).join(' · ')}`);
   }
 
-  if (act.activity_type === 'leak_repair' || act.activity_type === 'leak_detection') {
+  if (act.activity_type === 'leak_repair' || act.activity_type === 'leak_detection' || act.activity_type === 'valve_replacement') {
     if (str('pipeSize')) parts.push(`Pipe: ${str('pipeSize')}`);
     if (str('leakType')) parts.push(`Cause: ${str('leakType')}`);
     if (Array.isArray(d.usedMaterials) && d.usedMaterials.length > 0) {
       const mats = d.usedMaterials as Array<{ item?: unknown; qty?: unknown }>;
       parts.push(`Materials: ${mats.map((m) => `${String(m.item ?? '')} (${String(m.qty ?? '')})`).join(', ')}`);
     }
+  }
+
+  if ((act.activity_type === 'low_pressure' || act.activity_type === 'no_water_supply') && prim('pressurePsi') !== null) {
+    parts.push(`Observed Pressure: ${prim('pressurePsi')} PSI`);
   }
 
   if (act.activity_type === 'tankering' && Array.isArray(d.haulingCycles)) {

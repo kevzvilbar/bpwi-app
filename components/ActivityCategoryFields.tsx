@@ -373,10 +373,12 @@ export default function ActivityCategoryFields({
         </div>
       )}
 
-      {(activityType === 'leak_repair' || activityType === 'leak_detection') && (
-        <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: 'var(--danger-border)' }}>
+      {(activityType === 'leak_repair' || activityType === 'leak_detection' || activityType === 'valve_replacement') && (
+        <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: activityType === 'valve_replacement' ? 'var(--teal)' : 'var(--danger-border)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong style={{ fontSize: 12.5, color: 'var(--danger)' }}>Leak Details &amp; Materials</strong>
+            <strong style={{ fontSize: 12.5, color: activityType === 'valve_replacement' ? 'var(--teal)' : 'var(--danger)' }}>
+              {activityType === 'valve_replacement' ? 'Valve Details & Materials' : 'Leak Details & Materials'}
+            </strong>
             <button
               type="button"
               className="btn"
@@ -388,12 +390,12 @@ export default function ActivityCategoryFields({
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-              Pipe Size / Material
-              <input className="input" value={fields.pipeSize} onChange={(e) => patch({ pipeSize: e.target.value })} placeholder='e.g. 2" uPVC' />
+              Pipe / Valve Size &amp; Spec
+              <input className="input" value={fields.pipeSize} onChange={(e) => patch({ pipeSize: e.target.value })} placeholder={activityType === 'valve_replacement' ? 'e.g. 2" Gate Valve / Brass' : 'e.g. 2" uPVC'} />
             </label>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-              Leak Classification / Cause
-              <input className="input" value={fields.leakType} onChange={(e) => patch({ leakType: e.target.value })} placeholder="e.g. Saddle clamp, joint" />
+              {activityType === 'valve_replacement' ? 'Replacement Cause / Action' : 'Leak Classification / Cause'}
+              <input className="input" value={fields.leakType} onChange={(e) => patch({ leakType: e.target.value })} placeholder={activityType === 'valve_replacement' ? 'e.g. Defective / seized gate valve' : 'e.g. Saddle clamp, joint'} />
             </label>
           </div>
           {fields.usedMaterials.map((m, idx) => (
@@ -435,6 +437,28 @@ export default function ActivityCategoryFields({
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {(activityType === 'low_pressure' || activityType === 'no_water_supply') && (
+        <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: 'var(--info-border)' }}>
+          <strong style={{ fontSize: 12.5, color: 'var(--accent)' }}>
+            {activityType === 'low_pressure' ? 'Low Pressure Inspection Details' : 'No Water Supply Investigation Details'}
+          </strong>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+            <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
+              Account # (12-char auto-parse)
+              <input className="input" value={fields.accountNumber} onChange={(e) => patch({ accountNumber: e.target.value })} placeholder="Optional 12-char account #" />
+            </label>
+            <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
+              Account Name
+              <input className="input" value={fields.accountName} onChange={(e) => patch({ accountName: e.target.value })} />
+            </label>
+            <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
+              Observed Line Pressure (PSI)
+              <input className="input" type="number" step="0.1" value={fields.pressurePsi} onChange={(e) => patch({ pressurePsi: e.target.value })} placeholder="e.g. 12.5" />
+            </label>
+          </div>
         </div>
       )}
 
