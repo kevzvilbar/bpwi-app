@@ -4,9 +4,15 @@ import { useEffect, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { ACTIVITY_BY_ID, type DailyActivityRow, type JobOrderRow } from '@/lib/activity-types';
 import { formatTaggedGpsPosition, GPS_INTERNAL_DETAIL_KEYS } from '@/lib/gps-accuracy';
+import {
+  LEAK_INTERNAL_DETAIL_KEYS,
+  computeLeakVolumeLoss,
+  hydrateLeakLossDetails,
+} from '@/lib/leak-volume-loss';
 import { computeJobOrderSlaStatus, formatSlaDurationLabel } from '@/lib/job-order-sla';
 import WellPulloutReportSheet from '@/components/WellPulloutReportSheet';
 import TankCleaningReportSheet from '@/components/TankCleaningReportSheet';
+import LeakVolumeLossReportSheet from '@/components/LeakVolumeLossReportSheet';
 
 type LookupOp = { id: string; full_name: string; position: string | null };
 type LookupArea = { id: string; code: string; name: string | null };
@@ -51,7 +57,7 @@ function ReportViewport({ children }: { children: React.ReactNode }) {
 }
 
 export default function PrintableActivityReport(p: {
-  mode: 'activity' | 'meter_test' | 'well_pull_out' | 'tank_cleaning';
+  mode: 'activity' | 'meter_test' | 'well_pull_out' | 'tank_cleaning' | 'leak_volume_loss';
   orgName: string;
   activity?: DailyActivityRow | null;
   jobOrder?: JobOrderRow | null;
@@ -67,8 +73,14 @@ export default function PrintableActivityReport(p: {
   const actSignatureProp = p.activity?.signature_data;
 
   useEffect(() => {
-    setSheetView('form');
-  }, [p.mode, actId]);
+    const preferForm =
+      p.mode === 'leak_volume_loss' ||
+      p.mode === 'well_pull_out' ||
+      p.mode === 'tank_cleaning' ||
+      actType === 'well_pull_out' ||
+      actType === 'tank_cleaning';
+    setSheetView(preferForm ? 'form' : 'standard');
+  }, [p.mode, actId, actType]);
 
   useEffect(() => {
     if (!actId || (p.mode !== 'meter_test' && actType !== 'meter_test') || actSignatureProp !== undefined) {
@@ -120,25 +132,36 @@ export default function PrintableActivityReport(p: {
   const refCode = jo?.jo_number ?? (act ? `ACT-${act.id.slice(0, 8).toUpperCase()}` : 'REPORT');
   const isPulloutEligible = act?.activity_type === 'well_pull_out';
   const isTankCleaningEligible = act?.activity_type === 'tank_cleaning';
+  const isLeakRepairEligible = act?.activity_type === 'leak_repair';
   const showPulloutSheet = Boolean(
     act && (p.mode === 'well_pull_out' || isPulloutEligible) && sheetView === 'form',
   );
   const showTankCleaningSheet = Boolean(
     act && (p.mode === 'tank_cleaning' || isTankCleaningEligible) && sheetView === 'form',
   );
-  const hideGenericHeader = showPulloutSheet || showTankCleaningSheet;
+  const showLeakVolumeSheet = Boolean(
+    act && (p.mode === 'leak_volume_loss' || (isLeakRepairEligible && sheetView === 'form')),
+  );
+  const hideGenericHeader = showPulloutSheet || showTankCleaningSheet || showLeakVolumeSheet;
   const areaLabel = areaObj ? `${areaObj.code}${areaObj.name ? ` · ${areaObj.name}` : ''}` : '';
   const gpsInfo = act ? formatTaggedGpsPosition(act.gps_lat, act.gps_lng, det) : null;
+  const leakLossState = isLeakRepairEligible && act ? hydrateLeakLossDetails(det) : null;
+  const leakLossCalc = leakLossState ? computeLeakVolumeLoss(leakLossState) : null;
   const telemetryEntries = act
     ? Object.entries(det)
-        .filter(([key]) => !GPS_INTERNAL_DETAIL_KEYS.has(key))
+        .filter(([key]) => !GPS_INTERNAL_DETAIL_KEYS.has(key) && !LEAK_INTERNAL_DETAIL_KEYS.has(key))
         .map(([key, val]) => {
           if (val === null || val === undefined || val === '') return null;
           const formattedVal = Array.isArray(val)
             ? val
-                .map((item) =>
-                  typeof item === 'object' && item !== null ? Object.values(item).filter(Boolean).join(' · ') : String(item),
-                )
+                .map((item) => {
+                  if (key === 'usedMaterials' && typeof item === 'object' && item !== null) {
+                    const m = item as { item?: unknown; qty?: unknown; unit?: unknown };
+                    const u = typeof m.unit === 'string' && m.unit.trim() ? ` ${m.unit.trim()}` : '';
+                    return `${String(m.item ?? '')} (${String(m.qty ?? '1')}${u})`;
+                  }
+                  return typeof item === 'object' && item !== null ? Object.values(item).filter(Boolean).join(' · ') : String(item);
+                })
                 .join('; ')
             : typeof val === 'object'
               ? JSON.stringify(val)
@@ -219,9 +242,11 @@ export default function PrintableActivityReport(p: {
                   ? 'Deepwell Pull-Out & Installation Accomplishment Report'
                   : showTankCleaningSheet
                     ? 'Tank Cleaning & Sanitation Accomplishment Report'
-                    : 'Field Operations / Job Order Report Preview'}
+                    : showLeakVolumeSheet
+                      ? 'Computation of Volume Loss & Materials Preview'
+                      : 'Field Operations / Job Order Report Preview'}
             </strong>
-            {(isPulloutEligible || isTankCleaningEligible) && (
+            {(isPulloutEligible || isTankCleaningEligible || isLeakRepairEligible) && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button
                   type="button"
@@ -229,7 +254,11 @@ export default function PrintableActivityReport(p: {
                   style={{ fontSize: 11.5, padding: '4px 9px' }}
                   onClick={() => setSheetView('form')}
                 >
-                  {isTankCleaningEligible ? '📄 Official Tank Cleaning Report' : '📄 Official Deepwell Pull-Out Form'}
+                  {isTankCleaningEligible
+                    ? '📄 Official Tank Cleaning Report'
+                    : isLeakRepairEligible
+                      ? '💧 Computation of Volume Loss'
+                      : '📄 Official Deepwell Pull-Out Form'}
                 </button>
                 <button
                   type="button"
@@ -237,7 +266,7 @@ export default function PrintableActivityReport(p: {
                   style={{ fontSize: 11.5, padding: '4px 9px' }}
                   onClick={() => setSheetView('standard')}
                 >
-                  📋 Standard Activity Sheet (with Photos)
+                  📋 Standard Activity Sheet
                 </button>
               </div>
             )}
@@ -292,6 +321,16 @@ export default function PrintableActivityReport(p: {
               areaLabel={areaLabel}
               leadOp={leadOp ?? null}
               crewOps={crewOpObjects}
+            />
+          </ReportViewport>
+        ) : showLeakVolumeSheet && act ? (
+          <ReportViewport>
+            <LeakVolumeLossReportSheet
+              activity={act}
+              orgName={p.orgName}
+              areaLabel={areaLabel}
+              leadOpName={leadOp?.full_name ?? ''}
+              crewNames={crewOps}
             />
           </ReportViewport>
         ) : p.mode === 'meter_test' ? (
@@ -444,6 +483,34 @@ export default function PrintableActivityReport(p: {
                   </div>
                 )}
                 {act?.notes && <div><i>&ldquo;{act.notes}&rdquo;</i></div>}
+              </div>
+            )}
+
+            {act && isLeakRepairEligible && (leakLossCalc || leakLossState?.faultAttribution === 'third_party') && (
+              <div style={{ border: '1px solid #334155', padding: 12, background: '#f8fafc', display: 'grid', gap: 4 }}>
+                <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: 11, color: '#334155' }}>
+                  Theoretical Water Wastage &amp; Fault Attribution
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  <div>
+                    <b>Fault Attribution:</b>{' '}
+                    {leakLossState?.faultAttribution === 'third_party'
+                      ? 'Customer / 3rd-Party Fault (Chargeable)'
+                      : 'Natural / Wear & Tear (Company NRW)'}
+                  </div>
+                  <div>
+                    <b>Est. Water Loss:</b>{' '}
+                    {leakLossCalc
+                      ? `${leakLossCalc.totalVolumeM3.toFixed(2)} m³ (${leakLossCalc.durationMinutes} min @ ${leakLossCalc.pressurePsi} PSI, Q=${leakLossCalc.flowM3PerSec.toFixed(4)} m³/s)`
+                      : 'Not computed'}
+                  </div>
+                  {leakLossState?.faultAttribution === 'third_party' && (
+                    <>
+                      <div><b>Responsible Party:</b> {leakLossState.responsibleParty || '—'}</div>
+                      <div><b>Account / Plate / Ref:</b> {leakLossState.responsibleAccountNo || '—'}</div>
+                    </>
+                  )}
+                </div>
               </div>
             )}
 

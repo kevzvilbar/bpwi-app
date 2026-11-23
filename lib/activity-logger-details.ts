@@ -11,11 +11,19 @@ import {
   hydrateTankCleaningDetails,
   type TankCleaningFormDetails,
 } from './tank-cleaning-types.ts';
+import {
+  INITIAL_LEAK_LOSS_STATE,
+  buildLeakLossPayload,
+  hydrateLeakLossDetails,
+  type LeakVolumeLossFormState,
+} from './leak-volume-loss.ts';
 
 export type { WellPulloutFormDetails } from './well-pullout-types.ts';
 export { INITIAL_WELL_PULLOUT_DETAILS } from './well-pullout-types.ts';
 export type { TankCleaningFormDetails } from './tank-cleaning-types.ts';
 export { INITIAL_TANK_CLEANING_DETAILS } from './tank-cleaning-types.ts';
+export type { LeakVolumeLossFormState } from './leak-volume-loss.ts';
+export { INITIAL_LEAK_LOSS_STATE } from './leak-volume-loss.ts';
 
 export interface BlowOffItem {
   name: string;
@@ -26,6 +34,7 @@ export interface BlowOffItem {
 export interface UsedMaterialItem {
   item: string;
   qty: string;
+  unit?: string;
 }
 
 export interface HaulingCycleItem {
@@ -83,6 +92,7 @@ export interface ActivityDetailFieldsState {
   pipeSize: string;
   leakType: string;
   usedMaterials: UsedMaterialItem[];
+  leakLoss: LeakVolumeLossFormState;
 
   // 6. Water Hauling
   vehicleType: string;
@@ -148,6 +158,7 @@ export const INITIAL_ACTIVITY_DETAIL_FIELDS: ActivityDetailFieldsState = {
   pipeSize: '',
   leakType: '',
   usedMaterials: [],
+  leakLoss: INITIAL_LEAK_LOSS_STATE,
   vehicleType: '',
   plateNumber: '',
   driverName: '',
@@ -233,8 +244,10 @@ export function hydrateActivityDetailFields(
     next.usedMaterials = d.usedMaterials.filter(isRecord).map((m) => ({
       item: String(m.item ?? ''),
       qty: String(m.qty ?? '1'),
+      ...(typeof m.unit === 'string' && m.unit.trim() ? { unit: m.unit.trim() } : {}),
     }));
   }
+  next.leakLoss = hydrateLeakLossDetails(d);
 
   if (d.vehicleType) next.vehicleType = String(d.vehicleType);
   if (d.plateNumber) next.plateNumber = String(d.plateNumber);
@@ -346,10 +359,18 @@ export function buildActivityDetailsPayload(
     };
   }
   if (activityType === 'leak_repair' || activityType === 'leak_detection' || activityType === 'valve_replacement') {
+    const leakLoss = activityType === 'leak_repair' ? buildLeakLossPayload(f.leakLoss) : null;
     return {
       pipeSize: f.pipeSize.trim() || null,
       leakType: f.leakType.trim() || null,
-      usedMaterials: f.usedMaterials.filter((m) => m.item.trim() !== ''),
+      usedMaterials: f.usedMaterials
+        .filter((m) => m.item.trim() !== '')
+        .map((m) => ({
+          item: m.item,
+          qty: m.qty,
+          ...(m.unit && m.unit.trim() ? { unit: m.unit.trim() } : {}),
+        })),
+      ...(leakLoss ? { leakLoss } : {}),
     };
   }
   if (activityType === 'low_pressure' || activityType === 'no_water_supply') {

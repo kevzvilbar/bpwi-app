@@ -8,6 +8,7 @@ import {
 } from '@/lib/activity-logger-details';
 import WellPulloutFields from '@/components/WellPulloutFields';
 import TankCleaningFields from '@/components/TankCleaningFields';
+import LeakRepairFields from '@/components/LeakRepairFields';
 
 interface ActivityCategoryFieldsProps {
   activityType: string;
@@ -374,70 +375,7 @@ export default function ActivityCategoryFields({
       )}
 
       {(activityType === 'leak_repair' || activityType === 'leak_detection' || activityType === 'valve_replacement') && (
-        <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: activityType === 'valve_replacement' ? 'var(--teal)' : 'var(--danger-border)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong style={{ fontSize: 12.5, color: activityType === 'valve_replacement' ? 'var(--teal)' : 'var(--danger)' }}>
-              {activityType === 'valve_replacement' ? 'Valve Details & Materials' : 'Leak Details & Materials'}
-            </strong>
-            <button
-              type="button"
-              className="btn"
-              style={{ minHeight: 28, padding: '2px 8px', fontSize: 11.5 }}
-              onClick={() => setFields((prev) => ({ ...prev, usedMaterials: [...prev.usedMaterials, { item: '', qty: '1' }] }))}
-            >
-              + Material
-            </button>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-              Pipe / Valve Size &amp; Spec
-              <input className="input" value={fields.pipeSize} onChange={(e) => patch({ pipeSize: e.target.value })} placeholder={activityType === 'valve_replacement' ? 'e.g. 2" Gate Valve / Brass' : 'e.g. 2" uPVC'} />
-            </label>
-            <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-              {activityType === 'valve_replacement' ? 'Replacement Cause / Action' : 'Leak Classification / Cause'}
-              <input className="input" value={fields.leakType} onChange={(e) => patch({ leakType: e.target.value })} placeholder={activityType === 'valve_replacement' ? 'e.g. Defective / seized gate valve' : 'e.g. Saddle clamp, joint'} />
-            </label>
-          </div>
-          {fields.usedMaterials.map((m, idx) => (
-            <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 90px auto', gap: 6 }}>
-              <input
-                className="input"
-                placeholder="Material used (e.g. Coupling 2 inch)"
-                value={m.item}
-                onChange={(e) =>
-                  setFields((prev) => ({
-                    ...prev,
-                    usedMaterials: prev.usedMaterials.map((x, i) => (i === idx ? { ...x, item: e.target.value } : x)),
-                  }))
-                }
-              />
-              <input
-                className="input"
-                placeholder="Qty"
-                value={m.qty}
-                onChange={(e) =>
-                  setFields((prev) => ({
-                    ...prev,
-                    usedMaterials: prev.usedMaterials.map((x, i) => (i === idx ? { ...x, qty: e.target.value } : x)),
-                  }))
-                }
-              />
-              <button
-                type="button"
-                className="btn"
-                style={{ minHeight: 38, padding: '0 8px', color: 'var(--danger)' }}
-                onClick={() =>
-                  setFields((prev) => ({
-                    ...prev,
-                    usedMaterials: prev.usedMaterials.filter((_, i) => i !== idx),
-                  }))
-                }
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
+        <LeakRepairFields activityType={activityType} fields={fields} setFields={setFields} />
       )}
 
       {(activityType === 'low_pressure' || activityType === 'no_water_supply') && (

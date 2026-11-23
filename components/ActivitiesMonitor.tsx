@@ -88,7 +88,7 @@ export default function ActivitiesMonitor(p: {
 
   // Printable preview state
   const [printState, setPrintState] = useState<{
-    mode: 'activity' | 'meter_test' | 'well_pull_out' | 'tank_cleaning';
+    mode: 'activity' | 'meter_test' | 'well_pull_out' | 'tank_cleaning' | 'leak_volume_loss';
     activity?: DailyActivityRow | null;
     jobOrder?: JobOrderRow | null;
   } | null>(null);
@@ -812,6 +812,11 @@ export default function ActivitiesMonitor(p: {
                       {act.activity_type === 'tank_cleaning' && (
                         <button type="button" className="btn" onClick={() => setPrintState({ mode: 'tank_cleaning', activity: act })} style={{ fontSize: 11.5, color: 'var(--ok-fg)', fontWeight: 700 }}>
                           🖨 Tank Cleaning Report
+                        </button>
+                      )}
+                      {act.activity_type === 'leak_repair' && (
+                        <button type="button" className="btn" onClick={() => setPrintState({ mode: 'leak_volume_loss', activity: act })} style={{ fontSize: 11.5, color: 'var(--danger)', fontWeight: 700 }}>
+                          💧 Volume Loss Sheet
                         </button>
                       )}
                       {(p.isAdmin || act.logged_by === p.userId) && act.status !== 'verified' && (

@@ -5,6 +5,7 @@ import {
   evaluateTankWaterQuality,
   hydrateTankCleaningDetails,
 } from './tank-cleaning-types.ts';
+import { computeLeakVolumeLoss, hydrateLeakLossDetails } from './leak-volume-loss.ts';
 
 export function formatTelemetrySummary(act: DailyActivityRow): string[] {
   const d = act.details ?? {};
@@ -47,9 +48,28 @@ export function formatTelemetrySummary(act: DailyActivityRow): string[] {
   if (act.activity_type === 'leak_repair' || act.activity_type === 'leak_detection' || act.activity_type === 'valve_replacement') {
     if (str('pipeSize')) parts.push(`Pipe: ${str('pipeSize')}`);
     if (str('leakType')) parts.push(`Cause: ${str('leakType')}`);
+    if (act.activity_type === 'leak_repair') {
+      const leakState = hydrateLeakLossDetails(d);
+      const lossCalc = computeLeakVolumeLoss(leakState);
+      if (lossCalc) {
+        parts.push(`Est. Water Loss: ${lossCalc.totalVolumeM3.toFixed(2)} m³ (${lossCalc.durationMinutes} min @ ${lossCalc.pressurePsi} PSI)`);
+      }
+      if (leakState.faultAttribution === 'third_party') {
+        parts.push(
+          `Fault: Customer / 3rd-Party${leakState.responsibleParty ? ` (${leakState.responsibleParty})` : ''}`,
+        );
+      }
+    }
     if (Array.isArray(d.usedMaterials) && d.usedMaterials.length > 0) {
-      const mats = d.usedMaterials as Array<{ item?: unknown; qty?: unknown }>;
-      parts.push(`Materials: ${mats.map((m) => `${String(m.item ?? '')} (${String(m.qty ?? '')})`).join(', ')}`);
+      const mats = d.usedMaterials as Array<{ item?: unknown; qty?: unknown; unit?: unknown }>;
+      parts.push(
+        `Materials: ${mats
+          .map((m) => {
+            const u = typeof m.unit === 'string' && m.unit.trim() ? ` ${m.unit.trim()}` : '';
+            return `${String(m.item ?? '')} (${String(m.qty ?? '')}${u})`;
+          })
+          .join(', ')}`,
+      );
     }
   }
 
