@@ -19,24 +19,18 @@ import WellPulloutReportSheet from '@/components/WellPulloutReportSheet';
 import TankCleaningReportSheet from '@/components/TankCleaningReportSheet';
 import LeakVolumeLossReportSheet from '@/components/LeakVolumeLossReportSheet';
 import FlushingVolumeReportSheet from '@/components/FlushingVolumeReportSheet';
+import {
+  REPORT_TABLE_STYLE,
+  ReportLetterhead,
+  ReportSignatureGrid,
+  formatReportPrintedTs,
+} from '@/components/ReportSheetPrimitives';
 
 type LookupOp = { id: string; full_name: string; position: string | null };
 type LookupArea = { id: string; code: string; name: string | null };
 type LookupShift = { id: string; code: string; description?: string | null };
 
-function fmtTs(ts: string | null | undefined) {
-  if (!ts) return 'N/A';
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return ts;
-  return new Intl.DateTimeFormat('en-PH', {
-    timeZone: 'Asia/Manila',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(d);
-}
+const fmtTs = formatReportPrintedTs;
 
 function calcTatHours(startIso?: string | null, endIso?: string | null) {
   if (!startIso || !endIso) return null;
@@ -320,24 +314,14 @@ export default function PrintableActivityReport(p: {
 
         {/* Official Document Header (standard reports / meter certificate) */}
         {!hideGenericHeader && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #0f172a', paddingBottom: 12, marginBottom: 18, gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <img src="/bpwi-logo.png" alt="BP Waterworks, Inc." style={{ width: 52, height: 39, objectFit: 'contain' }} />
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#334155' }}>
-                  {p.orgName || 'BP Waterworks, Inc.'}
-                </div>
-                <h1 style={{ margin: 0, fontSize: 19, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                  {p.mode === 'meter_test' ? 'Water Meter Volumetric Test Certificate' : 'Field Activity & Job Order Report'}
-                </h1>
-              </div>
-            </div>
-            <div style={{ textAlign: 'right', fontSize: 12 }}>
-              <div style={{ fontWeight: 800, fontSize: 15 }}>{refCode}</div>
-              <div style={{ color: '#475569' }}>Date: {act?.activity_date ?? (jo?.created_at ? jo.created_at.slice(0, 10) : 'N/A')}</div>
-              <div style={{ color: '#475569', fontSize: 11 }}>Printed: {fmtTs(new Date().toISOString())}</div>
-            </div>
-          </div>
+          <ReportLetterhead
+            orgName={p.orgName}
+            eyebrow={p.orgName || 'BP Waterworks, Inc.'}
+            title={p.mode === 'meter_test' ? 'Water Meter Volumetric Test Certificate' : 'Field Activity & Job Order Report'}
+            refCode={refCode}
+            dateLabel={`Date: ${act?.activity_date ?? (jo?.created_at ? jo.created_at.slice(0, 10) : 'N/A')}`}
+            printedTs={fmtTs(new Date().toISOString())}
+          />
         )}
 
         {showPulloutSheet && act ? (
@@ -403,7 +387,7 @@ export default function PrintableActivityReport(p: {
               )}
             </div>
 
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <table style={{ ...REPORT_TABLE_STYLE, fontSize: 12 }}>
               <thead>
                 <tr style={{ background: '#f1f5f9' }}>
                   <th style={{ border: '1px solid #334155', padding: '7px 8px', textAlign: 'left' }}>Test Stage</th>
@@ -447,39 +431,35 @@ export default function PrintableActivityReport(p: {
               </div>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 18, marginTop: 28, textAlign: 'center', fontSize: 12 }}>
-              <div>
-                <div style={{ height: 52, display: 'grid', placeItems: 'end center', borderBottom: '1px solid #0f172a', marginBottom: 4, fontWeight: 600 }}>
-                  {leadOp?.full_name ?? ''}
-                </div>
-                <b>Tested By</b>
-                <div style={{ fontSize: 11, color: '#475569' }}>Field Technician / Operator</div>
-              </div>
-              <div>
-                <div style={{ height: 52, display: 'grid', placeItems: 'center', borderBottom: '1px solid #0f172a', marginBottom: 4 }}>
-                  {(() => {
-                    const sigUrl =
-                      act?.signature_data !== undefined
-                        ? act.signature_data
-                        : fetchedSig && act && fetchedSig.id === act.id
-                          ? fetchedSig.data
-                          : null;
-                    return sigUrl ? (
-                      <img src={sigUrl} alt="Witness signature" style={{ maxHeight: 46, maxWidth: '100%', objectFit: 'contain' }} />
-                    ) : (
-                      <span style={{ fontSize: 11, color: '#94a3b8' }}>No signature captured</span>
-                    );
-                  })()}
-                </div>
-                <b>Witnessed By: {detStr('witnessedBy', 'Customer Representative')}</b>
-                <div style={{ fontSize: 11, color: '#475569' }}>Signature over Printed Name</div>
-              </div>
-              <div>
-                <div style={{ height: 52, borderBottom: '1px solid #0f172a', marginBottom: 4 }} />
-                <b>Verified / Noted By</b>
-                <div style={{ fontSize: 11, color: '#475569' }}>Supervisor / Operations Head</div>
-              </div>
-            </div>
+            <ReportSignatureGrid
+              entries={[
+                {
+                  printedName: leadOp?.full_name ?? '',
+                  roleTitle: 'Tested By',
+                  subtitle: 'Field Technician / Operator',
+                },
+                {
+                  signatureUrl:
+                    act?.signature_data !== undefined
+                      ? act.signature_data
+                      : fetchedSig && act && fetchedSig.id === act.id
+                        ? fetchedSig.data
+                        : null,
+                  signatureAlt: 'Witness signature',
+                  emptySignatureText: 'No signature captured',
+                  roleTitle: `Witnessed By: ${detStr('witnessedBy', 'Customer Representative')}`,
+                  subtitle: 'Signature over Printed Name',
+                },
+                {
+                  roleTitle: 'Verified / Noted By',
+                  subtitle: 'Supervisor / Operations Head',
+                },
+              ]}
+              lineHeight={52}
+              gap={18}
+              marginTop={28}
+              fontSize={12}
+            />
           </div>
         ) : (
           /* Standard Field Activity / Job Order Report Layout */
@@ -581,7 +561,7 @@ export default function PrintableActivityReport(p: {
                 <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: 11, marginBottom: 6, color: '#334155' }}>
                   Recorded Field Telemetry &amp; Parameters
                 </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <table style={{ ...REPORT_TABLE_STYLE, fontSize: 12 }}>
                   <thead>
                     <tr style={{ background: '#f1f5f9' }}>
                       <th style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'left', width: '35%' }}>Parameter</th>
@@ -602,20 +582,23 @@ export default function PrintableActivityReport(p: {
               </div>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 36, marginTop: 32, textAlign: 'center', fontSize: 12 }}>
-              <div>
-                <div style={{ borderBottom: '1px solid #0f172a', height: 38, marginBottom: 4, display: 'grid', placeItems: 'end center', fontWeight: 600 }}>
-                  {leadOp?.full_name ?? ''}
-                </div>
-                <b>Prepared By</b>
-                <div style={{ fontSize: 11, color: '#475569' }}>Assigned Operator / Personnel</div>
-              </div>
-              <div>
-                <div style={{ borderBottom: '1px solid #0f172a', height: 38, marginBottom: 4 }} />
-                <b>Checked / Verified By</b>
-                <div style={{ fontSize: 11, color: '#475569' }}>Signature over Printed Name</div>
-              </div>
-            </div>
+            <ReportSignatureGrid
+              entries={[
+                {
+                  printedName: leadOp?.full_name ?? '',
+                  roleTitle: 'Prepared By',
+                  subtitle: 'Assigned Operator / Personnel',
+                },
+                {
+                  roleTitle: 'Checked / Verified By',
+                  subtitle: 'Signature over Printed Name',
+                },
+              ]}
+              lineHeight={38}
+              gap={36}
+              marginTop={32}
+              fontSize={12}
+            />
           </div>
         )}
       </div>

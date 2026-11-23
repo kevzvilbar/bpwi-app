@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import EscalationContacts, { type EscalationContact } from '@/components/EscalationContacts';
+import { Badge } from '@/components/ui';
 import { DEFAULT_STATION_CODE } from '@/lib/roster-helpers';
 
 type Op = { id: string; full_name: string; position: string | null; phone_number: string | null; default_station: string | null };
@@ -174,7 +175,7 @@ export default function CallSheet(p: {
           On-Call / Standby only ({p.standby.length})
         </label>
         {p.error && (
-          <span role="alert" style={{ color: '#b91c1c', fontSize: 12 }}>
+          <span role="alert" style={{ color: 'var(--danger)', fontSize: 12 }}>
             {p.error}
           </span>
         )}
@@ -207,18 +208,10 @@ export default function CallSheet(p: {
               Today&apos;s Shift Summary
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 11.5, fontWeight: 700 }}>
-              <span style={{ background: 'rgba(124, 58, 237, 0.14)', color: 'var(--violet)', padding: '2px 8px', borderRadius: 999 }}>
-                {coverageCounts.standby} Standby
-              </span>
-              <span style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)', padding: '2px 8px', borderRadius: 999 }}>
-                {coverageCounts.onDutyNow} On Duty Now
-              </span>
-              <span style={{ background: 'var(--info-bg)', color: 'var(--info-fg)', padding: '2px 8px', borderRadius: 999 }}>
-                {coverageCounts.onDutyToday} Duty Today
-              </span>
-              <span style={{ background: 'var(--surface)', color: 'var(--text-secondary)', border: '1px solid var(--border)', padding: '2px 8px', borderRadius: 999 }}>
-                {coverageCounts.offOrLeave} Off / Leave
-              </span>
+              <Badge tone="violet" size="sm">{coverageCounts.standby} Standby</Badge>
+              <Badge tone="ok" size="sm">{coverageCounts.onDutyNow} On Duty Now</Badge>
+              <Badge tone="info" size="sm">{coverageCounts.onDutyToday} Duty Today</Badge>
+              <Badge tone="neutral" size="sm">{coverageCounts.offOrLeave} Off / Leave</Badge>
             </div>
           </div>
 
@@ -237,8 +230,8 @@ export default function CallSheet(p: {
               <div
                 key={op.id}
                 style={{
-                  background: standbyType ? 'rgba(124, 58, 237, 0.1)' : 'var(--surface-muted)',
-                  border: standbyType ? '1.5px solid var(--violet)' : '1px solid var(--border)',
+                  background: standbyType ? 'var(--violet-bg)' : 'var(--surface-muted)',
+                  border: standbyType ? '1.5px solid var(--violet-border)' : '1px solid var(--border)',
                   borderRadius: 10,
                   padding: 10,
                   display: 'grid',
@@ -251,11 +244,7 @@ export default function CallSheet(p: {
                     {op.position && <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{op.position}</div>}
                   </div>
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                    {standbyType && (
-                      <span style={{ background: '#6d28d9', color: '#fff', padding: '2px 7px', borderRadius: 999, fontSize: 10.5, fontWeight: 700 }}>
-                        {standbyType}
-                      </span>
-                    )}
+                    {standbyType && <Badge tone="violet" size="sm">{standbyType}</Badge>}
                     {isNow && shift && (
                       <span style={{ background: shift.background_color, color: shift.text_color, padding: '2px 7px', borderRadius: 6, fontSize: 10.5, fontWeight: 700, border: '1px solid var(--border)' }}>
                         NOW · {shift.code}
@@ -277,8 +266,8 @@ export default function CallSheet(p: {
                         minHeight: 36,
                         padding: '5px 10px',
                         borderRadius: 7,
-                        background: '#0369a1',
-                        color: '#ffffff',
+                        background: 'var(--primary)',
+                        color: 'var(--primary-fg)',
                         textDecoration: 'none',
                         fontWeight: 700,
                         fontSize: 12.5,
@@ -318,7 +307,7 @@ export default function CallSheet(p: {
               </tr>
             ) : (
               sortedAndFiltered.map(({ op, shift, area, standbyType, isLeave, isRestDay, isOnDuty, isNow }, i) => (
-                <tr key={op.id} style={{ background: standbyType ? 'rgba(124, 58, 237, 0.1)' : 'var(--surface)' }}>
+                <tr key={op.id} style={{ background: standbyType ? 'var(--violet-bg)' : 'var(--surface)' }}>
                   <td className="tabular-nums" style={{ padding: '8px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                     {i + 1}
                   </td>
@@ -328,47 +317,11 @@ export default function CallSheet(p: {
                   </td>
                   <td style={{ padding: '8px 10px' }}>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                      {standbyType && (
-                        <span
-                          style={{
-                            background: '#6d28d9',
-                            color: '#ffffff',
-                            padding: '3px 9px',
-                            borderRadius: 999,
-                            fontWeight: 700,
-                            fontSize: 11.5,
-                          }}
-                        >
-                          STANDBY · {standbyType}
-                        </span>
-                      )}
+                      {standbyType && <Badge tone="violet" size="sm">STANDBY · {standbyType}</Badge>}
                       {isLeave ? (
-                        <span
-                          style={{
-                            background: '#ffe4e6',
-                            color: '#9f1239',
-                            padding: '3px 9px',
-                            borderRadius: 999,
-                            fontWeight: 700,
-                            fontSize: 11.5,
-                          }}
-                        >
-                          LEAVE · {area?.code}
-                        </span>
+                        <Badge tone="danger" size="sm">LEAVE · {area?.code}</Badge>
                       ) : isRestDay ? (
-                        <span
-                          style={{
-                            background: 'var(--surface-muted)',
-                            color: 'var(--text-secondary)',
-                            border: '1px solid var(--border)',
-                            padding: '3px 9px',
-                            borderRadius: 999,
-                            fontWeight: 600,
-                            fontSize: 11.5,
-                          }}
-                        >
-                          REST DAY · {area?.code}
-                        </span>
+                        <Badge tone="neutral" size="sm">REST DAY · {area?.code}</Badge>
                       ) : isOnDuty && shift ? (
                         <span
                           style={{
@@ -378,26 +331,15 @@ export default function CallSheet(p: {
                             borderRadius: 6,
                             fontWeight: 700,
                             fontSize: 11.5,
-                            border: '1px solid #cbd5e1',
+                            border: '1px solid var(--border)',
                           }}
                         >
                           {isNow ? 'ON DUTY NOW' : 'ON DUTY'} · {shift.code}
                         </span>
                       ) : shift?.is_off ? (
-                        <span
-                          style={{
-                            background: '#f1f5f9',
-                            color: '#475569',
-                            padding: '3px 9px',
-                            borderRadius: 6,
-                            fontWeight: 600,
-                            fontSize: 11.5,
-                          }}
-                        >
-                          OFF · {shift.code}
-                        </span>
+                        <Badge tone="neutral" size="sm">OFF · {shift.code}</Badge>
                       ) : (
-                        <span style={{ color: '#64748b', fontSize: 12 }}>Unassigned</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Unassigned</span>
                       )}
                     </div>
                   </td>
@@ -416,8 +358,8 @@ export default function CallSheet(p: {
                             minHeight: 38,
                             padding: '6px 12px',
                             borderRadius: 8,
-                            background: '#0369a1',
-                            color: '#ffffff',
+                            background: 'var(--primary)',
+                            color: 'var(--primary-fg)',
                             textDecoration: 'none',
                             fontWeight: 700,
                             fontSize: 13,
@@ -435,7 +377,7 @@ export default function CallSheet(p: {
                         </a>
                       </div>
                     ) : (
-                      <span style={{ color: '#64748b' }}>No phone</span>
+                      <span style={{ color: 'var(--text-muted)' }}>No phone</span>
                     )}
                   </td>
                 </tr>
@@ -453,8 +395,8 @@ export default function CallSheet(p: {
             key={op.id}
             className="card"
             style={{
-              background: standbyType ? 'rgba(124, 58, 237, 0.1)' : 'var(--surface)',
-              border: standbyType ? '1.5px solid var(--violet)' : '1px solid var(--border)',
+              background: standbyType ? 'var(--violet-bg)' : 'var(--surface)',
+              border: standbyType ? '1.5px solid var(--violet-border)' : '1px solid var(--border)',
               padding: 14,
               display: 'grid',
               gap: 8,
@@ -465,20 +407,7 @@ export default function CallSheet(p: {
                 <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>{op.full_name}</div>
                 {op.position && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{op.position}</div>}
               </div>
-              {standbyType && (
-                <span
-                  style={{
-                    background: '#6d28d9',
-                    color: '#ffffff',
-                    padding: '3px 9px',
-                    borderRadius: 999,
-                    fontWeight: 700,
-                    fontSize: 11.5,
-                  }}
-                >
-                  STANDBY · {standbyType}
-                </span>
-              )}
+              {standbyType && <Badge tone="violet" size="sm">STANDBY · {standbyType}</Badge>}
             </div>
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--text-secondary)' }}>
@@ -513,8 +442,8 @@ export default function CallSheet(p: {
                     minHeight: 44,
                     padding: '10px 14px',
                     borderRadius: 8,
-                    background: '#0369a1',
-                    color: '#ffffff',
+                    background: 'var(--primary)',
+                    color: 'var(--primary-fg)',
                     textDecoration: 'none',
                     fontWeight: 700,
                     fontSize: 14,
@@ -538,7 +467,7 @@ export default function CallSheet(p: {
                 </a>
               </div>
             ) : (
-              <div style={{ fontSize: 12.5, color: '#64748b' }}>No phone number on file</div>
+              <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>No phone number on file</div>
             )}
           </div>
         ))}

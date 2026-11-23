@@ -341,15 +341,11 @@ export default function PmDayInspector({
 
       {canEdit && (
         <button
-          className="btn"
+          className="btn btn-add"
           style={{
             width: '100%',
             padding: '8px 12px',
             borderRadius: 999,
-            background: '#0f766e',
-            borderColor: '#0f766e',
-            color: '#ffffff',
-            fontWeight: 700,
           }}
           onClick={onCreateNewTask}
         >

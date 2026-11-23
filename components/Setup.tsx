@@ -298,7 +298,7 @@ export default function Setup(p: {
               </div>
             ))}
             <button
-              className="btn"
+              className="btn btn-add"
               onClick={() => setOps((x) => [...x, { full_name: '', position: '', phone_number: '', default_station: '', sort_order: x.length, is_active: true }])}
             >
               + Add operator
@@ -416,7 +416,7 @@ export default function Setup(p: {
               <tr>
                 <td colSpan={8} style={{ ...cell, padding: 8 }}>
                   <button
-                    className="btn"
+                    className="btn btn-add"
                     onClick={() =>
                       setOps((x) => [
                         ...x,

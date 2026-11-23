@@ -178,7 +178,7 @@ export default function HolidaysManager(p: {
                 <option value="company">Company / Local</option>
               </select>
             </label>
-            <button type="submit" className="btn btn-primary" disabled={busy}>
+            <button type="submit" className="btn btn-add" disabled={busy}>
               {busy ? 'Saving…' : '+ Add / Update Holiday'}
             </button>
           </form>

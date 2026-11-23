@@ -251,7 +251,7 @@ export default function Nav(p: {
           />
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.2 }}>{appTitle}</span>
+              <span style={{ fontSize: 14, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.2 }}>{appTitle}</span>
               {p.isAdmin && p.orgId && (
                 <button
                   type="button"
@@ -290,20 +290,8 @@ export default function Nav(p: {
               <Link
                 key={l.href}
                 href={l.href}
+                className="desktop-nav-link"
                 aria-current={on ? 'page' : undefined}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '6px 12px',
-                  borderRadius: 6,
-                  fontSize: 13,
-                  fontWeight: on ? 700 : 600,
-                  textDecoration: 'none',
-                  background: on ? 'var(--primary)' : 'transparent',
-                  color: on ? 'var(--primary-fg)' : 'var(--text-secondary)',
-                  transition: 'background-color 0.12s, color 0.12s',
-                }}
               >
                 <Icon name={l.icon} />
                 <span>{l.label}</span>

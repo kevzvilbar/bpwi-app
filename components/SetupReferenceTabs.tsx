@@ -148,7 +148,7 @@ export default function SetupReferenceTabs({
               </div>
             </div>
           ))}
-          <button className="btn" onClick={() => setShifts((x) => [...x, { ...DEFAULT_NEW_SHIFT }])}>
+          <button className="btn btn-add" onClick={() => setShifts((x) => [...x, { ...DEFAULT_NEW_SHIFT }])}>
             + Add shift type
           </button>
         </>
@@ -209,7 +209,7 @@ export default function SetupReferenceTabs({
             )}
           </div>
         ))}
-        <button className="btn" onClick={() => setAreas((x) => [...x, { ...DEFAULT_NEW_AREA }])}>
+        <button className="btn btn-add" onClick={() => setAreas((x) => [...x, { ...DEFAULT_NEW_AREA }])}>
           + Add area / leave code
         </button>
       </>
@@ -293,7 +293,7 @@ export default function SetupReferenceTabs({
         <tfoot>
           <tr>
             <td colSpan={10} style={{ ...SETUP_CELL_STYLE, padding: 8 }}>
-              <button className="btn" onClick={() => setShifts((x) => [...x, { ...DEFAULT_NEW_SHIFT }])}>
+              <button className="btn btn-add" onClick={() => setShifts((x) => [...x, { ...DEFAULT_NEW_SHIFT }])}>
                 + Add shift type
               </button>
             </td>
@@ -381,7 +381,7 @@ export default function SetupReferenceTabs({
       <tfoot>
         <tr>
           <td colSpan={8} style={{ ...SETUP_CELL_STYLE, padding: 8 }}>
-            <button className="btn" onClick={() => setAreas((x) => [...x, { ...DEFAULT_NEW_AREA }])}>
+            <button className="btn btn-add" onClick={() => setAreas((x) => [...x, { ...DEFAULT_NEW_AREA }])}>
               + Add area / leave code
             </button>
           </td>

@@ -394,7 +394,7 @@ export default function MobileView(p: {
     };
     setTasks((list) => list.map((x) => (x.id === t.id ? updatedTask : x)));
 
-    if (nextStatus === 'done' && opts?.showUndo !== false) {
+    if (nextStatus === 'done' && opts?.showUndo !== false && p.role !== 'operator') {
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
       setUndoToast({ task: updatedTask, prevStatus, prevCompletedAt, prevCompletedByIds, prevRemarks });
       undoTimerRef.current = setTimeout(() => setUndoToast(null), 6000);
@@ -413,6 +413,7 @@ export default function MobileView(p: {
     const crew = t.assigned_operator_ids.map((id) => opBy.get(id)?.full_name).filter(Boolean);
     const roles = classifyPmCompletionRoles(t);
     const canCloseThis = p.canClosePm && (p.role !== 'operator' || Boolean(p.operatorId));
+    const canModifyTask = canCloseThis && !(p.role === 'operator' && isDone);
 
     return (
       <div
@@ -489,7 +490,7 @@ export default function MobileView(p: {
           </div>
         )}
 
-        {canCloseThis ? (
+        {canModifyTask ? (
           <>
             <input
               className="input"
@@ -555,7 +556,14 @@ export default function MobileView(p: {
             </div>
           </>
         ) : (
-          t.remarks && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Notes: {t.remarks}</div>
+          <div style={{ display: 'grid', gap: 4 }}>
+            {t.remarks && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Notes: {t.remarks}</div>}
+            {p.role === 'operator' && isDone && (
+              <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                Completed · ask a supervisor to reopen or edit crew.
+              </div>
+            )}
+          </div>
         )}
       </div>
     );
@@ -903,6 +911,7 @@ export default function MobileView(p: {
           }}
           orgId={p.orgId}
           userId={p.userId ?? ''}
+          role={p.role}
           operatorId={p.operatorId}
           date={p.date}
           operators={p.operators}
@@ -920,6 +929,7 @@ export default function MobileView(p: {
         task={completeModal?.task ?? null}
         operators={p.operators}
         currentOperatorId={p.operatorId}
+        requireCurrentOperator={p.role === 'operator'}
         initialRemarks={completeModal ? (remarksDraft[completeModal.task.id] ?? completeModal.task.remarks ?? '') : ''}
         busy={Boolean(completeModal && busyId === completeModal.task.id)}
         onCancel={() => setCompleteModal(null)}
@@ -930,7 +940,7 @@ export default function MobileView(p: {
             completedAt: target.status === 'done' ? (target.completed_at ?? p.today) : p.today,
             completedByIds,
             remarks,
-            showUndo: completeModal.mode === 'complete',
+            showUndo: p.role !== 'operator' && completeModal.mode === 'complete',
           });
         }}
       />

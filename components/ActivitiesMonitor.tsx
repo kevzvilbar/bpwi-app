@@ -930,6 +930,7 @@ export default function ActivitiesMonitor(p: {
       {p.canLogActivity && loggerOpen && (
         <ActivityLoggerModal
           open={loggerOpen}
+          role={p.role}
           onClose={() => {
             setLoggerOpen(false);
             setLinkedJoForLog(null);

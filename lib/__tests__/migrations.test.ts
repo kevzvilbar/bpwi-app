@@ -12,7 +12,7 @@ describe('Supabase SQL migrations integrity', () => {
     .sort();
 
   it('has strictly sequential 3-digit prefixes with no gaps or duplicates', () => {
-    assert.ok(files.length >= 24, `Expected at least 24 migrations, found ${files.length}`);
+    assert.ok(files.length >= 26, `Expected at least 26 migrations, found ${files.length}`);
     const nums = files.map((f) => {
       const m = f.match(/^(\d{3})_/);
       assert.ok(m, `Migration filename must start with 3-digit prefix: ${f}`);
@@ -48,7 +48,7 @@ describe('Supabase SQL migrations integrity', () => {
     }
   });
 
-  it('documents 019–024 in supabase/migrations/README.md', () => {
+  it('documents 019–026 in supabase/migrations/README.md', () => {
     const readme = fs.readFileSync(path.join(MIGRATIONS_DIR, 'README.md'), 'utf8');
     assert.match(readme, /\b019\b/);
     assert.match(readme, /\b020\b/);
@@ -56,6 +56,26 @@ describe('Supabase SQL migrations integrity', () => {
     assert.match(readme, /\b022\b/);
     assert.match(readme, /\b023\b/);
     assert.match(readme, /\b024\b/);
+    assert.match(readme, /\b025\b/);
+    assert.match(readme, /\b026\b/);
+  });
+
+  it('fixes unchanged target re-validation on item status updates in 026_fix_change_request_item_org_trigger.sql', () => {
+    const sql26 = fs.readFileSync(path.join(MIGRATIONS_DIR, '026_fix_change_request_item_org_trigger.sql'), 'utf8');
+    assert.ok(sql26.includes('validate_change_request_item_org'), '026 missing validate_change_request_item_org');
+    assert.ok(sql26.includes('new.target_id is distinct from old.target_id'), '026 missing distinct target_id guard');
+  });
+
+  it('hardens PM operator close RLS & trigger in 025_harden_pm_operator_close.sql', () => {
+    const sql25 = fs.readFileSync(path.join(MIGRATIONS_DIR, '025_harden_pm_operator_close.sql'), 'utf8');
+    for (const required of [
+      "status <> 'done'",
+      'current_operator_id() = any(completed_by_operator_ids)',
+      'Operators cannot reopen or modify completed PM tasks',
+      'Unlisted operators may only close open PM tasks as done',
+    ]) {
+      assert.ok(sql25.includes(required), `025_harden_pm_operator_close.sql missing required construct: ${required}`);
+    }
   });
 
   it('tracks actual PM performers safely in 024_pm_actual_performers.sql', () => {

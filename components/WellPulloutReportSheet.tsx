@@ -7,6 +7,13 @@ import {
   hydrateWellPulloutDetails,
   resolveInstalledPulloutSpecs,
 } from '@/lib/well-pullout-types';
+import {
+  REPORT_BORDER,
+  REPORT_BORDER_HEAVY,
+  REPORT_SECTION_BAR_STYLE,
+  ReportLetterhead,
+  ReportSignatureGrid,
+} from '@/components/ReportSheetPrimitives';
 
 interface WellPulloutReportSheetProps {
   activity: DailyActivityRow;
@@ -16,20 +23,17 @@ interface WellPulloutReportSheetProps {
   crewNames?: string[];
 }
 
-const B = '1px solid #1e293b';
-const TB = '1.5px solid #0f172a';
+const B = REPORT_BORDER;
+const TB = REPORT_BORDER_HEAVY;
 const MIDDLE_W = '196px';
 const IR_COL_W = '64px';
 const PHASE_ROW_GRID = '116px repeat(3, minmax(0, 1fr))';
 const PHASE_SLOT_GRID = 'minmax(0, 1fr) 38px';
 
 const HDR_BAR: React.CSSProperties = {
-  background: '#e2e8f0',
-  color: '#0f172a',
-  fontWeight: 800,
+  ...REPORT_SECTION_BAR_STYLE,
   fontSize: 9,
   padding: '2.5px 6px',
-  borderBottom: B,
   lineHeight: 1.25,
 };
 
@@ -255,27 +259,13 @@ export default function WellPulloutReportSheet({
 
   return (
     <div style={{ display: 'grid', gap: 5, color: '#0f172a', fontFamily: 'Arial, sans-serif' }}>
-      {/* Company Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingBottom: 2 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/bpwi-logo.png" alt="BP Waterworks, Inc." style={{ width: 44, height: 33, objectFit: 'contain' }} />
-          <div>
-            <div style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: '0.02em' }}>
-              {orgName || 'BP Waterworks, Inc.'}
-            </div>
-            <div style={{ fontSize: 8.2, color: '#475569' }}>
-              Deepwell Operations &amp; Maintenance Accomplishment Report
-            </div>
-          </div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 10, fontWeight: 800 }}>Ref: ACT-{activity.id.slice(0, 8).toUpperCase()}</div>
-          <div style={{ fontSize: 8.2, color: '#475569' }}>
-            Activity Date: {formatPulloutDateDisplay(activity.activity_date) || 'N/A'}
-          </div>
-        </div>
-      </div>
+      <ReportLetterhead
+        variant="compact"
+        orgName={orgName}
+        subtitle="Deepwell Operations & Maintenance Accomplishment Report"
+        refCode={`Ref: ACT-${activity.id.slice(0, 8).toUpperCase()}`}
+        dateLabel={`Activity Date: ${formatPulloutDateDisplay(activity.activity_date) || 'N/A'}`}
+      />
 
       {/* Main Bordered Form */}
       <div style={{ border: TB }}>
@@ -770,31 +760,26 @@ export default function WellPulloutReportSheet({
           <strong>Not Ok</strong> - if Reading is NOT within acceptable range
         </div>
       </div>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: 36,
-          marginTop: 2,
-          fontSize: 8.8,
-          textAlign: 'center',
-        }}
-      >
-        <div>
-          <div style={{ textAlign: 'left', fontWeight: 700 }}>Checked By:</div>
-          <div style={{ height: 18, borderBottom: '1px solid #0f172a', fontWeight: 800, display: 'grid', placeItems: 'end center' }}>
-            {w.checkedByCoordinator}
-          </div>
-          <div style={{ fontSize: 8.2, fontWeight: 700, marginTop: 2 }}>Site Coordinator / Electrician</div>
-        </div>
-        <div>
-          <div style={{ textAlign: 'left', fontWeight: 700 }}>Noted By:</div>
-          <div style={{ height: 18, borderBottom: '1px solid #0f172a', fontWeight: 800, display: 'grid', placeItems: 'end center' }}>
-            {w.notedByEngineer}
-          </div>
-          <div style={{ fontSize: 8.2, fontWeight: 700, marginTop: 2 }}>Electromechanical Engineer / Technical Head</div>
-        </div>
-      </div>
+      <ReportSignatureGrid
+        entries={[
+          {
+            topLabel: 'Checked By:',
+            printedName: w.checkedByCoordinator,
+            roleTitle: '',
+            subtitle: 'Site Coordinator / Electrician',
+          },
+          {
+            topLabel: 'Noted By:',
+            printedName: w.notedByEngineer,
+            roleTitle: '',
+            subtitle: 'Electromechanical Engineer / Technical Head',
+          },
+        ]}
+        lineHeight={18}
+        gap={36}
+        marginTop={2}
+        fontSize={8.8}
+      />
     </div>
   );
 }

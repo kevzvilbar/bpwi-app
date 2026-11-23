@@ -65,8 +65,8 @@ async function setAuthUid(db: PGlite, uid: string | null) {
   await db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [uid ?? '']);
 }
 
-describe('PGlite SQL migrations 001–024 execution & security invariants', () => {
-  it('executes all 001–024 migrations cleanly and enforces sign-up, change-request, storage, org-seed, station-code, and PM credit hardening', async () => {
+describe('PGlite SQL migrations 001–026 execution & security invariants', () => {
+  it('executes all 001–026 migrations cleanly and enforces sign-up, change-request, storage, org-seed, station-code, and PM credit hardening', async () => {
     const db = new PGlite({ extensions: { pgcrypto } });
     await initSupabaseShim(db);
 
@@ -75,7 +75,7 @@ describe('PGlite SQL migrations 001–024 execution & security invariants', () =
       .filter((f) => f.endsWith('.sql'))
       .sort();
 
-    assert.ok(files.length >= 24, `Expected >= 24 migrations, found ${files.length}`);
+    assert.ok(files.length >= 26, `Expected >= 26 migrations, found ${files.length}`);
 
     for (const f of files) {
       const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8');
@@ -574,17 +574,32 @@ describe('PGlite SQL migrations 001–024 execution & security invariants', () =
       { full_name: 'Legacy RM Op', default_station: 'FD' },
     ]);
 
-    // 12. 024 PM actual performers: unlisted active operator in org can close & receive credit while assigned_operator_ids stays locked
-    const pmPolicy = await db.query<{ qual: string | null }>(
-      `select qual from pg_policies where schemaname = 'public' and tablename = 'pm_tasks' and policyname = 'pm_tasks operator close'`,
+    // 12. 024–025 PM actual performers: unlisted active operator can close open task as done
+    //     ONLY when crediting themselves; done tasks cannot be reopened or modified by operators.
+    const pmPolicy = await db.query<{ qual: string | null; with_check: string | null }>(
+      `select qual, with_check from pg_policies where schemaname = 'public' and tablename = 'pm_tasks' and policyname = 'pm_tasks operator close'`,
     );
     assert.equal(pmPolicy.rows.length, 1);
     assert.ok(!(pmPolicy.rows[0].qual ?? '').includes('assigned_operator_ids'));
+    assert.match(pmPolicy.rows[0].qual ?? '', /done/i);
+    assert.match(pmPolicy.rows[0].with_check ?? '', /completed_by_operator_ids/);
+    assert.match(pmPolicy.rows[0].with_check ?? '', /assigned_operator_ids/);
+
+    await db.exec(`
+      grant usage on schema public to authenticated;
+      grant select, update on pm_tasks to authenticated;
+      grant execute on function current_org(), current_role_name(), current_operator_id() to authenticated;
+    `);
 
     const subUserId = '44444444-4444-4444-8444-444444444444';
+    const assignedUserId = '55555555-5555-4555-8555-555555555555';
     await db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, 'subop@bpwi.test', $2::jsonb)`, [
       subUserId,
       JSON.stringify({ full_name: 'Substitute Op' }),
+    ]);
+    await db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, 'assignedop@bpwi.test', $2::jsonb)`, [
+      assignedUserId,
+      JSON.stringify({ full_name: 'Op One' }),
     ]);
     const subOpRes = await db.query<{ id: string }>(
       `insert into operators (organization_id, full_name) values ($1, 'Substitute Op') returning id`,
@@ -595,6 +610,10 @@ describe('PGlite SQL migrations 001–024 execution & security invariants', () =
       subUserId,
       subOpId,
     ]);
+    await db.query(`update user_profiles set role = 'operator', is_active = true, operator_id = $2 where id = $1`, [
+      assignedUserId,
+      opId,
+    ]);
 
     await setAuthUid(db, adminId);
     const pmTaskRes = await db.query<{ id: string }>(
@@ -604,14 +623,54 @@ describe('PGlite SQL migrations 001–024 execution & security invariants', () =
     );
     const pmTaskId = pmTaskRes.rows[0].id;
 
-    // Unlisted operator steps in to close task and record themselves as actual performer
+    // 12a. Assigned operator CAN update open task status (planned -> postponed -> planned) under ROLE authenticated
+    await setAuthUid(db, assignedUserId);
+    await db.exec('begin; set local role authenticated;');
+    const postponed = await db.query<{ status: string }>(
+      `update pm_tasks set status = 'postponed', completed_by_operator_ids = '{}' where id = $1 returning status::text`,
+      [pmTaskId],
+    );
+    assert.equal(postponed.rowCount, 1);
+    assert.equal(postponed.rows[0]?.status, 'postponed');
+    const replanned = await db.query<{ status: string }>(
+      `update pm_tasks set status = 'planned', completed_by_operator_ids = '{}' where id = $1 returning status::text`,
+      [pmTaskId],
+    );
+    assert.equal(replanned.rowCount, 1);
+    await db.exec('commit;');
+
+    // 12b. Unlisted substitute CANNOT postpone open task (RLS blocks + trigger blocks)
     await setAuthUid(db, subUserId);
-    await db.query(
+    await db.exec('begin; set local role authenticated;');
+    await assert.rejects(
+      () => db.query(`update pm_tasks set status = 'postponed' where id = $1`, [pmTaskId]),
+      /Unlisted operators may only close open PM tasks as done|row-level security policy/i,
+    );
+    await db.exec('rollback;');
+
+    // 12c. Unlisted substitute CANNOT close open task without including themselves in completed_by_operator_ids
+    await db.exec('begin; set local role authenticated;');
+    await assert.rejects(
+      () =>
+        db.query(
+          `update pm_tasks set status = 'done', completed_at = '2026-12-15', completed_by_operator_ids = array[$2]::uuid[] where id = $1`,
+          [pmTaskId, opId],
+        ),
+      /must be included in completed_by_operator_ids|row-level security policy/i,
+    );
+    await db.exec('rollback;');
+
+    // 12d. Unlisted substitute CAN close open task as 'done' when including themselves in completed_by_operator_ids
+    await db.exec('begin; set local role authenticated;');
+    const subClose = await db.query<{ id: string }>(
       `update pm_tasks
        set status = 'done', completed_at = '2026-12-15', remarks = 'Covered by substitute', completed_by_operator_ids = array[$2]::uuid[]
-       where id = $1`,
+       where id = $1 returning id`,
       [pmTaskId, subOpId],
     );
+    assert.equal(subClose.rowCount, 1);
+    await db.exec('commit;');
+
     const updatedPm = await db.query<{ assigned: string[]; performed: string[]; status: string }>(
       `select assigned_operator_ids as assigned, completed_by_operator_ids as performed, status::text from pm_tasks where id = $1`,
       [pmTaskId],
@@ -620,7 +679,35 @@ describe('PGlite SQL migrations 001–024 execution & security invariants', () =
     assert.deepEqual(updatedPm.rows[0]?.assigned, [opId]);
     assert.deepEqual(updatedPm.rows[0]?.performed, [subOpId]);
 
-    // Operator cannot tamper with planned assigned_operator_ids or insert cross-org performers
+    // 12e. Neither substitute nor planned assignee can reopen a done task or edit performers under ROLE authenticated (0 rows via USING) or trigger
+    await db.exec('begin; set local role authenticated;');
+    const subReopenRls = await db.query<{ id: string }>(
+      `update pm_tasks set status = 'planned', completed_by_operator_ids = '{}' where id = $1 returning id`,
+      [pmTaskId],
+    );
+    assert.equal(subReopenRls.rowCount, 0);
+    await db.exec('rollback;');
+
+    await setAuthUid(db, assignedUserId);
+    await db.exec('begin; set local role authenticated;');
+    const assigneeReopenRls = await db.query<{ id: string }>(
+      `update pm_tasks set status = 'planned', completed_by_operator_ids = '{}' where id = $1 returning id`,
+      [pmTaskId],
+    );
+    assert.equal(assigneeReopenRls.rowCount, 0);
+    await db.exec('rollback;');
+
+    await assert.rejects(
+      () => db.query(`update pm_tasks set status = 'planned', completed_by_operator_ids = '{}' where id = $1`, [pmTaskId]),
+      /Operators cannot reopen or modify completed PM tasks/i,
+    );
+    await assert.rejects(
+      () => db.query(`update pm_tasks set completed_by_operator_ids = array[$2]::uuid[] where id = $1`, [pmTaskId, opId]),
+      /Operators cannot reopen or modify completed PM tasks/i,
+    );
+
+    // 12f. Operator cannot tamper with planned assigned_operator_ids or insert cross-org performers
+    await setAuthUid(db, subUserId);
     await assert.rejects(
       () => db.query(`update pm_tasks set assigned_operator_ids = array[$2]::uuid[] where id = $1`, [pmTaskId, subOpId]),
       /may only update status, completed_at, remarks, and completed_by_operator_ids/i,
@@ -629,5 +716,13 @@ describe('PGlite SQL migrations 001–024 execution & security invariants', () =
       () => db.query(`update pm_tasks set completed_by_operator_ids = array[$2]::uuid[] where id = $1`, [pmTaskId, foreignOpId]),
       /does not belong to this organization/i,
     );
+
+    // 12g. Admin CAN still reopen a completed task and adjust actual performers
+    await setAuthUid(db, adminId);
+    await db.query(`update pm_tasks set status = 'planned', completed_at = null, completed_by_operator_ids = '{}' where id = $1`, [
+      pmTaskId,
+    ]);
+    const adminReopened = await db.query<{ status: string }>(`select status::text from pm_tasks where id = $1`, [pmTaskId]);
+    assert.equal(adminReopened.rows[0]?.status, 'planned');
   });
 });

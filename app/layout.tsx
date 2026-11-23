@@ -1,4 +1,5 @@
 import type { Viewport } from 'next';
+import { JetBrains_Mono, Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 import Nav from '@/components/Nav';
 import PwaRegister from '@/components/PwaRegister';
@@ -26,11 +27,28 @@ export const metadata = {
   },
 };
 
+const plusJakartaSans = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800'],
+  variable: '--font-sans',
+  display: 'swap',
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  weight: ['500', '600', '700'],
+  variable: '--font-mono',
+  display: 'swap',
+});
+
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  themeColor: '#0f172a',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#080d18' },
+  ],
 };
 
 const THEME_BOOTSTRAP_SCRIPT = `(function(){try{var t=localStorage.getItem('bpwi-theme');var d=t?t==='dark':(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);var hc=localStorage.getItem('bpwi-hc')==='1';document.documentElement.dataset.theme=d?'dark':'light';document.documentElement.dataset.contrast=hc?'high':'normal';}catch(e){}})();`;
@@ -87,7 +105,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   }
   const pendingApproval = profile.hasUser && !profile.isActive;
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={`${plusJakartaSans.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
       </head>

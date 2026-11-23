@@ -362,12 +362,19 @@ export function formatOsrmCoordinates(stops: LatLng[]): string {
   return stops.map((s) => `${s.lng.toFixed(6)},${s.lat.toFixed(6)}`).join(';');
 }
 
-/** Returns ordered free OSRM endpoints for the selected travel mode (or custom self-hosted base URL). */
-export function getOsrmEndpoints(travelMode: RouteTravelMode, customBaseUrl?: string): string[] {
+/** Returns ordered OSRM endpoints for the selected travel mode (self-hosted base URL, or optional public fallback). */
+export function getOsrmEndpoints(
+  travelMode: RouteTravelMode,
+  customBaseUrl?: string,
+  allowPublicFallback = true,
+): string[] {
   const trimmed = customBaseUrl?.trim().replace(/\/+$/, '');
   const profile = travelMode === 'WALK' ? 'foot' : 'driving';
   if (trimmed) {
     return [`${trimmed}/route/v1/${profile}`];
+  }
+  if (!allowPublicFallback) {
+    return [];
   }
   if (travelMode === 'WALK') {
     return ['https://routing.openstreetmap.de/routed-foot/route/v1/foot'];

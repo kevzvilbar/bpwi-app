@@ -404,7 +404,7 @@ export default function OrgChart(p: Props) {
                   </button>
                   <button
                     type="button"
-                    className="btn"
+                    className="btn btn-add"
                     onClick={() =>
                       setEditingPos({
                         title: '',

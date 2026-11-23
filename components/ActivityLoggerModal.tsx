@@ -99,6 +99,7 @@ export default function ActivityLoggerModal(p: {
   ) => void;
   orgId: string;
   userId: string;
+  role?: string;
   operatorId: string | null;
   date: string;
   operators: LoggerOperator[];
@@ -610,7 +611,7 @@ export default function ActivityLoggerModal(p: {
       const { data, error } = await sb.from('daily_activities').insert(payload).select(DAILY_ACTIVITY_LIST_COLUMNS).single();
       if (error) throw error;
 
-      const pmPerformers = p.linkedPmTask?.id ? buildPmActualPerformerIds(leadOpId, crewOpIds) : undefined;
+      const pmPerformers = p.linkedPmTask?.id ? buildPmActualPerformerIds(leadOpId, p.role === 'operator' && p.operatorId ? [...crewOpIds, p.operatorId] : crewOpIds) : undefined;
       if (p.linkedPmTask?.id) {
         const pmBase = {
           status: 'done',

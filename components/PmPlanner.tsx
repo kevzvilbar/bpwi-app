@@ -639,8 +639,7 @@ export default function PmPlanner(p: {
             </div>
             {p.canEdit && (
               <button
-                className="btn"
-                style={{ background: '#0f766e', borderColor: '#0f766e', color: '#ffffff', fontWeight: 700 }}
+                className="btn btn-add"
                 onClick={() => setDraft(blank(selectedDate))}
               >
                 + Schedule PM

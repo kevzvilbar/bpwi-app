@@ -7,6 +7,17 @@ import {
   computeLeakVolumeLoss,
   hydrateLeakLossDetails,
 } from '@/lib/leak-volume-loss';
+import {
+  BPWI_COMPANY_ADDRESS,
+  REPORT_BORDER,
+  REPORT_BORDER_HEAVY,
+  REPORT_META_BOX_STYLE,
+  REPORT_SECTION_BAR_STYLE,
+  REPORT_TABLE_STYLE,
+  ReportLetterhead,
+  ReportSignatureGrid,
+  formatReportPrintedTs,
+} from '@/components/ReportSheetPrimitives';
 
 interface LeakVolumeLossReportSheetProps {
   activity: DailyActivityRow;
@@ -16,20 +27,7 @@ interface LeakVolumeLossReportSheetProps {
   crewNames?: string[];
 }
 
-const B = '1px solid #1e293b';
-
-function fmtPrintedTs(ts: string): string {
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return ts;
-  return new Intl.DateTimeFormat('en-PH', {
-    timeZone: 'Asia/Manila',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(d);
-}
+const B = REPORT_BORDER;
 
 /**
  * Printable BPWI "COMPUTATION OF VOLUME LOSS" document modeled on the official Excel sheet:
@@ -70,53 +68,40 @@ export default function LeakVolumeLossReportSheet({
       ? ` (${leak.leakReportedAt} → ${leak.valveIsolatedAt})`
       : '';
 
-  const sigCols = isThirdParty ? 3 : 2;
+  const sigEntries = [
+    {
+      printedName: leadOpName,
+      roleTitle: 'Prepared By (Field Operations)',
+      subtitle: crewNames.length > 0 ? `Crew: ${crewNames.join(', ')}` : 'Lead Operator / Technician',
+    },
+    {
+      roleTitle: 'Checked / Verified By',
+      subtitle: 'Supervisor / Billing Representative',
+    },
+    ...(isThirdParty
+      ? [
+          {
+            printedName: leak.responsibleParty || '',
+            roleTitle: 'Acknowledged By (Responsible Party)',
+            subtitle: 'Signature over Printed Name',
+          },
+        ]
+      : []),
+  ];
 
   return (
     <div style={{ color: '#0f172a', fontSize: 11.5, lineHeight: 1.35, display: 'grid', gap: 12 }}>
-      {/* Letterhead */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          borderBottom: '2px solid #0f172a',
-          paddingBottom: 10,
-          gap: 12,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/bpwi-logo.png" alt="BP Waterworks, Inc." style={{ width: 52, height: 39, objectFit: 'contain' }} />
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 13 }}>{orgName || 'BP Waterworks, Inc.'}</div>
-            <div style={{ fontSize: 10, color: '#475569' }}>
-              Unit 1B–5B 2nd Floor, 5J&apos;s Commercial Building, Zone 7 Rd 8, Don Julio Subd., Pavia, Iloilo · Tel. (0917) 631-1427
-            </div>
-            <h1 style={{ margin: '2px 0 0', fontSize: 15, fontWeight: 800, letterSpacing: '0.03em' }}>
-              COMPUTATION OF VOLUME LOSS
-            </h1>
-          </div>
-        </div>
-        <div style={{ textAlign: 'right', fontSize: 11 }}>
-          <div style={{ fontWeight: 800, fontSize: 13.5 }}>{refCode}</div>
-          <div>Date: {activity.activity_date}</div>
-          <div style={{ color: '#475569', fontSize: 10 }}>Printed: {fmtPrintedTs(new Date().toISOString())}</div>
-        </div>
-      </div>
+      <ReportLetterhead
+        orgName={orgName}
+        subtitle={BPWI_COMPANY_ADDRESS}
+        title="COMPUTATION OF VOLUME LOSS"
+        refCode={refCode}
+        dateLabel={`Date: ${activity.activity_date}`}
+        printedTs={formatReportPrintedTs(new Date().toISOString())}
+      />
 
       {/* Incident / Site Metadata */}
-      <div
-        style={{
-          border: B,
-          padding: '8px 10px',
-          background: '#f8fafc',
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '4px 14px',
-          fontSize: 11,
-        }}
-      >
+      <div style={REPORT_META_BOX_STYLE}>
         <div><b>Business Area / Station:</b> {areaLabel || '—'}</div>
         <div><b>Location / Site:</b> {locationLine}</div>
         <div><b>Pipe Size &amp; Spec:</b> {pipeSize}</div>
@@ -137,16 +122,8 @@ export default function LeakVolumeLossReportSheet({
       </div>
 
       {/* Section I: Theoretical Orifice Volume Loss */}
-      <div style={{ border: '1.5px solid #0f172a' }}>
-        <div
-          style={{
-            background: '#e2e8f0',
-            padding: '5px 8px',
-            fontWeight: 800,
-            fontSize: 11.5,
-            borderBottom: B,
-          }}
-        >
+      <div style={{ border: REPORT_BORDER_HEAVY }}>
+        <div style={REPORT_SECTION_BAR_STYLE}>
           I. Computation of Volume Loss
         </div>
 
@@ -193,7 +170,7 @@ export default function LeakVolumeLossReportSheet({
         </div>
 
         {/* Field Observed Data */}
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+        <table style={REPORT_TABLE_STYLE}>
           <thead>
             <tr style={{ background: '#f1f5f9' }}>
               <th style={{ borderBottom: B, borderRight: B, padding: '4px 8px', textAlign: 'left', width: '58%' }}>
@@ -239,7 +216,7 @@ export default function LeakVolumeLossReportSheet({
       </div>
 
       {/* Section II: Items Summary (Quantity & Unit Only; Cost left blank for Billing area tariff) */}
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, border: '1.5px solid #0f172a' }}>
+      <table style={{ ...REPORT_TABLE_STYLE, border: REPORT_BORDER_HEAVY }}>
         <thead>
           <tr style={{ background: '#e2e8f0' }}>
             <th style={{ border: B, padding: '5px 8px', textAlign: 'left', width: '48%' }}>Items</th>
@@ -296,40 +273,7 @@ export default function LeakVolumeLossReportSheet({
       </div>
 
       {/* Signatures */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: `repeat(${sigCols}, 1fr)`,
-          gap: 24,
-          marginTop: 22,
-          textAlign: 'center',
-          fontSize: 11,
-        }}
-      >
-        <div>
-          <div style={{ borderBottom: '1px solid #0f172a', height: 34, marginBottom: 4, display: 'grid', placeItems: 'end center', fontWeight: 600 }}>
-            {leadOpName}
-          </div>
-          <b>Prepared By (Field Operations)</b>
-          <div style={{ fontSize: 10, color: '#475569' }}>
-            {crewNames.length > 0 ? `Crew: ${crewNames.join(', ')}` : 'Lead Operator / Technician'}
-          </div>
-        </div>
-        <div>
-          <div style={{ borderBottom: '1px solid #0f172a', height: 34, marginBottom: 4 }} />
-          <b>Checked / Verified By</b>
-          <div style={{ fontSize: 10, color: '#475569' }}>Supervisor / Billing Representative</div>
-        </div>
-        {isThirdParty && (
-          <div>
-            <div style={{ borderBottom: '1px solid #0f172a', height: 34, marginBottom: 4, display: 'grid', placeItems: 'end center', fontWeight: 600 }}>
-              {leak.responsibleParty || ''}
-            </div>
-            <b>Acknowledged By (Responsible Party)</b>
-            <div style={{ fontSize: 10, color: '#475569' }}>Signature over Printed Name</div>
-          </div>
-        )}
-      </div>
+      <ReportSignatureGrid entries={sigEntries} gap={24} />
     </div>
   );
 }

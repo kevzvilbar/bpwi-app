@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type * as LeafletNS from 'leaflet';
 import { fmtTimeManila } from '@/lib/date';
 import { formatGpsBadgeLabel } from '@/lib/gps-accuracy';
+import { DEFAULT_LEAFLET_TILE_OPTIONS, resolveMapTileConfig } from '@/lib/map-tiles';
 import type { LatLng, RouteStop } from '@/lib/route-footprints';
 
 export type FreeMapStyle = 'street' | 'satellite';
@@ -205,18 +206,12 @@ export default function FreeRouteMap(p: {
       tileLayerRef.current = null;
     }
 
-    const tileUrl =
-      p.mapStyle === 'satellite'
-        ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-        : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-    const attribution =
-      p.mapStyle === 'satellite'
-        ? 'Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics'
-        : '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors';
-
-    tileLayerRef.current = L.tileLayer(tileUrl, {
-      attribution,
-      maxZoom: 19,
+    const tileConfig = resolveMapTileConfig(p.mapStyle);
+    tileLayerRef.current = L.tileLayer(tileConfig.url, {
+      attribution: tileConfig.attribution,
+      maxNativeZoom: tileConfig.maxNativeZoom,
+      maxZoom: tileConfig.maxZoom,
+      ...DEFAULT_LEAFLET_TILE_OPTIONS,
     }).addTo(map);
   }, [ready, p.mapStyle]);
 

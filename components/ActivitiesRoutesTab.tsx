@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import type { DailyActivityRow } from '@/lib/activity-types';
 import { fmtTimeManila } from '@/lib/date';
 import { startHighAccuracyGpsCapture } from '@/lib/gps-accuracy';
+import { resolveMapTileConfig } from '@/lib/map-tiles';
 import {
   buildRouteCacheKey,
   buildStraightLineRoute,
@@ -378,7 +379,7 @@ export default function ActivitiesRoutesTab(p: {
           <div>
             <strong style={{ fontSize: 15 }}>Daily Field Footprints &amp; Travel Distance ({p.date})</strong>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              Plots chronological GPS check-ins on OpenStreetMap and estimates road distance using free OSRM routing (no API key required).
+              Plots chronological GPS check-ins on the map and estimates road distance using configured OSRM routing.
             </div>
           </div>
           {p.canVerifyActivity && (
@@ -755,7 +756,7 @@ export default function ActivitiesRoutesTab(p: {
           )}
 
           <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-            Location note: Coordinates reflect operator-initiated GPS check-ins captured when submitting daily field activities. Map tiles from OpenStreetMap / Esri; road distances estimated via free OSRM routing.
+            Location note: Coordinates reflect operator-initiated GPS check-ins captured when submitting daily field activities. Active map tiles: {resolveMapTileConfig(mapStyle).providerLabel}; road distances computed via server-side OSRM routing with straight-line fallback.
           </div>
         </div>
       )}

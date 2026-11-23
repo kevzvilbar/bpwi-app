@@ -136,4 +136,197 @@ describe('approve/reject change request: conflicts, overrides, partial flow (023
       assert.match(h.review_notes ?? '', /^Batch 1\nNot this one\nRemaining items rejected: Out of scope$/);
     }
   });
+
+  it('enforces approve_change_request & reject_change_request regression guards across all migrations', async () => {
+    const db = await bootDb();
+    const ADMIN = '11111111-1111-4111-8111-111111111111';
+    const HEAD = '22222222-2222-4222-8222-222222222222';
+    const HEAD_NO_APPROVE = '33333333-3333-4333-8333-333333333333';
+    const OPERATOR = '44444444-4444-4444-8444-444444444444';
+    const VIEWER = '55555555-5555-4555-8555-555555555555';
+    const OTHER_ADMIN = '66666666-6666-4666-8666-666666666666';
+    const uid = (u: string) => db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [u]);
+
+    // 1. Privilege & definition guards (no re-opening to anon/public, retains row lock & RPC flag)
+    const priv = await db.query<{
+      ap_pub: boolean; ap_anon: boolean; ap_auth: boolean;
+      rj_pub: boolean; rj_anon: boolean; rj_auth: boolean;
+      ap_def: string;
+    }>(`
+      select
+        has_function_privilege('public', 'approve_change_request(uuid,uuid[],uuid[],text,boolean,boolean)', 'EXECUTE') as ap_pub,
+        has_function_privilege('anon', 'approve_change_request(uuid,uuid[],uuid[],text,boolean,boolean)', 'EXECUTE') as ap_anon,
+        has_function_privilege('authenticated', 'approve_change_request(uuid,uuid[],uuid[],text,boolean,boolean)', 'EXECUTE') as ap_auth,
+        has_function_privilege('public', 'reject_change_request(uuid,text)', 'EXECUTE') as rj_pub,
+        has_function_privilege('anon', 'reject_change_request(uuid,text)', 'EXECUTE') as rj_anon,
+        has_function_privilege('authenticated', 'reject_change_request(uuid,text)', 'EXECUTE') as rj_auth,
+        pg_get_functiondef('approve_change_request(uuid,uuid[],uuid[],text,boolean,boolean)'::regprocedure) as ap_def
+    `);
+    assert.equal(priv.rows[0].ap_pub, false);
+    assert.equal(priv.rows[0].ap_anon, false);
+    assert.equal(priv.rows[0].ap_auth, true);
+    assert.equal(priv.rows[0].rj_pub, false);
+    assert.equal(priv.rows[0].rj_anon, false);
+    assert.equal(priv.rows[0].rj_auth, true);
+    assert.match(priv.rows[0].ap_def, /for update/i);
+    assert.match(priv.rows[0].ap_def, /app\.change_request_rpc/i);
+
+    await db.query(`insert into auth.users (id,email,raw_user_meta_data) values ($1,'a@t','{"full_name":"Admin"}'::jsonb)`, [ADMIN]);
+    await db.query(`insert into auth.users (id,email,raw_user_meta_data) values ($1,'h@t','{"full_name":"Head"}'::jsonb)`, [HEAD]);
+    await db.query(`insert into auth.users (id,email,raw_user_meta_data) values ($1,'hn@t','{"full_name":"Head NoApprove"}'::jsonb)`, [HEAD_NO_APPROVE]);
+    await db.query(`insert into auth.users (id,email,raw_user_meta_data) values ($1,'o@t','{"full_name":"Op"}'::jsonb)`, [OPERATOR]);
+    await db.query(`insert into auth.users (id,email,raw_user_meta_data) values ($1,'v@t','{"full_name":"Viewer"}'::jsonb)`, [VIEWER]);
+    await db.query(`update user_profiles set role='manager', is_active=true, can_approve=true where id=$1`, [HEAD]);
+    await db.query(`update user_profiles set role='manager', is_active=true, can_approve=false where id=$1`, [HEAD_NO_APPROVE]);
+    await db.query(`update user_profiles set role='operator', is_active=true where id=$1`, [OPERATOR]);
+    await db.query(`update user_profiles set role='viewer', is_active=true where id=$1`, [VIEWER]);
+
+    const org = (await db.query<{ o: string }>(`select organization_id o from user_profiles where id=$1`, [ADMIN])).rows[0].o;
+    const org2 = (await db.query<{ id: string }>(`insert into organizations (name) values ('Second Org') returning id`)).rows[0].id;
+    await db.query(`insert into auth.users (id,email,raw_user_meta_data) values ($1,'a2@t','{"full_name":"Other Admin"}'::jsonb)`, [OTHER_ADMIN]);
+    await db.query(`update user_profiles set organization_id=$2, role='admin', is_active=true where id=$1`, [OTHER_ADMIN, org2]);
+
+    const op = (await db.query<{ id: string }>(`insert into operators (organization_id,full_name) values ($1,'Op 1') returning id`, [org])).rows[0].id;
+    const op2 = (await db.query<{ id: string }>(`insert into operators (organization_id,full_name) values ($1,'Op 2') returning id`, [org])).rows[0].id;
+    const s1 = (await db.query<{ id: string }>(`insert into shift_types (organization_id,code,duration_hours) values ($1,'7-4',8) returning id`, [org])).rows[0].id;
+
+    // Seed pending request submitted by HEAD
+    await uid(HEAD);
+    const reqId = (await db.query<{ id: string }>(`insert into change_requests (organization_id,requester_id,title) values ($1,$2,'Guard Test') returning id`, [org, HEAD])).rows[0].id;
+    await db.query(
+      `insert into change_request_items (request_id,organization_id,target_table,action,operator_id,schedule_date,shift_type_id)
+       values ($1,$2,'schedule_assignments','upsert',$3,'2026-12-20',$4)`,
+      [reqId, org, op, s1],
+    );
+    await db.query(`select submit_change_request($1,'please review')`, [reqId]);
+
+    // 2. Role & cross-org authorization checks
+    for (const actor of [OPERATOR, VIEWER, HEAD_NO_APPROVE]) {
+      await uid(actor);
+      await assert.rejects(() => db.query(`select approve_change_request($1)`, [reqId]), /Permission denied/i);
+      await assert.rejects(() => db.query(`select reject_change_request($1, 'no')`, [reqId]), /Permission denied/i);
+    }
+    await uid(OTHER_ADMIN);
+    await assert.rejects(() => db.query(`select approve_change_request($1)`, [reqId]), /Change request not found/i);
+    await assert.rejects(() => db.query(`select reject_change_request($1, 'cross org')`, [reqId]), /Change request not found/i);
+
+    // 3. Self-approval & self-rejection guards (delegated manager never allowed even with p_allow_self_override = true)
+    await uid(HEAD);
+    await assert.rejects(
+      () => db.query(`select approve_change_request($1, null, null, null, false, true)`, [reqId]),
+      /cannot approve their own change requests/i,
+    );
+    await assert.rejects(
+      () => db.query(`select reject_change_request($1, 'self')`, [reqId]),
+      /cannot reject their own change requests/i,
+    );
+
+    // 4. Draft request cannot be approved or rejected prematurely; direct table status mutation blocked
+    await uid(HEAD);
+    const draftId = (await db.query<{ id: string }>(`insert into change_requests (organization_id,requester_id,title,status) values ($1,$2,'Draft Req','draft') returning id`, [org, HEAD])).rows[0].id;
+    await uid(ADMIN);
+    await assert.rejects(() => db.query(`select approve_change_request($1)`, [draftId]), /not open for approval \(current status: draft\)/i);
+    await assert.rejects(() => db.query(`select reject_change_request($1, 'nope')`, [draftId]), /Cannot reject change request in draft status/i);
+    await assert.rejects(() => db.query(`update change_requests set status='approved' where id=$1`, [reqId]), /only be changed through approve_change_request/i);
+
+    // Terminal statuses (approved, rejected, cancelled) cannot be re-processed
+    await db.query(`select approve_change_request($1)`, [reqId]);
+    await assert.rejects(() => db.query(`select approve_change_request($1)`, [reqId]), /not open for approval \(current status: approved\)/i);
+    await assert.rejects(() => db.query(`select reject_change_request($1, 'after')`, [reqId]), /Cannot reject change request in approved status/i);
+
+    await uid(HEAD);
+    const rejReqId = (await db.query<{ id: string }>(`insert into change_requests (organization_id,requester_id,title) values ($1,$2,'Reject Me') returning id`, [org, HEAD])).rows[0].id;
+    await db.query(`insert into change_request_items (request_id,organization_id,target_table,action,operator_id,schedule_date,shift_type_id) values ($1,$2,'schedule_assignments','upsert',$3,'2026-12-21',$4)`, [rejReqId, org, op, s1]);
+    await db.query(`select submit_change_request($1,null)`, [rejReqId]);
+    await uid(ADMIN);
+    await db.query(`select reject_change_request($1, 'Declined')`, [rejReqId]);
+    await assert.rejects(() => db.query(`select approve_change_request($1)`, [rejReqId]), /not open for approval \(current status: rejected\)/i);
+    await assert.rejects(() => db.query(`select reject_change_request($1, 'Again')`, [rejReqId]), /Cannot reject change request in rejected status/i);
+
+    // 5. Additional 023 conflict cases: standby empty-cell, deleted leave, leave date range, PM assigned_operator_ids & orphaned PM task
+    await uid(HEAD);
+    const advReqId = (await db.query<{ id: string }>(`insert into change_requests (organization_id,requester_id,title) values ($1,$2,'Adv Conflicts') returning id`, [org, HEAD])).rows[0].id;
+    const leaveDelId = (await db.query<{ id: string }>(`insert into leave_records (organization_id,operator_id,leave_code,start_date,end_date) values ($1,$2,'VL','2027-01-10','2027-01-11') returning id`, [org, op])).rows[0].id;
+    const pmAssignId = (await db.query<{ id: string }>(`insert into pm_tasks (organization_id,title,activity_type,scheduled_date,assigned_operator_ids,status) values ($1,'Pump Check','maintenance','2027-01-12',array[$2]::uuid[],'planned') returning id`, [org, op])).rows[0].id;
+
+    const sbEmptyIt = (await db.query<{ id: string }>(
+      `insert into change_request_items (request_id,organization_id,target_table,action,operator_id,schedule_date,standby_type,original_state)
+       values ($1,$2,'standby_assignments','upsert',$3,'2027-01-08','OC',null) returning id`,
+      [advReqId, org, op],
+    )).rows[0].id;
+    const leaveDelIt = (await db.query<{ id: string }>(
+      `insert into change_request_items (request_id,organization_id,target_table,target_id,action,operator_id,schedule_date,leave_code,leave_start_date,leave_end_date,original_state)
+       values ($1,$2,'leave_records',$3,'upsert',$4,'2027-01-10','SL','2027-01-10','2027-01-12','{"leave_code":"VL","start_date":"2027-01-10","end_date":"2027-01-11"}'::jsonb) returning id`,
+      [advReqId, org, leaveDelId, op],
+    )).rows[0].id;
+    const pmAssignIt = (await db.query<{ id: string }>(
+      `insert into change_request_items (request_id,organization_id,target_table,action,schedule_date,pm_task_id,pm_title,pm_status,pm_assigned_operator_ids,original_state)
+       values ($1,$2,'pm_tasks','upsert','2027-01-12',$3,'Pump Check','planned',array[$4]::uuid[],$5::jsonb) returning id`,
+      [advReqId, org, pmAssignId, op2, JSON.stringify({ title: 'Pump Check', status: 'planned', scheduled_date: '2027-01-12', assigned_operator_ids: [op] })],
+    )).rows[0].id;
+    const pmOrphanIt = (await db.query<{ id: string }>(
+      `insert into change_request_items (request_id,organization_id,target_table,action,schedule_date,pm_task_id,pm_title,pm_status,original_state)
+       values ($1,$2,'pm_tasks','upsert','2027-01-13',null,'Orphan','planned','{"title":"Existing"}'::jsonb) returning id`,
+      [advReqId, org],
+    )).rows[0].id;
+    await db.query(`select submit_change_request($1,null)`, [advReqId]);
+
+    // Concurrent external mutations before review
+    await uid(ADMIN);
+    await db.query(`insert into standby_assignments (organization_id,operator_id,schedule_date,standby_type) values ($1,$2,'2027-01-08','ERP')`, [org, op]);
+    await db.query(`delete from leave_records where id=$1`, [leaveDelId]);
+    await db.query(`update pm_tasks set assigned_operator_ids = array[$2]::uuid[] where id=$1`, [pmAssignId, op2]);
+
+    const firstTry = (await db.query<{ res: { conflict_count: number; approved_count: number } }>(
+      `select approve_change_request($1, array[$2,$3,$4,$5]::uuid[], null, null, false, false) as res`,
+      [advReqId, sbEmptyIt, leaveDelIt, pmAssignIt, pmOrphanIt],
+    )).rows[0].res;
+    assert.equal(firstTry.conflict_count, 4);
+    assert.equal(firstTry.approved_count, 0);
+
+    // Override discards deleted leave + orphan PM task cleanly while forcing live standby/PM updates
+    const forcedTry = (await db.query<{ res: { approved_count: number; rejected_count: number } }>(
+      `select approve_change_request($1, array[$2,$3,$4,$5]::uuid[], null, 'Force resolution', true, false) as res`,
+      [advReqId, sbEmptyIt, leaveDelIt, pmAssignIt, pmOrphanIt],
+    )).rows[0].res;
+    assert.equal(forcedTry.approved_count, 2); // standby + pmAssign
+    assert.equal(forcedTry.rejected_count, 2); // deleted leave + orphan PM task
+    const recreatedLeave = (await db.query<{ n: number }>(`select count(*)::int n from leave_records where operator_id=$1 and start_date='2027-01-10'`, [op])).rows[0].n;
+    assert.equal(recreatedLeave, 0, 'deleted leave_records row must not be recreated on override');
+
+    // Invalid leave range fails fast
+    await uid(HEAD);
+    const badLeaveReq = (await db.query<{ id: string }>(`insert into change_requests (organization_id,requester_id,title) values ($1,$2,'Bad Leave Range') returning id`, [org, HEAD])).rows[0].id;
+    await db.query(
+      `insert into change_request_items (request_id,organization_id,target_table,action,operator_id,schedule_date,leave_code,leave_start_date,leave_end_date)
+       values ($1,$2,'leave_records','upsert',$3,'2027-02-05','VL','2027-02-10','2027-02-05')`,
+      [badLeaveReq, org, op],
+    );
+    await db.query(`select submit_change_request($1,null)`, [badLeaveReq]);
+    await uid(ADMIN);
+    await assert.rejects(() => db.query(`select approve_change_request($1)`, [badLeaveReq]), /Invalid leave date range/i);
+
+    // Deleting a leave_records row must still allow reject_change_request to close the request,
+    // while explicitly mutating target_id to a foreign org's leave record remains blocked.
+    await uid(HEAD);
+    const leaveDelRejTarget = (await db.query<{ id: string }>(`insert into leave_records (organization_id,operator_id,leave_code,start_date,end_date) values ($1,$2,'VL','2027-03-01','2027-03-02') returning id`, [org, op])).rows[0].id;
+    const rejDelReq = (await db.query<{ id: string }>(`insert into change_requests (organization_id,requester_id,title) values ($1,$2,'Reject Deleted Leave') returning id`, [org, HEAD])).rows[0].id;
+    const rejDelItem = (await db.query<{ id: string }>(
+      `insert into change_request_items (request_id,organization_id,target_table,target_id,action,operator_id,schedule_date,leave_code,leave_start_date,leave_end_date)
+       values ($1,$2,'leave_records',$3,'upsert',$4,'2027-03-01','VL','2027-03-01','2027-03-03') returning id`,
+      [rejDelReq, org, leaveDelRejTarget, op],
+    )).rows[0].id;
+    await db.query(`select submit_change_request($1,null)`, [rejDelReq]);
+    await db.query(`delete from leave_records where id=$1`, [leaveDelRejTarget]);
+    await uid(ADMIN);
+    await db.query(`select reject_change_request($1, 'Target gone')`, [rejDelReq]);
+    assert.equal((await db.query<{ status: string }>(`select status from change_requests where id=$1`, [rejDelReq])).rows[0].status, 'rejected');
+
+    const opOrg2 = (await db.query<{ id: string }>(`insert into operators (organization_id,full_name) values ($1,'Other Org Op') returning id`, [org2])).rows[0].id;
+    const leaveOrg2 = (await db.query<{ id: string }>(`insert into leave_records (organization_id,operator_id,leave_code,start_date,end_date) values ($1,$2,'VL','2027-03-10','2027-03-11') returning id`, [org2, opOrg2])).rows[0].id;
+    await assert.rejects(
+      () => db.query(`update change_request_items set target_id=$2 where id=$1`, [rejDelItem, leaveOrg2]),
+      /Leave record does not belong to this organization/i,
+    );
+  });
 });

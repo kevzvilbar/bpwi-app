@@ -32,6 +32,7 @@ interface PmCompleteModalProps {
   task: PmCompleteModalTask | null;
   operators: PmCompleteModalOp[];
   currentOperatorId?: string | null;
+  requireCurrentOperator?: boolean;
   initialRemarks?: string;
   busy?: boolean;
   onCancel: () => void;
@@ -48,6 +49,7 @@ export default function PmCompleteModal({
   task,
   operators,
   currentOperatorId,
+  requireCurrentOperator = false,
   initialRemarks,
   busy = false,
   onCancel,
@@ -60,16 +62,20 @@ export default function PmCompleteModal({
   useEffect(() => {
     if (!open || !task) return;
     const explicit = uniqueOperatorIds(task.completed_by_operator_ids);
-    const initialIds =
+    const baseIds =
       mode === 'edit' && explicit.length > 0
         ? explicit
         : mode === 'edit' && task.status === 'done'
           ? resolvePmCreditedOperators(task)
           : getDefaultPmPerformers(task, currentOperatorId);
+    const initialIds =
+      requireCurrentOperator && currentOperatorId
+        ? uniqueOperatorIds([...baseIds, currentOperatorId])
+        : baseIds;
     setSelectedIds(initialIds);
     setRemarks(initialRemarks !== undefined ? initialRemarks : (task.remarks ?? ''));
     setSearch('');
-  }, [open, task, mode, currentOperatorId, initialRemarks]);
+  }, [open, task, mode, currentOperatorId, initialRemarks, requireCurrentOperator]);
 
   useEffect(() => {
     if (!open) return;
@@ -115,6 +121,9 @@ export default function PmCompleteModal({
   });
 
   function toggleOp(id: string) {
+    if (requireCurrentOperator && currentOperatorId && id === currentOperatorId && selectedSet.has(id)) {
+      return;
+    }
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
@@ -159,11 +168,13 @@ export default function PmCompleteModal({
               {plannedIds.map((id) => {
                 const checked = selectedSet.has(id);
                 const isMe = id === currentOperatorId;
+                const isLockedSelf = Boolean(requireCurrentOperator && isMe && checked);
                 return (
                   <button
                     key={id}
                     type="button"
                     disabled={busy}
+                    title={isLockedSelf ? 'Required: your name must stay selected when closing a PM task' : undefined}
                     onClick={() => toggleOp(id)}
                     style={{
                       display: 'inline-flex',
@@ -173,7 +184,7 @@ export default function PmCompleteModal({
                       borderRadius: 999,
                       fontSize: 12.5,
                       fontWeight: 700,
-                      cursor: busy ? 'wait' : 'pointer',
+                      cursor: busy ? 'wait' : isLockedSelf ? 'default' : 'pointer',
                       border: checked ? '1.5px solid #0f766e' : '1.5px dashed var(--border)',
                       background: checked ? 'var(--ok-bg)' : 'var(--surface-muted)',
                       color: checked ? 'var(--ok-fg)' : 'var(--text-muted)',
@@ -185,6 +196,7 @@ export default function PmCompleteModal({
                       {nameOf(id)}
                       {isMe ? ' (Me)' : ''}
                     </span>
+                    {isLockedSelf && <span style={{ fontSize: 10, fontWeight: 600 }}>🔒</span>}
                     {!checked && <span style={{ fontSize: 10.5, fontWeight: 600 }}>Not participating</span>}
                   </button>
                 );
@@ -226,11 +238,13 @@ export default function PmCompleteModal({
               unlistedOperators.map((o) => {
                 const checked = selectedSet.has(o.id);
                 const isMe = o.id === currentOperatorId;
+                const isLockedSelf = Boolean(requireCurrentOperator && isMe && checked);
                 return (
                   <button
                     key={o.id}
                     type="button"
                     disabled={busy}
+                    title={isLockedSelf ? 'Required: your name must stay selected when closing a PM task' : undefined}
                     onClick={() => toggleOp(o.id)}
                     style={{
                       display: 'inline-flex',
@@ -240,7 +254,7 @@ export default function PmCompleteModal({
                       borderRadius: 999,
                       fontSize: 12,
                       fontWeight: checked ? 700 : 500,
-                      cursor: busy ? 'wait' : 'pointer',
+                      cursor: busy ? 'wait' : isLockedSelf ? 'default' : 'pointer',
                       border: checked ? '1.5px solid #d97706' : '1px solid var(--border)',
                       background: checked ? 'var(--warn-bg)' : 'var(--surface)',
                       color: checked ? 'var(--warn-fg)' : 'var(--text)',
@@ -252,7 +266,9 @@ export default function PmCompleteModal({
                       {isMe ? ' (Me)' : ''}
                     </span>
                     {checked && (
-                      <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase' }}>Sub</span>
+                      <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase' }}>
+                        {isLockedSelf ? 'Sub 🔒' : 'Sub'}
+                      </span>
                     )}
                   </button>
                 );
@@ -290,6 +306,11 @@ export default function PmCompleteModal({
               {roles.absentPlannedIds.length > 0 && (
                 <div style={{ color: 'var(--text-secondary)' }}>
                   Planned not participating (0 Done credit): {roles.absentPlannedIds.map(nameOf).join(', ')}
+                </div>
+              )}
+              {requireCurrentOperator && currentOperatorId && (
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                  You must remain included as an actual performer when closing a PM task.
                 </div>
               )}
             </>

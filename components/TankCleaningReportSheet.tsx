@@ -16,6 +16,13 @@ import {
   formatPulloutDateDisplay,
   normalizePulloutTimeHHMM,
 } from '@/lib/well-pullout-types';
+import {
+  REPORT_ACCENT,
+  REPORT_BORDER_HEAVY,
+  REPORT_BORDER_LIGHT,
+  ReportLetterhead,
+  ReportSignatureGrid,
+} from '@/components/ReportSheetPrimitives';
 
 type LookupOp = { id: string; full_name: string; position: string | null };
 
@@ -27,9 +34,9 @@ interface TankCleaningReportSheetProps {
   crewOps: LookupOp[];
 }
 
-const B = '1px solid #cbd5e1';
-const THICK_B = '1.5px solid #0f172a';
-const ACCENT = '#0369a1';
+const B = REPORT_BORDER_LIGHT;
+const THICK_B = REPORT_BORDER_HEAVY;
+const ACCENT = REPORT_ACCENT;
 
 const SEC_TITLE: React.CSSProperties = {
   color: ACCENT,
@@ -303,31 +310,13 @@ export default function TankCleaningReportSheet({
 
   return (
     <div style={{ display: 'grid', gap: 10, color: '#0f172a', fontFamily: 'Arial, sans-serif' }}>
-      {/* Company Header */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-end',
-          borderBottom: `2px solid ${ACCENT}`,
-          paddingBottom: 6,
-          gap: 12,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/bpwi-logo.png" alt="BP Waterworks, Inc." style={{ width: 48, height: 36, objectFit: 'contain' }} />
-          <div>
-            <div style={{ fontSize: 9, fontWeight: 800, color: ACCENT, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-              {orgName || 'BP Waterworks, Inc.'} · Operational Maintenance &amp; Water Quality Assurance
-            </div>
-            <h1 style={{ margin: 0, fontSize: 15.5, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase' }}>
-              Tank Cleaning &amp; Sanitation Accomplishment Report
-            </h1>
-          </div>
-        </div>
-        <div style={{ textAlign: 'right', display: 'grid', gap: 3, justifyItems: 'end' }}>
-          <span style={{ fontSize: 11, fontWeight: 800 }}>{reportNo}</span>
+      <ReportLetterhead
+        variant="accent"
+        orgName={orgName}
+        eyebrow={`${orgName || 'BP Waterworks, Inc.'} · Operational Maintenance & Water Quality Assurance`}
+        title="Tank Cleaning & Sanitation Accomplishment Report"
+        refCode={reportNo}
+        rightSlot={
           <span
             style={{
               ...clearanceBadgeStyle(evalRes.overall),
@@ -340,8 +329,8 @@ export default function TankCleaningReportSheet({
           >
             {clearanceText}
           </span>
-        </div>
-      </div>
+        }
+      />
 
       {/* Metadata Summary Table */}
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -556,30 +545,29 @@ export default function TankCleaningReportSheet({
       {/* 7. Sign-Off & Verification */}
       <div style={{ breakInside: 'avoid' }}>
         <div style={SEC_TITLE}>7. Sign-Off &amp; Verification</div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', border: THICK_B }}>
-          <thead>
-            <tr>
-              <th style={TH_CELL}>Prepared By</th>
-              <th style={TH_CELL}>Noted By</th>
-              <th style={TH_CELL}>Approved By</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              {[
-                { name: preparedByName, role: preparedByRole },
-                { name: tc.notedByName || ' ', role: 'Technical Head / Supervisor' },
-                { name: tc.approvedByName || ' ', role: 'Manager / Unit Head' },
-              ].map((sig, i) => (
-                <td key={i} style={{ ...TD_CELL, width: '33.33%', padding: '6px 8px' }}>
-                  <div style={{ height: 28, borderBottom: '1px solid #0f172a', marginBottom: 4 }} />
-                  <div style={{ fontWeight: 800, fontSize: 9.5 }}>{sig.name}</div>
-                  <div style={{ fontSize: 8.5, color: '#475569' }}>{sig.role} · Date: __________</div>
-                </td>
-              ))}
-            </tr>
-          </tbody>
-        </table>
+        <ReportSignatureGrid
+          variant="boxed"
+          entries={[
+            {
+              topLabel: 'Prepared By',
+              printedName: preparedByName,
+              roleTitle: 'Prepared By',
+              subtitle: `${preparedByRole} · Date: __________`,
+            },
+            {
+              topLabel: 'Noted By',
+              printedName: tc.notedByName || ' ',
+              roleTitle: 'Noted By',
+              subtitle: 'Technical Head / Supervisor · Date: __________',
+            },
+            {
+              topLabel: 'Approved By',
+              printedName: tc.approvedByName || ' ',
+              roleTitle: 'Approved By',
+              subtitle: 'Manager / Unit Head · Date: __________',
+            },
+          ]}
+        />
       </div>
     </div>
   );

@@ -308,6 +308,7 @@ describe('free OSRM helpers & duplicate stop compression', () => {
       getOsrmEndpoints('WALK', 'https://osrm.example.com///'),
       ['https://osrm.example.com/route/v1/foot'],
     );
+    assert.deepEqual(getOsrmEndpoints('DRIVE', undefined, false), []);
   });
 
   it('compresses consecutive duplicate stops and expands routed legs back to original intervals', () => {

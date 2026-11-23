@@ -132,35 +132,19 @@ function LoginForm() {
   }
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'grid',
-        placeItems: 'center',
-        padding: 16,
-      }}
-    >
-      <div
-        className="card"
-        style={{
-          width: '100%',
-          maxWidth: 380,
-          padding: 28,
-          borderRadius: 12,
-          boxShadow: '0 4px 20px rgba(15, 23, 42, 0.12)',
-        }}
-      >
-        <div style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12 }}>
+    <div className="login-shell">
+      <div className="card login-card">
+        <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
           <img
             src="/bpwi-logo.svg"
             alt="BP Waterworks, Inc."
             style={{ width: 56, height: 42, objectFit: 'contain', flexShrink: 0 }}
           />
           <div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
               BP Waterworks, Inc.
             </div>
-            <h1 style={{ fontSize: 19, margin: '2px 0 0', color: 'var(--text)' }}>Plant Operations Schedule</h1>
+            <h1 style={{ fontSize: 19.5, fontWeight: 800, letterSpacing: '-0.025em', margin: '2px 0 0', color: 'var(--text)' }}>Plant Operations Schedule</h1>
           </div>
         </div>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 14px' }}>

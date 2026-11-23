@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import { useEffect, useRef, useState } from 'react';
 import type * as LeafletNS from 'leaflet';
 import { SegmentedTabs } from '@/components/ui';
+import { DEFAULT_LEAFLET_TILE_OPTIONS, resolveMapTileConfig } from '@/lib/map-tiles';
 import type { FreeMapStyle } from '@/components/FreeRouteMap';
 
 const DEFAULT_PH_CENTER: [number, number] = [10.7202, 122.5621];
@@ -162,19 +163,12 @@ export default function GpsPinPickerModal(p: {
       tileLayerRef.current = null;
     }
 
-    const tileUrl =
-      mapStyle === 'satellite'
-        ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-        : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-    const attribution =
-      mapStyle === 'satellite'
-        ? 'Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics'
-        : '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors';
-
-    tileLayerRef.current = L.tileLayer(tileUrl, {
-      attribution,
-      maxNativeZoom: mapStyle === 'satellite' ? 18 : 19,
-      maxZoom: 20,
+    const tileConfig = resolveMapTileConfig(mapStyle);
+    tileLayerRef.current = L.tileLayer(tileConfig.url, {
+      attribution: tileConfig.attribution,
+      maxNativeZoom: tileConfig.maxNativeZoom,
+      maxZoom: tileConfig.maxZoom,
+      ...DEFAULT_LEAFLET_TILE_OPTIONS,
     }).addTo(map);
   }, [ready, mapStyle]);
 
