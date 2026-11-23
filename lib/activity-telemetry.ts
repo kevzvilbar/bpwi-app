@@ -6,6 +6,7 @@ import {
   hydrateTankCleaningDetails,
 } from './tank-cleaning-types.ts';
 import { computeLeakVolumeLoss, hydrateLeakLossDetails } from './leak-volume-loss.ts';
+import { formatFlushingMeterStatusLabel, hydrateFlushingSummaryFromDetails } from './flushing-volume.ts';
 
 export function formatTelemetrySummary(act: DailyActivityRow): string[] {
   const d = act.details ?? {};
@@ -29,8 +30,18 @@ export function formatTelemetrySummary(act: DailyActivityRow): string[] {
     if (prim('totalizerReading') !== null) parts.push(`Totalizer: ${prim('totalizerReading')} m³`);
     if (prim('chlorineResidual') !== null) parts.push(`Cl₂: ${prim('chlorineResidual')} mg/L`);
   } else if (act.activity_type === 'flushing') {
-    if (prim('flushingInitialRead') !== null || prim('flushingFinalRead') !== null) {
+    const flushSummary = hydrateFlushingSummaryFromDetails(d);
+    if (flushSummary.meterStatus !== 'metered') {
+      parts.push(`Meter: ${formatFlushingMeterStatusLabel(flushSummary.meterStatus)}`);
+      if (flushSummary.totalVolumeM3 !== null) {
+        parts.push(
+          `Est. Flushing Vol: ${flushSummary.totalVolumeM3.toFixed(2)} m³ (${flushSummary.computedPointCount} pt${flushSummary.computedPointCount === 1 ? '' : 's'})`,
+        );
+      }
+    } else if (prim('flushingInitialRead') !== null || prim('flushingFinalRead') !== null) {
       parts.push(`Main Read: ${prim('flushingInitialRead') ?? '—'} → ${prim('flushingFinalRead') ?? '—'}`);
+    } else if (flushSummary.basis === 'blowoff_meters' && flushSummary.totalVolumeM3 !== null) {
+      parts.push(`Flushed Vol: ${flushSummary.totalVolumeM3.toFixed(2)} m³`);
     }
     if (Array.isArray(d.blowOffs) && d.blowOffs.length > 0) {
       parts.push(`${d.blowOffs.length} blow-off point(s)`);

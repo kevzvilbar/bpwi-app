@@ -9,10 +9,16 @@ import {
   computeLeakVolumeLoss,
   hydrateLeakLossDetails,
 } from '@/lib/leak-volume-loss';
+import {
+  FLUSHING_INTERNAL_DETAIL_KEYS,
+  formatFlushingMeterStatusLabel,
+  hydrateFlushingSummaryFromDetails,
+} from '@/lib/flushing-volume';
 import { computeJobOrderSlaStatus, formatSlaDurationLabel } from '@/lib/job-order-sla';
 import WellPulloutReportSheet from '@/components/WellPulloutReportSheet';
 import TankCleaningReportSheet from '@/components/TankCleaningReportSheet';
 import LeakVolumeLossReportSheet from '@/components/LeakVolumeLossReportSheet';
+import FlushingVolumeReportSheet from '@/components/FlushingVolumeReportSheet';
 
 type LookupOp = { id: string; full_name: string; position: string | null };
 type LookupArea = { id: string; code: string; name: string | null };
@@ -57,7 +63,7 @@ function ReportViewport({ children }: { children: React.ReactNode }) {
 }
 
 export default function PrintableActivityReport(p: {
-  mode: 'activity' | 'meter_test' | 'well_pull_out' | 'tank_cleaning' | 'leak_volume_loss';
+  mode: 'activity' | 'meter_test' | 'well_pull_out' | 'tank_cleaning' | 'leak_volume_loss' | 'flushing_volume';
   orgName: string;
   activity?: DailyActivityRow | null;
   jobOrder?: JobOrderRow | null;
@@ -75,6 +81,7 @@ export default function PrintableActivityReport(p: {
   useEffect(() => {
     const preferForm =
       p.mode === 'leak_volume_loss' ||
+      p.mode === 'flushing_volume' ||
       p.mode === 'well_pull_out' ||
       p.mode === 'tank_cleaning' ||
       actType === 'well_pull_out' ||
@@ -133,6 +140,7 @@ export default function PrintableActivityReport(p: {
   const isPulloutEligible = act?.activity_type === 'well_pull_out';
   const isTankCleaningEligible = act?.activity_type === 'tank_cleaning';
   const isLeakRepairEligible = act?.activity_type === 'leak_repair';
+  const isFlushingEligible = act?.activity_type === 'flushing';
   const showPulloutSheet = Boolean(
     act && (p.mode === 'well_pull_out' || isPulloutEligible) && sheetView === 'form',
   );
@@ -142,14 +150,24 @@ export default function PrintableActivityReport(p: {
   const showLeakVolumeSheet = Boolean(
     act && (p.mode === 'leak_volume_loss' || (isLeakRepairEligible && sheetView === 'form')),
   );
-  const hideGenericHeader = showPulloutSheet || showTankCleaningSheet || showLeakVolumeSheet;
+  const showFlushingVolumeSheet = Boolean(
+    act && (p.mode === 'flushing_volume' || (isFlushingEligible && sheetView === 'form')),
+  );
+  const hideGenericHeader =
+    showPulloutSheet || showTankCleaningSheet || showLeakVolumeSheet || showFlushingVolumeSheet;
   const areaLabel = areaObj ? `${areaObj.code}${areaObj.name ? ` · ${areaObj.name}` : ''}` : '';
   const gpsInfo = act ? formatTaggedGpsPosition(act.gps_lat, act.gps_lng, det) : null;
   const leakLossState = isLeakRepairEligible && act ? hydrateLeakLossDetails(det) : null;
   const leakLossCalc = leakLossState ? computeLeakVolumeLoss(leakLossState) : null;
+  const flushingSummary = isFlushingEligible && act ? hydrateFlushingSummaryFromDetails(det) : null;
   const telemetryEntries = act
     ? Object.entries(det)
-        .filter(([key]) => !GPS_INTERNAL_DETAIL_KEYS.has(key) && !LEAK_INTERNAL_DETAIL_KEYS.has(key))
+        .filter(
+          ([key]) =>
+            !GPS_INTERNAL_DETAIL_KEYS.has(key) &&
+            !LEAK_INTERNAL_DETAIL_KEYS.has(key) &&
+            !FLUSHING_INTERNAL_DETAIL_KEYS.has(key),
+        )
         .map(([key, val]) => {
           if (val === null || val === undefined || val === '') return null;
           const formattedVal = Array.isArray(val)
@@ -159,6 +177,16 @@ export default function PrintableActivityReport(p: {
                     const m = item as { item?: unknown; qty?: unknown; unit?: unknown };
                     const u = typeof m.unit === 'string' && m.unit.trim() ? ` ${m.unit.trim()}` : '';
                     return `${String(m.item ?? '')} (${String(m.qty ?? '1')}${u})`;
+                  }
+                  if (key === 'blowOffs' && typeof item === 'object' && item !== null) {
+                    const b = item as { name?: unknown; initialRead?: unknown; finalRead?: unknown; diameterMm?: unknown; pressurePsi?: unknown; durationMinutes?: unknown; volumeM3?: unknown };
+                    if (b.volumeM3 != null && b.diameterMm != null) {
+                      return `${String(b.name ?? 'Blow-off')} (${String(b.diameterMm)}mm @ ${String(b.pressurePsi ?? '—')} PSI, ${String(b.durationMinutes ?? '—')} min = ${Number(b.volumeM3).toFixed(2)} m³)`;
+                    }
+                    if (b.initialRead != null || b.finalRead != null) {
+                      return `${String(b.name ?? 'Blow-off')} (${String(b.initialRead ?? '—')} → ${String(b.finalRead ?? '—')} m³)`;
+                    }
+                    return String(b.name ?? 'Blow-off');
                   }
                   return typeof item === 'object' && item !== null ? Object.values(item).filter(Boolean).join(' · ') : String(item);
                 })
@@ -244,9 +272,11 @@ export default function PrintableActivityReport(p: {
                     ? 'Tank Cleaning & Sanitation Accomplishment Report'
                     : showLeakVolumeSheet
                       ? 'Computation of Volume Loss & Materials Preview'
-                      : 'Field Operations / Job Order Report Preview'}
+                      : showFlushingVolumeSheet
+                        ? 'Computation of Flushing Volume Preview'
+                        : 'Field Operations / Job Order Report Preview'}
             </strong>
-            {(isPulloutEligible || isTankCleaningEligible || isLeakRepairEligible) && (
+            {(isPulloutEligible || isTankCleaningEligible || isLeakRepairEligible || isFlushingEligible) && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button
                   type="button"
@@ -258,7 +288,9 @@ export default function PrintableActivityReport(p: {
                     ? '📄 Official Tank Cleaning Report'
                     : isLeakRepairEligible
                       ? '💧 Computation of Volume Loss'
-                      : '📄 Official Deepwell Pull-Out Form'}
+                      : isFlushingEligible
+                        ? '💧 Computation of Flushing Volume'
+                        : '📄 Official Deepwell Pull-Out Form'}
                 </button>
                 <button
                   type="button"
@@ -326,6 +358,16 @@ export default function PrintableActivityReport(p: {
         ) : showLeakVolumeSheet && act ? (
           <ReportViewport>
             <LeakVolumeLossReportSheet
+              activity={act}
+              orgName={p.orgName}
+              areaLabel={areaLabel}
+              leadOpName={leadOp?.full_name ?? ''}
+              crewNames={crewOps}
+            />
+          </ReportViewport>
+        ) : showFlushingVolumeSheet && act ? (
+          <ReportViewport>
+            <FlushingVolumeReportSheet
               activity={act}
               orgName={p.orgName}
               areaLabel={areaLabel}
@@ -510,6 +552,21 @@ export default function PrintableActivityReport(p: {
                       <div><b>Account / Plate / Ref:</b> {leakLossState.responsibleAccountNo || '—'}</div>
                     </>
                   )}
+                </div>
+              </div>
+            )}
+
+            {act && isFlushingEligible && flushingSummary && (flushingSummary.meterStatus !== 'metered' || flushingSummary.totalVolumeM3 !== null) && (
+              <div style={{ border: '1px solid #334155', padding: 12, background: '#f8fafc', display: 'grid', gap: 4 }}>
+                <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: 11, color: '#334155' }}>
+                  Flushing Volume Summary
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  <div><b>Mother Meter Status:</b> {formatFlushingMeterStatusLabel(flushingSummary.meterStatus)}</div>
+                  <div>
+                    <b>{flushingSummary.meterStatus === 'metered' ? 'Total Flushed Volume:' : 'Est. Theoretical Volume:'}</b>{' '}
+                    {flushingSummary.totalVolumeM3 !== null ? `${flushingSummary.totalVolumeM3.toFixed(2)} m³` : 'Not computed'}
+                  </div>
                 </div>
               </div>
             )}

@@ -39,6 +39,16 @@ type MonAsg = { operator_id: string; schedule_date: string; shift_type_id: strin
 type MonStandby = { operator_id: string; standby_type: string };
 type MonPm = { id: string; activity_type: string; title: string; scheduled_date: string; completed_at: string | null; status: string; assigned_operator_ids: string[]; completed_by_operator_ids?: string[] | null };
 
+type PrintPreviewMode = 'activity' | 'meter_test' | 'well_pull_out' | 'tank_cleaning' | 'leak_volume_loss' | 'flushing_volume';
+
+const SPECIAL_PRINT_BUTTONS: Record<string, { mode: PrintPreviewMode; label: string; color: string }> = {
+  meter_test: { mode: 'meter_test', label: '🖨 Meter Certificate', color: 'var(--violet)' },
+  well_pull_out: { mode: 'well_pull_out', label: '🖨 Pull-Out Form', color: 'var(--accent)' },
+  tank_cleaning: { mode: 'tank_cleaning', label: '🖨 Tank Cleaning Report', color: 'var(--ok-fg)' },
+  leak_repair: { mode: 'leak_volume_loss', label: '💧 Volume Loss Sheet', color: 'var(--danger)' },
+  flushing: { mode: 'flushing_volume', label: '💧 Flushing Volume Sheet', color: 'var(--accent)' },
+};
+
 function daysUntil(iso: string | null | undefined) {
   if (!iso) return null;
   const ms = new Date(iso).getTime() - Date.now();
@@ -88,7 +98,7 @@ export default function ActivitiesMonitor(p: {
 
   // Printable preview state
   const [printState, setPrintState] = useState<{
-    mode: 'activity' | 'meter_test' | 'well_pull_out' | 'tank_cleaning' | 'leak_volume_loss';
+    mode: PrintPreviewMode;
     activity?: DailyActivityRow | null;
     jobOrder?: JobOrderRow | null;
   } | null>(null);
@@ -799,26 +809,14 @@ export default function ActivitiesMonitor(p: {
                       <button type="button" className="btn" onClick={() => setPrintState({ mode: 'activity', activity: act })} style={{ fontSize: 11.5 }}>
                         🖨 Print Report
                       </button>
-                      {act.activity_type === 'meter_test' && (
-                        <button type="button" className="btn" onClick={() => setPrintState({ mode: 'meter_test', activity: act })} style={{ fontSize: 11.5, color: 'var(--violet)', fontWeight: 700 }}>
-                          🖨 Meter Certificate
-                        </button>
-                      )}
-                      {act.activity_type === 'well_pull_out' && (
-                        <button type="button" className="btn" onClick={() => setPrintState({ mode: 'well_pull_out', activity: act })} style={{ fontSize: 11.5, color: 'var(--accent)', fontWeight: 700 }}>
-                          🖨 Pull-Out Form
-                        </button>
-                      )}
-                      {act.activity_type === 'tank_cleaning' && (
-                        <button type="button" className="btn" onClick={() => setPrintState({ mode: 'tank_cleaning', activity: act })} style={{ fontSize: 11.5, color: 'var(--ok-fg)', fontWeight: 700 }}>
-                          🖨 Tank Cleaning Report
-                        </button>
-                      )}
-                      {act.activity_type === 'leak_repair' && (
-                        <button type="button" className="btn" onClick={() => setPrintState({ mode: 'leak_volume_loss', activity: act })} style={{ fontSize: 11.5, color: 'var(--danger)', fontWeight: 700 }}>
-                          💧 Volume Loss Sheet
-                        </button>
-                      )}
+                      {SPECIAL_PRINT_BUTTONS[act.activity_type] && (() => {
+                        const sp = SPECIAL_PRINT_BUTTONS[act.activity_type];
+                        return (
+                          <button type="button" className="btn" onClick={() => setPrintState({ mode: sp.mode, activity: act })} style={{ fontSize: 11.5, color: sp.color, fontWeight: 700 }}>
+                            {sp.label}
+                          </button>
+                        );
+                      })()}
                       {(p.isAdmin || act.logged_by === p.userId) && act.status !== 'verified' && (
                         <>
                           <button type="button" className="btn" onClick={() => { setLinkedJoForLog(null); setEditingActivity(act); setLoggerOpen(true); }} style={{ fontSize: 11.5 }}>

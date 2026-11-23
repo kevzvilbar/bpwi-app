@@ -17,6 +17,12 @@ import {
   hydrateLeakLossDetails,
   type LeakVolumeLossFormState,
 } from './leak-volume-loss.ts';
+import {
+  computeFlushingVolume,
+  hasBlowOffOrificeInputs,
+  hydrateFlushingMeterStatus,
+  type FlushingMeterStatus,
+} from './flushing-volume.ts';
 
 export type { WellPulloutFormDetails } from './well-pullout-types.ts';
 export { INITIAL_WELL_PULLOUT_DETAILS } from './well-pullout-types.ts';
@@ -24,11 +30,18 @@ export type { TankCleaningFormDetails } from './tank-cleaning-types.ts';
 export { INITIAL_TANK_CLEANING_DETAILS } from './tank-cleaning-types.ts';
 export type { LeakVolumeLossFormState } from './leak-volume-loss.ts';
 export { INITIAL_LEAK_LOSS_STATE } from './leak-volume-loss.ts';
+export type { FlushingMeterStatus } from './flushing-volume.ts';
 
 export interface BlowOffItem {
   name: string;
   initialRead: string;
   finalRead: string;
+  diameterMm?: string;
+  pressurePsi?: string;
+  dischargeCoeff?: string;
+  startTime?: string;
+  endTime?: string;
+  durationMinutes?: string;
 }
 
 export interface UsedMaterialItem {
@@ -59,6 +72,7 @@ export interface ActivityDetailFieldsState {
   chlorineResidual: string;
 
   // 3. Flushing
+  flushingMeterStatus: FlushingMeterStatus;
   flushingInitialRead: string;
   flushingFinalRead: string;
   blowOffs: BlowOffItem[];
@@ -131,6 +145,7 @@ export const INITIAL_ACTIVITY_DETAIL_FIELDS: ActivityDetailFieldsState = {
   flowLps: '',
   totalizerReading: '',
   chlorineResidual: '',
+  flushingMeterStatus: 'metered',
   flushingInitialRead: '',
   flushingFinalRead: '',
   blowOffs: [{ name: 'Blow-off 1', initialRead: '', finalRead: '' }],
@@ -204,6 +219,7 @@ export function hydrateActivityDetailFields(
   if (d.flowLps != null) next.flowLps = String(d.flowLps);
   if (d.totalizerReading != null) next.totalizerReading = String(d.totalizerReading);
   if (d.chlorineResidual != null) next.chlorineResidual = String(d.chlorineResidual);
+  next.flushingMeterStatus = hydrateFlushingMeterStatus(d);
   if (d.flushingInitialRead != null) next.flushingInitialRead = String(d.flushingInitialRead);
   if (d.flushingFinalRead != null) next.flushingFinalRead = String(d.flushingFinalRead);
 
@@ -212,6 +228,12 @@ export function hydrateActivityDetailFields(
       name: typeof b.name === 'string' ? b.name : '',
       initialRead: b.initialRead != null ? String(b.initialRead) : '',
       finalRead: b.finalRead != null ? String(b.finalRead) : '',
+      ...(b.diameterMm != null && String(b.diameterMm) !== '' ? { diameterMm: String(b.diameterMm) } : {}),
+      ...(b.pressurePsi != null && String(b.pressurePsi) !== '' ? { pressurePsi: String(b.pressurePsi) } : {}),
+      ...(b.dischargeCoeff != null && String(b.dischargeCoeff) !== '' ? { dischargeCoeff: String(b.dischargeCoeff) } : {}),
+      ...(typeof b.startTime === 'string' && b.startTime !== '' ? { startTime: b.startTime } : {}),
+      ...(typeof b.endTime === 'string' && b.endTime !== '' ? { endTime: b.endTime } : {}),
+      ...(b.durationMinutes != null && String(b.durationMinutes) !== '' ? { durationMinutes: String(b.durationMinutes) } : {}),
     }));
     if (mapped.length > 0) next.blowOffs = mapped;
   }
@@ -316,14 +338,50 @@ export function buildActivityDetailsPayload(
     };
   }
   if (activityType === 'flushing') {
+    const useOrifice = f.flushingMeterStatus !== 'metered' || hasBlowOffOrificeInputs(f.blowOffs);
+    if (!useOrifice) {
+      return {
+        flushingInitialRead: f.flushingInitialRead ? Number(f.flushingInitialRead) : null,
+        flushingFinalRead: f.flushingFinalRead ? Number(f.flushingFinalRead) : null,
+        blowOffs: f.blowOffs.map((b) => ({
+          name: b.name,
+          initialRead: b.initialRead ? Number(b.initialRead) : null,
+          finalRead: b.finalRead ? Number(b.finalRead) : null,
+        })),
+      };
+    }
+    const summary = computeFlushingVolume({
+      meterStatus: f.flushingMeterStatus,
+      flushingInitialRead: f.flushingInitialRead,
+      flushingFinalRead: f.flushingFinalRead,
+      blowOffs: f.blowOffs,
+    });
     return {
-      flushingInitialRead: f.flushingInitialRead ? Number(f.flushingInitialRead) : null,
-      flushingFinalRead: f.flushingFinalRead ? Number(f.flushingFinalRead) : null,
-      blowOffs: f.blowOffs.map((b) => ({
-        name: b.name,
-        initialRead: b.initialRead ? Number(b.initialRead) : null,
-        finalRead: b.finalRead ? Number(b.finalRead) : null,
-      })),
+      flushingMeterStatus: f.flushingMeterStatus,
+      flushingInitialRead: null,
+      flushingFinalRead: null,
+      blowOffs: f.blowOffs.map((b, idx) => {
+        const pt = summary.blowOffPoints[idx];
+        const orf = pt?.orifice;
+        return {
+          name: b.name,
+          diameterMm: b.diameterMm?.trim() ? Number(b.diameterMm) : null,
+          pressurePsi: b.pressurePsi?.trim() ? Number(b.pressurePsi) : null,
+          dischargeCoeff: b.dischargeCoeff?.trim() ? Number(b.dischargeCoeff) : 0.6,
+          startTime: b.startTime?.trim() || null,
+          endTime: b.endTime?.trim() || null,
+          durationMinutes: orf ? orf.durationMinutes : b.durationMinutes?.trim() ? Number(b.durationMinutes) : null,
+          areaM2: orf ? Number(orf.areaM2.toFixed(6)) : null,
+          deltaPa: orf ? Number(orf.deltaPa.toFixed(4)) : null,
+          flowM3PerSec: orf ? Number(orf.flowM3PerSec.toFixed(6)) : null,
+          volumeM3: pt?.volumeM3 ?? null,
+        };
+      }),
+      flushingVolume: {
+        basis: summary.basis,
+        totalVolumeM3: summary.totalVolumeM3,
+        computedPointCount: summary.computedPointCount,
+      },
     };
   }
   if (activityType === 'meter_test') {

@@ -9,6 +9,7 @@ import {
 import WellPulloutFields from '@/components/WellPulloutFields';
 import TankCleaningFields from '@/components/TankCleaningFields';
 import LeakRepairFields from '@/components/LeakRepairFields';
+import FlushingFields from '@/components/FlushingFields';
 
 interface ActivityCategoryFieldsProps {
   activityType: string;
@@ -108,92 +109,7 @@ export default function ActivityCategoryFields({
         </div>
       )}
 
-      {activityType === 'flushing' && (
-        <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: 'var(--info-border)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong style={{ fontSize: 12.5, color: 'var(--accent)' }}>Line Flushing &amp; Blow-Off Readings</strong>
-            <button
-              type="button"
-              className="btn"
-              style={{ minHeight: 28, padding: '2px 8px', fontSize: 11.5 }}
-              onClick={() =>
-                setFields((prev) => ({
-                  ...prev,
-                  blowOffs: [...prev.blowOffs, { name: `Blow-off ${prev.blowOffs.length + 1}`, initialRead: '', finalRead: '' }],
-                }))
-              }
-            >
-              + Add Point
-            </button>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-              Main Meter Initial (m³)
-              <input className="input" type="number" step="0.01" value={fields.flushingInitialRead} onChange={(e) => patch({ flushingInitialRead: e.target.value })} />
-            </label>
-            <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-              Main Meter Final (m³)
-              <input className="input" type="number" step="0.01" value={fields.flushingFinalRead} onChange={(e) => patch({ flushingFinalRead: e.target.value })} />
-            </label>
-          </div>
-          {fields.blowOffs.map((bo, idx) => (
-            <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr auto', gap: 6, alignItems: 'end' }}>
-              <input
-                className="input"
-                placeholder="Point name"
-                value={bo.name}
-                onChange={(e) =>
-                  setFields((prev) => ({
-                    ...prev,
-                    blowOffs: prev.blowOffs.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)),
-                  }))
-                }
-              />
-              <input
-                className="input"
-                type="number"
-                step="0.01"
-                placeholder="Initial"
-                value={bo.initialRead}
-                onChange={(e) =>
-                  setFields((prev) => ({
-                    ...prev,
-                    blowOffs: prev.blowOffs.map((x, i) => (i === idx ? { ...x, initialRead: e.target.value } : x)),
-                  }))
-                }
-              />
-              <input
-                className="input"
-                type="number"
-                step="0.01"
-                placeholder="Final"
-                value={bo.finalRead}
-                onChange={(e) =>
-                  setFields((prev) => ({
-                    ...prev,
-                    blowOffs: prev.blowOffs.map((x, i) => (i === idx ? { ...x, finalRead: e.target.value } : x)),
-                  }))
-                }
-              />
-              {fields.blowOffs.length > 1 && (
-                <button
-                  type="button"
-                  className="btn"
-                  style={{ minHeight: 38, padding: '0 8px', color: 'var(--danger)' }}
-                  onClick={() =>
-                    setFields((prev) => ({
-                      ...prev,
-                      blowOffs: prev.blowOffs.filter((_, i) => i !== idx),
-                    }))
-                  }
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+      {activityType === 'flushing' && <FlushingFields fields={fields} setFields={setFields} />}
 
       {activityType === 'meter_test' && (
         <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: 'var(--violet-border)' }}>
