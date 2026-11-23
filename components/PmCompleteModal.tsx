@@ -62,16 +62,20 @@ export default function PmCompleteModal({
   useEffect(() => {
     if (!open || !task) return;
     const explicit = uniqueOperatorIds(task.completed_by_operator_ids);
+    const taskPlannedSet = new Set(uniqueOperatorIds(task.assigned_operator_ids));
     const baseIds =
       mode === 'edit' && explicit.length > 0
         ? explicit
         : mode === 'edit' && task.status === 'done'
           ? resolvePmCreditedOperators(task)
           : getDefaultPmPerformers(task, currentOperatorId);
+    const allowedBase = requireCurrentOperator
+      ? baseIds.filter((id) => taskPlannedSet.has(id) || id === currentOperatorId)
+      : baseIds;
     const initialIds =
       requireCurrentOperator && currentOperatorId
-        ? uniqueOperatorIds([...baseIds, currentOperatorId])
-        : baseIds;
+        ? uniqueOperatorIds([...allowedBase, currentOperatorId])
+        : allowedBase;
     setSelectedIds(initialIds);
     setRemarks(initialRemarks !== undefined ? initialRemarks : (task.remarks ?? ''));
     setSearch('');
@@ -121,8 +125,9 @@ export default function PmCompleteModal({
   });
 
   function toggleOp(id: string) {
-    if (requireCurrentOperator && currentOperatorId && id === currentOperatorId && selectedSet.has(id)) {
-      return;
+    if (requireCurrentOperator) {
+      if (currentOperatorId && id === currentOperatorId && selectedSet.has(id)) return;
+      if (!plannedSet.has(id) && id !== currentOperatorId) return;
     }
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
@@ -206,46 +211,15 @@ export default function PmCompleteModal({
         </div>
 
         {/* Section 2: Unlisted Personnel / Substitutes */}
-        <div style={{ display: 'grid', gap: 6 }}>
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-            Add Unlisted Personnel / Substitutes
-          </div>
-          <input
-            type="search"
-            className="input"
-            placeholder="Filter personnel by name or role…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            disabled={busy}
-            style={{ fontSize: 12.5, minHeight: 34 }}
-          />
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 6,
-              maxHeight: 150,
-              overflowY: 'auto',
-              padding: 6,
-              border: '1px solid var(--border-light)',
-              borderRadius: 8,
-              background: 'var(--surface-muted)',
-            }}
-          >
-            {unlistedOperators.length === 0 ? (
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>No matching personnel.</span>
-            ) : (
-              unlistedOperators.map((o) => {
-                const checked = selectedSet.has(o.id);
-                const isMe = o.id === currentOperatorId;
-                const isLockedSelf = Boolean(requireCurrentOperator && isMe && checked);
-                return (
-                  <button
-                    key={o.id}
-                    type="button"
-                    disabled={busy}
-                    title={isLockedSelf ? 'Required: your name must stay selected when closing a PM task' : undefined}
-                    onClick={() => toggleOp(o.id)}
+        {requireCurrentOperator ? (
+          <div style={{ display: 'grid', gap: 6 }}>
+            {currentOperatorId && !plannedSet.has(currentOperatorId) && (
+              <>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                  Substitute Performer (You)
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  <span
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -253,29 +227,95 @@ export default function PmCompleteModal({
                       padding: '5px 9px',
                       borderRadius: 999,
                       fontSize: 12,
-                      fontWeight: checked ? 700 : 500,
-                      cursor: busy ? 'wait' : isLockedSelf ? 'default' : 'pointer',
-                      border: checked ? '1.5px solid #d97706' : '1px solid var(--border)',
-                      background: checked ? 'var(--warn-bg)' : 'var(--surface)',
-                      color: checked ? 'var(--warn-fg)' : 'var(--text)',
+                      fontWeight: 700,
+                      border: '1.5px solid #d97706',
+                      background: 'var(--warn-bg)',
+                      color: 'var(--warn-fg)',
                     }}
                   >
-                    <span>{checked ? '✓' : '+'}</span>
-                    <span>
-                      {o.full_name}
-                      {isMe ? ' (Me)' : ''}
-                    </span>
-                    {checked && (
-                      <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase' }}>
-                        {isLockedSelf ? 'Sub 🔒' : 'Sub'}
-                      </span>
-                    )}
-                  </button>
-                );
-              })
+                    <span>✓</span>
+                    <span>{nameOf(currentOperatorId)} (Me)</span>
+                    <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase' }}>Sub 🔒</span>
+                  </span>
+                </div>
+              </>
             )}
+            <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+              Operators may credit themselves and originally planned assignees when closing a PM task. Contact a scheduler or admin if an additional substitute also helped.
+            </div>
           </div>
-        </div>
+        ) : (
+          <div style={{ display: 'grid', gap: 6 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+              Add Unlisted Personnel / Substitutes
+            </div>
+            <input
+              type="search"
+              className="input"
+              placeholder="Filter personnel by name or role…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              disabled={busy}
+              style={{ fontSize: 12.5, minHeight: 34 }}
+            />
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 6,
+                maxHeight: 150,
+                overflowY: 'auto',
+                padding: 6,
+                border: '1px solid var(--border-light)',
+                borderRadius: 8,
+                background: 'var(--surface-muted)',
+              }}
+            >
+              {unlistedOperators.length === 0 ? (
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>No matching personnel.</span>
+              ) : (
+                unlistedOperators.map((o) => {
+                  const checked = selectedSet.has(o.id);
+                  const isMe = o.id === currentOperatorId;
+                  const isLockedSelf = Boolean(requireCurrentOperator && isMe && checked);
+                  return (
+                    <button
+                      key={o.id}
+                      type="button"
+                      disabled={busy}
+                      title={isLockedSelf ? 'Required: your name must stay selected when closing a PM task' : undefined}
+                      onClick={() => toggleOp(o.id)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 5,
+                        padding: '5px 9px',
+                        borderRadius: 999,
+                        fontSize: 12,
+                        fontWeight: checked ? 700 : 500,
+                        cursor: busy ? 'wait' : isLockedSelf ? 'default' : 'pointer',
+                        border: checked ? '1.5px solid #d97706' : '1px solid var(--border)',
+                        background: checked ? 'var(--warn-bg)' : 'var(--surface)',
+                        color: checked ? 'var(--warn-fg)' : 'var(--text)',
+                      }}
+                    >
+                      <span>{checked ? '✓' : '+'}</span>
+                      <span>
+                        {o.full_name}
+                        {isMe ? ' (Me)' : ''}
+                      </span>
+                      {checked && (
+                        <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase' }}>
+                          {isLockedSelf ? 'Sub 🔒' : 'Sub'}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Live Credit Summary */}
         <div

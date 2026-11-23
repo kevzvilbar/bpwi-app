@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { isValidTileUrlTemplate, resolveMapTileConfig } from '../map-tiles.ts';
+import { getPublicTileAdminNotice, isValidTileUrlTemplate, resolveMapTileConfig } from '../map-tiles.ts';
 
 describe('isValidTileUrlTemplate', () => {
   it('accepts https, localhost http, and relative URL templates with {z}/{x}/{y}', () => {
@@ -44,5 +44,27 @@ describe('resolveMapTileConfig', () => {
     const sat = resolveMapTileConfig('satellite', {});
     assert.ok(sat.url.includes('arcgisonline.com'));
     assert.equal(sat.isPublicDefault, true);
+  });
+});
+
+describe('getPublicTileAdminNotice', () => {
+  it('returns null for custom street/satellite providers and returns env var guidance for public defaults', () => {
+    const customStreet = resolveMapTileConfig('street', {
+      streetUrl: 'https://maps.bpwi.internal/street/{z}/{x}/{y}.png',
+    });
+    assert.equal(getPublicTileAdminNotice('street', customStreet), null);
+
+    const customSat = resolveMapTileConfig('satellite', {
+      satelliteUrl: 'https://maps.bpwi.internal/sat/{z}/{x}/{y}.jpg',
+    });
+    assert.equal(getPublicTileAdminNotice('satellite', customSat), null);
+
+    const publicStreet = resolveMapTileConfig('street', {});
+    const streetNotice = getPublicTileAdminNotice('street', publicStreet);
+    assert.ok(streetNotice && streetNotice.includes('NEXT_PUBLIC_MAP_STREET_TILE_URL'));
+
+    const publicSat = resolveMapTileConfig('satellite', {});
+    const satNotice = getPublicTileAdminNotice('satellite', publicSat);
+    assert.ok(satNotice && satNotice.includes('NEXT_PUBLIC_MAP_SATELLITE_TILE_URL'));
   });
 });

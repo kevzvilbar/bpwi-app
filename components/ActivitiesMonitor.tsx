@@ -861,6 +861,7 @@ export default function ActivitiesMonitor(p: {
         <ActivitiesRoutesTab
           date={p.date}
           canVerifyActivity={p.canVerifyActivity}
+          isAdmin={p.isAdmin}
           operatorId={p.operatorId}
           operators={p.operators}
           areas={p.areas}

@@ -57,6 +57,96 @@ type OsrmResponse = {
   routes?: OsrmRoute[];
 };
 
+type SharedCachePayload = {
+  routedLegs: RouteLegEstimate[];
+  encodedPolylines: string[];
+};
+
+type RouteRpcClient = Awaited<ReturnType<typeof getAuthProfile>>['sb'];
+
+async function checkSharedRateLimit(
+  sb: RouteRpcClient,
+  bucket: 'total' | 'upstream',
+  limit: number,
+  windowSeconds: number,
+  fallback: SlidingWindowRateLimiter,
+  userId: string,
+): Promise<{ allowed: boolean; retryAfterSeconds: number; store: 'shared' | 'memory' }> {
+  try {
+    const { data, error } = await sb.rpc('check_route_compute_rate_limit', {
+      p_bucket: bucket,
+      p_limit: limit,
+      p_window_seconds: windowSeconds,
+    });
+    if (!error && Array.isArray(data) && data[0]) {
+      const row = data[0] as { allowed?: unknown; retry_after_seconds?: unknown };
+      if (typeof row.allowed === 'boolean') {
+        return {
+          allowed: row.allowed,
+          retryAfterSeconds: Math.max(1, Number(row.retry_after_seconds) || 1),
+          store: 'shared',
+        };
+      }
+    }
+  } catch {
+    // Fall back to process-local rate limiter if migration 028 is not applied yet
+  }
+  const local = fallback.check(userId);
+  return {
+    allowed: local.allowed,
+    retryAfterSeconds: local.retryAfterSeconds,
+    store: 'memory',
+  };
+}
+
+async function readSharedRouteCache(
+  sb: RouteRpcClient,
+  cacheKey: string,
+): Promise<{ hit: SharedCachePayload | null; store: 'shared' | 'memory' }> {
+  const mem = routeCache.get(cacheKey);
+  if (mem) {
+    return { hit: mem, store: 'memory' };
+  }
+  try {
+    const { data, error } = await sb.rpc('get_route_compute_cache', {
+      p_cache_key: cacheKey,
+    });
+    if (!error && Array.isArray(data) && data[0]) {
+      const row = data[0] as { routed_legs?: unknown; encoded_polylines?: unknown };
+      if (Array.isArray(row.routed_legs) && Array.isArray(row.encoded_polylines)) {
+        const payload: SharedCachePayload = {
+          routedLegs: row.routed_legs as RouteLegEstimate[],
+          encodedPolylines: row.encoded_polylines.filter((p): p is string => typeof p === 'string'),
+        };
+        routeCache.set(cacheKey, payload);
+        return { hit: payload, store: 'shared' };
+      }
+    }
+    return { hit: null, store: error ? 'memory' : 'shared' };
+  } catch {
+    return { hit: null, store: 'memory' };
+  }
+}
+
+async function writeSharedRouteCache(
+  sb: RouteRpcClient,
+  cacheKey: string,
+  payload: SharedCachePayload,
+): Promise<'shared' | 'memory'> {
+  routeCache.set(cacheKey, payload);
+  try {
+    const { error } = await sb.rpc('set_route_compute_cache', {
+      p_cache_key: cacheKey,
+      p_routed_legs: payload.routedLegs,
+      p_encoded_polylines: payload.encodedPolylines,
+      p_ttl_seconds: 1800,
+    });
+    return error ? 'memory' : 'shared';
+  } catch {
+    return 'memory';
+  }
+}
+
 export async function POST(req: NextRequest) {
   const profile = await getAuthProfile();
   if (!profile.user) {
@@ -66,7 +156,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Account pending approval' }, { status: 403 });
   }
 
-  const totalRate = totalLimiter.check(profile.user.id);
+  const totalRate = await checkSharedRateLimit(profile.sb, 'total', 60, 300, totalLimiter, profile.user.id);
   if (!totalRate.allowed) {
     return NextResponse.json(
       { error: 'Too many route calculations. Please wait before trying again.' },
@@ -136,9 +226,9 @@ export async function POST(req: NextRequest) {
   }
 
   const cacheKey = `${endpoints.join(',')}::${buildRouteCacheKey(uniqueStops, travelMode)}`;
-  const cached = routeCache.get(cacheKey);
-  if (cached) {
-    const legs = expandCompressedLegs(legMap, cached.routedLegs, stops);
+  const cachedLookup = await readSharedRouteCache(profile.sb, cacheKey);
+  if (cachedLookup.hit) {
+    const legs = expandCompressedLegs(legMap, cachedLookup.hit.routedLegs, stops);
     return NextResponse.json(
       {
         source: 'osrm',
@@ -146,14 +236,14 @@ export async function POST(req: NextRequest) {
         totalDistanceMeters: legs.reduce((sum, l) => sum + l.distanceMeters, 0),
         totalDurationSeconds: legs.reduce((sum, l) => sum + l.durationSeconds, 0),
         legs,
-        encodedPolylines: cached.encodedPolylines,
+        encodedPolylines: cachedLookup.hit.encodedPolylines,
         travelMode,
       },
-      { headers: { 'X-Route-Cache': 'HIT' } },
+      { headers: { 'X-Route-Cache': 'HIT', 'X-Route-Store': cachedLookup.store } },
     );
   }
 
-  const upstreamRate = upstreamLimiter.check(profile.user.id);
+  const upstreamRate = await checkSharedRateLimit(profile.sb, 'upstream', 20, 300, upstreamLimiter, profile.user.id);
   if (!upstreamRate.allowed) {
     return NextResponse.json(
       { error: 'Rate limit reached for road routing requests. Please wait a few minutes.' },
@@ -255,7 +345,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  routeCache.set(cacheKey, { routedLegs, encodedPolylines });
+  const cacheStore = await writeSharedRouteCache(profile.sb, cacheKey, { routedLegs, encodedPolylines });
 
   const legs = expandCompressedLegs(legMap, routedLegs, stops);
   const totalDistanceMeters = legs.reduce((sum, l) => sum + l.distanceMeters, 0);
@@ -271,6 +361,6 @@ export async function POST(req: NextRequest) {
       encodedPolylines,
       travelMode,
     },
-    { headers: { 'X-Route-Cache': 'MISS' } },
+    { headers: { 'X-Route-Cache': 'MISS', 'X-Route-Store': cacheStore } },
   );
 }

@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import { useEffect, useRef, useState } from 'react';
 import type * as LeafletNS from 'leaflet';
 import { SegmentedTabs } from '@/components/ui';
-import { DEFAULT_LEAFLET_TILE_OPTIONS, resolveMapTileConfig } from '@/lib/map-tiles';
+import { DEFAULT_LEAFLET_TILE_OPTIONS, getPublicTileAdminNotice, resolveMapTileConfig } from '@/lib/map-tiles';
 import type { FreeMapStyle } from '@/components/FreeRouteMap';
 
 const DEFAULT_PH_CENTER: [number, number] = [10.7202, 122.5621];
@@ -27,6 +27,7 @@ function createPickerIcon(L: typeof LeafletNS): LeafletNS.DivIcon {
 
 export default function GpsPinPickerModal(p: {
   open: boolean;
+  isAdmin?: boolean;
   initialLat: number | null;
   initialLng: number | null;
   hintCoords?: { lat: number; lng: number; accuracy?: number } | null;
@@ -174,6 +175,9 @@ export default function GpsPinPickerModal(p: {
 
   if (!p.open) return null;
 
+  const activeTileConfig = resolveMapTileConfig(mapStyle);
+  const publicTileNotice = p.isAdmin ? getPublicTileAdminNotice(mapStyle, activeTileConfig) : null;
+
   return (
     <div
       className="modal-overlay no-print"
@@ -211,6 +215,23 @@ export default function GpsPinPickerModal(p: {
             </button>
           </div>
         </div>
+
+        {publicTileNotice && (
+          <div
+            role="note"
+            style={{
+              fontSize: 11.5,
+              padding: '6px 10px',
+              borderRadius: 6,
+              background: 'var(--warn-bg)',
+              color: 'var(--warn-fg)',
+              border: '1px solid var(--warn-border)',
+              fontWeight: 600,
+            }}
+          >
+            {publicTileNotice}
+          </div>
+        )}
 
         <div
           ref={containerRef}

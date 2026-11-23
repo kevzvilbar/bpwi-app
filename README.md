@@ -35,6 +35,15 @@ Run `supabase/migrations/010_daily_activities.sql` and `supabase/migrations/011_
   - **Job Orders & Shift Handovers:** Dispatches job orders with 12-digit utility account auto-parsing, Turnaround Time (TAT) / SLA tracking, end-of-shift handovers, and a Daily Operations Huddle Brief.
   - **Employee KPIs & Fuel:** 7/30/90-day scorecards combining roster duty hours, field activities, PM compliance %, Job Order TAT, and genset fuel telemetry.
 
+## Routing and map tiles
+Route visualization in **Activities → Footprints & Routes** and map pin picking in **Activity Logger / Base HQ** support self-hosted OSRM routing and custom XYZ tile servers via environment variables (see [`.env.example`](.env.example)):
+
+- `OSRM_BASE_URL`: Base URL of your self-hosted OSRM router (e.g. `https://osrm.internal.example.com`). When set, `/api/routes/compute` exclusively routes through that server.
+- `ALLOW_PUBLIC_OSRM_FALLBACK`: Defaults to `false`. In `production`, when `OSRM_BASE_URL` is unset and `ALLOW_PUBLIC_OSRM_FALLBACK` is not `'true'`, `/api/routes/compute` does not call public demo OSRM servers and instead returns straight-line Haversine leg distances. Set to `'true'` only if non-critical public demo fallback is intended.
+- `NEXT_PUBLIC_MAP_STREET_TILE_URL` & `NEXT_PUBLIC_MAP_STREET_ATTRIBUTION`: Custom `{z}/{x}/{y}` street tile template and HTML attribution. When unset, the map falls back to `tile.openstreetmap.org` and displays an admin-only notice on the map.
+- `NEXT_PUBLIC_MAP_SATELLITE_TILE_URL` & `NEXT_PUBLIC_MAP_SATELLITE_ATTRIBUTION`: Custom `{z}/{x}/{y}` satellite tile template and attribution. When unset, Satellite mode falls back to Esri World Imagery and displays an admin-only notice on the map.
+- **Shared Route Cache & Rate Limits (migration `028`):** Apply `supabase/migrations/028_route_compute_store_and_pm_sub_limit.sql` so `/api/routes/compute` shares route caching (30 min TTL) and per-user rate limits (60 req / 5 min total, 20 upstream req / 5 min) across serverless instances via Postgres RPCs, falling back to per-instance memory if `028` has not yet been applied.
+
 ## Included (v1 core)
 Login, role-aware monthly roster with click-to-paint (admin/scheduler), RLS, audit triggers, realtime-ready tables, JSON importer.
 Also: Daily Activity Monitor (`/activities`), PM Planner (`/pm`: monthly/week calendar, recurring series, editable activity names/colors, `.ics` export), Leave Summary (`/leave`), Call Sheet (`/call-sheet`), Mobile/Tasks (`/mobile`), Generate Schedule (`/generate`: repeating shift cycles), Operators & Setup (`/operators`, admin only: operators, shift types, area/leave codes, users & roles), OC standby painting, drag-to-paint, Ctrl+Z/Ctrl+Y undo/redo, Ctrl+C/Ctrl+V copy/paste, realtime sync, CSV/print exports, PWA offline support.

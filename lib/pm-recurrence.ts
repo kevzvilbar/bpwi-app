@@ -4,6 +4,11 @@
  * N-month / N-year rules (including arbitrary Nth weekday patterns like "2nd Friday"),
  * On-date vs After-# end limits, and Sunday handling rules.
  *
+ * TIMEZONE INVARIANT: All helpers use pure UTC date math (`Date.UTC`, `getUTC*`), assuming
+ * Manila (UTC+8, fixed offset without DST). Callers MUST pass pure calendar `YYYY-MM-DD`
+ * date strings (e.g. from `manilaToday()` or `<input type="date">`), NEVER raw local
+ * `Date` objects or un-shifted `new Date().toISOString().slice(0, 10)` timestamps.
+ *
  * Uses zero `@/` path aliases so Node's native test runner imports it directly.
  */
 
@@ -143,6 +148,11 @@ export function addUtcMonths(dateStr: string, months: number): string {
   return formatIsoDateUtc(targetYear, targetMonth, clampedDay);
 }
 
+/**
+ * Analyzes an explicit calendar `YYYY-MM-DD` string in UTC.
+ * IMPORTANT: Never pass local-timezone timestamps or `new Date().toISOString().slice(0, 10)`
+ * from UTC-shifted clocks—use Manila calendar dates (e.g. `manilaToday()` or `<input type="date">`).
+ */
 export function pmAnalyzeDate(dateStr: string): PmAnalyzedDate | null {
   const parts = parseIsoDateParts(dateStr);
   if (!parts) return null;
@@ -372,6 +382,11 @@ const MONTH_MODE_PRESETS: Partial<Record<PmRepeatPreset, readonly [number, PmCus
   semiannual_date: [6, 'date'],
 };
 
+/**
+ * Generates repeating `YYYY-MM-DD` occurrence dates from an explicit calendar start date.
+ * Input dates (`startDate` and `config.until`) MUST be pure calendar `YYYY-MM-DD` strings, never
+ * local-timezone Date objects or un-offset UTC ISO slices, so Manila (UTC+8) dates never shift.
+ */
 export function generatePmRepeatDates(startDate: string, config: PmRecurrenceConfig): string[] {
   const info = pmAnalyzeDate(startDate);
   if (!info) return [];

@@ -65,8 +65,8 @@ async function setAuthUid(db: PGlite, uid: string | null) {
   await db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [uid ?? '']);
 }
 
-describe('PGlite SQL migrations 001–027 execution & security invariants', () => {
-  it('executes all 001–027 migrations cleanly and enforces sign-up, change-request, storage, org-seed, station-code, PM credit, and PM locations invariants', async () => {
+describe('PGlite SQL migrations 001–028 execution & security invariants', () => {
+  it('executes all 001–028 migrations cleanly and enforces sign-up, change-request, storage, org-seed, station-code, PM credit, PM locations, and shared route store invariants', async () => {
     const db = new PGlite({ extensions: { pgcrypto } });
     await initSupabaseShim(db);
 
@@ -75,7 +75,7 @@ describe('PGlite SQL migrations 001–027 execution & security invariants', () =
       .filter((f) => f.endsWith('.sql'))
       .sort();
 
-    assert.ok(files.length >= 27, `Expected >= 27 migrations, found ${files.length}`);
+    assert.ok(files.length >= 28, `Expected >= 28 migrations, found ${files.length}`);
 
     for (const f of files) {
       const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8');
@@ -776,5 +776,85 @@ describe('PGlite SQL migrations 001–027 execution & security invariants', () =
     );
     assert.equal(adminDel.rowCount, 1);
     await db.exec('commit;');
+
+    // 14. 028 Shared route compute cache/rate-limit RPCs & PM substitute colleague-credit guard
+    const colleagueOpRes = await db.query<{ id: string }>(
+      `insert into operators (organization_id, full_name) values ($1, 'Unrelated Colleague') returning id`,
+      [orgId],
+    );
+    const colleagueOpId = colleagueOpRes.rows[0].id;
+
+    // Reset pmTaskId open with opId as planned assignee
+    await db.query(
+      `update pm_tasks set status = 'planned', completed_at = null, completed_by_operator_ids = '{}' where id = $1`,
+      [pmTaskId],
+    );
+
+    // 14a. Substitute operator closing open task CANNOT credit an unrelated unlisted colleague
+    await setAuthUid(db, subUserId);
+    await db.exec('begin; set local role authenticated;');
+    await assert.rejects(
+      () =>
+        db.query(
+          `update pm_tasks set status = 'done', completed_at = '2026-12-15', completed_by_operator_ids = array[$2, $3]::uuid[] where id = $1`,
+          [pmTaskId, subOpId, colleagueOpId],
+        ),
+      /only credit themselves and the originally assigned operators|row-level security policy/i,
+    );
+    await db.exec('rollback;');
+
+    // 14b. Substitute operator CAN close crediting self + originally assigned operator
+    await db.exec('begin; set local role authenticated;');
+    const subPlusPlanned = await db.query<{ id: string }>(
+      `update pm_tasks set status = 'done', completed_at = '2026-12-15', completed_by_operator_ids = array[$2, $3]::uuid[] where id = $1 returning id`,
+      [pmTaskId, subOpId, opId],
+    );
+    assert.equal(subPlusPlanned.rowCount, 1);
+    await db.exec('commit;');
+
+    // 14c. Admin can still reset & credit any org operator
+    await setAuthUid(db, adminId);
+    await db.query(
+      `update pm_tasks set status = 'done', completed_at = '2026-12-15', completed_by_operator_ids = array[$2]::uuid[] where id = $1`,
+      [pmTaskId, colleagueOpId],
+    );
+
+    // 14d. Authenticated user can use shared route rate-limit & cache RPCs, not raw tables
+    await setAuthUid(db, subUserId);
+    await db.exec('begin; set local role authenticated;');
+    const r1 = await db.query<{ allowed: boolean; remaining: number; retry_after_seconds: number }>(
+      `select * from check_route_compute_rate_limit('total', 2, 300)`,
+    );
+    const r2 = await db.query<{ allowed: boolean; remaining: number; retry_after_seconds: number }>(
+      `select * from check_route_compute_rate_limit('total', 2, 300)`,
+    );
+    const r3 = await db.query<{ allowed: boolean; remaining: number; retry_after_seconds: number }>(
+      `select * from check_route_compute_rate_limit('total', 2, 300)`,
+    );
+    assert.equal(r1.rows[0]?.allowed, true);
+    assert.equal(r1.rows[0]?.remaining, 1);
+    assert.equal(r2.rows[0]?.allowed, true);
+    assert.equal(r2.rows[0]?.remaining, 0);
+    assert.equal(r3.rows[0]?.allowed, false);
+    assert.ok((r3.rows[0]?.retry_after_seconds ?? 0) >= 1);
+
+    await db.query(
+      `select set_route_compute_cache('k-test-1', $1::jsonb, $2::jsonb, 600)`,
+      [JSON.stringify([{ distanceMeters: 1200, durationSeconds: 95 }]), JSON.stringify(['abcPolyline'])],
+    );
+    const cachedRoute = await db.query<{ routed_legs: Array<{ distanceMeters: number; durationSeconds: number }>; encoded_polylines: string[] }>(
+      `select * from get_route_compute_cache('k-test-1')`,
+    );
+    assert.deepEqual(cachedRoute.rows[0]?.routed_legs, [{ distanceMeters: 1200, durationSeconds: 95 }]);
+    assert.deepEqual(cachedRoute.rows[0]?.encoded_polylines, ['abcPolyline']);
+    await db.exec('commit;');
+
+    await db.exec('begin; set local role authenticated;');
+    await assert.rejects(() => db.query(`select * from route_compute_cache`), /permission denied/i);
+    await db.exec('rollback;');
+
+    await db.exec('begin; set local role authenticated;');
+    await assert.rejects(() => db.query(`select * from route_compute_rate_hits`), /permission denied/i);
+    await db.exec('rollback;');
   });
 });

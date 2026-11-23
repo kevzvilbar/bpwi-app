@@ -103,3 +103,19 @@ export function resolveMapTileConfig(
     providerLabel: 'OpenStreetMap',
   };
 }
+
+/**
+ * Returns an admin-facing configuration notice when the active map style uses
+ * a public default tile server rather than a commercial or self-hosted provider.
+ */
+export function getPublicTileAdminNotice(
+  style: MapStyle,
+  config: MapTileLayerConfig,
+): string | null {
+  if (!config.isPublicDefault) return null;
+  const envKey =
+    style === 'satellite'
+      ? 'NEXT_PUBLIC_MAP_SATELLITE_TILE_URL'
+      : 'NEXT_PUBLIC_MAP_STREET_TILE_URL';
+  return `Using public ${config.providerLabel} tiles (heavy daily usage may be rate-limited or blocked under provider terms). Set ${envKey} to a commercial or self-hosted XYZ tile provider.`;
+}

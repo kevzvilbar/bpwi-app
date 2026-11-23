@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import type { DailyActivityRow } from '@/lib/activity-types';
 import { fmtTimeManila } from '@/lib/date';
 import { startHighAccuracyGpsCapture } from '@/lib/gps-accuracy';
-import { resolveMapTileConfig } from '@/lib/map-tiles';
+import { getPublicTileAdminNotice, resolveMapTileConfig } from '@/lib/map-tiles';
 import {
   buildRouteCacheKey,
   buildStraightLineRoute,
@@ -54,6 +54,7 @@ const BASE_HQ_STORAGE_KEY = 'bpwi-base-hq-v1';
 export default function ActivitiesRoutesTab(p: {
   date: string;
   canVerifyActivity: boolean;
+  isAdmin?: boolean;
   operatorId: string | null;
   operators: RouteOp[];
   areas: RouteArea[];
@@ -610,6 +611,7 @@ export default function ActivitiesRoutesTab(p: {
         {hqPinModalOpen && (
           <GpsPinPickerModal
             open={hqPinModalOpen}
+            isAdmin={p.isAdmin}
             initialLat={parsedHqCoords?.lat ?? null}
             initialLng={parsedHqCoords?.lng ?? null}
             hintCoords={hqHintCoords}
@@ -755,9 +757,22 @@ export default function ActivitiesRoutesTab(p: {
             </div>
           )}
 
-          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-            Location note: Coordinates reflect operator-initiated GPS check-ins captured when submitting daily field activities. Active map tiles: {resolveMapTileConfig(mapStyle).providerLabel}; road distances computed via server-side OSRM routing with straight-line fallback.
-          </div>
+          {(() => {
+            const tileConfig = resolveMapTileConfig(mapStyle);
+            const publicNotice = p.isAdmin ? getPublicTileAdminNotice(mapStyle, tileConfig) : null;
+            return (
+              <>
+                {publicNotice && (
+                  <AlertBanner tone="warn">
+                    <strong>Public map tiles active:</strong> {publicNotice}
+                  </AlertBanner>
+                )}
+                <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                  Location note: Coordinates reflect operator-initiated GPS check-ins captured when submitting daily field activities. Active map tiles: {tileConfig.providerLabel}; road distances computed via server-side OSRM routing with straight-line fallback.
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
 
