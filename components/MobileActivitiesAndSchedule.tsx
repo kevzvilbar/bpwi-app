@@ -4,6 +4,7 @@ import { supabaseBrowser } from '@/lib/supabase/client';
 import { ACTIVITY_BY_ID, type DailyActivityRow } from '@/lib/activity-types';
 import { resolveActivityPhotoUrl } from '@/lib/activity-media';
 import { DEFAULT_STATION_CODE } from '@/lib/roster-helpers';
+import { SampleBadge } from '@/components/SampleBadge';
 
 export type MobileOp = {
   id: string;
@@ -56,6 +57,7 @@ interface MobileActivitiesAndScheduleProps {
   role: string;
   userId?: string;
   canLogActivity?: boolean;
+  canLogSampleActivity?: boolean;
   scopedActivities: DailyActivityRow[];
   scheduleList: MobileScheduleRow[];
   opBy: Map<string, MobileOp>;
@@ -73,6 +75,7 @@ export default function MobileActivitiesAndSchedule({
   role,
   userId,
   canLogActivity,
+  canLogSampleActivity,
   scopedActivities,
   scheduleList,
   opBy,
@@ -94,7 +97,11 @@ export default function MobileActivitiesAndSchedule({
       <div style={{ display: 'grid', gap: 10 }}>
         {!canLogActivity && (
           <div className="card" style={{ padding: '8px 12px', fontSize: 12.5, color: 'var(--text-secondary)' }}>
-            Only active <b>operator</b> and <b>admin</b> accounts can submit daily activity logs.
+            {canLogSampleActivity ? (
+              <>Real activity submission is restricted to <b>operator</b> and <b>admin</b> logins. You can log <b>24h sample logs</b> above.</>
+            ) : (
+              <>Only active <b>operator</b> and <b>admin</b> accounts can submit daily activity logs.</>
+            )}
           </div>
         )}
 
@@ -137,8 +144,11 @@ export default function MobileActivitiesAndSchedule({
                     >
                       {def?.label ?? act.activity_type}
                     </span>
-                    <span style={{ background: sc.bg, color: sc.fg, padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>
-                      {act.status}
+                    <span style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                      {act.is_sample && <SampleBadge expiresAt={act.sample_expires_at} />}
+                      <span style={{ background: sc.bg, color: sc.fg, padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>
+                        {act.status}
+                      </span>
                     </span>
                   </div>
                   <div style={{ fontSize: 13.5, fontWeight: 700 }}>

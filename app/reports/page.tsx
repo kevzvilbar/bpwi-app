@@ -12,7 +12,7 @@ import type { AccomplishmentReportRow } from '@/lib/accomplishment-form';
 export const dynamic = 'force-dynamic';
 
 export default async function ReportsPage() {
-  const { sb, user, role, orgId, operatorId, name, jobTitle, canVerifyActivity } = await getProfile();
+  const { sb, user, role, orgId, operatorId, name, jobTitle, canLogSampleActivity, canVerifyActivity } = await getProfile();
   const today = manilaToday();
   const ownActFilter = buildOwnActivityOrFilter(user?.id, operatorId);
 
@@ -35,6 +35,7 @@ export default async function ReportsPage() {
           .from('daily_activities')
           .select(DAILY_ACTIVITY_REPORT_COLUMNS)
           .eq('organization_id', orgId)
+          .eq('is_sample', false)
           .eq('activity_date', today)
           .or(ownActFilter)
           .order('started_at', { ascending: true })
@@ -68,6 +69,7 @@ export default async function ReportsPage() {
       operatorId={operatorId}
       today={today}
       canVerify={canVerifyActivity}
+      canLogSample={canLogSampleActivity}
       heads={headsRes.data ?? []}
       operators={opsRes.data ?? []}
       shifts={shiftsRes.data ?? []}

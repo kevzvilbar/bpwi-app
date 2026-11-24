@@ -67,6 +67,8 @@ export interface AccomplishmentReportRow {
   submitted_at: string | null;
   checked_by: string | null;
   checked_at: string | null;
+  is_sample?: boolean;
+  sample_expires_at?: string | null;
   created_at: string;
   updated_at: string;
 }

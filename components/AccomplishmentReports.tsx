@@ -13,6 +13,7 @@ import {
 } from '@/lib/accomplishment-form';
 import AccomplishmentFormSheet from '@/components/AccomplishmentFormSheet';
 import AccomplishmentEntryEditor from '@/components/AccomplishmentEntryEditor';
+import { SampleBadge } from '@/components/SampleBadge';
 import { AlertBanner, SegmentedTabs } from '@/components/ui';
 
 export interface HeadOption {
@@ -44,6 +45,7 @@ interface Props {
   operatorId: string | null;
   today: string;
   canVerify: boolean;
+  canLogSample?: boolean;
   heads: HeadOption[];
   operators: OperatorOption[];
   shifts: ShiftOption[];
@@ -97,14 +99,14 @@ export default function AccomplishmentReports(p: Props) {
   );
 
   const initialAutoEntries = useMemo(() => {
-    const dayActs = p.initialActivities.filter((a) => a.activity_date === reportDate);
+    const dayActs = p.initialActivities.filter((a) => !a.is_sample && a.activity_date === reportDate);
     if (!dayActs.length) return [emptyEntry(0)];
     return dayActs.map((a) => activityToAccomplishmentEntry(a, a.area_code_id ? areaById.get(a.area_code_id)?.code : undefined));
   }, [p.initialActivities, reportDate, areaById]);
 
   const [editingId, setEditingId] = useState<string | null>(existingForDate?.id ?? null);
   const [entries, setEntries] = useState<AccomplishmentEntry[]>(() => {
-    const dayActs = p.initialActivities.filter((a) => a.activity_date === reportDate);
+    const dayActs = p.initialActivities.filter((a) => !a.is_sample && a.activity_date === reportDate);
     if (!existingForDate) return initialAutoEntries;
     if (existingForDate.status === 'draft' || existingForDate.status === 'returned') {
       const mapped = dayActs.map((a) =>
@@ -131,6 +133,7 @@ export default function AccomplishmentReports(p: Props) {
   const [selectedInboxId, setSelectedInboxId] = useState<string | null>(null);
   const [headRemarksInput, setHeadRemarksInput] = useState<string>('');
   const [showPreview, setShowPreview] = useState<boolean>(true);
+  const [isSample, setIsSample] = useState<boolean>(Boolean(existingForDate?.is_sample));
   const [busy, setBusy] = useState<boolean>(false);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(
     p.error ? { kind: 'err', text: p.error } : null,
@@ -159,6 +162,7 @@ export default function AccomplishmentReports(p: Props) {
       .from('daily_activities')
       .select(DAILY_ACTIVITY_REPORT_COLUMNS)
       .eq('organization_id', p.orgId)
+      .eq('is_sample', false)
       .eq('activity_date', targetDate)
       .order('started_at', { ascending: true });
     if (ownFilter) q = q.or(ownFilter);
@@ -185,6 +189,7 @@ export default function AccomplishmentReports(p: Props) {
     if (found) {
       const base = found.entries.length ? found.entries : [emptyEntry(0)];
       setEditingId(found.id);
+      setIsSample(Boolean(found.is_sample));
       setEntries(base);
       setAssignedHeadId(found.assigned_head_id ?? defaultHeadId);
       setShiftTypeId(found.shift_type_id ?? '');
@@ -196,7 +201,8 @@ export default function AccomplishmentReports(p: Props) {
       }
     } else {
       setEditingId(null);
-      const dayActs = p.initialActivities.filter((a) => a.activity_date === nextDate);
+      setIsSample(false);
+      const dayActs = p.initialActivities.filter((a) => !a.is_sample && a.activity_date === nextDate);
       const base = dayActs.length
         ? dayActs.map((a) => activityToAccomplishmentEntry(a, a.area_code_id ? areaById.get(a.area_code_id)?.code : undefined))
         : [emptyEntry(0)];
@@ -218,6 +224,7 @@ export default function AccomplishmentReports(p: Props) {
       .from('daily_activities')
       .select(DAILY_ACTIVITY_REPORT_COLUMNS)
       .eq('organization_id', p.orgId)
+      .eq('is_sample', false)
       .eq('activity_date', reportDate)
       .order('started_at', { ascending: true });
     if (ownFilter) q = q.or(ownFilter);
@@ -279,6 +286,7 @@ export default function AccomplishmentReports(p: Props) {
       status: targetStatus,
       entries: cleanEntries,
       summary_notes: summaryNotes.trim() || null,
+      is_sample: p.canLogSample ? isSample : false,
       ...(targetStatus === 'submitted' ? { submitted_at: new Date().toISOString() } : {}),
     };
 
@@ -507,8 +515,9 @@ export default function AccomplishmentReports(p: Props) {
                       className={`btn ${isSel ? 'btn-primary' : ''}`}
                       style={{ textAlign: 'left', padding: '7px 11px', display: 'grid', gap: 2 }}
                     >
-                      <span style={{ fontWeight: 700, fontSize: 12.5 }}>
-                        {r.prepared_by_name || 'Staff'} · {r.report_date}
+                      <span style={{ fontWeight: 700, fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                        <span>{r.prepared_by_name || 'Staff'} · {r.report_date}</span>
+                        {r.is_sample && <SampleBadge expiresAt={r.sample_expires_at} />}
                       </span>
                       <span style={{ fontSize: 11, opacity: 0.85 }}>
                         {r.entries.length} row{r.entries.length === 1 ? '' : 's'} · {r.status.toUpperCase()}
@@ -560,6 +569,7 @@ export default function AccomplishmentReports(p: Props) {
                 status={selectedInboxReport.status}
                 submittedAt={selectedInboxReport.submitted_at}
                 checkedAt={selectedInboxReport.checked_at}
+                isSample={Boolean(selectedInboxReport.is_sample)}
               />
             </>
           )}
@@ -642,6 +652,31 @@ export default function AccomplishmentReports(p: Props) {
               </label>
             </div>
 
+            {p.canLogSample && (
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', padding: '7px 10px', borderRadius: 6, background: 'var(--warn-bg)', color: 'var(--warn-fg)', border: '1px solid var(--warn-border)', fontSize: 12, fontWeight: 600, cursor: editingId || isLocked ? 'default' : 'pointer' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={isSample}
+                    disabled={Boolean(editingId) || isLocked}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      setIsSample(next);
+                      const matching = reports.find(
+                        (r) =>
+                          r.report_date === reportDate &&
+                          Boolean(r.is_sample) === next &&
+                          (r.submitted_by === p.userId || (p.operatorId && r.operator_id === p.operatorId)),
+                      );
+                      setEditingId(matching?.id ?? null);
+                    }}
+                  />
+                  <span>Log as sample (auto-deletes in 24h)</span>
+                </span>
+                {activeReportForMy?.is_sample && <SampleBadge expiresAt={activeReportForMy.sample_expires_at} />}
+              </label>
+            )}
+
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <button type="button" className="btn" disabled={busy || isLocked} onClick={pullActivitiesForDate}>
                 Load Logged Activities ({reportDate})
@@ -687,6 +722,7 @@ export default function AccomplishmentReports(p: Props) {
               status={activeReportForMy?.status}
               submittedAt={activeReportForMy?.submitted_at}
               checkedAt={activeReportForMy?.checked_at}
+              isSample={Boolean(editingId ? activeReportForMy?.is_sample : isSample)}
             />
           )}
         </div>

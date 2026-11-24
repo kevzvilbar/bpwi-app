@@ -12,6 +12,7 @@ describe('Role permission matrix', () => {
     assert.equal(p.canExportPmCsv, true);
     assert.equal(p.canExportLeaveCsv, true);
     assert.equal(p.canLogActivity, true);
+    assert.equal(p.canLogSampleActivity, true);
     assert.equal(p.canVerifyActivity, true);
   });
 
@@ -25,6 +26,8 @@ describe('Role permission matrix', () => {
     assert.equal(noGrant.canEditSchedule, false);
     assert.equal(noGrant.canProposeRequests, true);
     assert.equal(noGrant.canVerifyActivity, true);
+    assert.equal(noGrant.canLogActivity, false);
+    assert.equal(noGrant.canLogSampleActivity, true);
     assert.equal(noGrant.canAccessSetup, false);
 
     const withGrant = computePermissions({ role: 'manager', isActive: true, hasLiveEditGrant: true });
@@ -44,6 +47,7 @@ describe('Role permission matrix', () => {
   it('blocks operators and viewers from org chart, setup, exports, and verification', () => {
     const op = computePermissions({ role: 'operator', isActive: true });
     assert.equal(op.canLogActivity, true);
+    assert.equal(op.canLogSampleActivity, false);
     assert.equal(op.canClosePm, true);
     assert.equal(op.canViewOrgChart, false);
     assert.equal(op.canExportPmCsv, false);

@@ -157,6 +157,7 @@ export const getAuthProfile = cache(async () => {
     isManager: perms.isManager,
     canApprove: perms.canApproveRequests,
     canLogActivity: perms.canLogActivity,
+    canLogSampleActivity: perms.canLogSampleActivity,
     canVerifyActivity: perms.canVerifyActivity,
     canGenerate: perms.canGenerateSchedule,
     canExportLeaveCsv: perms.canExportLeaveCsv,
@@ -195,6 +196,7 @@ export const getProfile = cache(async () => {
             .from('accomplishment_reports')
             .select('id', { count: 'exact', head: true })
             .eq('organization_id', orgId)
+            .eq('is_sample', false)
             .eq('status', 'submitted');
           return role === 'manager' ? q.eq('assigned_head_id', user.id) : q;
         })()
@@ -243,6 +245,8 @@ export const getProfile = cache(async () => {
     canClosePm: perms.canClosePm,
     /** Only operators and admins can submit daily field activity logs. */
     canLogActivity: perms.canLogActivity,
+    /** Admins and department heads can log 24h auto-expiring sample logs across all 4 log tables. */
+    canLogSampleActivity: perms.canLogSampleActivity,
     /** Admins, schedulers, and department heads can verify or flag logged activities. */
     canVerifyActivity: perms.canVerifyActivity,
     /** Bulk schedule generation stays with admins and schedulers. */

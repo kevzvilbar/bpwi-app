@@ -97,6 +97,7 @@ export default function MobileView(p: {
   operatorId: string | null;
   canClosePm: boolean;
   canLogActivity?: boolean;
+  canLogSampleActivity?: boolean;
   canVerifyActivity?: boolean;
   operators: Op[];
   shifts: Shift[];
@@ -625,7 +626,7 @@ export default function MobileView(p: {
               ))}
             </select>
           )}
-          {p.canLogActivity && p.orgId && (
+          {(p.canLogActivity || p.canLogSampleActivity) && p.orgId && (
             <button
               type="button"
               className="btn btn-primary"
@@ -635,7 +636,7 @@ export default function MobileView(p: {
               }}
               style={{ whiteSpace: 'nowrap', fontWeight: 700 }}
             >
-              + Log Activity
+              {p.canLogActivity ? '+ Log Activity' : '+ Log Sample'}
             </button>
           )}
         </div>
@@ -797,6 +798,7 @@ export default function MobileView(p: {
           role={p.role}
           userId={p.userId}
           canLogActivity={p.canLogActivity}
+          canLogSampleActivity={p.canLogSampleActivity}
           scopedActivities={scopedActivities}
           scheduleList={scheduleList}
           opBy={opBy}
@@ -871,9 +873,11 @@ export default function MobileView(p: {
           </button>
         </div>
       )}
-      {p.canLogActivity && p.orgId && loggerOpen && (
+      {(p.canLogActivity || p.canLogSampleActivity) && p.orgId && loggerOpen && (
         <ActivityLoggerModal
           open={loggerOpen}
+          sampleOnly={!p.canLogActivity}
+          canLogSample={Boolean(p.canLogSampleActivity)}
           onClose={() => {
             setLoggerOpen(false);
             setLinkedPmForLog(null);
@@ -891,7 +895,7 @@ export default function MobileView(p: {
                   : [act, ...prev],
               );
             }
-            if (linkedPmForLog) {
+            if (linkedPmForLog && !act.is_sample) {
               const performedByIds =
                 opts?.completedByIds ??
                 buildPmActualPerformerIds(act.lead_operator_id, act.crew_operator_ids);

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import type { DailyActivityRow, ShiftHandoverRow } from '@/lib/activity-types';
 import { Badge, EmptyState, StatCard } from '@/components/ui';
+import { SampleBadge } from '@/components/SampleBadge';
 
 type HoOp = { id: string; full_name: string };
 type HoArea = { id: string; code: string };
@@ -14,6 +15,7 @@ interface ShiftHandoversTabProps {
   operatorId: string | null;
   date: string;
   canLogHandover: boolean;
+  canLogSample?: boolean;
   dateActivities: DailyActivityRow[];
   idleOnDutyCount: number;
   openHighJos: number;
@@ -33,6 +35,7 @@ export default function ShiftHandoversTab({
   operatorId,
   date,
   canLogHandover,
+  canLogSample = false,
   dateActivities,
   idleOnDutyCount,
   openHighJos,
@@ -52,7 +55,9 @@ export default function ShiftHandoversTab({
   const [hoSummary, setHoSummary] = useState('');
   const [hoPending, setHoPending] = useState('');
   const [hoChemFuel, setHoChemFuel] = useState('');
+  const [hoIsSample, setHoIsSample] = useState(false);
   const [savingHo, setSavingHo] = useState(false);
+  const realDateActivities = dateActivities.filter((a) => !a.is_sample);
 
   async function handleSaveHandover(e: React.FormEvent) {
     e.preventDefault();
@@ -73,6 +78,7 @@ export default function ShiftHandoversTab({
         pending_items: hoPending.trim() || null,
         chemical_fuel_notes: hoChemFuel.trim() || null,
         created_by: userId,
+        is_sample: canLogSample ? hoIsSample : false,
       })
       .select('*')
       .single();
@@ -86,6 +92,7 @@ export default function ShiftHandoversTab({
     setHoSummary('');
     setHoPending('');
     setHoChemFuel('');
+    setHoIsSample(false);
     onBannerMsg('✓ Shift handover recorded.');
   }
 
@@ -98,8 +105,8 @@ export default function ShiftHandoversTab({
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <StatCard
               label="Field Activities Today"
-              value={dateActivities.length}
-              subtitle={`${dateActivities.filter((a) => a.status === 'verified').length} verified`}
+              value={realDateActivities.length}
+              subtitle={`${realDateActivities.filter((a) => a.status === 'verified').length} verified`}
               subtitleTone="ok"
             />
             <StatCard
@@ -171,6 +178,12 @@ export default function ShiftHandoversTab({
               Chemical / Fuel Notes
               <input className="input" value={hoChemFuel} onChange={(e) => setHoChemFuel(e.target.value)} placeholder="Chlorine stock, diesel level, etc." />
             </label>
+            {canLogSample && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, padding: '6px 10px', borderRadius: 6, background: 'var(--warn-bg)', color: 'var(--warn-fg)', border: '1px solid var(--warn-border)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={hoIsSample} onChange={(e) => setHoIsSample(e.target.checked)} />
+                <span>Log as sample (auto-deletes in 24h)</span>
+              </label>
+            )}
             <button type="submit" className="btn btn-primary" disabled={savingHo}>
               {savingHo ? 'Saving Handover…' : 'Save Handover Entry'}
             </button>
@@ -206,11 +219,14 @@ export default function ShiftHandoversTab({
                   fontSize: 12.5,
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
                   <b>{h.handover_date} · {area ? area.code : 'All Stations'}</b>
-                  <Badge size="sm" tone={h.plant_status === 'critical' ? 'danger' : h.plant_status === 'watch' ? 'warn' : 'ok'}>
-                    {h.plant_status.toUpperCase()}
-                  </Badge>
+                  <span style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                    {h.is_sample && <SampleBadge expiresAt={h.sample_expires_at} />}
+                    <Badge size="sm" tone={h.plant_status === 'critical' ? 'danger' : h.plant_status === 'watch' ? 'warn' : 'ok'}>
+                      {h.plant_status.toUpperCase()}
+                    </Badge>
+                  </span>
                 </div>
                 {(outOp || inOp) && (
                   <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>

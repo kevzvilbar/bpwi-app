@@ -139,6 +139,7 @@ export default function ActivitiesKpiTab(p: {
           sb
             .from('daily_activities')
             .select(DAILY_ACTIVITY_KPI_COLUMNS)
+            .eq('is_sample', false)
             .gte('activity_date', fetchStart)
             .lte('activity_date', p.anchorDate)
             .order('activity_date', { ascending: false })
@@ -147,6 +148,7 @@ export default function ActivitiesKpiTab(p: {
         sb
           .from('daily_activities')
           .select(DAILY_ACTIVITY_GENSET_COLUMNS)
+          .eq('is_sample', false)
           .in('activity_type', ['genset_monitoring', 'genset_fuel_refill'])
           .gte('activity_date', fetchStart)
           .lte('activity_date', p.anchorDate)
@@ -166,6 +168,7 @@ export default function ActivitiesKpiTab(p: {
           sb
             .from('job_orders')
             .select(JOB_ORDER_KPI_COLUMNS)
+            .eq('is_sample', false)
             .or(`completed_at.gte.${fetchStart}T00:00:00Z,created_at.gte.${fetchStart}T00:00:00Z`)
             .order('created_at', { ascending: false })
             .range(from, to),

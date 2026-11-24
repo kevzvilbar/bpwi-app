@@ -137,7 +137,9 @@ export async function syncQueuedActivity(
   if (!row) throw new Error('Activity was not saved');
 
   // Side effects are re-run on retry; they only move a task/job order forward, never duplicate rows.
-  const pmTaskId = typeof payload.pm_task_id === 'string' ? payload.pm_task_id : null;
+  // Never mark real PM tasks or job orders completed when syncing a 24h sample log.
+  const isSample = body.is_sample === true;
+  const pmTaskId = !isSample && typeof payload.pm_task_id === 'string' ? payload.pm_task_id : null;
   if (pmTaskId) {
     const activityDate = typeof payload.activity_date === 'string' ? payload.activity_date : null;
     const notes = typeof payload.notes === 'string' ? payload.notes : '';
@@ -162,7 +164,7 @@ export async function syncQueuedActivity(
     }
     if (r.error) throw new Error(r.error.message);
   }
-  const jobOrderId = typeof payload.job_order_id === 'string' ? payload.job_order_id : null;
+  const jobOrderId = !isSample && typeof payload.job_order_id === 'string' ? payload.job_order_id : null;
   if (jobOrderId) {
     const r = await sb
       .from('job_orders')

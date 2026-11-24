@@ -23,6 +23,7 @@ import { formatTelemetrySummary } from '@/lib/activity-telemetry';
 import type { LinkedJobOrder } from '@/components/ActivityLoggerModal';
 import { AlertBanner, Badge, SegmentedTabs } from '@/components/ui';
 import { DEFAULT_STATION_CODE } from '@/lib/roster-helpers';
+import { SampleBadge } from '@/components/SampleBadge';
 import { enqueueOfflineActivity, flushOfflineQueue, getOfflineQueue, type PendingOfflineActivity } from '@/lib/offline-queue';
 
 const ActivityLoggerModal = dynamic(() => import('@/components/ActivityLoggerModal'), { ssr: false });
@@ -64,6 +65,7 @@ export default function ActivitiesMonitor(p: {
   role: string;
   operatorId: string | null;
   canLogActivity: boolean;
+  canLogSampleActivity?: boolean;
   canVerifyActivity: boolean;
   isAdmin: boolean;
   operators: MonOp[];
@@ -244,7 +246,7 @@ export default function ActivitiesMonitor(p: {
         const isOnDuty = Boolean(shift && !shift.is_off && !isLeaveOrRest);
 
         const opActs = dateActivities.filter(
-          (a) => a.lead_operator_id === op.id || (a.crew_operator_ids ?? []).includes(op.id),
+          (a) => !a.is_sample && (a.lead_operator_id === op.id || (a.crew_operator_ids ?? []).includes(op.id)),
         );
         const pmsClosedToday = p.pmTasks.filter(
           (t) => t.status === 'done' && t.completed_at === p.date && resolvePmCreditedOperators(t).includes(op.id),
@@ -372,8 +374,8 @@ export default function ActivitiesMonitor(p: {
     setBannerMsg('✓ Activity deleted.');
   }
 
-  // Huddle summary numbers for p.date
-  const openHighJos = jobOrders.filter((j) => (j.status === 'pending' || j.status === 'in_progress') && j.priority === 'high').length;
+  // Huddle summary numbers for p.date (samples excluded)
+  const openHighJos = jobOrders.filter((j) => !j.is_sample && (j.status === 'pending' || j.status === 'in_progress') && j.priority === 'high').length;
   const overduePms = p.pmTasks.filter((t) => t.status !== 'done' && t.scheduled_date < p.date).length;
 
   return (
@@ -431,18 +433,14 @@ export default function ActivitiesMonitor(p: {
             </button>
           )}
 
-          {p.canLogActivity && (
+          {(p.canLogActivity || p.canLogSampleActivity) && (
             <button
               type="button"
               className="btn btn-primary"
-              onClick={() => {
-                setLinkedJoForLog(null);
-                setLoggerLeadOpId(p.operatorId);
-                setLoggerOpen(true);
-              }}
+              onClick={() => { setLinkedJoForLog(null); setLoggerLeadOpId(p.operatorId); setLoggerOpen(true); }}
               style={{ fontWeight: 700 }}
             >
-              + Log Activity
+              {p.canLogActivity ? '+ Log Activity' : '+ Log Sample'}
             </button>
           )}
         </div>
@@ -498,8 +496,8 @@ export default function ActivitiesMonitor(p: {
         items={[
           { id: 'monitor', label: `${p.canVerifyActivity ? 'Duty & Activity Feed' : 'My Activity Logs'} (${dateActivities.length})` },
           { id: 'routes', label: `Routes & Distance (${dateActivities.filter((a) => isValidCoordinate(a.gps_lat, a.gps_lng)).length} GPS)` },
-          { id: 'job-orders', label: `Job Orders (${filteredJobOrders.filter((j) => j.status === 'pending' || j.status === 'in_progress').length} open)` },
-          { id: 'handovers', label: `Shift Handover & Huddle (${handovers.filter((h) => h.handover_date === p.date).length})` },
+          { id: 'job-orders', label: `Job Orders (${filteredJobOrders.filter((j) => !j.is_sample && (j.status === 'pending' || j.status === 'in_progress')).length} open)` },
+          { id: 'handovers', label: `Shift Handover & Huddle (${handovers.filter((h) => !h.is_sample && h.handover_date === p.date).length})` },
           ...(p.canVerifyActivity ? [{ id: 'kpis' as const, label: 'Employee KPIs & Fuel' }] : []),
         ]}
       />
@@ -509,7 +507,8 @@ export default function ActivitiesMonitor(p: {
         <div style={{ display: 'grid', gap: 14 }}>
           {!p.canLogActivity && (
             <div className="card" style={{ padding: '8px 12px', fontSize: 12.5, color: 'var(--text-secondary)' }}>
-              Activity submission is restricted to <b>operator</b> and <b>admin</b> logins. Your role (<b>{p.role === 'manager' ? 'dept head' : p.role}</b>) has monitoring{p.canVerifyActivity ? ' & verification' : ''} access.
+              Real activity submission is restricted to <b>operator</b> and <b>admin</b> logins.
+              {p.canLogSampleActivity ? ' As department head, you can log 24h auto-expiring sample activities via + Log Sample.' : ` Your role (${p.role}) has monitoring${p.canVerifyActivity ? ' & verification' : ''} access.`}
             </div>
           )}
 
@@ -691,18 +690,17 @@ export default function ActivitiesMonitor(p: {
                       <span style={{ background: def?.color ?? 'var(--primary)', color: '#ffffff', padding: '3px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700 }}>
                         {def?.label ?? act.activity_type}
                       </span>
-                      <span
-                        style={{
-                          padding: '2px 8px',
-                          borderRadius: 999,
-                          fontSize: 11,
-                          fontWeight: 700,
-                          textTransform: 'uppercase',
-                          background: act.status === 'verified' ? 'var(--ok-bg)' : act.status === 'flagged' ? 'var(--danger-bg)' : 'var(--info-bg)',
-                          color: act.status === 'verified' ? 'var(--ok-fg)' : act.status === 'flagged' ? 'var(--danger-fg)' : 'var(--info-fg)',
-                        }}
-                      >
-                        {act.status}
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        {act.is_sample && <SampleBadge expiresAt={act.sample_expires_at} />}
+                        <span
+                          style={{
+                            padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                            background: act.status === 'verified' ? 'var(--ok-bg)' : act.status === 'flagged' ? 'var(--danger-bg)' : 'var(--info-bg)',
+                            color: act.status === 'verified' ? 'var(--ok-fg)' : act.status === 'flagged' ? 'var(--danger-fg)' : 'var(--info-fg)',
+                          }}
+                        >
+                          {act.status}
+                        </span>
                       </span>
                     </div>
 
@@ -796,12 +794,12 @@ export default function ActivitiesMonitor(p: {
 
                     {/* Action Bar */}
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4, borderTop: '1px solid var(--border-light)', paddingTop: 8 }}>
-                      {p.canVerifyActivity && act.status !== 'verified' && (
+                      {p.canVerifyActivity && !act.is_sample && act.status !== 'verified' && (
                         <button type="button" className="btn" onClick={() => void updateActivityVerification(act, 'verified')} style={{ fontSize: 11.5, background: 'var(--ok-bg)', color: 'var(--ok-fg)', borderColor: 'var(--ok-border)', fontWeight: 700 }}>
                           ✓ Verify
                         </button>
                       )}
-                      {p.canVerifyActivity && act.status !== 'flagged' && (
+                      {p.canVerifyActivity && !act.is_sample && act.status !== 'flagged' && (
                         <button type="button" className="btn" onClick={() => { setFlaggingId(flaggingId === act.id ? null : act.id); setFlagReason(''); }} style={{ fontSize: 11.5, color: 'var(--danger)' }}>
                           ⚠ Flag
                         </button>
@@ -856,87 +854,41 @@ export default function ActivitiesMonitor(p: {
         </div>
       )}
 
-      {/* TAB 1B: DAILY FOOTPRINTS, ROUTES & DISTANCE */}
       {tab === 'routes' && (
-        <ActivitiesRoutesTab
-          date={p.date}
-          canVerifyActivity={p.canVerifyActivity}
-          isAdmin={p.isAdmin}
-          operatorId={p.operatorId}
-          operators={p.operators}
-          areas={p.areas}
-          activities={activities}
-        />
+        <ActivitiesRoutesTab date={p.date} canVerifyActivity={p.canVerifyActivity} isAdmin={p.isAdmin} operatorId={p.operatorId} operators={p.operators} areas={p.areas} activities={activities} />
       )}
 
-      {/* TAB 2: DISPATCHED JOB ORDERS */}
       {tab === 'job-orders' && (
         <JobOrdersTab
-          orgId={p.orgId}
-          userId={p.userId}
-          canManageJo={canManageJo}
-          canLogActivity={p.canLogActivity}
-          joFilter={joFilter}
-          onChangeJoFilter={setJoFilter}
-          filteredJobOrders={filteredJobOrders}
-          operators={p.operators}
-          stationAreas={stationAreas}
-          opBy={opBy}
-          areaBy={areaBy}
+          orgId={p.orgId} userId={p.userId} canManageJo={canManageJo} canLogActivity={p.canLogActivity} canLogSample={p.canLogSampleActivity}
+          joFilter={joFilter} onChangeJoFilter={setJoFilter} filteredJobOrders={filteredJobOrders}
+          operators={p.operators} stationAreas={stationAreas} opBy={opBy} areaBy={areaBy}
           onJobOrderCreated={(jo) => setJobOrders((prev) => [jo, ...prev])}
           onJobOrderUpdated={(jo) => setJobOrders((prev) => prev.map((x) => (x.id === jo.id ? jo : x)))}
-          onFulfillJobOrder={(jo) => {
-            setLinkedJoForLog(jo);
-            setLoggerLeadOpId(jo.assigned_operator_ids?.[0] ?? p.operatorId);
-            setLoggerOpen(true);
-          }}
+          onFulfillJobOrder={(jo) => { setLinkedJoForLog(jo); setLoggerLeadOpId(jo.assigned_operator_ids?.[0] ?? p.operatorId); setLoggerOpen(true); }}
           onPrintJobOrder={(jo) => setPrintState({ mode: 'activity', jobOrder: jo })}
           onBannerMsg={setBannerMsg}
         />
       )}
 
-      {/* TAB 3: SHIFT HANDOVER & DAILY HUDDLE */}
       {tab === 'handovers' && (
         <ShiftHandoversTab
-          orgId={p.orgId}
-          userId={p.userId}
-          operatorId={p.operatorId}
-          date={p.date}
-          canLogHandover={canLogHandover}
-          dateActivities={dateActivities}
-          idleOnDutyCount={idleOnDutyCount}
-          openHighJos={openHighJos}
-          overduePms={overduePms}
-          handovers={handovers}
-          operators={p.operators}
-          stationAreas={stationAreas}
-          opBy={opBy}
-          areaBy={areaBy}
-          onHandoverCreated={(ho) => setHandovers((prev) => [ho, ...prev])}
-          onBannerMsg={setBannerMsg}
+          orgId={p.orgId} userId={p.userId} operatorId={p.operatorId} date={p.date}
+          canLogHandover={canLogHandover} canLogSample={p.canLogSampleActivity}
+          dateActivities={dateActivities} idleOnDutyCount={idleOnDutyCount} openHighJos={openHighJos} overduePms={overduePms}
+          handovers={handovers} operators={p.operators} stationAreas={stationAreas} opBy={opBy} areaBy={areaBy}
+          onHandoverCreated={(ho) => setHandovers((prev) => [ho, ...prev])} onBannerMsg={setBannerMsg}
         />
       )}
 
-      {/* TAB 4: EMPLOYEE KPIs & FUEL TELEMETRY (Supervisors only) */}
       {tab === 'kpis' && p.canVerifyActivity && (
-        <ActivitiesKpiTab
-          anchorDate={p.date}
-          operators={p.operators}
-          areas={p.areas}
-          shifts={p.shifts}
-        />
+        <ActivitiesKpiTab anchorDate={p.date} operators={p.operators} areas={p.areas} shifts={p.shifts} />
       )}
 
-      {/* Activity Logger Modal */}
-      {p.canLogActivity && loggerOpen && (
+      {(p.canLogActivity || p.canLogSampleActivity) && loggerOpen && (
         <ActivityLoggerModal
-          open={loggerOpen}
-          role={p.role}
-          onClose={() => {
-            setLoggerOpen(false);
-            setLinkedJoForLog(null);
-            setEditingActivity(null);
-          }}
+          open={loggerOpen} role={p.role} sampleOnly={!p.canLogActivity} canLogSample={Boolean(p.canLogSampleActivity)}
+          onClose={() => { setLoggerOpen(false); setLinkedJoForLog(null); setEditingActivity(null); }}
           onQueuedOffline={async (payload) => {
             await enqueueOfflineActivity(payload, p.userId);
             setOfflineQueue(await getOfflineQueue(p.userId));
@@ -944,54 +896,20 @@ export default function ActivitiesMonitor(p: {
           }}
           onSaved={(act, opts) => {
             if (!opts?.offline) {
-              setActivities((prev) =>
-                prev.some((x) => x.id === act.id)
-                  ? prev.map((x) => (x.id === act.id ? act : x))
-                  : [act, ...prev],
-              );
+              setActivities((prev) => (prev.some((x) => x.id === act.id) ? prev.map((x) => (x.id === act.id ? act : x)) : [act, ...prev]));
               setBannerMsg(editingActivity ? '✓ Activity updated.' : '✓ Activity logged.');
             }
-            if (linkedJoForLog) {
-              setJobOrders((prev) =>
-                prev.map((j) =>
-                  j.id === linkedJoForLog.id
-                    ? {
-                        ...j,
-                        status: 'completed',
-                        completed_at: new Date().toISOString(),
-                        ...(opts?.tatJustification ? { tat_justification: opts.tatJustification } : {}),
-                      }
-                    : j,
-                ),
-              );
+            if (linkedJoForLog && !act.is_sample) {
+              setJobOrders((prev) => prev.map((j) => (j.id === linkedJoForLog.id ? { ...j, status: 'completed', completed_at: new Date().toISOString(), ...(opts?.tatJustification ? { tat_justification: opts.tatJustification } : {}) } : j)));
             }
           }}
-          orgId={p.orgId}
-          userId={p.userId}
-          operatorId={p.operatorId}
-          date={p.date}
-          operators={p.operators}
-          areas={p.areas}
-          shifts={p.shifts}
-          assignments={dateAssignments}
-          initialLeadOperatorId={loggerLeadOpId}
-          linkedJobOrder={linkedJoForLog}
-          editingActivity={editingActivity}
+          orgId={p.orgId} userId={p.userId} operatorId={p.operatorId} date={p.date} operators={p.operators} areas={p.areas}
+          shifts={p.shifts} assignments={dateAssignments} initialLeadOperatorId={loggerLeadOpId} linkedJobOrder={linkedJoForLog} editingActivity={editingActivity}
         />
       )}
 
-      {/* Printable Certificate / Report Preview */}
       {printState && (
-        <PrintableActivityReport
-          mode={printState.mode}
-          orgName={p.orgName}
-          activity={printState.activity}
-          jobOrder={printState.jobOrder}
-          operators={p.operators}
-          areas={p.areas}
-          shifts={p.shifts}
-          onClose={() => setPrintState(null)}
-        />
+        <PrintableActivityReport mode={printState.mode} orgName={p.orgName} activity={printState.activity} jobOrder={printState.jobOrder} operators={p.operators} areas={p.areas} shifts={p.shifts} onClose={() => setPrintState(null)} />
       )}
     </div>
   );

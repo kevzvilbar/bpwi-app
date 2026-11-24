@@ -10,6 +10,8 @@ import {
   type AccomplishmentEntry,
 } from '@/lib/accomplishment-form';
 
+import { SamplePrintWatermark } from '@/components/SampleBadge';
+
 interface Props {
   reportDate: string;
   entries: AccomplishmentEntry[];
@@ -20,6 +22,7 @@ interface Props {
   status?: 'draft' | 'submitted' | 'checked' | 'returned';
   submittedAt?: string | null;
   checkedAt?: string | null;
+  isSample?: boolean;
   minRows?: number;
 }
 
@@ -45,6 +48,7 @@ export default function AccomplishmentFormSheet({
   status,
   submittedAt,
   checkedAt,
+  isSample,
   minRows = 14,
 }: Props) {
   const paddedCount = Math.max(0, minRows - entries.length);
@@ -52,6 +56,7 @@ export default function AccomplishmentFormSheet({
 
   return (
     <div className="bpems-sheet-wrap" style={{ overflowX: 'auto' }}>
+      {isSample && <SamplePrintWatermark />}
       <style>{`
         @media print {
           @page { size: landscape; margin: 8mm; }

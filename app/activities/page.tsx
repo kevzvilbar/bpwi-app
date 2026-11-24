@@ -133,6 +133,7 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
       role={p.role}
       operatorId={p.operatorId}
       canLogActivity={p.canLogActivity}
+      canLogSampleActivity={p.canLogSampleActivity}
       canVerifyActivity={p.canVerifyActivity}
       isAdmin={p.isAdmin}
       operators={opsRes.data ?? []}

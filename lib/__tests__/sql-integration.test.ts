@@ -1098,5 +1098,161 @@ describe('PGlite SQL migrations 001–030 execution & security invariants', () =
 
     const sql33 = fs.readFileSync(path.join(MIGRATIONS_DIR, '033_genset_registry.sql'), 'utf8');
     await db.exec(sql33);
+
+    // 17. 034 24h auto-expiring sample logs across all 4 tables
+    // Re-apply 034 so its sample-skipping log_audit() is active after line 1034's 031 idempotency re-run
+    const sql34 = fs.readFileSync(path.join(MIGRATIONS_DIR, '034_sample_logs.sql'), 'utf8');
+    await db.exec(sql34);
+    // Restore mgr1Id to 'manager' (line 960 flipped it to 'scheduler' for the user_profiles audit test)
+    await setAuthUid(db, adminId);
+    await db.query(`update user_profiles set role = 'manager' where id = $1`, [mgr1Id]);
+    // Manager non-sample daily_activities insert must be denied; manager sample insert succeeds
+    await setAuthUid(db, mgr1Id);
+    await db.exec('begin; set local role authenticated;');
+    await assert.rejects(
+      () =>
+        db.query(
+          `insert into daily_activities (organization_id, logged_by, activity_type, is_sample)
+           values ($1, $2, 'pump_monitoring', false)`,
+          [orgId, mgr1Id],
+        ),
+      /row-level security/i,
+    );
+    await db.exec('rollback;');
+
+    await db.exec('begin; set local role authenticated;');
+    const sampleActRes = await db.query<{ id: string; is_sample: boolean; sample_expires_at: string | null }>(
+      `insert into daily_activities (organization_id, logged_by, activity_type, is_sample)
+       values ($1, $2, 'pump_monitoring', true)
+       returning id, is_sample, sample_expires_at::text`,
+      [orgId, mgr1Id],
+    );
+    await db.exec('commit;');
+    const sampleActId = sampleActRes.rows[0].id;
+    assert.equal(sampleActRes.rows[0].is_sample, true);
+    assert.ok(sampleActRes.rows[0].sample_expires_at);
+
+    // Sample row must NOT create audit_logs rows
+    const sampleAudit = await db.query<{ cnt: number }>(
+      `select count(*)::int as cnt from audit_logs where record_id = $1`,
+      [sampleActId],
+    );
+    assert.equal(sampleAudit.rows[0]?.cnt, 0);
+
+    // Immutable sample flag/expiry on update
+    await assert.rejects(
+      () => db.query(`update daily_activities set is_sample = false where id = $1`, [sampleActId]),
+      /Sample flag and expiry cannot be modified/i,
+    );
+
+    // Visibility: creator (mgr1Id) and admin (adminId) see active sample; another manager (mgrApproverId) sees 0
+    await setAuthUid(db, mgr1Id);
+    await db.exec('begin; set local role authenticated;');
+    const creatorSee = await db.query<{ cnt: number }>(`select count(*)::int as cnt from daily_activities where id = $1`, [sampleActId]);
+    await db.exec('commit;');
+    assert.equal(creatorSee.rows[0]?.cnt, 1);
+
+    await setAuthUid(db, adminId);
+    await db.exec('begin; set local role authenticated;');
+    const adminSee = await db.query<{ cnt: number }>(`select count(*)::int as cnt from daily_activities where id = $1`, [sampleActId]);
+    await db.exec('commit;');
+    assert.equal(adminSee.rows[0]?.cnt, 1);
+
+    await setAuthUid(db, mgrApproverId);
+    await db.exec('begin; set local role authenticated;');
+    const otherMgrSee = await db.query<{ cnt: number }>(`select count(*)::int as cnt from daily_activities where id = $1`, [sampleActId]);
+    await db.exec('commit;');
+    assert.equal(otherMgrSee.rows[0]?.cnt, 0);
+
+    // Sample job orders get SAMPLE-JO-YYYYMM-001 without consuming real JO-YYYYMM-001 sequence
+    await setAuthUid(db, mgr1Id);
+    const sampleJoRes = await db.query<{ id: string; jo_number: string }>(
+      `insert into job_orders (organization_id, jo_number, title, created_by, is_sample)
+       values ($1, 'AUTO', 'Sample JO', $2, true) returning id, jo_number`,
+      [orgId, mgr1Id],
+    );
+    assert.match(sampleJoRes.rows[0].jo_number, /^SAMPLE-JO-\d{6}-001$/);
+
+    const realJoRes = await db.query<{ id: string; jo_number: string }>(
+      `insert into job_orders (organization_id, jo_number, title, created_by, is_sample)
+       values ($1, 'AUTO', 'Real JO', $2, false) returning id, jo_number`,
+      [orgId, mgr1Id],
+    );
+    assert.match(realJoRes.rows[0].jo_number, /^JO-\d{6}-001$/);
+
+    // Sample handover & sample accomplishment report (verify 0 notifications fired on sample report)
+    const sampleHoRes = await db.query<{ id: string }>(
+      `insert into shift_handovers (organization_id, summary, created_by, is_sample)
+       values ($1, 'Sample handover', $2, true) returning id`,
+      [orgId, mgr1Id],
+    );
+    const notifsBefore = await db.query<{ cnt: number }>(
+      `select count(*)::int as cnt from notifications where user_id = $1 and kind = 'report_submitted'`,
+      [mgrApproverId],
+    );
+    const sampleRepRes = await db.query<{ id: string }>(
+      `insert into accomplishment_reports (organization_id, report_date, submitted_by, assigned_head_id, status, is_sample)
+       values ($1, '2026-11-24', $2, $3, 'submitted', true) returning id`,
+      [orgId, mgr1Id, mgrApproverId],
+    );
+    const notifsAfter = await db.query<{ cnt: number }>(
+      `select count(*)::int as cnt from notifications where user_id = $1 and kind = 'report_submitted'`,
+      [mgrApproverId],
+    );
+    assert.equal(notifsAfter.rows[0]?.cnt, notifsBefore.rows[0]?.cnt);
+
+    // Backdate sample_expires_at via session trigger bypass isn't allowed; drop trigger check not needed — delete via alter trigger disable/enable?
+    // Or test expired visibility + purge cleanly by temporarily disabling trg_*_sample_lifecycle for test setup!
+    await db.exec(`
+      alter table daily_activities disable trigger trg_daily_activities_sample_lifecycle;
+      alter table job_orders disable trigger trg_job_orders_sample_lifecycle;
+      alter table shift_handovers disable trigger trg_shift_handovers_sample_lifecycle;
+      alter table accomplishment_reports disable trigger trg_accomplishment_reports_sample_lifecycle;
+      update daily_activities set sample_expires_at = now() - interval '1 minute' where id = '${sampleActId}';
+      update job_orders set sample_expires_at = now() - interval '1 minute' where id = '${sampleJoRes.rows[0].id}';
+      update shift_handovers set sample_expires_at = now() - interval '1 minute' where id = '${sampleHoRes.rows[0].id}';
+      update accomplishment_reports set sample_expires_at = now() - interval '1 minute' where id = '${sampleRepRes.rows[0].id}';
+      alter table daily_activities enable trigger trg_daily_activities_sample_lifecycle;
+      alter table job_orders enable trigger trg_job_orders_sample_lifecycle;
+      alter table shift_handovers enable trigger trg_shift_handovers_sample_lifecycle;
+      alter table accomplishment_reports enable trigger trg_accomplishment_reports_sample_lifecycle;
+    `);
+
+    // Expired sample disappears from reads for BOTH creator and admin
+    await setAuthUid(db, mgr1Id);
+    await db.exec('begin; set local role authenticated;');
+    const expiredCreatorSee = await db.query<{ cnt: number }>(`select count(*)::int as cnt from daily_activities where id = $1`, [sampleActId]);
+    await db.exec('commit;');
+    assert.equal(expiredCreatorSee.rows[0]?.cnt, 0);
+
+    await setAuthUid(db, adminId);
+    await db.exec('begin; set local role authenticated;');
+    const expiredAdminSee = await db.query<{ cnt: number }>(`select count(*)::int as cnt from daily_activities where id = $1`, [sampleActId]);
+    await db.exec('commit;');
+    assert.equal(expiredAdminSee.rows[0]?.cnt, 0);
+
+    // purge_expired_sample_records() is service_role-only and deletes all 4 expired samples without touching real JO
+    const purgePriv = await db.query<{ auth: boolean }>(
+      `select has_function_privilege('authenticated', 'purge_expired_sample_records()', 'EXECUTE') as auth`,
+    );
+    assert.equal(purgePriv.rows[0]?.auth, false);
+
+    await setAuthUid(db, null);
+    await db.exec('begin; set local role service_role;');
+    const purged = await db.query<{ activities_deleted: number; job_orders_deleted: number; handovers_deleted: number; reports_deleted: number }>(
+      `select * from purge_expired_sample_records()`,
+    );
+    await db.exec('commit;');
+    assert.deepEqual(purged.rows[0], {
+      activities_deleted: 1,
+      job_orders_deleted: 1,
+      handovers_deleted: 1,
+      reports_deleted: 1,
+    });
+    const realJoStillHere = await db.query<{ cnt: number }>(`select count(*)::int as cnt from job_orders where id = $1`, [realJoRes.rows[0].id]);
+    assert.equal(realJoStillHere.rows[0]?.cnt, 1);
+
+    // Re-running 034 migration is idempotent
+    await db.exec(sql34);
   });
 });

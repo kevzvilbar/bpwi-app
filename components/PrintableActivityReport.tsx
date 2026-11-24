@@ -33,6 +33,7 @@ import {
   ReportSignatureGrid,
   formatReportPrintedTs,
 } from '@/components/ReportSheetPrimitives';
+import { SamplePrintWatermark } from '@/components/SampleBadge';
 
 type LookupOp = { id: string; full_name: string; position: string | null };
 type LookupArea = { id: string; code: string; name: string | null };
@@ -237,6 +238,7 @@ export default function PrintableActivityReport(p: {
           borderRadius: 12,
         }}
       >
+        {(act?.is_sample || jo?.is_sample) && <SamplePrintWatermark />}
         <style
           dangerouslySetInnerHTML={{
             __html: `

@@ -25,6 +25,7 @@ export function computePermissions(ctx: PermissionContext) {
     canProposeRequests: isManager && !hasGrant,
     canClosePm: isAdmin || isScheduler || isOperator || hasGrant,
     canLogActivity: isAdmin || isOperator,
+    canLogSampleActivity: isAdmin || isManager,
     canVerifyActivity: isAdmin || isScheduler || isManager,
     canViewOrgChart: isAdmin || isScheduler || isManager,
     canEditOrgChart: isAdmin || isManager,

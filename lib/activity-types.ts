@@ -279,6 +279,8 @@ export type DailyActivityRow = {
   verified_by: string | null;
   verified_at: string | null;
   review_note: string | null;
+  is_sample?: boolean;
+  sample_expires_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -304,6 +306,8 @@ export type JobOrderRow = {
   tat_justification: string | null;
   created_by: string | null;
   completed_at: string | null;
+  is_sample?: boolean;
+  sample_expires_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -321,5 +325,19 @@ export type ShiftHandoverRow = {
   pending_items: string | null;
   chemical_fuel_notes: string | null;
   created_by: string | null;
+  is_sample?: boolean;
+  sample_expires_at?: string | null;
   created_at: string;
+};
+
+export type LinkedPmTask = {
+  id: string; title: string; activity_type: string; locations?: string[];
+  asset?: string | null; assigned_operator_ids?: string[];
+};
+
+export type LinkedJobOrder = {
+  id: string; jo_number: string; title: string; activity_type?: string | null;
+  area_code_id?: string | null; site_or_well?: string | null; block_lot?: string | null;
+  account_number?: string | null; account_name?: string | null;
+  assigned_operator_ids?: string[]; deadline?: string | null; estimated_hours?: number | null;
 };

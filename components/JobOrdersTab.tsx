@@ -20,6 +20,7 @@ import {
 } from '@/lib/job-order-sla';
 import { JOB_ORDER_COLUMNS } from '@/lib/query-columns';
 import { Badge, EmptyState, SegmentedTabs } from '@/components/ui';
+import { SampleBadge } from '@/components/SampleBadge';
 
 type JoOp = { id: string; full_name: string };
 type JoArea = { id: string; code: string; name: string | null };
@@ -42,6 +43,7 @@ interface JobOrdersTabProps {
   userId: string;
   canManageJo: boolean;
   canLogActivity: boolean;
+  canLogSample?: boolean;
   joFilter: 'open' | 'completed' | 'all';
   onChangeJoFilter: (f: 'open' | 'completed' | 'all') => void;
   filteredJobOrders: JobOrderRow[];
@@ -61,6 +63,7 @@ export default function JobOrdersTab({
   userId,
   canManageJo,
   canLogActivity,
+  canLogSample = false,
   joFilter,
   onChangeJoFilter,
   filteredJobOrders,
@@ -88,6 +91,7 @@ export default function JobOrdersTab({
   const [joDeadline, setJoDeadline] = useState('');
   const [joEstHours, setJoEstHours] = useState('24');
   const [joAssignedOps, setJoAssignedOps] = useState<string[]>([]);
+  const [joIsSample, setJoIsSample] = useState(false);
   const [savingJo, setSavingJo] = useState(false);
   const [overdueModalJo, setOverdueModalJo] = useState<JobOrderRow | null>(null);
   const [overdueReason, setOverdueReason] = useState('');
@@ -113,6 +117,7 @@ export default function JobOrdersTab({
     setJoAccountName('');
     setJoDesc('');
     setJoAssignedOps([]);
+    setJoIsSample(false);
     applySlaPreset('leakage');
     setJoModalOpen(true);
   }
@@ -144,6 +149,7 @@ export default function JobOrdersTab({
         estimated_hours: Number(joEstHours) || 24,
         status: 'pending',
         created_by: userId,
+        is_sample: canLogSample ? joIsSample : false,
       })
       .select(JOB_ORDER_COLUMNS)
       .single();
@@ -262,6 +268,7 @@ export default function JobOrdersTab({
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                   <strong style={{ fontSize: 13.5 }}>{jo.jo_number}</strong>
                   <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {jo.is_sample && <SampleBadge expiresAt={jo.sample_expires_at} />}
                     <Badge size="sm" tone={jo.priority === 'high' ? 'danger' : jo.priority === 'medium' ? 'warn' : 'info'}>
                       {jo.priority.toUpperCase()}
                     </Badge>
@@ -509,6 +516,12 @@ export default function JobOrdersTab({
               Instructions / Description
               <textarea className="input" rows={2} value={joDesc} onChange={(e) => setJoDesc(e.target.value)} style={{ minHeight: 54 }} />
             </label>
+            {canLogSample && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, padding: '6px 10px', borderRadius: 6, background: 'var(--warn-bg)', color: 'var(--warn-fg)', border: '1px solid var(--warn-border)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={joIsSample} onChange={(e) => setJoIsSample(e.target.checked)} />
+                <span>Log as sample (auto-deletes in 24h)</span>
+              </label>
+            )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button type="button" className="btn" onClick={() => setJoModalOpen(false)} disabled={savingJo}>Cancel</button>
               <button type="submit" className="btn btn-primary" disabled={savingJo}>{savingJo ? 'Dispatching…' : 'Dispatch JO'}</button>

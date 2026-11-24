@@ -122,6 +122,48 @@ async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
   };
 }
 
+async function executeSamplePurge(db: SupabaseClient) {
+  const nowIso = new Date().toISOString();
+  const { data: expiredSamples, error: fetchErr } = await db
+    .from('daily_activities')
+    .select('id, organization_id, photo_storage_paths, photo_urls')
+    .eq('is_sample', true)
+    .lte('sample_expires_at', nowIso);
+
+  if (!fetchErr && Array.isArray(expiredSamples) && expiredSamples.length > 0) {
+    const samplePaths = new Set<string>();
+    for (const row of expiredSamples) {
+      const rowOrgId = typeof row.organization_id === 'string' ? row.organization_id : '';
+      const accept = (candidate: string | null) => {
+        if (candidate && rowOrgId && isStoragePathOwnedByOrg(candidate, rowOrgId)) {
+          samplePaths.add(candidate);
+        }
+      };
+      if (Array.isArray(row.photo_storage_paths)) {
+        for (const p of row.photo_storage_paths) {
+          if (typeof p === 'string' && p.trim()) accept(p.trim());
+        }
+      }
+      if (Array.isArray(row.photo_urls)) {
+        for (const u of row.photo_urls) {
+          if (typeof u === 'string') accept(extractActivityStoragePath(u));
+        }
+      }
+    }
+    const pathList = [...samplePaths];
+    for (let i = 0; i < pathList.length; i += 100) {
+      await db.storage.from(ACTIVITY_MEDIA_BUCKET).remove(pathList.slice(i, i + 100));
+    }
+  }
+
+  const { data: counts, error: rpcErr } = await db.rpc('purge_expired_sample_records');
+  if (rpcErr) {
+    return null;
+  }
+  const row = Array.isArray(counts) ? counts[0] : counts;
+  return row ?? null;
+}
+
 /**
  * Scheduled cron endpoint (Vercel Cron) to purge expired >30-day photos across all organizations.
  */
@@ -140,13 +182,14 @@ export async function GET(req: Request) {
     }
 
     const db = createClient(url, secretKey, { auth: { persistSession: false } });
-    // Also sweep expired shared route cache & rate-limit entries during scheduled cron runs
+    // Also sweep expired shared route cache & rate-limit entries and 24h expired sample logs
     await db.rpc('purge_expired_route_compute_state').then(() => undefined, () => undefined);
+    const samplesPurged = await executeSamplePurge(db);
     const res = await executePhotoPurge(db);
     if ('error' in res) {
       return NextResponse.json({ error: res.error }, { status: res.status });
     }
-    return NextResponse.json({ purgedCount: res.purgedCount, filesRemoved: res.filesRemoved });
+    return NextResponse.json({ purgedCount: res.purgedCount, filesRemoved: res.filesRemoved, samplesPurged });
   } catch (err: unknown) {
     return NextResponse.json({ error: getErrorMessage(err, 'Cron purge failed') }, { status: 500 });
   }
@@ -182,8 +225,10 @@ export async function POST() {
     const { url } = getSupabaseEnv();
     const secretKey = (process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? '').trim();
     const serviceDb = url && secretKey ? createClient(url, secretKey, { auth: { persistSession: false } }) : null;
+    let samplesPurged: unknown = null;
     if (serviceDb) {
       await serviceDb.rpc('purge_expired_route_compute_state').then(() => undefined, () => undefined);
+      samplesPurged = await executeSamplePurge(serviceDb);
     }
     const db = serviceDb ?? me;
 
@@ -191,7 +236,7 @@ export async function POST() {
     if ('error' in res) {
       return NextResponse.json({ error: res.error }, { status: res.status });
     }
-    return NextResponse.json({ purgedCount: res.purgedCount, filesRemoved: res.filesRemoved });
+    return NextResponse.json({ purgedCount: res.purgedCount, filesRemoved: res.filesRemoved, samplesPurged });
   } catch (err: unknown) {
     return NextResponse.json({ error: getErrorMessage(err, 'Purge failed') }, { status: 500 });
   }

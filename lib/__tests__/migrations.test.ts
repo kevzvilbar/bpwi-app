@@ -12,7 +12,7 @@ describe('Supabase SQL migrations integrity', () => {
     .sort();
 
   it('has strictly sequential 3-digit prefixes with no gaps or duplicates', () => {
-    assert.ok(files.length >= 33, `Expected at least 33 migrations, found ${files.length}`);
+    assert.ok(files.length >= 34, `Expected at least 34 migrations, found ${files.length}`);
     const nums = files.map((f) => {
       const m = f.match(/^(\d{3})_/);
       assert.ok(m, `Migration filename must start with 3-digit prefix: ${f}`);
@@ -65,6 +65,19 @@ describe('Supabase SQL migrations integrity', () => {
     assert.match(readme, /\b031\b/);
     assert.match(readme, /\b032\b/);
     assert.match(readme, /\b033\b/);
+    assert.match(readme, /\b034\b/);
+  });
+
+  it('adds 24h auto-expiring sample logs and cleanup in 034_sample_logs.sql', () => {
+    const sql34 = fs.readFileSync(path.join(MIGRATIONS_DIR, '034_sample_logs.sql'), 'utf8');
+    for (const required of [
+      'enforce_sample_log_lifecycle',
+      'purge_expired_sample_records',
+      'SAMPLE-JO-',
+      'revoke all on function purge_expired_sample_records() from public, anon, authenticated',
+    ]) {
+      assert.ok(sql34.includes(required), `034_sample_logs.sql missing required construct: ${required}`);
+    }
   });
 
   it('adds genset registry with unique active location index and transfer trigger in 033_genset_registry.sql', () => {

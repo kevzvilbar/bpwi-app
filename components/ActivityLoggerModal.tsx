@@ -11,7 +11,10 @@ import {
   resolveActivityTypeFromPm,
   type ActivityCategory,
   type DailyActivityRow,
+  type LinkedJobOrder,
+  type LinkedPmTask,
 } from '@/lib/activity-types';
+export type { LinkedJobOrder, LinkedPmTask };
 import { getErrorMessage } from '@/lib/error-utils';
 import { resolveActivityPhotoUrl } from '@/lib/activity-media';
 import { extractGpsMetadata, type GpsSource } from '@/lib/gps-accuracy';
@@ -36,59 +39,10 @@ import ActivityMediaCapture, { type ActivityPhotoEntry } from '@/components/Acti
 
 const MAX_ACTIVITY_PHOTOS = 4;
 
-export type LoggerOperator = {
-  id: string;
-  full_name: string;
-  position: string | null;
-  default_station?: string | null;
-};
-
-export type LoggerArea = {
-  id: string;
-  code: string;
-  name: string | null;
-  category: string;
-  sub_sites?: string[];
-};
-
-export type LoggerShift = {
-  id: string;
-  code: string;
-  description?: string | null;
-  start_time?: string | null;
-  end_time?: string | null;
-  is_off?: boolean;
-};
-
-export type LoggerAssignment = {
-  operator_id: string;
-  shift_type_id: string | null;
-  area_code_id: string | null;
-};
-
-export type LinkedPmTask = {
-  id: string;
-  title: string;
-  activity_type: string;
-  locations?: string[];
-  asset?: string | null;
-  assigned_operator_ids?: string[];
-};
-
-export type LinkedJobOrder = {
-  id: string;
-  jo_number: string;
-  title: string;
-  activity_type?: string | null;
-  area_code_id?: string | null;
-  site_or_well?: string | null;
-  block_lot?: string | null;
-  account_number?: string | null;
-  account_name?: string | null;
-  assigned_operator_ids?: string[];
-  deadline?: string | null;
-  estimated_hours?: number | null;
-};
+export type LoggerOperator = { id: string; full_name: string; position: string | null; default_station?: string | null };
+export type LoggerArea = { id: string; code: string; name: string | null; category: string; sub_sites?: string[] };
+export type LoggerShift = { id: string; code: string; description?: string | null; start_time?: string | null; end_time?: string | null; is_off?: boolean };
+export type LoggerAssignment = { operator_id: string; shift_type_id: string | null; area_code_id: string | null };
 
 export default function ActivityLoggerModal(p: {
   open: boolean;
@@ -112,6 +66,8 @@ export default function ActivityLoggerModal(p: {
   pmActivityTypes?: Array<{ code: string; label: string; short_label?: string }>;
   linkedJobOrder?: LinkedJobOrder | null;
   editingActivity?: DailyActivityRow | null;
+  canLogSample?: boolean;
+  sampleOnly?: boolean;
   onQueuedOffline?: (payload: Record<string, unknown>) => Promise<void> | void;
 }) {
   const stationAreas = useMemo(() => {
@@ -174,6 +130,7 @@ export default function ActivityLoggerModal(p: {
   const [submitting, setSubmitting] = useState(false);
   const [errMsg, setErrMsg] = useState('');
   const [joTatJustification, setJoTatJustification] = useState('');
+  const [isSample, setIsSample] = useState(Boolean(p.sampleOnly));
   const [openAtMs, setOpenAtMs] = useState(0);
   const lastParsedRef = useRef('');
   const initCtxRef = useRef({ p, asgByOp, stationAreas, stationIdSet });
@@ -185,6 +142,7 @@ export default function ActivityLoggerModal(p: {
     const { p: props, asgByOp: asgMap, stationAreas: stAreas, stationIdSet: stIdSet } = initCtxRef.current;
     setErrMsg('');
     setJoTatJustification('');
+    setIsSample(props.editingActivity ? Boolean(props.editingActivity.is_sample) : Boolean(props.sampleOnly));
     setOpenAtMs(Date.now());
     setGpsLat(null);
     setGpsLng(null);
@@ -508,6 +466,7 @@ export default function ActivityLoggerModal(p: {
             ...(gpsAccuracyM !== null ? { gpsAccuracyM } : {}),
           }
         : {};
+    const effectiveIsSample = p.editingActivity ? Boolean(p.editingActivity.is_sample) : Boolean(p.sampleOnly || isSample);
     const payload: ActivitySubmitPayload = {
       organization_id: p.orgId,
       activity_date: p.date,
@@ -531,6 +490,7 @@ export default function ActivityLoggerModal(p: {
       photo_storage_paths: photos.map((ph) => ph.storagePath).filter((sp): sp is string => Boolean(sp)),
       photos_expires_at: photos.length > 0 ? preservedExpiry : null,
       signature_data: sigData,
+      is_sample: effectiveIsSample,
       ...(p.linkedJobOrder?.id ? { job_order_id: p.linkedJobOrder.id } : {}),
     };
 
@@ -596,31 +556,18 @@ export default function ActivityLoggerModal(p: {
       const { data, error } = await sb.from('daily_activities').insert(payload).select(DAILY_ACTIVITY_LIST_COLUMNS).single();
       if (error) throw error;
 
-      const pmPerformers = p.linkedPmTask?.id ? buildPmActualPerformerIds(leadOpId, p.role === 'operator' && p.operatorId ? [...crewOpIds, p.operatorId] : crewOpIds) : undefined;
-      if (p.linkedPmTask?.id) {
-        const pmBase = {
-          status: 'done',
-          completed_at: p.date,
-          remarks: notes.trim() || `Logged via field activity (${activityType})`,
-        };
-        const pmRes = await sb
-          .from('pm_tasks')
-          .update({ ...pmBase, completed_by_operator_ids: pmPerformers })
-          .eq('id', p.linkedPmTask.id);
-        if (isMissingCompletedByColumnError(pmRes.error)) {
-          await sb.from('pm_tasks').update(pmBase).eq('id', p.linkedPmTask.id);
-        }
+      const pmPerformers = !effectiveIsSample && p.linkedPmTask?.id ? buildPmActualPerformerIds(leadOpId, p.role === 'operator' && p.operatorId ? [...crewOpIds, p.operatorId] : crewOpIds) : undefined;
+      if (!effectiveIsSample && p.linkedPmTask?.id) {
+        const pmBase = { status: 'done', completed_at: p.date, remarks: notes.trim() || `Logged via field activity (${activityType})` };
+        const pmRes = await sb.from('pm_tasks').update({ ...pmBase, completed_by_operator_ids: pmPerformers }).eq('id', p.linkedPmTask.id);
+        if (isMissingCompletedByColumnError(pmRes.error)) await sb.from('pm_tasks').update(pmBase).eq('id', p.linkedPmTask.id);
       }
 
       const trimmedTat = joTatJustification.trim() || null;
-      if (p.linkedJobOrder?.id) {
+      if (!effectiveIsSample && p.linkedJobOrder?.id) {
         await sb
           .from('job_orders')
-          .update({
-            status: 'completed',
-            completed_at: new Date().toISOString(),
-            ...(trimmedTat ? { tat_justification: trimmedTat } : {}),
-          })
+          .update({ status: 'completed', completed_at: new Date().toISOString(), ...(trimmedTat ? { tat_justification: trimmedTat } : {}) })
           .eq('id', p.linkedJobOrder.id);
       }
 
@@ -964,6 +911,15 @@ export default function ActivityLoggerModal(p: {
           <label className="card" style={{ padding: 10, display: 'grid', gap: 4, fontSize: 12, fontWeight: 600, background: 'var(--warn-bg)', borderColor: 'var(--warn-border)', color: 'var(--warn-fg)' }}>
             <span>⚠️ Job Order {p.linkedJobOrder.jo_number} is past its SLA deadline — TAT Justification (optional)</span>
             <input className="input" value={joTatJustification} onChange={(e) => setJoTatJustification(e.target.value)} placeholder="e.g. Awaited customer access / materials…" />
+          </label>
+        )}
+
+        {!p.editingActivity && (p.sampleOnly || p.canLogSample) && (
+          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '7px 10px', borderRadius: 6, background: 'var(--warn-bg)', color: 'var(--warn-fg)', border: '1px solid var(--warn-border)', fontSize: 12, fontWeight: 600, cursor: p.sampleOnly ? 'default' : 'pointer' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={Boolean(p.sampleOnly || isSample)} disabled={Boolean(p.sampleOnly)} onChange={(e) => setIsSample(e.target.checked)} />
+              <span>Log as sample (auto-deletes in 24h){p.sampleOnly ? ' · Required for department heads' : ''}</span>
+            </span>
           </label>
         )}
 
