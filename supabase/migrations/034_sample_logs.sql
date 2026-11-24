@@ -456,7 +456,13 @@ declare
   v_ho int := 0;
   v_rep int := 0;
 begin
-  delete from daily_activities where is_sample = true and sample_expires_at <= now();
+  -- Leave photo-bearing expired samples in place (hidden by RLS at 24h) until /api/activities/purge-photos
+  -- removes their Storage objects and clears photo_storage_paths / photo_urls; otherwise files become orphaned.
+  delete from daily_activities
+  where is_sample = true
+    and sample_expires_at <= now()
+    and coalesce(cardinality(photo_storage_paths), 0) = 0
+    and coalesce(cardinality(photo_urls), 0) = 0;
   get diagnostics v_act = row_count;
 
   delete from job_orders where is_sample = true and sample_expires_at <= now();

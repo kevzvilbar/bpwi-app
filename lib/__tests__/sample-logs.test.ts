@@ -47,4 +47,13 @@ describe('sample-logs helpers', () => {
     const repSampleCount = (reportsCompSrc.match(/\.eq\('is_sample',\s*false\)/g) ?? []).length;
     assert.equal(repSampleCount, 2, 'AccomplishmentReports must filter is_sample=false when loading activities');
   });
+
+  it('guards expired sample activity deletion until storage photos are safely removed', () => {
+    const sql34 = fs.readFileSync(path.resolve(process.cwd(), 'supabase/migrations/034_sample_logs.sql'), 'utf8');
+    assert.match(sql34, /coalesce\(cardinality\(photo_storage_paths\),\s*0\)\s*=\s*0/);
+    assert.match(sql34, /coalesce\(cardinality\(photo_urls\),\s*0\)\s*=\s*0/);
+
+    const routeSrc = fs.readFileSync(path.resolve(process.cwd(), 'app/api/activities/purge-photos/route.ts'), 'utf8');
+    assert.match(routeSrc, /executeSamplePurge[\s\S]*failedPaths[\s\S]*clearedRowIds[\s\S]*purge_expired_sample_records/);
+  });
 });

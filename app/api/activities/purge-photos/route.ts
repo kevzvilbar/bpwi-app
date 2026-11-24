@@ -13,6 +13,66 @@ function isAuthorizedBearer(header: string, secret: string): boolean {
   return expected.length === provided.length && timingSafeEqual(expected, provided);
 }
 
+interface ActivityPhotoRow {
+  id: string;
+  organization_id: string | null;
+  photo_storage_paths: unknown;
+  photo_urls: unknown;
+}
+
+function collectMediaRowsAndPaths(rows: ActivityPhotoRow[], logPrefix: string) {
+  const rowsWithMedia = rows.filter(
+    (r) =>
+      (Array.isArray(r.photo_storage_paths) && r.photo_storage_paths.length > 0) ||
+      (Array.isArray(r.photo_urls) && r.photo_urls.length > 0),
+  );
+  const pathsByRow = new Map<string, string[]>();
+  const allPathSet = new Set<string>();
+
+  for (const row of rowsWithMedia) {
+    const rowOrgId = typeof row.organization_id === 'string' ? row.organization_id : '';
+    const pathSet = new Set<string>();
+    const acceptPath = (candidate: string | null) => {
+      if (!candidate) return;
+      if (!rowOrgId || !isStoragePathOwnedByOrg(candidate, rowOrgId)) {
+        console.warn(`${logPrefix} Skipped storage path outside row org (${rowOrgId || 'unknown'}): ${candidate}`);
+        return;
+      }
+      pathSet.add(candidate);
+      allPathSet.add(candidate);
+    };
+    if (Array.isArray(row.photo_storage_paths)) {
+      for (const p of row.photo_storage_paths) {
+        if (typeof p === 'string' && p.trim()) acceptPath(p.trim());
+      }
+    }
+    if (Array.isArray(row.photo_urls)) {
+      for (const u of row.photo_urls) {
+        if (typeof u === 'string') acceptPath(extractActivityStoragePath(u));
+      }
+    }
+    pathsByRow.set(row.id, [...pathSet]);
+  }
+
+  return { rowsWithMedia, pathsByRow, allPaths: [...allPathSet] };
+}
+
+async function removeStoragePathsInChunks(db: SupabaseClient, allPaths: string[], logPrefix: string) {
+  const failedPaths = new Set<string>();
+  let filesRemoved = 0;
+  for (let i = 0; i < allPaths.length; i += 100) {
+    const chunk = allPaths.slice(i, i + 100);
+    const { error: rmErr } = await db.storage.from(ACTIVITY_MEDIA_BUCKET).remove(chunk);
+    if (rmErr) {
+      console.error(`${logPrefix} Storage removal failed for ${chunk.length} file(s): ${rmErr.message}`);
+      chunk.forEach((p) => failedPaths.add(p));
+    } else {
+      filesRemoved += chunk.length;
+    }
+  }
+  return { failedPaths, filesRemoved };
+}
+
 async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
   const nowMs = Date.now();
   const nowIso = new Date(nowMs).toISOString();
@@ -32,10 +92,9 @@ async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
     return { error: fetchErr.message, status: 500 as const };
   }
 
-  const rowsWithMedia = (expiredRows ?? []).filter(
-    (r) =>
-      (Array.isArray(r.photo_storage_paths) && r.photo_storage_paths.length > 0) ||
-      (Array.isArray(r.photo_urls) && r.photo_urls.length > 0),
+  const { rowsWithMedia, pathsByRow, allPaths } = collectMediaRowsAndPaths(
+    (expiredRows ?? []) as ActivityPhotoRow[],
+    '[purge-photos]',
   );
 
   if (rowsWithMedia.length === 0) {
@@ -44,47 +103,7 @@ async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
 
   // Only rows whose files were really removed may be marked purged. If a storage call fails, the
   // row keeps its paths so the next run retries; otherwise the files would be orphaned forever.
-  const pathsByRow = new Map<string, string[]>();
-  const allPaths: string[] = [];
-  for (const row of rowsWithMedia) {
-    const rowOrgId = typeof row.organization_id === 'string' ? row.organization_id : '';
-    const pathSet = new Set<string>();
-    const acceptPath = (candidate: string | null) => {
-      if (!candidate) return;
-      if (!rowOrgId || !isStoragePathOwnedByOrg(candidate, rowOrgId)) {
-        console.warn(`[purge-photos] Skipped storage path outside row org (${rowOrgId || 'unknown'}): ${candidate}`);
-        return;
-      }
-      pathSet.add(candidate);
-    };
-    if (Array.isArray(row.photo_storage_paths)) {
-      for (const p of row.photo_storage_paths) {
-        if (typeof p === 'string' && p.trim()) acceptPath(p.trim());
-      }
-    }
-    if (Array.isArray(row.photo_urls)) {
-      for (const u of row.photo_urls) {
-        if (typeof u === 'string') {
-          acceptPath(extractActivityStoragePath(u));
-        }
-      }
-    }
-    const paths = [...pathSet];
-    pathsByRow.set(row.id, paths);
-    allPaths.push(...paths);
-  }
-
-  const failedPaths = new Set<string>();
-  let filesRemoved = 0;
-  for (let i = 0; i < allPaths.length; i += 100) {
-    const chunk = allPaths.slice(i, i + 100);
-    const { error: rmErr } = await db.storage.from(ACTIVITY_MEDIA_BUCKET).remove(chunk);
-    if (rmErr) {
-      chunk.forEach((p) => failedPaths.add(p));
-    } else {
-      filesRemoved += chunk.length;
-    }
-  }
+  const { failedPaths, filesRemoved } = await removeStoragePathsInChunks(db, allPaths, '[purge-photos]');
 
   const idsToUpdate = [...pathsByRow.entries()]
     .filter(([, paths]) => paths.every((p) => !failedPaths.has(p)))
@@ -122,46 +141,69 @@ async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
   };
 }
 
-async function executeSamplePurge(db: SupabaseClient) {
+async function executeSamplePurge(db: SupabaseClient, orgId?: string) {
   const nowIso = new Date().toISOString();
-  const { data: expiredSamples, error: fetchErr } = await db
+  let query = db
     .from('daily_activities')
     .select('id, organization_id, photo_storage_paths, photo_urls')
     .eq('is_sample', true)
     .lte('sample_expires_at', nowIso);
 
-  if (!fetchErr && Array.isArray(expiredSamples) && expiredSamples.length > 0) {
-    const samplePaths = new Set<string>();
-    for (const row of expiredSamples) {
-      const rowOrgId = typeof row.organization_id === 'string' ? row.organization_id : '';
-      const accept = (candidate: string | null) => {
-        if (candidate && rowOrgId && isStoragePathOwnedByOrg(candidate, rowOrgId)) {
-          samplePaths.add(candidate);
+  if (orgId) {
+    query = query.eq('organization_id', orgId);
+  }
+
+  const { data: expiredSamples, error: fetchErr } = await query;
+  const failedPaths = new Set<string>();
+  let filesRemoved = 0;
+
+  if (fetchErr) {
+    console.error(`[purge-samples] Failed to query expired samples: ${fetchErr.message}`);
+  } else if (Array.isArray(expiredSamples) && expiredSamples.length > 0) {
+    const { rowsWithMedia, pathsByRow, allPaths } = collectMediaRowsAndPaths(
+      expiredSamples as ActivityPhotoRow[],
+      '[purge-samples]',
+    );
+
+    if (rowsWithMedia.length > 0) {
+      const removed = await removeStoragePathsInChunks(db, allPaths, '[purge-samples]');
+      filesRemoved = removed.filesRemoved;
+      removed.failedPaths.forEach((p) => failedPaths.add(p));
+
+      // Clear photo columns only on rows whose storage objects were completely removed;
+      // rows with failed removals keep their paths so purge_expired_sample_records skips them for retry.
+      const clearedRowIds = [...pathsByRow.entries()]
+        .filter(([, paths]) => paths.every((p) => !failedPaths.has(p)))
+        .map(([id]) => id);
+
+      if (clearedRowIds.length > 0) {
+        let clrQuery = db
+          .from('daily_activities')
+          .update({
+            photo_urls: [],
+            photo_storage_paths: [],
+            photos_purged_at: nowIso,
+          })
+          .in('id', clearedRowIds);
+        if (orgId) {
+          clrQuery = clrQuery.eq('organization_id', orgId);
         }
-      };
-      if (Array.isArray(row.photo_storage_paths)) {
-        for (const p of row.photo_storage_paths) {
-          if (typeof p === 'string' && p.trim()) accept(p.trim());
+        const { error: clrErr } = await clrQuery;
+        if (clrErr) {
+          console.error(`[purge-samples] Failed to clear photo metadata before delete: ${clrErr.message}`);
         }
       }
-      if (Array.isArray(row.photo_urls)) {
-        for (const u of row.photo_urls) {
-          if (typeof u === 'string') accept(extractActivityStoragePath(u));
-        }
-      }
-    }
-    const pathList = [...samplePaths];
-    for (let i = 0; i < pathList.length; i += 100) {
-      await db.storage.from(ACTIVITY_MEDIA_BUCKET).remove(pathList.slice(i, i + 100));
     }
   }
 
   const { data: counts, error: rpcErr } = await db.rpc('purge_expired_sample_records');
   if (rpcErr) {
-    return null;
+    console.error(`[purge-samples] purge_expired_sample_records RPC failed: ${rpcErr.message}`);
+    if (filesRemoved === 0 && failedPaths.size === 0) return null;
+    return { filesRemoved, failedFiles: failedPaths.size };
   }
-  const row = Array.isArray(counts) ? counts[0] : counts;
-  return row ?? null;
+  const row = (Array.isArray(counts) ? counts[0] : counts) as Record<string, unknown> | null | undefined;
+  return { ...(row ?? {}), filesRemoved, failedFiles: failedPaths.size };
 }
 
 /**
@@ -228,7 +270,7 @@ export async function POST() {
     let samplesPurged: unknown = null;
     if (serviceDb) {
       await serviceDb.rpc('purge_expired_route_compute_state').then(() => undefined, () => undefined);
-      samplesPurged = await executeSamplePurge(serviceDb);
+      samplesPurged = await executeSamplePurge(serviceDb, orgId);
     }
     const db = serviceDb ?? me;
 

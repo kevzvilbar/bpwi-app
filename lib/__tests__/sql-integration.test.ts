@@ -1201,6 +1201,16 @@ describe('PGlite SQL migrations 001–030 execution & security invariants', () =
     );
     assert.equal(notifsAfter.rows[0]?.cnt, notifsBefore.rows[0]?.cnt);
 
+    // Also insert a sample daily_activity WITH photos; purge_expired_sample_records() must spare it until storage photos are cleared
+    const samplePhotoPath = `${orgId}/${mgr1Id}/sample-photo.jpg`;
+    const samplePhotoActRes = await db.query<{ id: string }>(
+      `insert into daily_activities (organization_id, logged_by, activity_type, photo_storage_paths, photo_urls, is_sample)
+       values ($1, $2, 'pump_monitoring', array[$3]::text[], array[$4]::text[], true)
+       returning id`,
+      [orgId, mgr1Id, samplePhotoPath, `https://example.supabase.co/storage/v1/object/public/activity-media/${samplePhotoPath}`],
+    );
+    const samplePhotoActId = samplePhotoActRes.rows[0].id;
+
     // Backdate sample_expires_at via session trigger bypass isn't allowed; drop trigger check not needed — delete via alter trigger disable/enable?
     // Or test expired visibility + purge cleanly by temporarily disabling trg_*_sample_lifecycle for test setup!
     await db.exec(`
@@ -1208,7 +1218,7 @@ describe('PGlite SQL migrations 001–030 execution & security invariants', () =
       alter table job_orders disable trigger trg_job_orders_sample_lifecycle;
       alter table shift_handovers disable trigger trg_shift_handovers_sample_lifecycle;
       alter table accomplishment_reports disable trigger trg_accomplishment_reports_sample_lifecycle;
-      update daily_activities set sample_expires_at = now() - interval '1 minute' where id = '${sampleActId}';
+      update daily_activities set sample_expires_at = now() - interval '1 minute' where id in ('${sampleActId}', '${samplePhotoActId}');
       update job_orders set sample_expires_at = now() - interval '1 minute' where id = '${sampleJoRes.rows[0].id}';
       update shift_handovers set sample_expires_at = now() - interval '1 minute' where id = '${sampleHoRes.rows[0].id}';
       update accomplishment_reports set sample_expires_at = now() - interval '1 minute' where id = '${sampleRepRes.rows[0].id}';
@@ -1231,7 +1241,7 @@ describe('PGlite SQL migrations 001–030 execution & security invariants', () =
     await db.exec('commit;');
     assert.equal(expiredAdminSee.rows[0]?.cnt, 0);
 
-    // purge_expired_sample_records() is service_role-only and deletes all 4 expired samples without touching real JO
+    // purge_expired_sample_records() is service_role-only, deletes photo-less expired samples, spares photo-bearing expired samples, and never touches real JO
     const purgePriv = await db.query<{ auth: boolean }>(
       `select has_function_privilege('authenticated', 'purge_expired_sample_records()', 'EXECUTE') as auth`,
     );
@@ -1249,6 +1259,31 @@ describe('PGlite SQL migrations 001–030 execution & security invariants', () =
       handovers_deleted: 1,
       reports_deleted: 1,
     });
+
+    // Photo-bearing expired sample remains so /api/activities/purge-photos can remove Storage objects cleanly first
+    const photoSampleStillHere = await db.query<{ cnt: number }>(
+      `select count(*)::int as cnt from daily_activities where id = $1`,
+      [samplePhotoActId],
+    );
+    assert.equal(photoSampleStillHere.rows[0]?.cnt, 1);
+
+    // Once /api/activities/purge-photos removes Storage objects and clears photo columns, SQL purge deletes the row
+    await db.query(
+      `update daily_activities set photo_urls = '{}', photo_storage_paths = '{}', photos_purged_at = now() where id = $1`,
+      [samplePhotoActId],
+    );
+    await db.exec('begin; set local role service_role;');
+    const purgedAfterPhotoClear = await db.query<{ activities_deleted: number }>(
+      `select activities_deleted from purge_expired_sample_records()`,
+    );
+    await db.exec('commit;');
+    assert.equal(purgedAfterPhotoClear.rows[0]?.activities_deleted, 1);
+    const photoSampleGone = await db.query<{ cnt: number }>(
+      `select count(*)::int as cnt from daily_activities where id = $1`,
+      [samplePhotoActId],
+    );
+    assert.equal(photoSampleGone.rows[0]?.cnt, 0);
+
     const realJoStillHere = await db.query<{ cnt: number }>(`select count(*)::int as cnt from job_orders where id = $1`, [realJoRes.rows[0].id]);
     assert.equal(realJoStillHere.rows[0]?.cnt, 1);
 
