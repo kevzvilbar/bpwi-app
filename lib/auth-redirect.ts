@@ -29,15 +29,23 @@ export function classifyOAuthError(
   return 'oauth_failed';
 }
 
-export function getOAuthErrorMessage(reason: string | null | undefined): string {
+function formatOAuthProviderLabel(provider?: string | null): string {
+  const normalized = (provider ?? '').trim().toLowerCase();
+  if (normalized === 'google') return 'Google';
+  if (normalized === 'facebook') return 'Facebook';
+  return 'Social';
+}
+
+export function getOAuthErrorMessage(reason: string | null | undefined, provider?: string | null): string {
+  const label = formatOAuthProviderLabel(provider);
   switch (reason) {
     case 'cancelled':
-      return 'Facebook sign-in was cancelled. You can try again or use your email and password.';
+      return `${label} sign-in was cancelled. You can try again or use your email and password.`;
     case 'domain_restricted':
-      return 'Account creation is restricted to approved organization email domains. Make sure your Facebook email is approved or ask an administrator for an invite.';
+      return 'Account creation is restricted to approved organization email domains. Make sure your account email is approved or ask an administrator for an invite.';
     case 'provider_disabled':
-      return 'Facebook sign-in is not yet enabled by your administrator in Supabase Auth.';
+      return `${label} sign-in is not yet enabled by your administrator in Supabase Auth.`;
     default:
-      return 'Facebook sign-in could not be completed. Please try again or contact your administrator.';
+      return `${label} sign-in could not be completed. Please try again or contact your administrator.`;
   }
 }

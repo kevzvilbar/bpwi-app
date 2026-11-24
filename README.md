@@ -21,11 +21,11 @@
    `curl -X POST http://localhost:3000/api/import -H "Content-Type: application/json" -H "Cookie: <your session cookie>" --data @backup.json`
    Re-running is safe (idempotent upsert).
 5. Deploy: import the repo in Vercel and configure env vars (`SUPABASE_SECRET_KEY` server-only, `CRON_SECRET` for scheduled photo/cache purges). In Supabase Authentication settings, disable **Allow new users to sign up** for invite-only production deployments (keep `NEXT_PUBLIC_ALLOW_PUBLIC_SIGNUP=false`), or enable **Confirm email** and configure **Sign-Up Access & Domain Allowlist** in **Operators & Setup → Users & roles** (`organizations.allowed_signup_domains`, migrations `030`–`032`, `035`). Enforce strong passwords (minimum 12 characters on sign-up/reset; set Supabase Auth minimum password length to 12 as well). Per-request nonce CSP headers are applied in [`middleware.ts`](middleware.ts).
-6. **Facebook OAuth Sign-up / Sign-in (optional):**
-   - Create a Meta Developer app (Facebook Login) and add `<SUPABASE_URL>/auth/v1/callback` to **Valid OAuth Redirect URIs** in Meta.
-   - In **Supabase Dashboard → Authentication → Providers → Facebook**, enable Facebook and enter your **Facebook Client ID** (App ID) and **Facebook Client Secret** (App Secret).
-   - In **Supabase Dashboard → Authentication → URL Configuration**, add `<your-app-origin>/auth/callback` (e.g. `http://localhost:3000/auth/callback` and `https://your-domain.vercel.app/auth/callback`) to **Redirect URLs**.
-   - Run migration [`035_oauth_profile_name.sql`](supabase/migrations/035_oauth_profile_name.sql) so Facebook display names (`raw_user_meta_data.name`) populate `user_profiles.full_name`; newly created Facebook accounts still start as pending (`role = 'viewer'`, `is_active = false`) and respect `organizations.allowed_signup_domains` until approved by an admin.
+6. **Google & Facebook OAuth Sign-up / Sign-in (optional):**
+   - **Google:** Create a Web OAuth 2.0 Client in **Google Cloud Console** with Authorized Redirect URI `<SUPABASE_URL>/auth/v1/callback`, then enable **Google** under **Supabase Dashboard → Authentication → Providers** with your Client ID & Client Secret.
+   - **Facebook:** Create a Meta Developer app (Facebook Login) with Valid OAuth Redirect URI `<SUPABASE_URL>/auth/v1/callback`, then enable **Facebook** under **Supabase Dashboard → Authentication → Providers** with your App ID & App Secret.
+   - **Redirect URL:** In **Supabase Dashboard → Authentication → URL Configuration**, add `<your-app-origin>/auth/callback` (e.g. `http://localhost:3000/auth/callback` and `https://your-domain.vercel.app/auth/callback`) to **Redirect URLs**.
+   - **Migration:** Run [`035_oauth_profile_name.sql`](supabase/migrations/035_oauth_profile_name.sql) so OAuth display names (`raw_user_meta_data.name`) populate `user_profiles.full_name`; newly created Google/Facebook accounts still start as pending (`role = 'viewer'`, `is_active = false`) and respect `organizations.allowed_signup_domains` until approved by an admin.
 
 ## Department heads (migrations 007, 008 & 009)
 Run `007_manager_role.sql` **on its own first** (PostgreSQL cannot use a new enum value in the transaction that adds it), then `008_department_heads.sql`, followed by `009_change_requests.sql`.

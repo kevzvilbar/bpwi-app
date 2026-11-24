@@ -22,9 +22,10 @@ describe('auth redirect & OAuth error helpers', () => {
   });
 
   it('returns clear user-facing messages for every OAuth reason', () => {
-    assert.match(getOAuthErrorMessage('cancelled'), /cancelled/i);
+    assert.match(getOAuthErrorMessage('cancelled'), /Social sign-in was cancelled/i);
     assert.match(getOAuthErrorMessage('domain_restricted'), /approved organization email domains/i);
-    assert.match(getOAuthErrorMessage('provider_disabled'), /not yet enabled/i);
+    assert.match(getOAuthErrorMessage('provider_disabled', 'google'), /Google sign-in is not yet enabled/i);
+    assert.match(getOAuthErrorMessage('provider_disabled', 'facebook'), /Facebook sign-in is not yet enabled/i);
     assert.match(getOAuthErrorMessage('unknown'), /could not be completed/i);
   });
 });
