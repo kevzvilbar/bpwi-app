@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { ACTIVITY_MEDIA_BUCKET, buildActivityPhotoUrl } from './activity-media';
+import { ACTIVITY_MEDIA_BUCKET, buildActivityPhotoUrl } from './activity-media.ts';
 
 export interface CompressedImageResult {
   blob: Blob;
@@ -121,6 +121,24 @@ export async function uploadActivityPhoto(
 }
 
 /**
+ * Decodes a base64 data URL directly into a Blob in memory so CSP `connect-src`
+ * never needs `data:` and offline queue uploads do not rely on `fetch(dataUrl)`.
+ */
+export function dataUrlToBlob(dataUrl: string): Blob {
+  const match = /^data:([^;,]+)?(?:;charset=[^;,]+)?;base64,([A-Za-z0-9+/=\s]+)$/.exec(dataUrl);
+  if (!match) {
+    throw new Error('Invalid image data URL');
+  }
+  const mimeType = match[1] || 'image/jpeg';
+  const binary = atob(match[2].replace(/\s+/g, ''));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mimeType });
+}
+
+/**
  * Converts a base64 data URL (e.g. from offline IndexedDB queue) and uploads it to
  * Supabase Storage 'activity-media' when connectivity returns.
  */
@@ -134,8 +152,7 @@ export async function uploadDataUrlPhoto(
     return { url: dataUrl, storagePath: null };
   }
   try {
-    const res = await fetch(dataUrl);
-    const blob = await res.blob();
+    const blob = dataUrlToBlob(dataUrl);
     const mimeType = blob.type || 'image/jpeg';
     const ext = mimeType.includes('webp') ? 'webp' : mimeType.includes('png') ? 'png' : 'jpg';
     const rand = Math.random().toString(36).slice(2, 8);

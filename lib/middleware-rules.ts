@@ -1,5 +1,7 @@
 export function shouldBypassSessionAuth(pathname: string, method: string): boolean {
   const upper = method.toUpperCase();
+  // Browser CSP violation reports can arrive from /login or expired sessions without a session cookie.
+  if (pathname === '/api/csp-report' && upper === 'POST') return true;
   if (upper !== 'GET' && upper !== 'HEAD') return false;
   // PWA service worker and web manifest must never redirect to /login (browsers reject redirected SW scripts).
   if (pathname === '/sw.js' || pathname === '/manifest.webmanifest') return true;

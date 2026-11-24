@@ -67,6 +67,8 @@ export interface LegacyImportPayload {
 }
 
 const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const HEX_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+const ALLOWED_PM_STATUSES = new Set(['planned', 'in_progress', 'done', 'cancelled']);
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return Boolean(v) && typeof v === 'object' && !Array.isArray(v);
@@ -88,6 +90,23 @@ function isOptionalStringArray(v: unknown): boolean {
   return v === undefined || (Array.isArray(v) && v.every((item) => typeof item === 'string'));
 }
 
+function isValidCalendarDate(v: unknown): v is string {
+  if (typeof v !== 'string' || !DATE_KEY_RE.test(v)) return false;
+  const [y, m, day] = v.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, day));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === day;
+}
+
+function isOptionalNullableHexColor(v: unknown): boolean {
+  if (v === undefined || v === null || v === '') return true;
+  return typeof v === 'string' && HEX_COLOR_RE.test(v.trim());
+}
+
+function isOptionalHexColor(v: unknown): boolean {
+  if (v === undefined || v === '') return true;
+  return typeof v === 'string' && HEX_COLOR_RE.test(v.trim());
+}
+
 export function validateImportPayload(
   raw: unknown,
 ): { ok: true; data: LegacyImportPayload } | { ok: false; error: string } {
@@ -99,11 +118,17 @@ export function validateImportPayload(
     if (!Array.isArray(raw.operators)) {
       return { ok: false, error: 'operators must be an array' };
     }
+    const seenOpIds = new Set<string>();
     for (let i = 0; i < raw.operators.length; i += 1) {
       const op = raw.operators[i];
       if (!isPlainObject(op) || !isNonEmptyString(op.id) || !isNonEmptyString(op.name)) {
         return { ok: false, error: `operators[${i}] must have non-empty string id and name` };
       }
+      const key = op.id.trim();
+      if (seenOpIds.has(key)) {
+        return { ok: false, error: `Duplicate operator id "${key}" in operators[${i}]` };
+      }
+      seenOpIds.add(key);
       if (
         !isOptionalNullableString(op.role) ||
         !isOptionalNullableString(op.phone) ||
@@ -118,18 +143,24 @@ export function validateImportPayload(
     if (!isPlainObject(raw.shifts)) {
       return { ok: false, error: 'shifts must be an object map' };
     }
+    const seenShiftIds = new Set<string>();
     for (const [key, shift] of Object.entries(raw.shifts)) {
       if (!isPlainObject(shift) || !isNonEmptyString(shift.id) || !isNonEmptyString(shift.label)) {
         return { ok: false, error: `shifts["${key}"] must have non-empty string id and label` };
       }
+      const sid = shift.id.trim();
+      if (seenShiftIds.has(sid)) {
+        return { ok: false, error: `Duplicate shift id "${sid}" in shifts["${key}"]` };
+      }
+      seenShiftIds.add(sid);
       if (
         !isOptionalNullableString(shift.name) ||
-        !isOptionalNullableString(shift.bg) ||
-        !isOptionalNullableString(shift.text) ||
+        !isOptionalNullableHexColor(shift.bg) ||
+        !isOptionalNullableHexColor(shift.text) ||
         (shift.hours !== undefined && shift.hours !== null && (typeof shift.hours !== 'number' || !Number.isFinite(shift.hours))) ||
         (shift.isOff !== undefined && typeof shift.isOff !== 'boolean')
       ) {
-        return { ok: false, error: `shifts["${key}"] has invalid field types` };
+        return { ok: false, error: `shifts["${key}"] has invalid field values` };
       }
     }
   }
@@ -138,18 +169,24 @@ export function validateImportPayload(
     if (!Array.isArray(raw.areaLeaves)) {
       return { ok: false, error: 'areaLeaves must be an array' };
     }
+    const seenAreaCodes = new Set<string>();
     for (let i = 0; i < raw.areaLeaves.length; i += 1) {
       const area = raw.areaLeaves[i];
       if (!isPlainObject(area) || !isNonEmptyString(area.code)) {
         return { ok: false, error: `areaLeaves[${i}] must have a non-empty string code` };
       }
+      const codeKey = area.code.trim().toUpperCase();
+      if (seenAreaCodes.has(codeKey)) {
+        return { ok: false, error: `Duplicate area/leave code "${codeKey}" in areaLeaves[${i}]` };
+      }
+      seenAreaCodes.add(codeKey);
       if (
         !isOptionalNullableString(area.name) ||
-        !isOptionalNullableString(area.bg) ||
-        !isOptionalNullableString(area.text) ||
+        !isOptionalNullableHexColor(area.bg) ||
+        !isOptionalNullableHexColor(area.text) ||
         (area.isLeave !== undefined && typeof area.isLeave !== 'boolean')
       ) {
-        return { ok: false, error: `areaLeaves[${i}] has invalid field types` };
+        return { ok: false, error: `areaLeaves[${i}] has invalid field values` };
       }
     }
   }
@@ -163,8 +200,8 @@ export function validateImportPayload(
         return { ok: false, error: `schedule["${legacyOp}"] must be an object of dates` };
       }
       for (const [dateKey, cell] of Object.entries(days)) {
-        if (!DATE_KEY_RE.test(dateKey)) {
-          return { ok: false, error: `schedule["${legacyOp}"]["${dateKey}"] must use YYYY-MM-DD date keys` };
+        if (!isValidCalendarDate(dateKey)) {
+          return { ok: false, error: `schedule["${legacyOp}"]["${dateKey}"] must use valid YYYY-MM-DD calendar dates` };
         }
         if (
           !isPlainObject(cell) ||
@@ -187,9 +224,9 @@ export function validateImportPayload(
         !isPlainObject(ov) ||
         !isOptionalString(ov.label) ||
         !isOptionalString(ov.short) ||
-        !isOptionalString(ov.color)
+        !isOptionalHexColor(ov.color)
       ) {
-        return { ok: false, error: `pmTypeOverrides["${code}"] has invalid field types` };
+        return { ok: false, error: `pmTypeOverrides["${code}"] has invalid field values` };
       }
     }
   }
@@ -205,9 +242,9 @@ export function validateImportPayload(
         !isOptionalString(ct.id) ||
         !isOptionalString(ct.label) ||
         !isOptionalString(ct.short) ||
-        !isOptionalString(ct.color)
+        !isOptionalHexColor(ct.color)
       ) {
-        return { ok: false, error: `pmCustomTypes[${i}] has invalid field types` };
+        return { ok: false, error: `pmCustomTypes[${i}] has invalid field values` };
       }
     }
   }
@@ -216,20 +253,28 @@ export function validateImportPayload(
     if (!Array.isArray(raw.pmTasks)) {
       return { ok: false, error: 'pmTasks must be an array' };
     }
+    const seenTaskIds = new Set<string>();
     for (let i = 0; i < raw.pmTasks.length; i += 1) {
       const task = raw.pmTasks[i];
       if (!isPlainObject(task) || !isNonEmptyString(task.id) || !isNonEmptyString(task.type)) {
         return { ok: false, error: `pmTasks[${i}] must have non-empty string id and type` };
       }
-      if (typeof task.date !== 'string' || !DATE_KEY_RE.test(task.date)) {
-        return { ok: false, error: `pmTasks[${i}].date must use YYYY-MM-DD format` };
+      const tid = task.id.trim();
+      if (seenTaskIds.has(tid)) {
+        return { ok: false, error: `Duplicate pmTasks id "${tid}" in pmTasks[${i}]` };
+      }
+      seenTaskIds.add(tid);
+      if (!isValidCalendarDate(task.date)) {
+        return { ok: false, error: `pmTasks[${i}].date must use a valid YYYY-MM-DD calendar date` };
+      }
+      if (task.status !== undefined && (typeof task.status !== 'string' || !ALLOWED_PM_STATUSES.has(task.status))) {
+        return { ok: false, error: `pmTasks[${i}].status must be planned, in_progress, done, or cancelled` };
       }
       if (
         !isOptionalStringArray(task.sites) ||
         !isOptionalStringArray(task.assignees) ||
         !isOptionalNullableString(task.site) ||
         !isOptionalNullableString(task.asset) ||
-        !isOptionalNullableString(task.status) ||
         !isOptionalNullableString(task.doneOn) ||
         !isOptionalNullableString(task.notes)
       ) {

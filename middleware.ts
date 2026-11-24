@@ -18,8 +18,13 @@ export async function middleware(req: NextRequest) {
   requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('Content-Security-Policy', csp);
 
+  const cspHeaderName =
+    process.env.CSP_REPORT_ONLY === 'true'
+      ? 'Content-Security-Policy-Report-Only'
+      : 'Content-Security-Policy';
+
   const withCsp = <T extends NextResponse>(response: T): T => {
-    response.headers.set('Content-Security-Policy', csp);
+    response.headers.set(cspHeaderName, csp);
     return response;
   };
   const nextWithCsp = () => withCsp(NextResponse.next({ request: { headers: requestHeaders } }));

@@ -12,12 +12,16 @@ export function extractOrigin(rawUrl?: string): string | null {
   const trimmed = (rawUrl ?? '').trim();
   if (!trimmed) return null;
   try {
-    const normalized = trimmed.replace(/\{[^}]+\}/g, '0');
-    const url = new URL(normalized);
+    const subdomainSentinel = 'sub-wildcard-token';
+    const prepared = trimmed
+      .replace(/\{s\}/g, subdomainSentinel)
+      .replace(/\{[^}]+\}/g, '0');
+    const url = new URL(prepared);
     if (url.protocol !== 'https:' && url.protocol !== 'http:') {
       return null;
     }
-    return url.origin;
+    const host = url.host.replaceAll(subdomainSentinel, '*');
+    return `${url.protocol}//${host}`;
   } catch {
     return null;
   }
@@ -29,6 +33,7 @@ export function buildCspHeader(opts: {
   supabaseUrl?: string;
   streetTileUrl?: string;
   satelliteTileUrl?: string;
+  reportUri?: string;
 }): string {
   const supabaseOrigin = extractOrigin(opts.supabaseUrl);
   const connectSources = new Set<string>(["'self'"]);
@@ -57,6 +62,8 @@ export function buildCspHeader(opts: {
     imgSources.add('https://server.arcgisonline.com');
   }
 
+  const reportUri = opts.reportUri === undefined ? '/api/csp-report' : opts.reportUri.trim();
+
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${opts.nonce}' 'strict-dynamic'${opts.isDev ? " 'unsafe-eval'" : ''}`,
@@ -69,5 +76,6 @@ export function buildCspHeader(opts: {
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
+    ...(reportUri ? [`report-uri ${reportUri}`] : []),
   ].join('; ');
 }

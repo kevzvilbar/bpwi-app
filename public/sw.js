@@ -1,5 +1,7 @@
-const CACHE_NAME = 'bpwi-ops-v3';
+const CACHE_NAME = 'bpwi-ops-v4';
 const PRECACHE = ['/icon-192.png', '/icon-512.png', '/manifest.webmanifest'];
+// Strict allow-list: only cache HTML for the offline field-logger view, never phone lists, user roles, or admin reports.
+const OFFLINE_PAGE_ALLOWLIST = new Set(['/mobile']);
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -27,16 +29,8 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-  if (
-    url.pathname.startsWith('/api/') ||
-    url.pathname.startsWith('/login') ||
-    url.pathname.startsWith('/call-sheet') ||
-    url.pathname.startsWith('/operators')
-  ) {
-    return;
-  }
 
-  // Cache-first for static Next.js assets and icons
+  // Cache-first for static Next.js build assets and app icons
   if (url.pathname.startsWith('/_next/static/') || url.pathname.startsWith('/icon-')) {
     event.respondWith(
       caches.match(req).then(
@@ -54,8 +48,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Network-first for pages so recently viewed schedules work offline until sign-out purges cache
-  if (req.mode === 'navigate' || req.headers.get('accept')?.includes('text/html')) {
+  // Network-first strictly for allow-listed offline-capable pages; sensitive routes never persist in SW cache
+  if (
+    OFFLINE_PAGE_ALLOWLIST.has(url.pathname) &&
+    (req.mode === 'navigate' || req.headers.get('accept')?.includes('text/html'))
+  ) {
     event.respondWith(
       fetch(req)
         .then((res) => {
@@ -65,7 +62,7 @@ self.addEventListener('fetch', (event) => {
           }
           return res;
         })
-        .catch(() => caches.match(req).then((cached) => cached || caches.match('/'))),
+        .catch(() => caches.match(req).then((cached) => cached || caches.match('/mobile'))),
     );
   }
 });
