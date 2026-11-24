@@ -4,12 +4,14 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState, useTransition }
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { subscribeVisibilityAwareChannel } from '@/lib/supabase/realtime';
-import type { ChangeRequestItem, ChangeRequestOriginalState } from '@/lib/profile';
+import type { ChangeRequestItem, ChangeRequestOriginalState, EditGrant } from '@/lib/profile';
 import { getErrorMessage } from '@/lib/error-utils';
+import { isGrantActiveAt } from '@/lib/edit-grant';
 import {
   buildRosterCsv,
   buildRosterPendingMap,
   cellKey,
+  clearDraftItemsForCells,
   computeHistoryTransition,
   DEFAULT_STATION_CODE,
   findOffShift,
@@ -67,18 +69,12 @@ export default function Roster(p: {
   userName: string;
   canEdit: boolean;
   canPropose?: boolean;
+  editGrant?: EditGrant | null;
   userId?: string;
   pendingItems?: Array<{
-    id: string;
-    request_id?: string;
-    target_table: string;
-    action?: string;
-    operator_id?: string | null;
-    schedule_date?: string | null;
-    shift_type_id?: string | null;
-    area_code_id?: string | null;
-    standby_type?: string | null;
-    status: string;
+    id: string; request_id?: string; target_table: string; action?: string;
+    operator_id?: string | null; schedule_date?: string | null; shift_type_id?: string | null;
+    area_code_id?: string | null; standby_type?: string | null; status: string;
     original_state?: ChangeRequestOriginalState | null;
   }>;
   initialDraftRequestId?: string | null;
@@ -86,8 +82,22 @@ export default function Roster(p: {
   initialError?: string;
 }) {
   const router = useRouter();
-  const canOperate = p.canEdit || Boolean(p.canPropose);
-  const isPropose = Boolean(p.canPropose) && !p.canEdit;
+  const [grantExpired, setGrantExpired] = useState(false);
+  useEffect(() => {
+    setGrantExpired(false);
+    if (p.role !== 'manager' || !p.editGrant) return;
+    const ms = Date.parse(p.editGrant.ends_at) - Date.now();
+    if (ms <= 0) {
+      setGrantExpired(true);
+      return;
+    }
+    const timer = setTimeout(() => setGrantExpired(true), Math.min(ms + 250, 2_000_000_000));
+    return () => clearTimeout(timer);
+  }, [p.role, p.editGrant]);
+
+  const hasActiveEdit = p.canEdit && (p.role !== 'manager' || (!grantExpired && isGrantActiveAt(p.editGrant)));
+  const isPropose = p.role === 'manager' && !hasActiveEdit;
+  const canOperate = hasActiveEdit || Boolean(p.canPropose) || p.role === 'manager';
   const holidayByDate = useMemo(
     () => new Map((p.holidays ?? []).map((h) => [h.holiday_date, h])),
     [p.holidays],
@@ -100,8 +110,8 @@ export default function Roster(p: {
   const [isSubmittingDraft, setIsSubmittingDraft] = useState(false);
 
   const pendingMap = useMemo(
-    () => buildRosterPendingMap(p.pendingItems ?? [], draftItems),
-    [p.pendingItems, draftItems],
+    () => buildRosterPendingMap(p.pendingItems ?? [], hasActiveEdit ? [] : draftItems),
+    [p.pendingItems, hasActiveEdit, draftItems],
   );
 
   async function ensureDraftRequestId(): Promise<string> {
@@ -282,10 +292,10 @@ export default function Roster(p: {
   }, [ctxMenu]);
 
   useEffect(() => {
-    if (p.canEdit && localStorage.getItem('bpwi-roster-hint-dismissed') !== '1') {
+    if (hasActiveEdit && localStorage.getItem('bpwi-roster-hint-dismissed') !== '1') {
       setShowHint(true);
     }
-  }, [p.canEdit]);
+  }, [hasActiveEdit]);
 
   useEffect(() => {
     if (savingCount > 0) {
@@ -527,6 +537,9 @@ export default function Roster(p: {
       rollback();
       setSaveState('error');
       setMsg(friendlyError(errMsg, p.role));
+    } else if (draftReqId && draftItems.length > 0) {
+      const nextDraft = await clearDraftItemsForCells(supabaseBrowser(), draftReqId, draftItems, [{ opId, date }]);
+      if (nextDraft !== draftItems) setDraftItems(nextDraft);
     }
   }
 
@@ -575,6 +588,9 @@ export default function Roster(p: {
       rollback();
       setSaveState('error');
       setMsg(friendlyError(errMsg, p.role));
+    } else if (draftReqId && draftItems.length > 0) {
+      const nextDraft = await clearDraftItemsForCells(supabaseBrowser(), draftReqId, draftItems, [{ opId, date }]);
+      if (nextDraft !== draftItems) setDraftItems(nextDraft);
     }
   }
 
@@ -632,6 +648,9 @@ export default function Roster(p: {
       rollback();
       setSaveState('error');
       setMsg(friendlyError(errMsg, p.role));
+    } else if (draftReqId && draftItems.length > 0) {
+      const nextDraft = await clearDraftItemsForCells(supabaseBrowser(), draftReqId, draftItems, targets.map((date) => ({ opId, date })));
+      if (nextDraft !== draftItems) setDraftItems(nextDraft);
     }
   }
 
@@ -704,6 +723,10 @@ export default function Roster(p: {
       rollback();
       setSaveState('error');
       setMsg(friendlyError(errMsg, p.role));
+    } else if (draftReqId && draftItems.length > 0) {
+      const cells = batch.entries.map((e) => ({ opId: e.opId, date: e.date }));
+      const nextDraft = await clearDraftItemsForCells(supabaseBrowser(), draftReqId, draftItems, cells);
+      if (nextDraft !== draftItems) setDraftItems(nextDraft);
     }
   }
 
@@ -837,7 +860,7 @@ export default function Roster(p: {
         today={p.today}
         orgId={p.orgId}
         role={p.role}
-        canEdit={p.canEdit}
+        canEdit={hasActiveEdit}
         canOperate={canOperate}
         isPropose={isPropose}
         hasLinkedOp={hasLinkedOp}
@@ -914,7 +937,7 @@ export default function Roster(p: {
         operators={filteredOperators}
         totalOperatorsCount={p.operators.length}
         operatorId={p.operatorId}
-        canEdit={p.canEdit}
+        canEdit={hasActiveEdit}
         canOperate={canOperate}
         mode={mode}
         cell={cell}

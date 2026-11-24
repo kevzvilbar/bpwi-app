@@ -296,6 +296,23 @@ export async function replaceProposedDraftItems(
   return inserted;
 }
 
+export async function clearDraftItemsForCells(
+  sb: SupabaseClient,
+  reqId: string | null,
+  draftItems: ChangeRequestItem[],
+  cells: { opId: string; date: string }[],
+): Promise<ChangeRequestItem[]> {
+  if (!reqId || draftItems.length === 0 || cells.length === 0) return draftItems;
+  const keySet = new Set(cells.map((c) => cellKey(c.opId, c.date)));
+  const overlapping = draftItems.filter((x) => x.operator_id && x.schedule_date && keySet.has(cellKey(x.operator_id, x.schedule_date)));
+  if (overlapping.length === 0) return draftItems;
+  for (const item of overlapping) {
+    await sb.from('change_request_items').delete().eq('id', item.id);
+  }
+  const dropIds = new Set(overlapping.map((x) => x.id));
+  return draftItems.filter((x) => !dropIds.has(x.id));
+}
+
 export async function persistDirectShiftChanges(
   sb: SupabaseClient,
   orgId: string,

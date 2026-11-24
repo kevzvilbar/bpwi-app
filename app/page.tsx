@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
   const sp = await searchParams;
-  const { sb, user, role, orgId, operatorId, name, canEdit, canPropose } = await getProfile();
+  const { sb, user, role, orgId, operatorId, name, canEdit, canPropose, editGrant } = await getProfile();
   const today = manilaToday();
   const month = /^\d{4}-\d{2}$/.test(sp.m ?? '') ? sp.m! : today.slice(0, 7);
   const [y, mo] = month.split('-').map(Number);
@@ -36,10 +36,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
       .lte('scheduled_date', last),
     sb
       .from('change_request_items')
-      .select('id, request_id, target_table, action, operator_id, schedule_date, shift_type_id, area_code_id, standby_type, status, original_state')
+      .select('id, request_id, target_table, action, operator_id, schedule_date, shift_type_id, area_code_id, standby_type, status, original_state, change_requests!inner(status)')
       .gte('schedule_date', first)
       .lte('schedule_date', last)
-      .in('status', ['pending', 'conflict']),
+      .in('status', ['pending', 'conflict'])
+      .in('change_requests.status', ['pending', 'partially_approved']),
     sb
       .from('holidays')
       .select('holiday_date, name, holiday_type')
@@ -89,6 +90,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
       userName={name}
       canEdit={canEdit}
       canPropose={canPropose}
+      editGrant={editGrant}
       userId={user?.id}
       pendingItems={pendingReqItems.data ?? []}
       initialDraftRequestId={initialDraftRequestId}

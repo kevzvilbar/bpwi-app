@@ -3,8 +3,14 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatDateOnly, formatManila } from '@/lib/date';
+import { supabaseBrowser } from '@/lib/supabase/client';
+import { subscribeVisibilityAwareChannel } from '@/lib/supabase/realtime';
 
 type Grant = { starts_at: string; ends_at: string; date_from: string | null; date_to: string | null; note: string | null };
+
+function grantSignature(g: Grant | null | undefined): string {
+  return g ? `${g.starts_at}|${g.ends_at}|${g.date_from ?? ''}|${g.date_to ?? ''}` : 'none';
+}
 
 function rangeText(g: Grant) {
   if (g.date_from && g.date_to) return `${formatDateOnly(g.date_from)} – ${formatDateOnly(g.date_to)}`;
@@ -25,7 +31,7 @@ function remaining(ms: number) {
  * The database enforces the window; this banner explains it and refreshes the page when a window
  * starts or ends so the editing controls appear and disappear on time.
  */
-export default function EditAccessBanner(p: { active: Grant | null; next: Grant | null }) {
+export default function EditAccessBanner(p: { active: Grant | null; next: Grant | null; userId?: string }) {
   const router = useRouter();
   const [now, setNow] = useState(() => Date.now());
 
@@ -37,11 +43,48 @@ export default function EditAccessBanner(p: { active: Grant | null; next: Grant 
       const wait = Math.min(Math.max(edge - Date.now(), 0) + 500, 2_000_000_000);
       timer = setTimeout(() => router.refresh(), wait);
     }
+
+    const activeSig = grantSignature(p.active);
+    const checkGrantFreshness = async () => {
+      if (!p.userId) return;
+      const nowIso = new Date().toISOString();
+      const { data } = await supabaseBrowser()
+        .from('edit_grants')
+        .select('starts_at, ends_at, date_from, date_to, note')
+        .eq('user_id', p.userId)
+        .is('revoked_at', null)
+        .lte('starts_at', nowIso)
+        .gt('ends_at', nowIso)
+        .order('ends_at', { ascending: false })
+        .limit(1);
+      const live = ((data ?? [])[0] as Grant | undefined) ?? null;
+      if (grantSignature(live) !== activeSig) {
+        router.refresh();
+      }
+    };
+
+    const onVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') void checkGrantFreshness();
+    };
+    window.addEventListener('focus', onVisibilityOrFocus);
+    document.addEventListener('visibilitychange', onVisibilityOrFocus);
+
+    const unsubscribeRealtime = p.userId
+      ? subscribeVisibilityAwareChannel({
+          sb: supabaseBrowser(),
+          channelName: `edit-grants-${p.userId}`,
+          listeners: [{ table: 'edit_grants', onEvent: () => router.refresh() }],
+        })
+      : undefined;
+
     return () => {
       clearInterval(tick);
       if (timer) clearTimeout(timer);
+      window.removeEventListener('focus', onVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', onVisibilityOrFocus);
+      unsubscribeRealtime?.();
     };
-  }, [p.active, p.next, router]);
+  }, [p.active, p.next, p.userId, router]);
 
   const open = p.active !== null;
   return (
