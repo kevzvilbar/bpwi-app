@@ -1,6 +1,6 @@
 # Supabase Migrations (`bpwi-app`)
 
-Migrations in this folder are strictly numbered (`001`–`035`) and verified by `npm test` (`lib/__tests__/migrations.test.ts`), which checks:
+Migrations in this folder are strictly numbered (`001`–`034`) and verified by `npm test` (`lib/__tests__/migrations.test.ts`), which checks:
 - Sequential numbering with no gaps or duplicates.
 - Every newly created table enables Row Level Security (`ENABLE ROW LEVEL SECURITY`).
 
@@ -13,7 +13,7 @@ supabase db push
 ```
 
 ### Option B — Supabase SQL Editor (Manual Fallback)
-Run each file in ascending numeric order (`001_init.sql` → `035_oauth_profile_name.sql`). All migrations are written idempotently (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
+Run each file in ascending numeric order (`001_init.sql` → `034_sample_logs.sql`). All migrations are written idempotently (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
 
 ## Optional Local Seeds
 Org-chart structural templates do not commit employee names in migrations. To assign local directory names outside version control, copy `supabase/seeds/org_chart.example.sql` to `supabase/seeds/org_chart.local.sql` (gitignored) or assign holders in `/org-chart`.
@@ -44,4 +44,3 @@ Org-chart structural templates do not commit employee names in migrations. To as
 - `032`: Remove auto-created org/auto-admin promotion from `handle_new_user()` (public/unbootstrapped sign-ups can no longer claim `admin` or initialize an org) and add `service_role`/SQL-only `bootstrap_initial_org_admin(p_org_name, p_admin_email, p_admin_full_name)`.
 - `033`: Add Genset Registry (`gensets`) and relocation log (`genset_transfers`) with `gensets_org_active_location_uidx` enforcing at most one active genset per site/well, `log_genset_location_change()` trigger, org-scoped RLS, and `audit_gensets`.
 - `034`: Add 24-hour auto-expiring sample logs (`is_sample`, `sample_expires_at`) across `daily_activities`, `job_orders`, `shift_handovers`, and `accomplishment_reports` with server-stamped expiry trigger, dedicated `SAMPLE-JO-YYYYMM-NNN` numbering, creator+admin-only visibility, skipped `log_audit()` & report notifications, and `purge_expired_sample_records()` (`service_role` + hourly `pg_cron` where available).
-- `035`: Update `handle_new_user()` so OAuth providers (such as Facebook) that populate `raw_user_meta_data.name` instead of `full_name` still populate `user_profiles.full_name`, while preserving all invite, bootstrap, domain-allowlist, and pending-viewer guards from `032`.

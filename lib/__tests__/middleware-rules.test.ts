@@ -8,13 +8,11 @@ describe('middleware session bypass rules', () => {
     assert.equal(shouldBypassSessionAuth('/api/activities/purge-photos', 'get'), true);
   });
 
-  it('allows PWA service worker, manifest, and GET /auth/callback without session redirect', () => {
+  it('allows PWA service worker and manifest GET requests without session redirect', () => {
     assert.equal(shouldBypassSessionAuth('/sw.js', 'GET'), true);
     assert.equal(shouldBypassSessionAuth('/manifest.webmanifest', 'GET'), true);
-    assert.equal(shouldBypassSessionAuth('/auth/callback', 'GET'), true);
     assert.equal(shouldBypassSessionAuth('/sw.js', 'POST'), false);
     assert.equal(shouldBypassSessionAuth('/manifest.webmanifest', 'POST'), false);
-    assert.equal(shouldBypassSessionAuth('/auth/callback', 'POST'), false);
   });
 
   it('requires session authentication for POST /api/activities/purge-photos and all other routes', () => {

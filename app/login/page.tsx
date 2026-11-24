@@ -5,22 +5,13 @@ import { useSearchParams } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 import { getErrorMessage } from '@/lib/error-utils';
-import {
-  getOAuthErrorMessage,
-  parseSupabaseAuthSettings,
-  type SupabaseAuthProviderSettings,
-} from '@/lib/auth-redirect';
 import { AlertBanner, SegmentedTabs } from '@/components/ui';
 
 function LoginForm() {
   const params = useSearchParams();
   const urlError = params.get('error');
-  const urlReason = params.get('reason');
-  const { url, key, isConfigured } = getSupabaseEnv();
-  const envPublicSignup = process.env.NEXT_PUBLIC_ALLOW_PUBLIC_SIGNUP !== 'false';
-
-  const [authSettings, setAuthSettings] = useState<SupabaseAuthProviderSettings | null>(null);
-  const publicSignupEnabled = envPublicSignup && authSettings?.disableSignup !== true;
+  const { isConfigured } = getSupabaseEnv();
+  const publicSignupEnabled = process.env.NEXT_PUBLIC_ALLOW_PUBLIC_SIGNUP !== 'false';
 
   const [mode, setMode] = useState<'signin' | 'signup' | 'forgot' | 'reset'>('signin');
   const [fullName, setFullName] = useState('');
@@ -28,8 +19,6 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [oauthProvider, setOauthProvider] = useState<'google' | 'facebook' | null>(null);
-  const oauthLoading = oauthProvider !== null;
   const [err, setErr] = useState('');
   const [info, setInfo] = useState('');
 
@@ -40,15 +29,6 @@ function LoginForm() {
       caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))).catch(() => {});
     }
     if (!isConfigured) return;
-    let active = true;
-    fetch(`${url}/auth/v1/settings`, { headers: { apikey: key } })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json: unknown) => {
-        if (!active) return;
-        const parsed = parseSupabaseAuthSettings(json);
-        if (parsed) setAuthSettings(parsed);
-      })
-      .catch(() => {});
     const sb = supabaseBrowser();
     const {
       data: { subscription },
@@ -59,68 +39,20 @@ function LoginForm() {
         setInfo('Enter a new password for your account.');
       }
     });
-    return () => {
-      active = false;
-      subscription.unsubscribe();
-    };
-  }, [isConfigured, url, key]);
+    return () => subscription.unsubscribe();
+  }, [isConfigured]);
 
   const configWarning =
     !isConfigured || urlError === 'missing_config'
       ? 'Sign-in service is currently unavailable. Please contact your administrator.'
       : urlError === 'auth_error'
         ? 'Unable to verify your session. Please sign in again.'
-        : urlError === 'oauth_error'
-          ? getOAuthErrorMessage(urlReason)
-          : '';
+        : '';
 
   function switchMode(next: 'signin' | 'signup' | 'forgot' | 'reset') {
     setMode(next === 'signup' && !publicSignupEnabled ? 'signin' : next);
     setErr('');
     setInfo('');
-  }
-
-  async function signInWithProvider(provider: 'google' | 'facebook') {
-    setErr('');
-    setInfo('');
-    setOauthProvider(provider);
-    try {
-      let currentSettings = authSettings;
-      if (!currentSettings && isConfigured) {
-        try {
-          const res = await fetch(`${url}/auth/v1/settings`, { headers: { apikey: key } });
-          if (res.ok) {
-            currentSettings = parseSupabaseAuthSettings(await res.json());
-            if (currentSettings) setAuthSettings(currentSettings);
-          }
-        } catch {
-          // Proceed to OAuth attempt if preflight check fails transiently.
-        }
-      }
-      if (currentSettings && !currentSettings[provider]) {
-        setErr(getOAuthErrorMessage('provider_disabled', provider));
-        setOauthProvider(null);
-        return;
-      }
-      const sb = supabaseBrowser();
-      const { error } = await sb.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-          ...(provider === 'facebook' ? { scopes: 'email public_profile' } : {}),
-        },
-      });
-      if (error) {
-        const msg = /provider is not enabled|unsupported provider/i.test(error.message)
-          ? getOAuthErrorMessage('provider_disabled', provider)
-          : error.message;
-        setErr(msg);
-        setOauthProvider(null);
-      }
-    } catch (e: unknown) {
-      setErr(getErrorMessage(e, `${provider === 'google' ? 'Google' : 'Facebook'} sign-in failed`));
-      setOauthProvider(null);
-    }
   }
 
   async function submit(e: React.FormEvent) {
@@ -391,7 +323,7 @@ function LoginForm() {
           <button
             className="btn btn-primary"
             type="submit"
-            disabled={loading || oauthLoading || !isConfigured}
+            disabled={loading || !isConfigured}
             style={{ padding: '9px 14px', marginTop: 4 }}
           >
             {loading
@@ -410,95 +342,6 @@ function LoginForm() {
                     ? 'Update password'
                     : 'Create account'}
           </button>
-          {(mode === 'signin' || mode === 'signup') && (
-            <>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  margin: '4px 0 2px',
-                  color: 'var(--text-muted)',
-                  fontSize: 12,
-                }}
-              >
-                <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-                <span>or</span>
-                <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-              </div>
-              <div style={{ display: 'grid', gap: 10 }}>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => signInWithProvider('google')}
-                  disabled={loading || oauthLoading || !isConfigured}
-                  style={{
-                    width: '100%',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                    padding: '9px 14px',
-                    background: '#ffffff',
-                    borderColor: '#dadce0',
-                    color: '#1f1f1f',
-                    fontWeight: 600,
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-                    <path
-                      fill="#4285F4"
-                      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
-                    />
-                    <path
-                      fill="#34A853"
-                      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24Z"
-                    />
-                    <path
-                      fill="#FBBC05"
-                      d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14Z"
-                    />
-                    <path
-                      fill="#EA4335"
-                      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z"
-                    />
-                  </svg>
-                  {oauthProvider === 'google'
-                    ? 'Redirecting to Google…'
-                    : mode === 'signup'
-                      ? 'Sign up with Google'
-                      : 'Continue with Google'}
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => signInWithProvider('facebook')}
-                  disabled={loading || oauthLoading || !isConfigured}
-                  style={{
-                    width: '100%',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                    padding: '9px 14px',
-                    background: '#1877F2',
-                    borderColor: '#1877F2',
-                    color: '#ffffff',
-                    fontWeight: 600,
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                    <path d="M22.675 0H1.325C.593 0 0 .593 0 1.325v21.351C0 23.407.593 24 1.325 24H12.82v-9.294H9.692v-3.622h3.128V8.413c0-3.1 1.893-4.788 4.659-4.788 1.325 0 2.463.099 2.795.143v3.24l-1.918.001c-1.504 0-1.795.715-1.795 1.763v2.313h3.587l-.467 3.622h-3.12V24h6.116c.73 0 1.323-.593 1.323-1.325V1.325C24 .593 23.407 0 22.675 0z" />
-                  </svg>
-                  {oauthProvider === 'facebook'
-                    ? 'Redirecting to Facebook…'
-                    : mode === 'signup'
-                      ? 'Sign up with Facebook'
-                      : 'Continue with Facebook'}
-                </button>
-              </div>
-            </>
-          )}
           {err && (
             <p role="alert" style={{ color: 'var(--danger)', fontSize: 13, margin: 0 }}>
               {err}

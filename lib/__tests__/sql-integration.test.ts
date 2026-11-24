@@ -1289,29 +1289,5 @@ describe('PGlite SQL migrations 001–030 execution & security invariants', () =
 
     // Re-running 034 migration is idempotent
     await db.exec(sql34);
-
-    // 18. 035 OAuth profile metadata (`name` fallback when `full_name` is absent)
-    // Re-apply 035 so its `name` fallback in handle_new_user() is active after line 1062's 032 idempotency re-run
-    const sql35 = fs.readFileSync(path.join(MIGRATIONS_DIR, '035_oauth_profile_name.sql'), 'utf8');
-    await db.exec(sql35);
-    const oauthUserId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-    await db.query(
-      `insert into auth.users (id, email, raw_user_meta_data)
-       values ($1, 'fbuser@bpwaterworks.com', $2::jsonb)`,
-      [oauthUserId, JSON.stringify({ name: 'Maria Clara' })],
-    );
-    const oauthProf = await db.query<{ organization_id: string; full_name: string | null; role: string; is_active: boolean }>(
-      `select organization_id, full_name, role::text, is_active from user_profiles where id = $1`,
-      [oauthUserId],
-    );
-    assert.deepEqual(oauthProf.rows[0], {
-      organization_id: orgId,
-      full_name: 'Maria Clara',
-      role: 'viewer',
-      is_active: false,
-    });
-
-    // Re-running 035 migration is idempotent
-    await db.exec(sql35);
   });
 });
