@@ -1,4 +1,5 @@
 import type { Viewport } from 'next';
+import { headers } from 'next/headers';
 import { JetBrains_Mono, Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 import Nav from '@/components/Nav';
@@ -104,10 +105,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     }
   }
   const pendingApproval = profile.hasUser && !profile.isActive;
+  let nonce: string | undefined;
+  try {
+    nonce = (await headers()).get('x-nonce') ?? undefined;
+  } catch {
+    /* static prerender without request headers */
+  }
   return (
     <html lang="en" className={`${plusJakartaSans.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
       </head>
       <body>
         <PwaRegister />

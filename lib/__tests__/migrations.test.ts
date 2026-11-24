@@ -12,7 +12,7 @@ describe('Supabase SQL migrations integrity', () => {
     .sort();
 
   it('has strictly sequential 3-digit prefixes with no gaps or duplicates', () => {
-    assert.ok(files.length >= 31, `Expected at least 31 migrations, found ${files.length}`);
+    assert.ok(files.length >= 32, `Expected at least 32 migrations, found ${files.length}`);
     const nums = files.map((f) => {
       const m = f.match(/^(\d{3})_/);
       assert.ok(m, `Migration filename must start with 3-digit prefix: ${f}`);
@@ -63,6 +63,18 @@ describe('Supabase SQL migrations integrity', () => {
     assert.match(readme, /\b029\b/);
     assert.match(readme, /\b030\b/);
     assert.match(readme, /\b031\b/);
+    assert.match(readme, /\b032\b/);
+  });
+
+  it('locks down first-admin bootstrap in 032_lock_down_first_admin_bootstrap.sql', () => {
+    const sql32 = fs.readFileSync(path.join(MIGRATIONS_DIR, '032_lock_down_first_admin_bootstrap.sql'), 'utf8');
+    for (const required of [
+      'bootstrap_initial_org_admin',
+      'Organization is not initialized; run bootstrap_initial_org_admin() before creating users',
+      'revoke all on function bootstrap_initial_org_admin(text, text, text) from public, anon, authenticated',
+    ]) {
+      assert.ok(sql32.includes(required), `032_lock_down_first_admin_bootstrap.sql missing required construct: ${required}`);
+    }
   });
 
   it('scopes audit_logs per org and locks first-org bootstrap in 031_scope_audit_logs_and_signup_controls.sql', () => {

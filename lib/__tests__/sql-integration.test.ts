@@ -88,15 +88,46 @@ describe('PGlite SQL migrations 001–030 execution & security invariants', () =
       }
     }
 
-    // 1. 019 Sign-up approval: first user -> active admin; second user -> inactive viewer + admin notification
+    // 1. 032/019 Sign-up bootstrap lockdown: empty DB blocks sign-ups; bootstrap creates org; sign-up starts as inactive viewer; explicit helper promotes admin
     const adminId = '11111111-1111-4111-8111-111111111111';
     const mgr1Id = '22222222-2222-4222-8222-222222222222';
     const mgrApproverId = '33333333-3333-4333-8333-333333333333';
+
+    const bootPrivs = await db.query<{ pub: boolean; anon: boolean; auth: boolean }>(
+      `select
+         has_function_privilege('public', 'bootstrap_initial_org_admin(text, text, text)', 'EXECUTE') as pub,
+         has_function_privilege('anon', 'bootstrap_initial_org_admin(text, text, text)', 'EXECUTE') as anon,
+         has_function_privilege('authenticated', 'bootstrap_initial_org_admin(text, text, text)', 'EXECUTE') as auth`,
+    );
+    assert.equal(bootPrivs.rows[0]?.pub, false);
+    assert.equal(bootPrivs.rows[0]?.anon, false);
+    assert.equal(bootPrivs.rows[0]?.auth, false);
+
+    await assert.rejects(
+      () =>
+        db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, 'stranger@bpwi.test', $2::jsonb)`, [
+          adminId,
+          JSON.stringify({ full_name: 'Stranger' }),
+        ]),
+      /Organization is not initialized/i,
+    );
+
+    await db.query(`select bootstrap_initial_org_admin('BP Waterworks, Inc.')`);
 
     await db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, 'admin@bpwi.test', $2::jsonb)`, [
       adminId,
       JSON.stringify({ full_name: 'Admin User' }),
     ]);
+
+    const p1Before = await db.query<{ role: string; is_active: boolean }>(
+      `select role::text, is_active from user_profiles where id = $1`,
+      [adminId],
+    );
+    assert.equal(p1Before.rows[0]?.role, 'viewer');
+    assert.equal(p1Before.rows[0]?.is_active, false);
+
+    await db.query(`select bootstrap_initial_org_admin('BP Waterworks, Inc.', 'admin@bpwi.test', 'Admin User')`);
+
     await db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, 'manager1@bpwi.test', $2::jsonb)`, [
       mgr1Id,
       JSON.stringify({ full_name: 'Pending Manager' }),
@@ -1026,5 +1057,9 @@ describe('PGlite SQL migrations 001–030 execution & security invariants', () =
       [goodDomainId],
     );
     assert.deepEqual(goodProf.rows[0], { organization_id: orgId, role: 'viewer', is_active: false });
+
+    // Re-running 032 migration is idempotent
+    const sql32 = fs.readFileSync(path.join(MIGRATIONS_DIR, '032_lock_down_first_admin_bootstrap.sql'), 'utf8');
+    await db.exec(sql32);
   });
 });

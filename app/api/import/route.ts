@@ -5,74 +5,7 @@ import { supabaseServer } from '@/lib/supabase/server';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 import { getErrorMessage } from '@/lib/error-utils';
 import { normalizeLegacyStationCode } from '@/lib/roster-helpers';
-
-interface LegacyOperator {
-  id: string;
-  name: string;
-  role?: string | null;
-  phone?: string | null;
-  defaultStation?: string | null;
-}
-
-interface LegacyShift {
-  id: string;
-  label: string;
-  name?: string | null;
-  hours?: number | null;
-  isOff?: boolean;
-  bg?: string | null;
-  text?: string | null;
-}
-
-interface LegacyArea {
-  code: string;
-  name?: string | null;
-  isLeave?: boolean;
-  bg?: string | null;
-  text?: string | null;
-}
-
-interface LegacyScheduleCell {
-  shift?: string;
-  text?: string | null;
-  onCall?: string | null;
-}
-
-interface LegacyPmCustomType {
-  id?: string;
-  label?: string;
-  short?: string;
-  color?: string;
-}
-
-interface LegacyPmTypeOverride {
-  label?: string;
-  short?: string;
-  color?: string;
-}
-
-interface LegacyPmTask {
-  id: string;
-  type: string;
-  sites?: string[];
-  site?: string | null;
-  asset?: string | null;
-  assignees?: string[];
-  date: string;
-  status?: string;
-  doneOn?: string | null;
-  notes?: string | null;
-}
-
-interface LegacyImportPayload {
-  operators?: LegacyOperator[];
-  shifts?: Record<string, LegacyShift>;
-  areaLeaves?: LegacyArea[];
-  schedule?: Record<string, Record<string, LegacyScheduleCell>>;
-  pmTypeOverrides?: Record<string, LegacyPmTypeOverride>;
-  pmCustomTypes?: LegacyPmCustomType[];
-  pmTasks?: LegacyPmTask[];
-}
+import { validateImportPayload, type LegacyArea } from '@/lib/import-validation';
 
 interface KeyedIdRow {
   id: string;
@@ -149,10 +82,11 @@ export async function POST(req: Request) {
     } catch {
       return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
     }
-    if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
-      return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
+    const parsed = validateImportPayload(rawBody);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
     }
-    const st = rawBody as LegacyImportPayload;
+    const st = parsed.data;
 
     const org = prof.organization_id as string;
     const db = createClient(url, secretKey, { auth: { persistSession: false } });

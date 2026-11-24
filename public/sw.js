@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bpwi-ops-v2';
+const CACHE_NAME = 'bpwi-ops-v3';
 const PRECACHE = ['/icon-192.png', '/icon-512.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
@@ -27,7 +27,14 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/login')) return;
+  if (
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/login') ||
+    url.pathname.startsWith('/call-sheet') ||
+    url.pathname.startsWith('/operators')
+  ) {
+    return;
+  }
 
   // Cache-first for static Next.js assets and icons
   if (url.pathname.startsWith('/_next/static/') || url.pathname.startsWith('/icon-')) {

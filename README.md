@@ -1,18 +1,26 @@
 # BPWI Monitoring (Next.js + Supabase + Vercel)
 
 ## Setup
-1. Create a Supabase project; run `supabase/migrations/001_init.sql` in the SQL editor.
-2. Also run `supabase/migrations/002_auto_profile.sql`. Then sign up on the app's login page: the **first** user automatically becomes `admin` (and the organization is created); later sign-ups join as read-only `viewer` and can be promoted by an admin (`update user_profiles set role='scheduler' where id=...`). The manual bootstrap SQL in 001 is no longer needed.
-3. `cp .env.example .env.local`, fill in the keys, `npm install`, `npm run dev`.
-4. Import your data: in the old HTML app use **Export JSON**, then (logged in as admin):
-   `curl -X POST http://localhost:3000/api/import -H "Content-Type: application/json" -H "Cookie: <your session cookie>" --data @backup.json`
-   (or call it from a small admin page). Re-running is safe.
-5. Deploy: import the repo in Vercel, add the env vars (`SUPABASE_SECRET_KEY` server-only). In Supabase Authentication settings, disable **Allow new users to sign up** for invite-only production deployments (keep `NEXT_PUBLIC_ALLOW_PUBLIC_SIGNUP=false`), or enable **Confirm email** and configure **Sign-Up Access & Domain Allowlist** in **Operators & Setup → Users & roles** (`organizations.allowed_signup_domains`, migration `030`) for domain-restricted self sign-ups. If public sign-ups are disabled on a fresh database before the first login, create the initial organization and admin profile in the Supabase SQL Editor after inviting/creating the first auth user:
-   ```sql
-   insert into organizations (id, name) values ('00000000-0000-0000-0000-000000000001', 'BP Waterworks, Inc.');
-   insert into user_profiles (id, organization_id, full_name, role, is_active)
-   values ('<auth-user-uuid>', '00000000-0000-0000-0000-000000000001', 'System Admin', 'admin', true);
+1. Create a Supabase project and apply migrations via Supabase CLI (recommended default):
+   ```bash
+   supabase link --project-ref <your-project-ref>
+   supabase db push
    ```
+   (Or run `supabase/migrations/001_init.sql` through `032_lock_down_first_admin_bootstrap.sql` in ascending order in the SQL Editor; see [`supabase/migrations/README.md`](supabase/migrations/README.md).)
+2. Bootstrap the organization and initial admin (sign-ups never auto-promote to `admin`):
+   - First, initialize the organization in the Supabase SQL Editor:
+     ```sql
+     select bootstrap_initial_org_admin('BP Waterworks, Inc.');
+     ```
+   - Create or invite the owner account in **Supabase Auth → Users**, then promote that user as the active admin:
+     ```sql
+     select bootstrap_initial_org_admin('BP Waterworks, Inc.', 'owner@bpwaterworks.com', 'Owner Name');
+     ```
+3. `cp .env.example .env.local`, fill in the keys, `npm install`, `npm run dev`.
+4. Import legacy data (admin session cookie required; payload validated at runtime):
+   `curl -X POST http://localhost:3000/api/import -H "Content-Type: application/json" -H "Cookie: <your session cookie>" --data @backup.json`
+   Re-running is safe (idempotent upsert).
+5. Deploy: import the repo in Vercel and configure env vars (`SUPABASE_SECRET_KEY` server-only, `CRON_SECRET` for scheduled photo/cache purges). In Supabase Authentication settings, disable **Allow new users to sign up** for invite-only production deployments (keep `NEXT_PUBLIC_ALLOW_PUBLIC_SIGNUP=false`), or enable **Confirm email** and configure **Sign-Up Access & Domain Allowlist** in **Operators & Setup → Users & roles** (`organizations.allowed_signup_domains`, migrations `030`–`032`). Enforce strong passwords (minimum 12 characters on sign-up/reset; set Supabase Auth minimum password length to 12 as well). Per-request nonce CSP headers are applied in [`middleware.ts`](middleware.ts).
 
 ## Department heads (migrations 007, 008 & 009)
 Run `007_manager_role.sql` **on its own first** (PostgreSQL cannot use a new enum value in the transaction that adds it), then `008_department_heads.sql`, followed by `009_change_requests.sql`.

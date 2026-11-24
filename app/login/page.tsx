@@ -24,6 +24,7 @@ function LoginForm() {
 
   useEffect(() => {
     localStorage.removeItem('bpwi-last-sync');
+    navigator.serviceWorker?.controller?.postMessage('CLEAR_CACHE');
     if ('caches' in window) {
       caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))).catch(() => {});
     }
@@ -58,6 +59,11 @@ function LoginForm() {
     e.preventDefault();
     setErr('');
     setInfo('');
+
+    if ((mode === 'signup' || mode === 'reset') && password.length < 12) {
+      setErr('Password must be at least 12 characters.');
+      return;
+    }
 
     if ((mode === 'signup' || mode === 'reset') && password !== confirmPassword) {
       setErr('Passwords do not match.');
@@ -280,14 +286,19 @@ function LoginForm() {
               <input
                 className="input"
                 type="password"
-                placeholder="••••••••"
+                placeholder="••••••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-                minLength={6}
+                minLength={mode === 'signup' || mode === 'reset' ? 12 : 6}
                 required
                 disabled={loading}
               />
+              {(mode === 'signup' || mode === 'reset') && (
+                <span style={{ fontSize: 11.5, fontWeight: 400, color: 'var(--text-muted)' }}>
+                  Minimum 12 characters.
+                </span>
+              )}
             </label>
           )}
           {(mode === 'signup' || mode === 'reset') && (
@@ -296,11 +307,11 @@ function LoginForm() {
               <input
                 className="input"
                 type="password"
-                placeholder="••••••••"
+                placeholder="••••••••••••"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 autoComplete="new-password"
-                minLength={6}
+                minLength={12}
                 required
                 disabled={loading}
               />

@@ -34,7 +34,9 @@ describe('approve/reject change request: conflicts, overrides, partial flow (023
     const HEAD = '22222222-2222-4222-8222-222222222222';
     const uid = (u: string) => db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [u]);
 
+    await db.query(`select bootstrap_initial_org_admin('Test Org')`);
     await db.query(`insert into auth.users (id,email,raw_user_meta_data) values ($1,'a@t','{"full_name":"Admin"}'::jsonb)`, [ADMIN]);
+    await db.query(`select bootstrap_initial_org_admin('Test Org', 'a@t', 'Admin')`);
     await db.query(`insert into auth.users (id,email,raw_user_meta_data) values ($1,'h@t','{"full_name":"Head"}'::jsonb)`, [HEAD]);
     await db.query(`update user_profiles set role='manager', is_active=true where id=$1`, [HEAD]);
     const org = (await db.query<{ o: string }>(`select organization_id o from user_profiles where id=$1`, [ADMIN])).rows[0].o;
@@ -171,7 +173,9 @@ describe('approve/reject change request: conflicts, overrides, partial flow (023
     assert.match(priv.rows[0].ap_def, /for update/i);
     assert.match(priv.rows[0].ap_def, /app\.change_request_rpc/i);
 
+    await db.query(`select bootstrap_initial_org_admin('Test Org')`);
     await db.query(`insert into auth.users (id,email,raw_user_meta_data) values ($1,'a@t','{"full_name":"Admin"}'::jsonb)`, [ADMIN]);
+    await db.query(`select bootstrap_initial_org_admin('Test Org', 'a@t', 'Admin')`);
     await db.query(`insert into auth.users (id,email,raw_user_meta_data) values ($1,'h@t','{"full_name":"Head"}'::jsonb)`, [HEAD]);
     await db.query(`insert into auth.users (id,email,raw_user_meta_data) values ($1,'hn@t','{"full_name":"Head NoApprove"}'::jsonb)`, [HEAD_NO_APPROVE]);
     await db.query(`insert into auth.users (id,email,raw_user_meta_data) values ($1,'o@t','{"full_name":"Op"}'::jsonb)`, [OPERATOR]);

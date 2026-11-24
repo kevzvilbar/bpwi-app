@@ -25,6 +25,7 @@ export default function PendingApproval({
     await clearOfflineQueues();
     await supabaseBrowser().auth.signOut();
     localStorage.removeItem('bpwi-last-sync');
+    navigator.serviceWorker?.controller?.postMessage('CLEAR_CACHE');
     if ('caches' in window) {
       const keys = await caches.keys();
       await Promise.all(keys.map((k) => caches.delete(k)));

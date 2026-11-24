@@ -1,9 +1,17 @@
+import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { supabaseServer } from '@/lib/supabase/server';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 import { getErrorMessage } from '@/lib/error-utils';
 import { ACTIVITY_MEDIA_BUCKET, extractActivityStoragePath, isStoragePathOwnedByOrg } from '@/lib/activity-media';
+
+function isAuthorizedBearer(header: string, secret: string): boolean {
+  if (!secret) return false;
+  const expected = Buffer.from(`Bearer ${secret}`, 'utf8');
+  const provided = Buffer.from(header, 'utf8');
+  return expected.length === provided.length && timingSafeEqual(expected, provided);
+}
 
 async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
   const nowMs = Date.now();
@@ -121,7 +129,7 @@ export async function GET(req: Request) {
   try {
     const cronSecret = (process.env.CRON_SECRET ?? '').trim();
     const authHeader = req.headers.get('authorization') ?? '';
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    if (!isAuthorizedBearer(authHeader, cronSecret)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
