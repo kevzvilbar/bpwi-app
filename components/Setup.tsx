@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { getSetupSaveLabel, SETUP_CELL_STYLE, SETUP_INPUT_STYLE } from '@/lib/setup-constants';
+import type { GensetRow } from '@/lib/gensets';
+import { buildSavedLocationCatalog, type PmLocationRow } from '@/lib/pm-locations';
 import type { Grant, Person } from '@/components/DepartmentHeads';
 import type { HolidayRow } from '@/components/HolidaysManager';
 import type {
@@ -18,6 +20,7 @@ import { Badge, SegmentedTabs } from '@/components/ui';
 
 const DepartmentHeads = dynamic(() => import('@/components/DepartmentHeads'), { ssr: false });
 const HolidaysManager = dynamic(() => import('@/components/HolidaysManager'), { ssr: false });
+const GensetsManager = dynamic(() => import('@/components/GensetsManager'), { ssr: false });
 const SetupReferenceTabs = dynamic(() => import('@/components/SetupReferenceTabs'), { ssr: false });
 const SetupUsersAndAudit = dynamic(() => import('@/components/SetupUsersAndAudit'), { ssr: false });
 
@@ -27,7 +30,7 @@ type Area = SetupArea;
 type UserProfile = SetupUserProfile;
 type AuditLog = SetupAuditLog;
 
-type Tab = 'operators' | 'shifts' | 'areas' | 'holidays' | 'users' | 'heads' | 'audit';
+type Tab = 'operators' | 'shifts' | 'areas' | 'gensets' | 'holidays' | 'users' | 'heads' | 'audit';
 
 const cell = SETUP_CELL_STYLE;
 const inp = SETUP_INPUT_STYLE;
@@ -49,12 +52,16 @@ export default function Setup(p: {
   currentUserId?: string;
   isAdmin: boolean;
   allowedSignupDomains?: string[];
+  gensets?: GensetRow[];
+  gensetsTableReady?: boolean;
+  savedPmLocations?: PmLocationRow[];
   error: string;
 }) {
   const [tab, setTab] = useState<Tab>('operators');
   const [ops, setOps] = useState<Op[]>(p.operators);
   const [shifts, setShifts] = useState<Shift[]>(p.shifts);
   const [areas, setAreas] = useState<Area[]>(p.areas);
+  const [gensets, setGensets] = useState<GensetRow[]>(p.gensets ?? []);
   const [users, setUsers] = useState<UserProfile[]>(p.users);
   const [orgPositions, setOrgPositions] = useState<OrgPosLite[]>(p.orgPositions ?? []);
 
@@ -246,6 +253,7 @@ export default function Setup(p: {
             { id: 'operators', label: `Operators (${ops.length})` },
             { id: 'shifts', label: `Shift types (${shifts.length})` },
             { id: 'areas', label: `Areas & leave (${areas.length})` },
+            { id: 'gensets', label: `Gensets (${gensets.length})` },
             { id: 'holidays', label: `Holidays (${(p.holidays ?? []).length})` },
             { id: 'users', label: `Users & roles (${users.length}${pendingUsers ? ` · ${pendingUsers} pending` : ''})` },
             { id: 'heads', label: `Department heads (${(p.people ?? []).filter((x) => x.role === 'manager').length})` },
@@ -272,7 +280,21 @@ export default function Setup(p: {
         <HolidaysManager initialHolidays={p.holidays ?? []} orgId={p.orgId} isAdmin={p.isAdmin} error={p.holidaysError} />
       )}
 
-      <div hidden={tab === 'heads' || tab === 'holidays'}>
+      {tab === 'gensets' && (
+        <GensetsManager
+          orgId={p.orgId}
+          canEdit={p.isAdmin}
+          tableReady={p.gensetsTableReady ?? true}
+          gensets={gensets}
+          setGensets={setGensets}
+          savedLocations={buildSavedLocationCatalog(
+            p.savedPmLocations ?? [],
+            areas.filter((a): a is Area & { id: string } => Boolean(a.id)),
+          )}
+        />
+      )}
+
+      <div hidden={tab === 'heads' || tab === 'holidays' || tab === 'gensets'}>
       {tab === 'users' && p.isAdmin && (
         <div className="card" style={{ padding: 12, marginBottom: 10, display: 'grid', gap: 6 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>

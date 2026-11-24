@@ -6,6 +6,7 @@ import {
   type PmRecurrenceConfig,
 } from '@/lib/pm-recurrence';
 import { type PmLocationOption } from '@/lib/pm-locations';
+import { findActiveGensetAtLocation, formatGensetTag, type GensetRow } from '@/lib/gensets';
 import PmRepeatBuilder from '@/components/PmRepeatBuilder';
 import PmLocationPicker from '@/components/PmLocationPicker';
 
@@ -176,6 +177,8 @@ interface PmPlannerModalsProps {
   getOperatorConflict: (date: string, opId: string) => string | null;
   savedLocationCatalog: PmLocationOption[];
   onOpenManageLocations: () => void;
+  gensets?: GensetRow[];
+  onOpenManageGensets?: () => void;
   modalError?: string;
 }
 
@@ -201,6 +204,8 @@ export default function PmPlannerModals({
   getOperatorConflict,
   savedLocationCatalog,
   onOpenManageLocations,
+  gensets = [],
+  onOpenManageGensets,
   modalError,
 }: PmPlannerModalsProps) {
   return (
@@ -291,8 +296,81 @@ export default function PmPlannerModals({
               onChangeSplit={(splitLocations) => setDraft({ ...draft, splitLocations })}
               onOpenManage={onOpenManageLocations}
             />
+            {draft.typeKey === 'GENSET' && (
+              <div
+                style={{
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  background: 'var(--surface-muted)',
+                  border: '1px solid var(--border-light)',
+                  display: 'grid',
+                  gap: 6,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>
+                    Assigned Gensets by Site
+                  </span>
+                  {canEdit && onOpenManageGensets && (
+                    <button
+                      type="button"
+                      onClick={onOpenManageGensets}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: 'var(--teal)',
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      Manage gensets
+                    </button>
+                  )}
+                </div>
+                {draft.locations.length === 0 ? (
+                  <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                    Select a site above to auto-tag its assigned genset Control #.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    {draft.locations.map((loc) => {
+                      const assigned = findActiveGensetAtLocation(gensets, loc);
+                      return (
+                        <span
+                          key={loc}
+                          style={{
+                            padding: '2px 8px',
+                            borderRadius: 999,
+                            fontSize: 11.5,
+                            fontWeight: 600,
+                            background: assigned ? 'var(--ok-bg)' : 'var(--warn-bg)',
+                            color: assigned ? 'var(--ok-fg)' : 'var(--warn-fg)',
+                            border: assigned ? '1px solid var(--ok-border)' : '1px solid var(--warn-border)',
+                          }}
+                        >
+                          {loc} → {assigned ? formatGensetTag(assigned) : 'No active genset'}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
             <label style={{ fontSize: 13 }}>
-              Asset <input className="input" value={draft.asset} onChange={(e) => setDraft({ ...draft, asset: e.target.value })} />
+              {draft.typeKey === 'GENSET' ? 'Asset / Genset Control #' : 'Asset'}{' '}
+              <input
+                className="input"
+                placeholder={
+                  draft.typeKey === 'GENSET'
+                    ? 'Auto-filled per site from assigned genset (optional override)'
+                    : undefined
+                }
+                value={draft.asset}
+                onChange={(e) => setDraft({ ...draft, asset: e.target.value })}
+              />
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
               <label style={{ fontSize: 13, flex: 1 }}>

@@ -1,6 +1,6 @@
 # Supabase Migrations (`bpwi-app`)
 
-Migrations in this folder are strictly numbered (`001`–`032`) and verified by `npm test` (`lib/__tests__/migrations.test.ts`), which checks:
+Migrations in this folder are strictly numbered (`001`–`033`) and verified by `npm test` (`lib/__tests__/migrations.test.ts`), which checks:
 - Sequential numbering with no gaps or duplicates.
 - Every newly created table enables Row Level Security (`ENABLE ROW LEVEL SECURITY`).
 
@@ -13,7 +13,7 @@ supabase db push
 ```
 
 ### Option B — Supabase SQL Editor (Manual Fallback)
-Run each file in ascending numeric order (`001_init.sql` → `032_lock_down_first_admin_bootstrap.sql`). All migrations are written idempotently (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
+Run each file in ascending numeric order (`001_init.sql` → `033_genset_registry.sql`). All migrations are written idempotently (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
 
 ## Optional Local Seeds
 Org-chart structural templates do not commit employee names in migrations. To assign local directory names outside version control, copy `supabase/seeds/org_chart.example.sql` to `supabase/seeds/org_chart.local.sql` (gitignored) or assign holders in `/org-chart`.
@@ -42,3 +42,4 @@ Org-chart structural templates do not commit employee names in migrations. To as
 - `030`: Harden user sign-up provisioning (`organizations.allowed_signup_domains`, invite-only multi-tenant enforcement in `handle_new_user()`) and add `audit_user_profiles` trigger on `user_profiles` to log role, approval, and active-status changes.
 - `031`: Add `audit_logs.organization_id` with historical backfill, populate `organization_id` in `log_audit()`, enforce tenant-scoped `"audit read"` RLS policy (`organization_id = current_org() and current_role_name() = 'admin'`), and serialize first-organization bootstrap in `handle_new_user()` using `pg_advisory_xact_lock`. Note: if public sign-ups are disabled on a brand-new database before first login, insert the first `organizations` and `admin` `user_profiles` rows manually via SQL.
 - `032`: Remove auto-created org/auto-admin promotion from `handle_new_user()` (public/unbootstrapped sign-ups can no longer claim `admin` or initialize an org) and add `service_role`/SQL-only `bootstrap_initial_org_admin(p_org_name, p_admin_email, p_admin_full_name)`.
+- `033`: Add Genset Registry (`gensets`) and relocation log (`genset_transfers`) with `gensets_org_active_location_uidx` enforcing at most one active genset per site/well, `log_genset_location_change()` trigger, org-scoped RLS, and `audit_gensets`.

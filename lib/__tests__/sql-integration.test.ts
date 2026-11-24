@@ -1061,5 +1061,42 @@ describe('PGlite SQL migrations 001–030 execution & security invariants', () =
     // Re-running 032 migration is idempotent
     const sql32 = fs.readFileSync(path.join(MIGRATIONS_DIR, '032_lock_down_first_admin_bootstrap.sql'), 'utf8');
     await db.exec(sql32);
+
+    // 16. 033 Genset registry: single active genset per location & transfer logging
+    await setAuthUid(db, adminId);
+    const gs1Res = await db.query<{ id: string }>(
+      `insert into gensets (organization_id, control_no, kva_rating, status, current_location)
+       values ($1, 'GS-01', '100 kVA', 'active', 'Well 4 BAR') returning id`,
+      [orgId],
+    );
+    const gs1Id = gs1Res.rows[0].id;
+
+    // Duplicate active genset on same normalized site fails via gensets_org_active_location_uidx
+    await assert.rejects(
+      () =>
+        db.query(
+          `insert into gensets (organization_id, control_no, status, current_location)
+           values ($1, 'GS-02', 'active', '  well 4 bar ')`,
+          [orgId],
+        ),
+      /gensets_org_active_location_uidx|duplicate key/i,
+    );
+
+    // Relocating GS-01 logs transfer history and frees Well 4 BAR for GS-02
+    await db.query(`update gensets set current_location = 'Well 6 PR2' where id = $1`, [gs1Id]);
+    const trRes = await db.query<{ from_location: string; to_location: string }>(
+      `select from_location, to_location from genset_transfers where genset_id = $1`,
+      [gs1Id],
+    );
+    assert.deepEqual(trRes.rows[0], { from_location: 'Well 4 BAR', to_location: 'Well 6 PR2' });
+
+    await db.query(
+      `insert into gensets (organization_id, control_no, status, current_location)
+       values ($1, 'GS-02', 'active', 'Well 4 BAR')`,
+      [orgId],
+    );
+
+    const sql33 = fs.readFileSync(path.join(MIGRATIONS_DIR, '033_genset_registry.sql'), 'utf8');
+    await db.exec(sql33);
   });
 });

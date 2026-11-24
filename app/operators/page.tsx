@@ -1,4 +1,6 @@
 import { getProfile } from '@/lib/profile';
+import { isMissingPmLocationsTableError, type PmLocationRow } from '@/lib/pm-locations';
+import { isMissingGensetsTableError, type GensetRow } from '@/lib/gensets';
 import Setup from '@/components/Setup';
 import type { Person } from '@/components/DepartmentHeads';
 import type { SetupUserProfile } from '@/components/SetupUsersAndAudit';
@@ -8,7 +10,7 @@ export const dynamic = 'force-dynamic';
 export default async function OperatorsPage() {
   const { sb, user, orgId, isAdmin } = await getProfile();
 
-  const [areasPrimary, opsPrimary, shifts, usersRes, grants, holidaysRes, orgPosRes, orgRes] = await Promise.all([
+  const [areasPrimary, opsPrimary, shifts, usersRes, grants, holidaysRes, orgPosRes, orgRes, gensetsRes, pmLocsRes] = await Promise.all([
     sb.from('area_codes').select('id, code, name, category, background_color, text_color, sub_sites').order('code'),
     sb.from('operators').select('id, full_name, position, phone_number, default_station, sort_order, is_active, department_head_id').order('sort_order'),
     sb.from('shift_types').select('id, code, description, start_time, end_time, duration_hours, is_off, background_color, text_color').order('code'),
@@ -25,6 +27,12 @@ export default async function OperatorsPage() {
     isAdmin
       ? sb.from('organizations').select('allowed_signup_domains').eq('id', orgId).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
+    isAdmin
+      ? sb.from('gensets').select('id, control_no, brand_model, kva_rating, fuel_type, status, current_location, notes').order('control_no')
+      : Promise.resolve({ data: [], error: null }),
+    isAdmin
+      ? sb.from('pm_locations').select('id, name, sort_order').order('sort_order').order('name')
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   const [areas, ops] = await Promise.all([
@@ -42,6 +50,10 @@ export default async function OperatorsPage() {
     orgRes.error || !orgRes.data || !Array.isArray(orgRes.data.allowed_signup_domains)
       ? []
       : (orgRes.data.allowed_signup_domains as string[]);
+  const gensetsTableReady = !isMissingGensetsTableError(gensetsRes.error);
+  const gensets: GensetRow[] = gensetsRes.error ? [] : (gensetsRes.data ?? []);
+  const savedPmLocations: PmLocationRow[] =
+    pmLocsRes.error || isMissingPmLocationsTableError(pmLocsRes.error) ? [] : (pmLocsRes.data ?? []);
 
   return (
     <Setup
@@ -59,6 +71,9 @@ export default async function OperatorsPage() {
       currentUserId={user?.id ?? ''}
       isAdmin={isAdmin}
       allowedSignupDomains={allowedSignupDomains}
+      gensets={gensets}
+      gensetsTableReady={gensetsTableReady}
+      savedPmLocations={savedPmLocations}
       error={ops.error?.message ?? shifts.error?.message ?? areas.error?.message ?? usersRes.error?.message ?? ''}
     />
   );

@@ -14,11 +14,17 @@ import {
   validateSelectedLocations,
   type PmLocationRow,
 } from '@/lib/pm-locations';
+import {
+  isMissingGensetsTableError,
+  resolveTaskAssetForLocations,
+  type GensetRow,
+} from '@/lib/gensets';
 import PmDayInspector from '@/components/PmDayInspector';
 
 const PmExportModal = dynamic(() => import('@/components/PmExportModal'), { ssr: false });
 const PmCompleteModal = dynamic(() => import('@/components/PmCompleteModal'), { ssr: false });
 const PmLocationsManagerModal = dynamic(() => import('@/components/PmLocationsManagerModal'), { ssr: false });
+const PmGensetsModal = dynamic(() => import('@/components/PmGensetsModal'), { ssr: false });
 import PmPlannerModals, {
   addPmDays as addDays,
   buildPmCalendarIcs,
@@ -44,31 +50,15 @@ type Standby = { operator_id: string; schedule_date: string; standby_type: strin
 type ActivityType = PmActivityType;
 
 const WD = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-const MONTHS_FULL = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
-
+const MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 type Draft = PmDraft;
 
 export default function PmPlanner(p: {
-  month: string;
-  today: string;
-  tasks: Task[];
-  activityTypes: ActivityType[];
-  operators: Op[];
-  shifts: Shift[];
-  areas: Area[];
-  assignments: Asg[];
-  standby: Standby[];
-  holidays?: Array<{ holiday_date: string; name: string; holiday_type: string }>;
-  savedLocations?: PmLocationRow[];
-  pmLocationsTableReady?: boolean;
-  orgId: string;
-  operatorId?: string | null;
-  canEdit: boolean;
-  canExportCsv?: boolean;
-  error: string;
+  month: string; today: string; tasks: Task[]; activityTypes: ActivityType[]; operators: Op[]; shifts: Shift[]; areas: Area[];
+  assignments: Asg[]; standby: Standby[]; holidays?: Array<{ holiday_date: string; name: string; holiday_type: string }>;
+  savedLocations?: PmLocationRow[]; pmLocationsTableReady?: boolean;
+  gensets?: GensetRow[]; gensetsTableReady?: boolean;
+  orgId: string; operatorId?: string | null; canEdit: boolean; canExportCsv?: boolean; error: string;
 }) {
   const router = useRouter();
   const holidayByDate = useMemo(
@@ -98,10 +88,13 @@ export default function PmPlanner(p: {
   const [completeBusy, setCompleteBusy] = useState(false);
   const [pmLocations, setPmLocations] = useState<PmLocationRow[]>(p.savedLocations ?? []);
   const [manageLocsOpen, setManageLocsOpen] = useState(false);
+  const [gensets, setGensets] = useState<GensetRow[]>(p.gensets ?? []);
+  const [manageGensetsOpen, setManageGensetsOpen] = useState(false);
 
   useEffect(() => setTasks(p.tasks), [p.tasks]);
   useEffect(() => setActTypes(p.activityTypes), [p.activityTypes]);
   useEffect(() => setPmLocations(p.savedLocations ?? []), [p.savedLocations]);
+  useEffect(() => setGensets(p.gensets ?? []), [p.gensets]);
   useEffect(() => {
     const sb = supabaseBrowser();
     return subscribeVisibilityAwareChannel({
@@ -322,7 +315,7 @@ export default function PmPlanner(p: {
       activity_type,
       title,
       locations: locCheck.locations,
-      asset: draft.asset.trim() || null,
+      asset: resolveTaskAssetForLocations(activity_type, locCheck.locations, gensets, draft.asset),
       assigned_operator_ids: draft.assignees,
       status: draft.status,
       remarks: draft.remarks.trim() || null,
@@ -336,18 +329,11 @@ export default function PmPlanner(p: {
       const ts = Date.now().toString(36);
       const rows = locationGroups.flatMap((locs, locIdx) => {
         const series = buildPmSeriesPrefix(ts, locIdx, locationGroups.length);
+        const groupAsset = resolveTaskAssetForLocations(activity_type, locs, gensets, draft.asset);
         return repeatDates.map((d, i) => ({
-          ...body,
-          locations: locs,
-          ...(i > 0
-            ? {
-                status: 'planned' as const,
-                completed_at: null,
-                ...(withCompletedBy ? { completed_by_operator_ids: [] as string[] } : {}),
-              }
-            : {}),
-          legacy_key: repeatDates.length > 1 ? `${series}-${i}` : null,
-          scheduled_date: d,
+          ...body, locations: locs, asset: groupAsset,
+          ...(i > 0 ? { status: 'planned' as const, completed_at: null, ...(withCompletedBy ? { completed_by_operator_ids: [] as string[] } : {}) } : {}),
+          legacy_key: repeatDates.length > 1 ? `${series}-${i}` : null, scheduled_date: d,
         }));
       });
       return sb.from('pm_tasks').insert(rows);
@@ -669,6 +655,11 @@ export default function PmPlanner(p: {
               )}
             </div>
             {p.canEdit && (
+              <button className="btn" onClick={() => setManageGensetsOpen(true)} title="Manage Genset Control #s and site assignments">
+                Gensets ({gensets.length})
+              </button>
+            )}
+            {p.canEdit && (
               <button
                 className="btn btn-add"
                 onClick={() => openDraft(blank(selectedDate))}
@@ -945,28 +936,14 @@ export default function PmPlanner(p: {
       </div>
 
       <PmPlannerModals
-        canEdit={p.canEdit}
-        draft={draft}
-        setDraft={setDraft}
-        busy={busy}
-        onSave={() => void save()}
-        onRequestRemove={remove}
-        confirmDel={confirmDel}
-        onCancelDelete={() => setConfirmDel(null)}
-        onExecuteDelete={() => void executeRemove()}
-        editActsOpen={editActsOpen}
-        setEditActsOpen={setEditActsOpen}
-        actDraft={actDraft}
-        setActDraft={setActDraft}
-        savingActs={savingActs}
-        onSaveActivities={() => void saveActivities()}
-        activityChips={activityChips}
-        operators={p.operators}
-        holidayByDate={holidayByDate}
-        getOperatorConflict={getOperatorConflict}
-        savedLocationCatalog={savedLocationCatalog}
-        onOpenManageLocations={() => setManageLocsOpen(true)}
-        modalError={msg}
+        canEdit={p.canEdit} draft={draft} setDraft={setDraft} busy={busy} onSave={() => void save()}
+        onRequestRemove={remove} confirmDel={confirmDel} onCancelDelete={() => setConfirmDel(null)}
+        onExecuteDelete={() => void executeRemove()} editActsOpen={editActsOpen} setEditActsOpen={setEditActsOpen}
+        actDraft={actDraft} setActDraft={setActDraft} savingActs={savingActs} onSaveActivities={() => void saveActivities()}
+        activityChips={activityChips} operators={p.operators} holidayByDate={holidayByDate}
+        getOperatorConflict={getOperatorConflict} savedLocationCatalog={savedLocationCatalog}
+        onOpenManageLocations={() => setManageLocsOpen(true)} gensets={gensets}
+        onOpenManageGensets={() => setManageGensetsOpen(true)} modalError={msg}
       />
 
       {manageLocsOpen && (
@@ -974,6 +951,15 @@ export default function PmPlanner(p: {
           open orgId={p.orgId} canEdit={p.canEdit} tableReady={p.pmLocationsTableReady ?? true}
           pmLocations={pmLocations} setPmLocations={setPmLocations} areas={p.areas}
           onClose={() => setManageLocsOpen(false)}
+        />
+      )}
+
+      {manageGensetsOpen && (
+        <PmGensetsModal
+          open orgId={p.orgId} canEdit={p.canEdit}
+          tableReady={p.gensetsTableReady ?? !isMissingGensetsTableError(null)}
+          gensets={gensets} setGensets={setGensets} savedLocations={savedLocationCatalog}
+          onClose={() => setManageGensetsOpen(false)}
         />
       )}
 

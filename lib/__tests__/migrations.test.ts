@@ -12,7 +12,7 @@ describe('Supabase SQL migrations integrity', () => {
     .sort();
 
   it('has strictly sequential 3-digit prefixes with no gaps or duplicates', () => {
-    assert.ok(files.length >= 32, `Expected at least 32 migrations, found ${files.length}`);
+    assert.ok(files.length >= 33, `Expected at least 33 migrations, found ${files.length}`);
     const nums = files.map((f) => {
       const m = f.match(/^(\d{3})_/);
       assert.ok(m, `Migration filename must start with 3-digit prefix: ${f}`);
@@ -64,6 +64,20 @@ describe('Supabase SQL migrations integrity', () => {
     assert.match(readme, /\b030\b/);
     assert.match(readme, /\b031\b/);
     assert.match(readme, /\b032\b/);
+    assert.match(readme, /\b033\b/);
+  });
+
+  it('adds genset registry with unique active location index and transfer trigger in 033_genset_registry.sql', () => {
+    const sql33 = fs.readFileSync(path.join(MIGRATIONS_DIR, '033_genset_registry.sql'), 'utf8');
+    for (const required of [
+      'create table if not exists gensets',
+      'create table if not exists genset_transfers',
+      'gensets_org_active_location_uidx',
+      'log_genset_location_change',
+      'audit_gensets',
+    ]) {
+      assert.ok(sql33.includes(required), `033_genset_registry.sql missing required construct: ${required}`);
+    }
   });
 
   it('locks down first-admin bootstrap in 032_lock_down_first_admin_bootstrap.sql', () => {
