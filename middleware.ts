@@ -4,6 +4,8 @@ import { buildCspHeader, generateCspNonce } from '@/lib/csp';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 import { shouldBypassSessionAuth } from '@/lib/middleware-rules';
 
+let warnedReportOnlyInProd = false;
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const nonce = generateCspNonce();
@@ -18,10 +20,15 @@ export async function middleware(req: NextRequest) {
   requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('Content-Security-Policy', csp);
 
-  const cspHeaderName =
-    process.env.CSP_REPORT_ONLY === 'true'
-      ? 'Content-Security-Policy-Report-Only'
-      : 'Content-Security-Policy';
+  const isReportOnly = process.env.CSP_REPORT_ONLY === 'true';
+  if (isReportOnly && process.env.NODE_ENV === 'production' && !warnedReportOnlyInProd) {
+    warnedReportOnlyInProd = true;
+    console.warn('[csp] CSP_REPORT_ONLY=true is active in production; Content-Security-Policy is NOT being enforced.');
+  }
+
+  const cspHeaderName = isReportOnly
+    ? 'Content-Security-Policy-Report-Only'
+    : 'Content-Security-Policy';
 
   const withCsp = <T extends NextResponse>(response: T): T => {
     response.headers.set(cspHeaderName, csp);

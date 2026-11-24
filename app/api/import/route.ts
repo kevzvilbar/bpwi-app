@@ -248,7 +248,7 @@ export async function POST(req: Request) {
       asset: t.asset ?? null,
       assigned_operator_ids: (t.assignees ?? []).map((a) => opId.get(a)).filter((id): id is string => Boolean(id)),
       scheduled_date: t.date,
-      status: t.status ?? 'planned',
+      status: t.status || 'planned',
       completed_at: t.doneOn ?? null,
       remarks: t.notes ?? null,
     }));

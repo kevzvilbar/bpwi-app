@@ -51,7 +51,7 @@ export interface LegacyPmTask {
   asset?: string | null;
   assignees?: string[];
   date: string;
-  status?: string;
+  status?: string | null;
   doneOn?: string | null;
   notes?: string | null;
 }
@@ -68,7 +68,8 @@ export interface LegacyImportPayload {
 
 const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const HEX_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
-const ALLOWED_PM_STATUSES = new Set(['planned', 'in_progress', 'done', 'cancelled']);
+const NAMED_COLOR_RE = /^[a-zA-Z]{3,20}$/;
+const ALLOWED_PM_STATUSES = new Set(['planned', 'done', 'postponed']);
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return Boolean(v) && typeof v === 'object' && !Array.isArray(v);
@@ -97,14 +98,19 @@ function isValidCalendarDate(v: unknown): v is string {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === day;
 }
 
+function isValidColorToken(raw: string): boolean {
+  const trimmed = raw.trim();
+  return HEX_COLOR_RE.test(trimmed) || NAMED_COLOR_RE.test(trimmed);
+}
+
 function isOptionalNullableHexColor(v: unknown): boolean {
   if (v === undefined || v === null || v === '') return true;
-  return typeof v === 'string' && HEX_COLOR_RE.test(v.trim());
+  return typeof v === 'string' && isValidColorToken(v);
 }
 
 function isOptionalHexColor(v: unknown): boolean {
   if (v === undefined || v === '') return true;
-  return typeof v === 'string' && HEX_COLOR_RE.test(v.trim());
+  return typeof v === 'string' && isValidColorToken(v);
 }
 
 export function validateImportPayload(
@@ -145,7 +151,12 @@ export function validateImportPayload(
     }
     const seenShiftIds = new Set<string>();
     for (const [key, shift] of Object.entries(raw.shifts)) {
-      if (!isPlainObject(shift) || !isNonEmptyString(shift.id) || !isNonEmptyString(shift.label)) {
+      const allowEmptyWhiteLabel = isPlainObject(shift) && shift.id === 'white' && typeof shift.label === 'string';
+      if (
+        !isPlainObject(shift) ||
+        !isNonEmptyString(shift.id) ||
+        (!isNonEmptyString(shift.label) && !allowEmptyWhiteLabel)
+      ) {
         return { ok: false, error: `shifts["${key}"] must have non-empty string id and label` };
       }
       const sid = shift.id.trim();
@@ -267,8 +278,13 @@ export function validateImportPayload(
       if (!isValidCalendarDate(task.date)) {
         return { ok: false, error: `pmTasks[${i}].date must use a valid YYYY-MM-DD calendar date` };
       }
-      if (task.status !== undefined && (typeof task.status !== 'string' || !ALLOWED_PM_STATUSES.has(task.status))) {
-        return { ok: false, error: `pmTasks[${i}].status must be planned, in_progress, done, or cancelled` };
+      if (
+        task.status !== undefined &&
+        task.status !== null &&
+        task.status !== '' &&
+        (typeof task.status !== 'string' || !ALLOWED_PM_STATUSES.has(task.status))
+      ) {
+        return { ok: false, error: `pmTasks[${i}].status must be planned, done, or postponed` };
       }
       if (
         !isOptionalStringArray(task.sites) ||
