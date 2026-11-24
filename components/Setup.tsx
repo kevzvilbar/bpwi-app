@@ -48,6 +48,7 @@ export default function Setup(p: {
   orgId: string;
   currentUserId?: string;
   isAdmin: boolean;
+  allowedSignupDomains?: string[];
   error: string;
 }) {
   const [tab, setTab] = useState<Tab>('operators');
@@ -91,6 +92,38 @@ export default function Setup(p: {
   const [auditLoaded, setAuditLoaded] = useState<boolean>(Boolean(p.auditLogs));
   const [auditLoading, setAuditLoading] = useState<boolean>(false);
   const [auditError, setAuditError] = useState<string>('');
+  const [signupDomainsText, setSignupDomainsText] = useState<string>((p.allowedSignupDomains ?? []).join(', '));
+  const [signupDomainsBusy, setSignupDomainsBusy] = useState<boolean>(false);
+  const [signupDomainsSaved, setSignupDomainsSaved] = useState<boolean>(false);
+  const [signupDomainsErr, setSignupDomainsErr] = useState<string>('');
+
+  async function saveSignupDomains() {
+    setSignupDomainsErr('');
+    setSignupDomainsSaved(false);
+    const rawEntries = signupDomainsText
+      .split(/[\s,;]+/)
+      .map((s) => s.trim().toLowerCase().replace(/^@/, ''))
+      .filter(Boolean);
+    const deduped = [...new Set(rawEntries)];
+    const invalid = deduped.find((d) => !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(d));
+    if (invalid) {
+      setSignupDomainsErr(`Invalid email domain "${invalid}". Use domains like example.com.`);
+      return;
+    }
+    setSignupDomainsBusy(true);
+    const { error } = await supabaseBrowser()
+      .from('organizations')
+      .update({ allowed_signup_domains: deduped })
+      .eq('id', p.orgId);
+    setSignupDomainsBusy(false);
+    if (error) {
+      setSignupDomainsErr(error.message);
+      return;
+    }
+    setSignupDomainsText(deduped.join(', '));
+    setSignupDomainsSaved(true);
+    setTimeout(() => setSignupDomainsSaved(false), 2500);
+  }
 
   const loadAuditLogs = useCallback(async (force = false) => {
     if (!p.isAdmin || (!force && auditLoaded)) return;
@@ -240,6 +273,46 @@ export default function Setup(p: {
       )}
 
       <div hidden={tab === 'heads' || tab === 'holidays'}>
+      {tab === 'users' && p.isAdmin && (
+        <div className="card" style={{ padding: 12, marginBottom: 10, display: 'grid', gap: 6 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <strong style={{ fontSize: 13 }}>Sign-Up Access &amp; Domain Allowlist</strong>
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              Optional email domain restriction for single-org self sign-up (leave empty to allow any domain when sign-ups are enabled).
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              className="input"
+              style={{ flex: '1 1 260px', minWidth: 200 }}
+              aria-label="Approved sign-up email domains"
+              placeholder="e.g. bpwaterworks.com, partner.org"
+              value={signupDomainsText}
+              onChange={(e) => {
+                setSignupDomainsText(e.target.value);
+                setSignupDomainsSaved(false);
+                if (signupDomainsErr) setSignupDomainsErr('');
+              }}
+            />
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={signupDomainsBusy}
+              onClick={() => void saveSignupDomains()}
+            >
+              {signupDomainsBusy ? 'Saving…' : signupDomainsSaved ? 'Saved ✓' : 'Save domains'}
+            </button>
+          </div>
+          {signupDomainsErr && (
+            <div role="alert" style={{ fontSize: 12, color: 'var(--danger)' }}>
+              {signupDomainsErr}
+            </div>
+          )}
+          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+            Production tip: keep <b>Confirm email</b> enabled in Supabase Auth when using domain allowlists, or disable public sign-ups in Supabase Auth for invite-only access.
+          </div>
+        </div>
+      )}
       {/* Mobile Cards (<= 640px) */}
       <div className="responsive-cards">
         {tab === 'operators' && (

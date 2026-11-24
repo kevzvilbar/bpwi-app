@@ -924,16 +924,23 @@ describe('PGlite SQL migrations 001–030 execution & security invariants', () =
     const sql29 = fs.readFileSync(path.join(MIGRATIONS_DIR, '029_harden_route_compute_store.sql'), 'utf8');
     await db.exec(sql29);
 
-    // 15. 030 Sign-up lockdown & user_profiles audit trigger
+    // 15. 030 Sign-up lockdown & user_profiles audit trigger + 031 audit_logs org scoping
     await setAuthUid(db, adminId);
     await db.query(`update user_profiles set role = 'scheduler', can_approve = true where id = $1`, [mgr1Id]);
-    const profAudit = await db.query<{ action: string; old_role: string; new_role: string; new_can_approve: boolean }>(
-      `select action, old_value->>'role' as old_role, new_value->>'role' as new_role, (new_value->>'can_approve')::boolean as new_can_approve
+    const profAudit = await db.query<{
+      organization_id: string | null;
+      action: string;
+      old_role: string;
+      new_role: string;
+      new_can_approve: boolean;
+    }>(
+      `select organization_id, action, old_value->>'role' as old_role, new_value->>'role' as new_role, (new_value->>'can_approve')::boolean as new_can_approve
        from audit_logs
        where table_name = 'user_profiles' and record_id = $1 and action = 'UPDATE'
        order by id desc limit 1`,
       [mgr1Id],
     );
+    assert.equal(profAudit.rows[0]?.organization_id, orgId);
     assert.equal(profAudit.rows[0]?.action, 'UPDATE');
     assert.equal(profAudit.rows[0]?.old_role, 'manager');
     assert.equal(profAudit.rows[0]?.new_role, 'scheduler');
@@ -960,6 +967,41 @@ describe('PGlite SQL migrations 001–030 execution & security invariants', () =
       [invitedId],
     );
     assert.deepEqual(invitedProf.rows[0], { organization_id: org2Id, role: 'viewer', is_active: false });
+
+    // 031: Promote invited user to admin of org2 (creates org2 audit_logs row) & verify cross-org audit_logs RLS isolation
+    await db.query(`update user_profiles set role = 'admin', is_active = true where id = $1`, [invitedId]);
+
+    await setAuthUid(db, invitedId);
+    await db.exec('begin; set local role authenticated;');
+    const org2SeesOrg1Audit = await db.query<{ cnt: number }>(
+      `select count(*)::int as cnt from audit_logs where organization_id = $1`,
+      [orgId],
+    );
+    const org2SeesOwnAudit = await db.query<{ cnt: number }>(
+      `select count(*)::int as cnt from audit_logs where organization_id = $1`,
+      [org2Id],
+    );
+    await db.exec('commit;');
+    assert.equal(org2SeesOrg1Audit.rows[0]?.cnt, 0);
+    assert.ok((org2SeesOwnAudit.rows[0]?.cnt ?? 0) >= 1);
+
+    await setAuthUid(db, adminId);
+    await db.exec('begin; set local role authenticated;');
+    const org1SeesOrg2Audit = await db.query<{ cnt: number }>(
+      `select count(*)::int as cnt from audit_logs where organization_id = $1`,
+      [org2Id],
+    );
+    const org1SeesOwnAudit = await db.query<{ cnt: number }>(
+      `select count(*)::int as cnt from audit_logs where organization_id = $1`,
+      [orgId],
+    );
+    await db.exec('commit;');
+    assert.equal(org1SeesOrg2Audit.rows[0]?.cnt, 0);
+    assert.ok((org1SeesOwnAudit.rows[0]?.cnt ?? 0) >= 1);
+
+    // Re-running 031 migration is idempotent
+    const sql31 = fs.readFileSync(path.join(MIGRATIONS_DIR, '031_scope_audit_logs_and_signup_controls.sql'), 'utf8');
+    await db.exec(sql31);
 
     // Single-org email domain allowlist enforcement
     await db.query(`delete from organizations where id = $1`, [org2Id]);

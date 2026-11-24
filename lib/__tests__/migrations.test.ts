@@ -12,7 +12,7 @@ describe('Supabase SQL migrations integrity', () => {
     .sort();
 
   it('has strictly sequential 3-digit prefixes with no gaps or duplicates', () => {
-    assert.ok(files.length >= 30, `Expected at least 30 migrations, found ${files.length}`);
+    assert.ok(files.length >= 31, `Expected at least 31 migrations, found ${files.length}`);
     const nums = files.map((f) => {
       const m = f.match(/^(\d{3})_/);
       assert.ok(m, `Migration filename must start with 3-digit prefix: ${f}`);
@@ -48,7 +48,7 @@ describe('Supabase SQL migrations integrity', () => {
     }
   });
 
-  it('documents 019–030 in supabase/migrations/README.md', () => {
+  it('documents 019–031 in supabase/migrations/README.md', () => {
     const readme = fs.readFileSync(path.join(MIGRATIONS_DIR, 'README.md'), 'utf8');
     assert.match(readme, /\b019\b/);
     assert.match(readme, /\b020\b/);
@@ -62,6 +62,19 @@ describe('Supabase SQL migrations integrity', () => {
     assert.match(readme, /\b028\b/);
     assert.match(readme, /\b029\b/);
     assert.match(readme, /\b030\b/);
+    assert.match(readme, /\b031\b/);
+  });
+
+  it('scopes audit_logs per org and locks first-org bootstrap in 031_scope_audit_logs_and_signup_controls.sql', () => {
+    const sql31 = fs.readFileSync(path.join(MIGRATIONS_DIR, '031_scope_audit_logs_and_signup_controls.sql'), 'utf8');
+    for (const required of [
+      'add column if not exists organization_id uuid references organizations(id)',
+      'idx_audit_logs_org_created',
+      "organization_id = current_org() and current_role_name() = 'admin'",
+      'pg_advisory_xact_lock',
+    ]) {
+      assert.ok(sql31.includes(required), `031_scope_audit_logs_and_signup_controls.sql missing required construct: ${required}`);
+    }
   });
 
   it('hardens sign-up provisioning and adds user_profiles audit trigger in 030_security_hardening_signup_audit.sql', () => {

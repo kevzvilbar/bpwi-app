@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export default async function OperatorsPage() {
   const { sb, user, orgId, isAdmin } = await getProfile();
 
-  const [areasPrimary, opsPrimary, shifts, usersRes, grants, holidaysRes, orgPosRes] = await Promise.all([
+  const [areasPrimary, opsPrimary, shifts, usersRes, grants, holidaysRes, orgPosRes, orgRes] = await Promise.all([
     sb.from('area_codes').select('id, code, name, category, background_color, text_color, sub_sites').order('code'),
     sb.from('operators').select('id, full_name, position, phone_number, default_station, sort_order, is_active, department_head_id').order('sort_order'),
     sb.from('shift_types').select('id, code, description, start_time, end_time, duration_hours, is_off, background_color, text_color').order('code'),
@@ -22,6 +22,9 @@ export default async function OperatorsPage() {
     isAdmin
       ? sb.from('org_positions').select('id, title, department_group, tier, holder_user_id, is_vacant').eq('is_active', true).order('sort_order')
       : Promise.resolve({ data: [], error: null }),
+    isAdmin
+      ? sb.from('organizations').select('allowed_signup_domains').eq('id', orgId).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ]);
 
   const [areas, ops] = await Promise.all([
@@ -35,6 +38,10 @@ export default async function OperatorsPage() {
 
   const rawUsers = (usersRes.data ?? []) as Array<SetupUserProfile & Person>;
   const peopleByName = [...rawUsers].sort((a, b) => (a.full_name ?? '').localeCompare(b.full_name ?? ''));
+  const allowedSignupDomains =
+    orgRes.error || !orgRes.data || !Array.isArray(orgRes.data.allowed_signup_domains)
+      ? []
+      : (orgRes.data.allowed_signup_domains as string[]);
 
   return (
     <Setup
@@ -51,6 +58,7 @@ export default async function OperatorsPage() {
       orgId={orgId}
       currentUserId={user?.id ?? ''}
       isAdmin={isAdmin}
+      allowedSignupDomains={allowedSignupDomains}
       error={ops.error?.message ?? shifts.error?.message ?? areas.error?.message ?? usersRes.error?.message ?? ''}
     />
   );
