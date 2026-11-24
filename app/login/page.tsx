@@ -5,11 +5,13 @@ import { useSearchParams } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 import { getErrorMessage } from '@/lib/error-utils';
+import { getOAuthErrorMessage } from '@/lib/auth-redirect';
 import { AlertBanner, SegmentedTabs } from '@/components/ui';
 
 function LoginForm() {
   const params = useSearchParams();
   const urlError = params.get('error');
+  const urlReason = params.get('reason');
   const { isConfigured } = getSupabaseEnv();
   const publicSignupEnabled = process.env.NEXT_PUBLIC_ALLOW_PUBLIC_SIGNUP === 'true';
 
@@ -19,6 +21,7 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState(false);
   const [err, setErr] = useState('');
   const [info, setInfo] = useState('');
 
@@ -47,12 +50,40 @@ function LoginForm() {
       ? 'Sign-in service is currently unavailable. Please contact your administrator.'
       : urlError === 'auth_error'
         ? 'Unable to verify your session. Please sign in again.'
-        : '';
+        : urlError === 'oauth_error'
+          ? getOAuthErrorMessage(urlReason)
+          : '';
 
   function switchMode(next: 'signin' | 'signup' | 'forgot' | 'reset') {
     setMode(next === 'signup' && !publicSignupEnabled ? 'signin' : next);
     setErr('');
     setInfo('');
+  }
+
+  async function signInWithFacebook() {
+    setErr('');
+    setInfo('');
+    setOauthLoading(true);
+    try {
+      const sb = supabaseBrowser();
+      const { error } = await sb.auth.signInWithOAuth({
+        provider: 'facebook',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+          scopes: 'email public_profile',
+        },
+      });
+      if (error) {
+        const msg = /provider is not enabled|unsupported provider/i.test(error.message)
+          ? getOAuthErrorMessage('provider_disabled')
+          : error.message;
+        setErr(msg);
+        setOauthLoading(false);
+      }
+    } catch (e: unknown) {
+      setErr(getErrorMessage(e, 'Facebook sign-in failed'));
+      setOauthLoading(false);
+    }
   }
 
   async function submit(e: React.FormEvent) {
@@ -320,7 +351,7 @@ function LoginForm() {
           <button
             className="btn btn-primary"
             type="submit"
-            disabled={loading || !isConfigured}
+            disabled={loading || oauthLoading || !isConfigured}
             style={{ padding: '9px 14px', marginTop: 4 }}
           >
             {loading
@@ -339,6 +370,51 @@ function LoginForm() {
                     ? 'Update password'
                     : 'Create account'}
           </button>
+          {(mode === 'signin' || mode === 'signup') && (
+            <>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  margin: '4px 0 2px',
+                  color: 'var(--text-muted)',
+                  fontSize: 12,
+                }}
+              >
+                <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                <span>or</span>
+                <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+              </div>
+              <button
+                type="button"
+                className="btn"
+                onClick={signInWithFacebook}
+                disabled={loading || oauthLoading || !isConfigured}
+                style={{
+                  width: '100%',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  padding: '9px 14px',
+                  background: '#1877F2',
+                  borderColor: '#1877F2',
+                  color: '#ffffff',
+                  fontWeight: 600,
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M22.675 0H1.325C.593 0 0 .593 0 1.325v21.351C0 23.407.593 24 1.325 24H12.82v-9.294H9.692v-3.622h3.128V8.413c0-3.1 1.893-4.788 4.659-4.788 1.325 0 2.463.099 2.795.143v3.24l-1.918.001c-1.504 0-1.795.715-1.795 1.763v2.313h3.587l-.467 3.622h-3.12V24h6.116c.73 0 1.323-.593 1.323-1.325V1.325C24 .593 23.407 0 22.675 0z" />
+                </svg>
+                {oauthLoading
+                  ? 'Redirecting to Facebook…'
+                  : mode === 'signup'
+                    ? 'Sign up with Facebook'
+                    : 'Continue with Facebook'}
+              </button>
+            </>
+          )}
           {err && (
             <p role="alert" style={{ color: 'var(--danger)', fontSize: 13, margin: 0 }}>
               {err}
