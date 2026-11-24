@@ -5,15 +5,22 @@ import { useSearchParams } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 import { getErrorMessage } from '@/lib/error-utils';
-import { getOAuthErrorMessage } from '@/lib/auth-redirect';
+import {
+  getOAuthErrorMessage,
+  parseSupabaseAuthSettings,
+  type SupabaseAuthProviderSettings,
+} from '@/lib/auth-redirect';
 import { AlertBanner, SegmentedTabs } from '@/components/ui';
 
 function LoginForm() {
   const params = useSearchParams();
   const urlError = params.get('error');
   const urlReason = params.get('reason');
-  const { isConfigured } = getSupabaseEnv();
-  const publicSignupEnabled = process.env.NEXT_PUBLIC_ALLOW_PUBLIC_SIGNUP === 'true';
+  const { url, key, isConfigured } = getSupabaseEnv();
+  const envPublicSignup = process.env.NEXT_PUBLIC_ALLOW_PUBLIC_SIGNUP !== 'false';
+
+  const [authSettings, setAuthSettings] = useState<SupabaseAuthProviderSettings | null>(null);
+  const publicSignupEnabled = envPublicSignup && authSettings?.disableSignup !== true;
 
   const [mode, setMode] = useState<'signin' | 'signup' | 'forgot' | 'reset'>('signin');
   const [fullName, setFullName] = useState('');
@@ -33,6 +40,15 @@ function LoginForm() {
       caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))).catch(() => {});
     }
     if (!isConfigured) return;
+    let active = true;
+    fetch(`${url}/auth/v1/settings`, { headers: { apikey: key } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json: unknown) => {
+        if (!active) return;
+        const parsed = parseSupabaseAuthSettings(json);
+        if (parsed) setAuthSettings(parsed);
+      })
+      .catch(() => {});
     const sb = supabaseBrowser();
     const {
       data: { subscription },
@@ -43,8 +59,11 @@ function LoginForm() {
         setInfo('Enter a new password for your account.');
       }
     });
-    return () => subscription.unsubscribe();
-  }, [isConfigured]);
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [isConfigured, url, key]);
 
   const configWarning =
     !isConfigured || urlError === 'missing_config'
@@ -66,6 +85,23 @@ function LoginForm() {
     setInfo('');
     setOauthProvider(provider);
     try {
+      let currentSettings = authSettings;
+      if (!currentSettings && isConfigured) {
+        try {
+          const res = await fetch(`${url}/auth/v1/settings`, { headers: { apikey: key } });
+          if (res.ok) {
+            currentSettings = parseSupabaseAuthSettings(await res.json());
+            if (currentSettings) setAuthSettings(currentSettings);
+          }
+        } catch {
+          // Proceed to OAuth attempt if preflight check fails transiently.
+        }
+      }
+      if (currentSettings && !currentSettings[provider]) {
+        setErr(getOAuthErrorMessage('provider_disabled', provider));
+        setOauthProvider(null);
+        return;
+      }
       const sb = supabaseBrowser();
       const { error } = await sb.auth.signInWithOAuth({
         provider,
@@ -155,7 +191,7 @@ function LoginForm() {
           window.location.href = '/';
           return;
         }
-        setInfo('Account created! Check your email to confirm your address, then sign in.');
+        setInfo('Account created! Check your email if confirmation is required — an administrator will match your name on the employee list and approve your access.');
         setMode('signin');
         setPassword('');
         setConfirmPassword('');
@@ -276,6 +312,9 @@ function LoginForm() {
                 required
                 disabled={loading}
               />
+              <span style={{ fontSize: 11.5, fontWeight: 400, color: 'var(--text-muted)' }}>
+                Enter your full name as listed on the employee roster so an admin can validate and approve your account.
+              </span>
             </label>
           )}
           {mode !== 'reset' && (

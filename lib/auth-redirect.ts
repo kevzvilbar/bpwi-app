@@ -1,5 +1,24 @@
 export type OAuthErrorReason = 'cancelled' | 'domain_restricted' | 'provider_disabled' | 'oauth_failed';
 
+export interface SupabaseAuthProviderSettings {
+  google: boolean;
+  facebook: boolean;
+  disableSignup: boolean;
+}
+
+export function parseSupabaseAuthSettings(payload: unknown): SupabaseAuthProviderSettings | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const record = payload as Record<string, unknown>;
+  const external = record.external;
+  if (!external || typeof external !== 'object') return null;
+  const ext = external as Record<string, unknown>;
+  return {
+    google: ext.google === true,
+    facebook: ext.facebook === true,
+    disableSignup: record.disable_signup === true,
+  };
+}
+
 export function sanitizeNextPath(raw: string | null | undefined): string {
   const value = (raw ?? '').trim();
   if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\')) {

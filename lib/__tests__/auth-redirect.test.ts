@@ -1,6 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyOAuthError, getOAuthErrorMessage, sanitizeNextPath } from '../auth-redirect.ts';
+import {
+  classifyOAuthError,
+  getOAuthErrorMessage,
+  parseSupabaseAuthSettings,
+  sanitizeNextPath,
+} from '../auth-redirect.ts';
 
 describe('auth redirect & OAuth error helpers', () => {
   it('sanitizes relative redirect paths and blocks open redirects', () => {
@@ -27,5 +32,24 @@ describe('auth redirect & OAuth error helpers', () => {
     assert.match(getOAuthErrorMessage('provider_disabled', 'google'), /Google sign-in is not yet enabled/i);
     assert.match(getOAuthErrorMessage('provider_disabled', 'facebook'), /Facebook sign-in is not yet enabled/i);
     assert.match(getOAuthErrorMessage('unknown'), /could not be completed/i);
+  });
+
+  it('parses Supabase /auth/v1/settings provider and signup flags safely', () => {
+    assert.deepEqual(
+      parseSupabaseAuthSettings({
+        disable_signup: false,
+        external: { google: true, facebook: false, email: true },
+      }),
+      { google: true, facebook: false, disableSignup: false },
+    );
+    assert.deepEqual(
+      parseSupabaseAuthSettings({
+        disable_signup: true,
+        external: { google: false, facebook: true },
+      }),
+      { google: false, facebook: true, disableSignup: true },
+    );
+    assert.equal(parseSupabaseAuthSettings(null), null);
+    assert.equal(parseSupabaseAuthSettings({ external: null }), null);
   });
 });

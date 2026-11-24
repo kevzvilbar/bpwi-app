@@ -290,7 +290,13 @@ export default function SetupUsersAndAudit({
             return (
               <div key={u.id} className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
                 <label style={{ fontSize: 12 }}>
-                  Full name {isSelf && <span style={{ color: 'var(--accent)', fontWeight: 700 }}>(You)</span>}
+                  Full name{' '}
+                  {isSelf && <span style={{ color: 'var(--accent)', fontWeight: 700 }}>(You)</span>}
+                  {!u.is_active && (
+                    <span style={{ color: 'var(--warn-fg, #b45309)', fontWeight: 700, marginLeft: 4 }}>
+                      · Pending approval
+                    </span>
+                  )}
                   <input className="input" value={u.full_name ?? ''} placeholder="Full name" onChange={(e) => updUser(i, { full_name: e.target.value })} />
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -558,13 +564,18 @@ export default function SetupUsersAndAudit({
                     </div>
                   </td>
                   <td style={{ ...SETUP_CELL_STYLE, textAlign: 'center', width: 130 }}>
-                    <input
-                      type="checkbox"
-                      checked={u.is_active}
-                      disabled={isSelf}
-                      title={isSelf ? 'You cannot demote or deactivate your own admin account' : undefined}
-                      onChange={(e) => updUser(i, { is_active: e.target.checked })}
-                    />
+                    <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11.5 }}>
+                      <input
+                        type="checkbox"
+                        checked={u.is_active}
+                        disabled={isSelf}
+                        title={isSelf ? 'You cannot demote or deactivate your own admin account' : undefined}
+                        onChange={(e) => updUser(i, { is_active: e.target.checked })}
+                      />
+                      {!u.is_active && (
+                        <span style={{ color: 'var(--warn-fg, #b45309)', fontWeight: 700 }}>Pending</span>
+                      )}
+                    </label>
                   </td>
                   <td style={{ ...SETUP_CELL_STYLE, fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-secondary)' }}>{u.id}</td>
                   <td style={{ ...SETUP_CELL_STYLE, whiteSpace: 'nowrap' }}>
