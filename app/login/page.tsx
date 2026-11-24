@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
+import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { getSupabaseEnv } from '@/lib/supabase/env';
@@ -147,10 +148,13 @@ function LoginForm() {
     <div className="login-shell">
       <div className="card login-card">
         <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <img
+          <Image
             src="/bpwi-logo.svg"
             alt="BP Waterworks, Inc."
-            style={{ width: 56, height: 42, objectFit: 'contain', flexShrink: 0 }}
+            width={56}
+            height={42}
+            unoptimized
+            style={{ objectFit: 'contain', flexShrink: 0 }}
           />
           <div>
             <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>

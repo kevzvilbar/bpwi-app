@@ -24,6 +24,7 @@ import type { LinkedJobOrder } from '@/components/ActivityLoggerModal';
 import { AlertBanner, Badge, SegmentedTabs } from '@/components/ui';
 import { DEFAULT_STATION_CODE } from '@/lib/roster-helpers';
 import { SampleBadge } from '@/components/SampleBadge';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import { enqueueOfflineActivity, flushOfflineQueue, getOfflineQueue, type PendingOfflineActivity } from '@/lib/offline-queue';
 
 const ActivityLoggerModal = dynamic(() => import('@/components/ActivityLoggerModal'), { ssr: false });
@@ -108,6 +109,8 @@ export default function ActivitiesMonitor(p: {
   // Flag review inline state
   const [flaggingId, setFlaggingId] = useState<string | null>(null);
   const [flagReason, setFlagReason] = useState('');
+  const [pendingDeleteAct, setPendingDeleteAct] = useState<DailyActivityRow | null>(null);
+  const [deletingAct, setDeletingAct] = useState(false);
 
   // Storage purge feedback
   const [purging, setPurging] = useState(false);
@@ -363,15 +366,20 @@ export default function ActivitiesMonitor(p: {
   }
 
   async function handleDeleteActivity(act: DailyActivityRow) {
-    if (!window.confirm('Delete this activity log?')) return;
-    const sb = supabaseBrowser();
-    const { error } = await sb.from('daily_activities').delete().eq('id', act.id);
-    if (error) {
-      setBannerMsg(`Could not delete activity: ${error.message}`);
-      return;
+    setDeletingAct(true);
+    try {
+      const sb = supabaseBrowser();
+      const { error } = await sb.from('daily_activities').delete().eq('id', act.id);
+      if (error) {
+        setBannerMsg(`Could not delete activity: ${error.message}`);
+        return;
+      }
+      setActivities((prev) => prev.filter((x) => x.id !== act.id));
+      setBannerMsg('✓ Activity deleted.');
+    } finally {
+      setDeletingAct(false);
+      setPendingDeleteAct(null);
     }
-    setActivities((prev) => prev.filter((x) => x.id !== act.id));
-    setBannerMsg('✓ Activity deleted.');
   }
 
   // Huddle summary numbers for p.date (samples excluded)
@@ -820,7 +828,7 @@ export default function ActivitiesMonitor(p: {
                           <button type="button" className="btn" onClick={() => { setLinkedJoForLog(null); setEditingActivity(act); setLoggerOpen(true); }} style={{ fontSize: 11.5 }}>
                             Edit
                           </button>
-                          <button type="button" className="btn" onClick={() => void handleDeleteActivity(act)} style={{ fontSize: 11.5, color: 'var(--danger)' }}>
+                          <button type="button" className="btn" onClick={() => setPendingDeleteAct(act)} style={{ fontSize: 11.5, color: 'var(--danger)' }}>
                             Delete
                           </button>
                         </>
@@ -911,6 +919,19 @@ export default function ActivitiesMonitor(p: {
       {printState && (
         <PrintableActivityReport mode={printState.mode} orgName={p.orgName} activity={printState.activity} jobOrder={printState.jobOrder} operators={p.operators} areas={p.areas} shifts={p.shifts} onClose={() => setPrintState(null)} />
       )}
+
+      <ConfirmDialog
+        open={pendingDeleteAct !== null}
+        title="Delete activity log?"
+        description="This permanently removes the activity log from the feed. This action cannot be undone."
+        confirmLabel={deletingAct ? 'Deleting…' : 'Delete log'}
+        tone="danger"
+        busy={deletingAct}
+        onCancel={() => setPendingDeleteAct(null)}
+        onConfirm={() => {
+          if (pendingDeleteAct) void handleDeleteActivity(pendingDeleteAct);
+        }}
+      />
     </div>
   );
 }

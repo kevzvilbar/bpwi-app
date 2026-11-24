@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import NotificationBell from '@/components/NotificationBell';
 import { clearOfflineQueues, countOfflineItems } from '@/lib/offline-queue';
+import { getDocumentTitle } from '@/lib/nav-title';
 
 function Icon({ name }: { name: 'schedule' | 'tasks' | 'activity' | 'pm' | 'standby' | 'reports' | 'menu' | 'close' | 'sun' | 'moon' }) {
   const common = {
@@ -132,8 +134,8 @@ export default function Nav(p: {
   }, [p.appTitle, p.orgName]);
 
   useEffect(() => {
-    document.title = `${orgName} · ${appTitle}`;
-  }, [appTitle, orgName]);
+    document.title = getDocumentTitle(path, orgName, appTitle);
+  }, [path, appTitle, orgName]);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('bpwi-theme');
@@ -240,12 +242,13 @@ export default function Nav(p: {
     <>
       <header className="app-topbar no-print">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <img
+          <Image
             src="/bpwi-logo.svg"
             alt="BP Waterworks, Inc."
+            width={42}
+            height={32}
+            unoptimized
             style={{
-              width: 42,
-              height: 32,
               objectFit: 'contain',
               flexShrink: 0,
             }}

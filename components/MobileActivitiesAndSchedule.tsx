@@ -1,10 +1,12 @@
 'use client';
 
+import { useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { ACTIVITY_BY_ID, type DailyActivityRow } from '@/lib/activity-types';
 import { resolveActivityPhotoUrl } from '@/lib/activity-media';
 import { DEFAULT_STATION_CODE } from '@/lib/roster-helpers';
 import { SampleBadge } from '@/components/SampleBadge';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 export type MobileOp = {
   id: string;
@@ -85,6 +87,26 @@ export default function MobileActivitiesAndSchedule({
   onNavigateDate,
   onError,
 }: MobileActivitiesAndScheduleProps) {
+  const [pendingDeleteAct, setPendingDeleteAct] = useState<DailyActivityRow | null>(null);
+  const [deletingAct, setDeletingAct] = useState(false);
+
+  async function confirmDeleteActivity() {
+    if (!pendingDeleteAct) return;
+    const targetId = pendingDeleteAct.id;
+    setDeletingAct(true);
+    try {
+      const { error } = await supabaseBrowser().from('daily_activities').delete().eq('id', targetId);
+      if (error) {
+        onError(error.message);
+        return;
+      }
+      onActivityDeleted(targetId);
+    } finally {
+      setDeletingAct(false);
+      setPendingDeleteAct(null);
+    }
+  }
+
   if (tab === 'activities') {
     const statusColors: Record<string, { bg: string; fg: string }> = {
       verified: { bg: 'var(--ok-bg)', fg: 'var(--ok-fg)' },
@@ -193,15 +215,7 @@ export default function MobileActivitiesAndSchedule({
                         type="button"
                         className="btn"
                         style={{ minHeight: 32, padding: '2px 10px', fontSize: 12, color: 'var(--danger)' }}
-                        onClick={async () => {
-                          if (!window.confirm('Delete this activity log?')) return;
-                          const { error } = await supabaseBrowser().from('daily_activities').delete().eq('id', act.id);
-                          if (error) {
-                            onError(error.message);
-                            return;
-                          }
-                          onActivityDeleted(act.id);
-                        }}
+                        onClick={() => setPendingDeleteAct(act)}
                       >
                         Delete
                       </button>
@@ -212,6 +226,17 @@ export default function MobileActivitiesAndSchedule({
             })}
           </div>
         )}
+
+        <ConfirmDialog
+          open={pendingDeleteAct !== null}
+          title="Delete activity log?"
+          description="This permanently removes the activity log from the feed. This action cannot be undone."
+          confirmLabel={deletingAct ? 'Deleting…' : 'Delete log'}
+          tone="danger"
+          busy={deletingAct}
+          onCancel={() => setPendingDeleteAct(null)}
+          onConfirm={() => void confirmDeleteActivity()}
+        />
       </div>
     );
   }
