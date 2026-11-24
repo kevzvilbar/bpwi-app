@@ -16,7 +16,7 @@ interface PmLocationPickerProps {
   showSplitOption: boolean;
   canManage: boolean;
   legacyExisting?: string[];
-  onChangeSelected: (next: string[]) => void;
+  onChangeSelected: (next: string[], clearQuery?: boolean) => void;
   onChangeQuery: (next: string) => void;
   onChangeSplit: (next: boolean) => void;
   onOpenManage: () => void;
@@ -60,10 +60,10 @@ export default function PmLocationPicker({
 
   const pickOption = (canonicalName: string) => {
     const key = normalizeLocationKey(canonicalName);
-    if (!selected.some((s) => normalizeLocationKey(s) === key)) {
-      onChangeSelected([...selected, canonicalName]);
-    }
-    onChangeQuery('');
+    const nextSelected = selected.some((s) => normalizeLocationKey(s) === key)
+      ? selected
+      : [...selected, canonicalName];
+    onChangeSelected(nextSelected, true);
     setRejectedMsg('');
     setHighlightIdx(0);
     setOpen(false);
@@ -253,6 +253,7 @@ export default function PmLocationPicker({
                   type="button"
                   role="option"
                   aria-selected={active}
+                  onMouseEnter={() => setHighlightIdx(idx)}
                   onMouseDown={(e) => {
                     e.preventDefault();
                     pickOption(opt.name);

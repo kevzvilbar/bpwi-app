@@ -284,7 +284,9 @@ export default function PmPlannerModals({
               showSplitOption={!draft.id}
               canManage={canEdit}
               legacyExisting={draft.originalLocations}
-              onChangeSelected={(locations) => setDraft({ ...draft, locations })}
+              onChangeSelected={(locations, clearQuery) =>
+                setDraft({ ...draft, locations, ...(clearQuery ? { locationQuery: '' } : {}) })
+              }
               onChangeQuery={(locationQuery) => setDraft({ ...draft, locationQuery })}
               onChangeSplit={(splitLocations) => setDraft({ ...draft, splitLocations })}
               onOpenManage={onOpenManageLocations}
