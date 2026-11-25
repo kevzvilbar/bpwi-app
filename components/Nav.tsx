@@ -8,6 +8,7 @@ import { supabaseBrowser } from '@/lib/supabase/client';
 import NotificationBell from '@/components/NotificationBell';
 import { clearOfflineQueues, countOfflineItems } from '@/lib/offline-queue';
 import { getDocumentTitle } from '@/lib/nav-title';
+import { OPEN_INSTALL_EVENT } from '@/lib/pwa-install';
 
 function Icon({ name }: { name: 'schedule' | 'tasks' | 'activity' | 'pm' | 'standby' | 'reports' | 'menu' | 'close' | 'sun' | 'moon' }) {
   const common = {
@@ -125,6 +126,7 @@ export default function Nav(p: {
   const [titleErr, setTitleErr] = useState('');
   const [signOutConfirmCount, setSignOutConfirmCount] = useState<number | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(true);
   const menuBtnRef = useRef<HTMLButtonElement | null>(null);
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
 
@@ -146,6 +148,9 @@ export default function Nav(p: {
     setHighContrast(isHc);
     document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
     document.documentElement.dataset.contrast = isHc ? 'high' : 'normal';
+    const mediaStandalone = window.matchMedia?.('(display-mode: standalone)').matches ?? false;
+    const iosStandalone = (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    setIsStandalone(mediaStandalone || iosStandalone);
   }, []);
 
   useEffect(() => {
@@ -555,6 +560,20 @@ export default function Nav(p: {
                 <span>High Contrast</span>
                 <b>{highContrast ? 'ON' : 'OFF'}</b>
               </button>
+              {!isStandalone && (
+                <button
+                  type="button"
+                  className="btn"
+                  style={{ justifyContent: 'space-between' }}
+                  onClick={() => {
+                    setDrawerOpen(false);
+                    window.dispatchEvent(new Event(OPEN_INSTALL_EVENT));
+                  }}
+                >
+                  <span>Install on Phone / Device</span>
+                  <b>+</b>
+                </button>
+              )}
             </div>
 
             <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-light)', paddingTop: 12 }}>

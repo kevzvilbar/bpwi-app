@@ -4,6 +4,7 @@ import { JetBrains_Mono, Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 import Nav from '@/components/Nav';
 import PwaRegister from '@/components/PwaRegister';
+import PwaInstallPrompt from '@/components/PwaInstallPrompt';
 import DialogA11y from '@/components/DialogA11y';
 import PendingApproval from '@/components/PendingApproval';
 import EditAccessBanner from '@/components/EditAccessBanner';
@@ -118,6 +119,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body>
         <PwaRegister />
+        <PwaInstallPrompt />
         <DialogA11y />
         {!pendingApproval && (
           <Nav
