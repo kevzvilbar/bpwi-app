@@ -23,12 +23,13 @@ export function newClientId(): string {
 /**
  * Determines whether a queued offline record belongs to the given signed-in user.
  * Prevents queued field logs/reports on a shared device from syncing under another user's session.
+ * Fails closed when `userId` is provided and the item has no explicit owner attribution.
  */
 export function isOwnedByUser(
   item: { ownerUserId?: string | null; payload?: Row },
   userId?: string | null,
 ): boolean {
-  if (!userId) return true;
+  if (!userId || !userId.trim()) return true;
   if (typeof item.ownerUserId === 'string' && item.ownerUserId.trim()) {
     return item.ownerUserId === userId;
   }
@@ -39,7 +40,7 @@ export function isOwnedByUser(
   if (payloadOwner) {
     return payloadOwner === userId;
   }
-  return true;
+  return false;
 }
 
 /**

@@ -176,14 +176,17 @@ describe('offline accomplishment report sync is idempotent', () => {
 });
 
 describe('offline queue user ownership scoping and descriptions', () => {
-  it('isolates queued items by ownerUserId and payload fallback', () => {
+  it('isolates queued items by ownerUserId and payload fallback (fail-closed when userId is set)', () => {
     assert.equal(isOwnedByUser({ ownerUserId: 'user-a' }, 'user-a'), true);
     assert.equal(isOwnedByUser({ ownerUserId: 'user-a' }, 'user-b'), false);
     assert.equal(isOwnedByUser({ payload: { logged_by: 'user-a' } }, 'user-a'), true);
     assert.equal(isOwnedByUser({ payload: { logged_by: 'user-a' } }, 'user-b'), false);
     assert.equal(isOwnedByUser({ payload: { submitted_by: 'user-a' } }, 'user-b'), false);
-    assert.equal(isOwnedByUser({ payload: {} }, 'user-b'), true);
+    assert.equal(isOwnedByUser({ payload: {} }, 'user-b'), false);
+    assert.equal(isOwnedByUser({ ownerUserId: '' }, 'user-b'), false);
+    assert.equal(isOwnedByUser({ ownerUserId: '   ', payload: {} }, 'user-b'), false);
     assert.equal(isOwnedByUser({ ownerUserId: 'user-a' }, undefined), true);
+    assert.equal(isOwnedByUser({ payload: {} }, ''), true);
   });
 
   it('formats readable queue summaries for activities and reports', () => {

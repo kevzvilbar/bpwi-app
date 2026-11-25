@@ -1,6 +1,6 @@
 # Supabase Migrations (`bpwi-app`)
 
-Migrations in this folder are strictly numbered (`001`–`035`) and verified by `npm test` (`lib/__tests__/migrations.test.ts`), which checks:
+Migrations in this folder are strictly numbered (`001`–`036`) and verified by `npm test` (`lib/__tests__/migrations.test.ts`), which checks:
 - Sequential numbering with no gaps or duplicates.
 - Every newly created table enables Row Level Security (`ENABLE ROW LEVEL SECURITY`).
 
@@ -13,7 +13,7 @@ supabase db push
 ```
 
 ### Option B — Supabase SQL Editor (Manual Fallback)
-Run each file in ascending numeric order (`001_init.sql` → `035_dept_head_sample_only_edits.sql`). All migrations are written idempotently (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
+Run each file in ascending numeric order (`001_init.sql` → `036_realtime_edit_grants.sql`). All migrations are written idempotently (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
 
 ## Optional Local Seeds
 Org-chart structural templates do not commit employee names in migrations. To assign local directory names outside version control, copy `supabase/seeds/org_chart.example.sql` to `supabase/seeds/org_chart.local.sql` (gitignored) or assign holders in `/org-chart`.
@@ -45,3 +45,4 @@ Org-chart structural templates do not commit employee names in migrations. To as
 - `033`: Add Genset Registry (`gensets`) and relocation log (`genset_transfers`) with `gensets_org_active_location_uidx` enforcing at most one active genset per site/well, `log_genset_location_change()` trigger, org-scoped RLS, and `audit_gensets`.
 - `034`: Add 24-hour auto-expiring sample logs (`is_sample`, `sample_expires_at`) across `daily_activities`, `job_orders`, `shift_handovers`, and `accomplishment_reports` with server-stamped expiry trigger, dedicated `SAMPLE-JO-YYYYMM-NNN` numbering, creator+admin-only visibility, skipped `log_audit()` & report notifications, and `purge_expired_sample_records()` (`service_role` + hourly `pg_cron` where available).
 - `035`: Department heads (`manager`) can edit/delete **sample** logs only via `guard_dept_head_real_log_changes()` on `daily_activities`, `job_orders`, `shift_handovers` and `accomplishment_reports` (verify/flag and check/return review actions stay allowed); `purge_expired_sample_records()` now queues sample photo paths in `sample_photo_cleanup` and deletes all expired samples in SQL; admin-only `sample_cleanup_health()`; Storage policies limit department heads to `sample-*` objects; new PM / job-order indexes.
+- `036`: Idempotently register `public.edit_grants` in the `supabase_realtime` publication (guarded for missing publication) so live Edit Access window grants/revocations propagate to subscribed clients.

@@ -38,4 +38,22 @@ describe('edit-grant window helpers', () => {
     assert.equal(canManagerDirectEditDate(bounded, '2026-11-18', midMs), false);
     assert.equal(canManagerDirectEditDate(bounded, '2026-11-14', afterMs), false);
   });
+
+  it('partitions mixed date batches cleanly between direct edit and proposal dates', () => {
+    const midMs = Date.parse('2026-11-24T12:00:00.000Z');
+    const bounded: EditGrantWindow = { ...baseGrant, date_from: '2026-11-12', date_to: '2026-11-14' };
+    const dates = ['2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15'];
+
+    const directDates = dates.filter((d) => canManagerDirectEditDate(bounded, d, midMs));
+    const proposeDates = dates.filter((d) => !canManagerDirectEditDate(bounded, d, midMs));
+
+    assert.deepEqual(directDates, ['2026-11-12', '2026-11-13', '2026-11-14']);
+    assert.deepEqual(proposeDates, ['2026-11-11', '2026-11-15']);
+
+    const fromOnly: EditGrantWindow = { ...baseGrant, date_from: '2026-11-13', date_to: null };
+    assert.deepEqual(
+      dates.filter((d) => canManagerDirectEditDate(fromOnly, d, midMs)),
+      ['2026-11-13', '2026-11-14', '2026-11-15'],
+    );
+  });
 });

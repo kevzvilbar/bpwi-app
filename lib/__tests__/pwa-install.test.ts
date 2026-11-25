@@ -1,7 +1,97 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import vm from 'node:vm';
 import manifest from '../../app/manifest.ts';
 import { detectInstallPlatform, shouldShowInstallBanner } from '../pwa-install.ts';
+
+interface FakeFetchEvent {
+  request: {
+    method: string;
+    url: string;
+    mode: string;
+    headers: { get(name: string): string | null };
+  };
+  respondWith(responsePromise: Promise<Response>): void;
+}
+
+function loadServiceWorker(opts: {
+  cachedEntries?: Record<string, Response>;
+  fetchImpl: (req: FakeFetchEvent['request']) => Promise<Response>;
+}) {
+  const swPath = resolve(process.cwd(), 'public/sw.js');
+  const source = readFileSync(swPath, 'utf8');
+  const listeners = new Map<string, (event: FakeFetchEvent) => void>();
+  const storedKeys: string[] = [];
+  const cacheMap = new Map<string, Response>(Object.entries(opts.cachedEntries ?? {}));
+
+  const sandbox = {
+    URL,
+    Response,
+    Promise,
+    Set,
+    fetch: opts.fetchImpl,
+    caches: {
+      async match(key: string | FakeFetchEvent['request']) {
+        const lookup = typeof key === 'string' ? key : new URL(key.url).pathname;
+        return cacheMap.get(lookup);
+      },
+      async open() {
+        return {
+          async put(req: FakeFetchEvent['request'], res: Response) {
+            const path = new URL(req.url).pathname;
+            storedKeys.push(path);
+            cacheMap.set(path, res);
+          },
+          async addAll() {},
+        };
+      },
+      async keys() {
+        return [];
+      },
+      async delete() {
+        return true;
+      },
+    },
+    self: {
+      location: { origin: 'https://ops.bpwi.local' },
+      addEventListener(type: string, handler: (event: FakeFetchEvent) => void) {
+        listeners.set(type, handler);
+      },
+      skipWaiting: async () => {},
+      clients: { claim: async () => {} },
+    },
+  };
+
+  vm.runInNewContext(source, sandbox);
+  const fetchHandler = listeners.get('fetch');
+  assert.ok(fetchHandler, 'sw.js must register a fetch event listener');
+  return { source, fetchHandler, storedKeys };
+}
+
+function makeNavRequest(pathname: string): FakeFetchEvent['request'] {
+  return {
+    method: 'GET',
+    url: `https://ops.bpwi.local${pathname}`,
+    mode: 'navigate',
+    headers: { get: (name: string) => (name.toLowerCase() === 'accept' ? 'text/html' : null) },
+  };
+}
+
+function dispatchFetch(
+  fetchHandler: (event: FakeFetchEvent) => void,
+  request: FakeFetchEvent['request'],
+): Promise<Response> | null {
+  let responsePromise: Promise<Response> | null = null;
+  fetchHandler({
+    request,
+    respondWith(p) {
+      responsePromise = p;
+    },
+  });
+  return responsePromise;
+}
 
 describe('PWA installability & manifest', () => {
   it('provides full standalone manifest metadata with any and maskable icons', () => {
@@ -45,5 +135,61 @@ describe('PWA installability & manifest', () => {
       shouldShowInstallBanner({ isStandalone: false, dismissedUntilMs: null, nowMs: now, hasDeferredPrompt: false, platform: 'desktop' }),
       false,
     );
+  });
+
+  it('keeps sw.js OFFLINE_PAGE_ALLOWLIST restricted to /mobile while providing offline navigation fallback for /', async () => {
+    const swPath = resolve(process.cwd(), 'public/sw.js');
+    const source = readFileSync(swPath, 'utf8');
+    assert.match(source, /CACHE_NAME\s*=\s*'bpwi-ops-v5'/);
+    assert.match(source, /OFFLINE_PAGE_ALLOWLIST\s*=\s*new Set\(\['\/mobile'\]\)/);
+
+    // 1. Online navigation to '/' goes network-only and NEVER stores '/' in cache
+    const onlineSw = loadServiceWorker({
+      fetchImpl: async () => new Response('<html>roster</html>', { status: 200, headers: { 'Content-Type': 'text/html' } }),
+    });
+    const onlinePromise = dispatchFetch(onlineSw.fetchHandler, makeNavRequest('/'));
+    assert.ok(onlinePromise, 'fetch handler should respond to / navigation');
+    const onlineRes = await onlinePromise;
+    assert.equal(await onlineRes.text(), '<html>roster</html>');
+    assert.deepEqual(onlineSw.storedKeys, []);
+
+    // 2. Sensitive routes like /call-sheet are not intercepted or cached
+    const callSheetPromise = dispatchFetch(onlineSw.fetchHandler, makeNavRequest('/call-sheet'));
+    assert.equal(callSheetPromise, null);
+
+    // 3. Offline launch on '/' serves cached /mobile when available
+    const cachedMobileSw = loadServiceWorker({
+      cachedEntries: {
+        '/mobile': new Response('<html>cached mobile logger</html>', {
+          status: 200,
+          headers: { 'Content-Type': 'text/html' },
+        }),
+      },
+      fetchImpl: async () => {
+        throw new TypeError('Failed to fetch');
+      },
+    });
+    const cachedFallbackPromise = dispatchFetch(cachedMobileSw.fetchHandler, makeNavRequest('/'));
+    assert.ok(cachedFallbackPromise);
+    const cachedFallbackRes = await cachedFallbackPromise;
+    assert.equal(cachedFallbackRes.status, 200);
+    assert.equal(await cachedFallbackRes.text(), '<html>cached mobile logger</html>');
+
+    // 4. Offline launch on '/' without cached /mobile returns self-contained 200 text/html fallback
+    const uncachedSw = loadServiceWorker({
+      fetchImpl: async () => {
+        throw new TypeError('Failed to fetch');
+      },
+    });
+    const htmlFallbackPromise = dispatchFetch(uncachedSw.fetchHandler, makeNavRequest('/'));
+    assert.ok(htmlFallbackPromise);
+    const htmlFallbackRes = await htmlFallbackPromise;
+    assert.equal(htmlFallbackRes.status, 200);
+    assert.match(htmlFallbackRes.headers.get('content-type') ?? '', /^text\/html/);
+    const fallbackHtml = await htmlFallbackRes.text();
+    assert.match(fallbackHtml, /BPWI Ops — You are offline/);
+    assert.match(fallbackHtml, /href="\/mobile"/);
+    assert.match(fallbackHtml, /Try again/);
+    assert.match(fallbackHtml, /reload\(\)/);
   });
 });

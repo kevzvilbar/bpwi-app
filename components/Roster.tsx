@@ -1,12 +1,12 @@
 'use client';
 
-import { useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { subscribeVisibilityAwareChannel } from '@/lib/supabase/realtime';
 import type { ChangeRequestItem, ChangeRequestOriginalState, EditGrant } from '@/lib/profile';
 import { getErrorMessage } from '@/lib/error-utils';
-import { isGrantActiveAt } from '@/lib/edit-grant';
+import { canManagerDirectEditDate, isGrantActiveAt } from '@/lib/edit-grant';
 import {
   buildRosterCsv,
   buildRosterPendingMap,
@@ -32,7 +32,6 @@ import {
   type HistoryEntry,
   type HolidayItem,
   type Op,
-  type PendingCellEntry,
   type PmMarkTask,
   type ProposedChangeInput,
   type RosterDragBatch,
@@ -98,6 +97,10 @@ export default function Roster(p: {
   const hasActiveEdit = p.canEdit && (p.role !== 'manager' || (!grantExpired && isGrantActiveAt(p.editGrant)));
   const isPropose = p.role === 'manager' && !hasActiveEdit;
   const canOperate = hasActiveEdit || Boolean(p.canPropose) || p.role === 'manager';
+  const shouldProposeDate = useCallback(
+    (date: string) => p.role === 'manager' && (!hasActiveEdit || !canManagerDirectEditDate(p.editGrant, date)),
+    [hasActiveEdit, p.editGrant, p.role],
+  );
   const holidayByDate = useMemo(
     () => new Map((p.holidays ?? []).map((h) => [h.holiday_date, h])),
     [p.holidays],
@@ -109,9 +112,14 @@ export default function Roster(p: {
   const [submitNote, setSubmitNote] = useState('');
   const [isSubmittingDraft, setIsSubmittingDraft] = useState(false);
 
+  const proposedDraftItems = useMemo(
+    () => draftItems.filter((item) => !item.schedule_date || shouldProposeDate(item.schedule_date)),
+    [draftItems, shouldProposeDate],
+  );
+
   const pendingMap = useMemo(
-    () => buildRosterPendingMap(p.pendingItems ?? [], hasActiveEdit ? [] : draftItems),
-    [p.pendingItems, hasActiveEdit, draftItems],
+    () => buildRosterPendingMap(p.pendingItems ?? [], proposedDraftItems),
+    [p.pendingItems, proposedDraftItems],
   );
 
   async function ensureDraftRequestId(): Promise<string> {
@@ -150,8 +158,6 @@ export default function Roster(p: {
       onErrorRollback();
       setSaveState('error');
       setMsg(friendlyError(getErrorMessage(err), p.role));
-    } finally {
-      setSavingCount((c) => c - 1);
     }
   }
 
@@ -465,38 +471,89 @@ export default function Roster(p: {
     void applyHistory(last, 'redo');
   }
 
+  const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  keyHandlerRef.current = (e: KeyboardEvent) => {
+    if (importOpen || confirmFill || ctxMenu || document.querySelector('[role="dialog"]')) return;
+    const tag = (e.target as HTMLElement)?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      handleUndo();
+    } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
+      e.preventDefault();
+      handleRedo();
+    } else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (e.key >= '1' && e.key <= '9') {
+        const shift = p.shifts[Number(e.key) - 1];
+        if (shift) {
+          setMode('paint');
+          handleSelectShift(shift.id);
+        }
+      } else if (e.key === '0') {
+        setMode('paint');
+        setAreaId(null);
+      } else if (e.key.toLowerCase() === 's') {
+        setMode((m) => (m === 'standby' ? 'paint' : 'standby'));
+      } else if (e.key.toLowerCase() === 'e') {
+        setMode((m) => (m === 'erase' ? 'paint' : 'erase'));
+      }
+    }
+  };
+
   useEffect(() => {
     if (!canOperate) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (importOpen || confirmFill || ctxMenu || document.querySelector('[role="dialog"]')) return;
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
-        e.preventDefault();
-        handleUndo();
-      } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
-        e.preventDefault();
-        handleRedo();
-      } else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-        if (e.key >= '1' && e.key <= '9') {
-          const shift = p.shifts[Number(e.key) - 1];
-          if (shift) {
-            setMode('paint');
-            handleSelectShift(shift.id);
-          }
-        } else if (e.key === '0') {
-          setMode('paint');
-          setAreaId(null);
-        } else if (e.key.toLowerCase() === 's') {
-          setMode((m) => (m === 'standby' ? 'paint' : 'standby'));
-        } else if (e.key.toLowerCase() === 'e') {
-          setMode((m) => (m === 'erase' ? 'paint' : 'erase'));
-        }
-      }
-    };
+    const onKeyDown = (e: KeyboardEvent) => keyHandlerRef.current(e);
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  });
+  }, [canOperate]);
+
+  async function clearDraftOverlap(cells: { opId: string; date: string }[]) {
+    if (!draftReqId || draftItems.length === 0 || cells.length === 0) return;
+    const nextDraft = await clearDraftItemsForCells(supabaseBrowser(), draftReqId, draftItems, cells);
+    if (nextDraft !== draftItems) {
+      const kept = new Set(nextDraft.map((x) => x.id));
+      const dropped = new Set(draftItems.filter((x) => !kept.has(x.id)).map((x) => x.id));
+      setDraftItems((prev) => prev.filter((x) => !dropped.has(x.id)));
+    }
+  }
+
+  async function persistShiftEntries(entries: ShiftHistoryItem[]) {
+    if (entries.length === 0) return;
+    const directEntries = entries.filter((e) => !shouldProposeDate(e.date));
+    const proposedEntries = entries.filter((e) => shouldProposeDate(e.date));
+    setSavingCount((c) => c + 1);
+    try {
+      if (directEntries.length > 0) {
+        const upserts = directEntries.map((e) => e.next).filter((x): x is Row => Boolean(x));
+        const deletes = directEntries.filter((e) => !e.next).map((e) => ({ opId: e.opId, date: e.date }));
+        const errMsg = await persistDirectShiftChanges(supabaseBrowser(), p.orgId, upserts, deletes);
+        if (errMsg) {
+          rollbackShiftKeys(directEntries.map((e) => ({ opId: e.opId, date: e.date, prev: e.prev })));
+          setSaveState('error');
+          setMsg(friendlyError(errMsg, p.role));
+        } else {
+          await clearDraftOverlap(directEntries.map((e) => ({ opId: e.opId, date: e.date })));
+        }
+      }
+      if (proposedEntries.length > 0) {
+        await saveDraftProposal(
+          proposedEntries.map((e) => ({
+            target_table: 'schedule_assignments',
+            action: e.next ? 'upsert' : 'delete',
+            operator_id: e.opId,
+            schedule_date: e.date,
+            ...(e.next ? { shift_type_id: e.next.shift_type_id, area_code_id: e.next.area_code_id } : {}),
+            original_state: e.prev
+              ? { shift_type_id: e.prev.shift_type_id, area_code_id: e.prev.area_code_id }
+              : { shift_type_id: null, area_code_id: null },
+          })),
+          () => rollbackShiftKeys(proposedEntries.map((e) => ({ opId: e.opId, date: e.date, prev: e.prev }))),
+        );
+      }
+    } finally {
+      setSavingCount((c) => c - 1);
+    }
+  }
 
   async function saveShiftCell(opId: string, date: string, nextRow: Row | null, prevCell: Row | null) {
     if (nextRow) {
@@ -504,43 +561,10 @@ export default function Roster(p: {
     } else {
       setRows((r) => r.filter((x) => cellKey(x.operator_id, x.schedule_date) !== cellKey(opId, date)));
     }
-    setUndoStack((s) => [...s.slice(-29), [{ kind: 'shift', opId, date, prev: prevCell, next: nextRow }]]);
+    const entry: ShiftHistoryItem = { kind: 'shift', opId, date, prev: prevCell, next: nextRow };
+    setUndoStack((s) => [...s.slice(-29), [entry]]);
     setRedoStack([]);
-    setSavingCount((c) => c + 1);
-
-    const rollback = () => rollbackShiftKeys([{ opId, date, prev: prevCell }]);
-    if (isPropose) {
-      await saveDraftProposal(
-        [
-          {
-            target_table: 'schedule_assignments',
-            action: nextRow ? 'upsert' : 'delete',
-            operator_id: opId,
-            schedule_date: date,
-            ...(nextRow ? { shift_type_id: nextRow.shift_type_id, area_code_id: nextRow.area_code_id } : {}),
-            original_state: prevCell ? { shift_type_id: prevCell.shift_type_id, area_code_id: prevCell.area_code_id } : { shift_type_id: null, area_code_id: null },
-          },
-        ],
-        rollback,
-      );
-      return;
-    }
-
-    const errMsg = await persistDirectShiftChanges(
-      supabaseBrowser(),
-      p.orgId,
-      nextRow ? [nextRow] : [],
-      nextRow ? [] : [{ opId, date }],
-    );
-    setSavingCount((c) => c - 1);
-    if (errMsg) {
-      rollback();
-      setSaveState('error');
-      setMsg(friendlyError(errMsg, p.role));
-    } else if (draftReqId && draftItems.length > 0) {
-      const nextDraft = await clearDraftItemsForCells(supabaseBrowser(), draftReqId, draftItems, [{ opId, date }]);
-      if (nextDraft !== draftItems) setDraftItems(nextDraft);
-    }
+    await persistShiftEntries([entry]);
   }
 
   async function setStandbyValue(opId: string, date: string, nextType: string | null) {
@@ -560,37 +584,39 @@ export default function Roster(p: {
     setSavingCount((c) => c + 1);
 
     const rollback = () => rollbackStandbyKeys([{ opId, date, prev: prevSb }]);
-    if (isPropose) {
-      await saveDraftProposal(
-        [
-          {
-            target_table: 'standby_assignments',
-            action: nextType === null ? 'delete' : 'upsert',
-            operator_id: opId,
-            schedule_date: date,
-            standby_type: nextType,
-            original_state: prevSb ? { standby_type: prevSb.standby_type } : { standby_type: null },
-          },
-        ],
-        rollback,
-      );
-      return;
-    }
+    try {
+      if (shouldProposeDate(date)) {
+        await saveDraftProposal(
+          [
+            {
+              target_table: 'standby_assignments',
+              action: nextType === null ? 'delete' : 'upsert',
+              operator_id: opId,
+              schedule_date: date,
+              standby_type: nextType,
+              original_state: prevSb ? { standby_type: prevSb.standby_type } : { standby_type: null },
+            },
+          ],
+          rollback,
+        );
+        return;
+      }
 
-    const errMsg = await persistDirectStandbyChanges(
-      supabaseBrowser(),
-      p.orgId,
-      nextSb ? [nextSb] : [],
-      nextSb ? [] : [{ opId, date }],
-    );
-    setSavingCount((c) => c - 1);
-    if (errMsg) {
-      rollback();
-      setSaveState('error');
-      setMsg(friendlyError(errMsg, p.role));
-    } else if (draftReqId && draftItems.length > 0) {
-      const nextDraft = await clearDraftItemsForCells(supabaseBrowser(), draftReqId, draftItems, [{ opId, date }]);
-      if (nextDraft !== draftItems) setDraftItems(nextDraft);
+      const errMsg = await persistDirectStandbyChanges(
+        supabaseBrowser(),
+        p.orgId,
+        nextSb ? [nextSb] : [],
+        nextSb ? [] : [{ opId, date }],
+      );
+      if (errMsg) {
+        rollback();
+        setSaveState('error');
+        setMsg(friendlyError(errMsg, p.role));
+      } else {
+        await clearDraftOverlap([{ opId, date }]);
+      }
+    } finally {
+      setSavingCount((c) => c - 1);
     }
   }
 
@@ -611,47 +637,24 @@ export default function Roster(p: {
     }
     const normalizedShiftId = normalizeShiftForArea(source.shift_type_id, source.area_code_id, areaBy, offShift);
     const targets = days.filter((d) => d.date >= fromDate).map((d) => d.date);
-    const history: ShiftHistoryItem[] = targets.map((date) => ({
+    const upserts: Row[] = targets.map((date) => ({
+      operator_id: opId,
+      schedule_date: date,
+      shift_type_id: normalizedShiftId,
+      area_code_id: source.area_code_id,
+    }));
+    const history: ShiftHistoryItem[] = upserts.map((next) => ({
       kind: 'shift',
       opId,
-      date,
-      prev: cell.get(cellKey(opId, date)) ?? null,
-      next: { operator_id: opId, schedule_date: date, shift_type_id: normalizedShiftId, area_code_id: source.area_code_id },
+      date: next.schedule_date,
+      prev: cell.get(cellKey(opId, next.schedule_date)) ?? null,
+      next,
     }));
-    const upserts: Row[] = history.map((h) => h.next!);
     const targetSet = new Set(targets);
     setRows((r) => [...r.filter((x) => !(x.operator_id === opId && targetSet.has(x.schedule_date))), ...upserts]);
     setUndoStack((s) => [...s.slice(-29), history]);
     setRedoStack([]);
-    setSavingCount((c) => c + 1);
-
-    const rollback = () => rollbackShiftKeys(history.map((h) => ({ opId: h.opId, date: h.date, prev: h.prev })));
-    if (isPropose) {
-      await saveDraftProposal(
-        history.map((h) => ({
-          target_table: 'schedule_assignments',
-          action: 'upsert',
-          operator_id: h.opId,
-          schedule_date: h.date,
-          shift_type_id: normalizedShiftId,
-          area_code_id: source.area_code_id,
-          original_state: h.prev ? { shift_type_id: h.prev.shift_type_id, area_code_id: h.prev.area_code_id } : { shift_type_id: null, area_code_id: null },
-        })),
-        rollback,
-      );
-      return;
-    }
-
-    const errMsg = await persistDirectShiftChanges(supabaseBrowser(), p.orgId, upserts, []);
-    setSavingCount((c) => c - 1);
-    if (errMsg) {
-      rollback();
-      setSaveState('error');
-      setMsg(friendlyError(errMsg, p.role));
-    } else if (draftReqId && draftItems.length > 0) {
-      const nextDraft = await clearDraftItemsForCells(supabaseBrowser(), draftReqId, draftItems, targets.map((date) => ({ opId, date })));
-      if (nextDraft !== draftItems) setDraftItems(nextDraft);
-    }
+    await persistShiftEntries(history);
   }
 
   function applyBrushLocal(opId: string, date: string) {
@@ -685,58 +688,19 @@ export default function Roster(p: {
 
     setUndoStack((s) => [...s.slice(-29), batch.entries]);
     setRedoStack([]);
-    setSavingCount((c) => c + 1);
-
-    const rollback = () => rollbackShiftKeys(batch.entries.map((e) => ({ opId: e.opId, date: e.date, prev: e.prev })));
-    if (isPropose) {
-      const proposalItems: ProposedChangeInput[] = [
-        ...batch.upserts.map((u) => {
-          const prevEntry = batch.entries.find((e) => e.opId === u.operator_id && e.date === u.schedule_date);
-          return {
-            target_table: 'schedule_assignments' as const,
-            action: 'upsert' as const,
-            operator_id: u.operator_id,
-            schedule_date: u.schedule_date,
-            shift_type_id: u.shift_type_id,
-            area_code_id: u.area_code_id,
-            original_state: prevEntry?.prev ? { shift_type_id: prevEntry.prev.shift_type_id, area_code_id: prevEntry.prev.area_code_id } : { shift_type_id: null, area_code_id: null },
-          };
-        }),
-        ...batch.deletes.map((d) => {
-          const prevEntry = batch.entries.find((e) => e.opId === d.opId && e.date === d.date);
-          return {
-            target_table: 'schedule_assignments' as const,
-            action: 'delete' as const,
-            operator_id: d.opId,
-            schedule_date: d.date,
-            original_state: prevEntry?.prev ? { shift_type_id: prevEntry.prev.shift_type_id, area_code_id: prevEntry.prev.area_code_id } : { shift_type_id: null, area_code_id: null },
-          };
-        }),
-      ];
-      await saveDraftProposal(proposalItems, rollback);
-      return;
-    }
-
-    const errMsg = await persistDirectShiftChanges(supabaseBrowser(), p.orgId, batch.upserts, batch.deletes);
-    setSavingCount((c) => c - 1);
-    if (errMsg) {
-      rollback();
-      setSaveState('error');
-      setMsg(friendlyError(errMsg, p.role));
-    } else if (draftReqId && draftItems.length > 0) {
-      const cells = batch.entries.map((e) => ({ opId: e.opId, date: e.date }));
-      const nextDraft = await clearDraftItemsForCells(supabaseBrowser(), draftReqId, draftItems, cells);
-      if (nextDraft !== draftItems) setDraftItems(nextDraft);
-    }
+    await persistShiftEntries(batch.entries);
   }
 
+  const pointerUpRef = useRef<() => void>(() => {});
+  pointerUpRef.current = () => {
+    if (dragRef.current?.active) void commitDragBatch();
+  };
+
   useEffect(() => {
-    const onPointerUp = () => {
-      if (dragRef.current?.active) void commitDragBatch();
-    };
+    const onPointerUp = () => pointerUpRef.current();
     window.addEventListener('pointerup', onPointerUp);
     return () => window.removeEventListener('pointerup', onPointerUp);
-  });
+  }, []);
 
   async function activateCell(opId: string, date: string) {
     if (!canOperate) return;
@@ -992,7 +956,7 @@ export default function Roster(p: {
         />
       )}
 
-      {isPropose && draftItems.length > 0 && (
+      {draftItems.length > 0 && (isPropose || proposedDraftItems.length > 0) && (
         <RosterProposeBar
           count={draftItems.length}
           onOpenSubmit={() => setSubmitModalOpen(true)}

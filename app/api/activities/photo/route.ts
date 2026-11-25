@@ -6,6 +6,7 @@ import {
   getActivityPhotoContentType,
   isValidActivityStoragePath,
 } from '@/lib/activity-media';
+import { buildPhotoCacheHeaders } from '@/lib/photo-proxy';
 
 /**
  * Authenticated, org-scoped image proxy for private 'activity-media' field photos.
@@ -42,15 +43,51 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const etag = `"bpwi-photo-${Buffer.from(storagePath).toString('base64url')}"`;
-    const cacheHeaders = {
-      'Cache-Control': 'private, max-age=86400, immutable',
-      ETag: etag,
-      Vary: 'Cookie',
-    };
-    const ifNoneMatch = req.headers.get('if-none-match');
-    if (ifNoneMatch && ifNoneMatch.split(',').some((tag) => tag.trim() === etag || tag.trim() === '*')) {
-      return new NextResponse(null, { status: 304, headers: cacheHeaders });
+    // Verify row-level RLS visibility on daily_activities before serving or returning 304.
+    const { data: primaryAct } = await me
+      .from('daily_activities')
+      .select('id, is_sample')
+      .contains('photo_storage_paths', [storagePath])
+      .limit(1)
+      .maybeSingle();
+
+    let actRow = primaryAct;
+    if (!actRow) {
+      const legacyProxyUrl = `/api/activities/photo?path=${storagePath}`;
+      const { data: legacyAct } = await me
+        .from('daily_activities')
+        .select('id, is_sample')
+        .contains('photo_urls', [legacyProxyUrl])
+        .limit(1)
+        .maybeSingle();
+      actRow = legacyAct;
+    }
+    if (!actRow) {
+      const encodedProxyUrl = `/api/activities/photo?path=${encodeURIComponent(storagePath)}`;
+      if (encodedProxyUrl !== `/api/activities/photo?path=${storagePath}`) {
+        const { data: encodedLegacyAct } = await me
+          .from('daily_activities')
+          .select('id, is_sample')
+          .contains('photo_urls', [encodedProxyUrl])
+          .limit(1)
+          .maybeSingle();
+        actRow = encodedLegacyAct;
+      }
+    }
+
+    if (!actRow) {
+      return NextResponse.json({ error: 'Photo not found' }, { status: 404 });
+    }
+
+    const { etag, headers: cacheHeaders, cacheable } = buildPhotoCacheHeaders(
+      storagePath,
+      Boolean(actRow.is_sample),
+    );
+    if (cacheable && etag) {
+      const ifNoneMatch = req.headers.get('if-none-match');
+      if (ifNoneMatch && ifNoneMatch.split(',').some((tag) => tag.trim() === etag || tag.trim() === '*')) {
+        return new NextResponse(null, { status: 304, headers: cacheHeaders });
+      }
     }
 
     const { data: blob, error } = await me.storage

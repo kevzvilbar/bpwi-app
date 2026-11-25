@@ -1508,5 +1508,33 @@ describe('PGlite SQL migrations (all) execution & security invariants', () => {
 
     // 035 idempotent
     await db.exec(sql35);
+
+    // 19. 036 Realtime publication for edit_grants (registered, idempotent, and safe if publication is missing)
+    const rtEditGrants = await db.query<{ schemaname: string; tablename: string }>(
+      `select schemaname, tablename
+       from pg_publication_tables
+       where pubname = 'supabase_realtime'
+         and schemaname = 'public'
+         and tablename = 'edit_grants'`,
+    );
+    assert.equal(rtEditGrants.rows.length, 1);
+    assert.deepEqual(rtEditGrants.rows[0], { schemaname: 'public', tablename: 'edit_grants' });
+
+    // Re-running 036 migration is idempotent
+    const sql36 = fs.readFileSync(path.join(MIGRATIONS_DIR, '036_realtime_edit_grants.sql'), 'utf8');
+    await db.exec(sql36);
+    const rtEditGrantsAfter = await db.query<{ cnt: number }>(
+      `select count(*)::int as cnt
+       from pg_publication_tables
+       where pubname = 'supabase_realtime'
+         and schemaname = 'public'
+         and tablename = 'edit_grants'`,
+    );
+    assert.equal(rtEditGrantsAfter.rows[0]?.cnt, 1);
+
+    // Guard handles environments without supabase_realtime publication cleanly
+    await db.exec('begin; drop publication supabase_realtime;');
+    await db.exec(sql36);
+    await db.exec('rollback;');
   });
 });

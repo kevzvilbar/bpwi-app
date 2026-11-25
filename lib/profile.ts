@@ -1,6 +1,9 @@
 import { cache } from 'react';
+import { cookies } from 'next/headers';
+import type { User } from '@supabase/supabase-js';
 import { supabaseServer } from '@/lib/supabase/server';
 import { computePermissions } from '@/lib/permissions';
+import { hasSupabaseAuthCookie } from '@/lib/photo-proxy';
 
 /** An admin-granted edit window for a department head (see supabase/migrations/008). */
 export type EditGrant = {
@@ -82,9 +85,13 @@ export type ChangeRequestItem = {
 
 export const getAuthProfile = cache(async () => {
   const sb = await supabaseServer();
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
+  const store = await cookies();
+  const hasAuthCookie = hasSupabaseAuthCookie(store.getAll().map((c) => c.name));
+  let user: User | null = null;
+  if (hasAuthCookie) {
+    const { data } = await sb.auth.getUser();
+    user = data.user;
+  }
 
   type OrgJoin = { name?: string | null; app_title?: string | null } | { name?: string | null; app_title?: string | null }[] | null;
   type ProfRow = {
