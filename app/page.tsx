@@ -1,4 +1,4 @@
-import { getProfile, type ChangeRequestItem } from '@/lib/profile';
+import { fetchAll, getProfile, type ChangeRequestItem } from '@/lib/profile';
 import { manilaToday } from '@/lib/date';
 import { CHANGE_REQUEST_ITEM_COLUMNS } from '@/lib/query-columns';
 import Roster from '@/components/Roster';
@@ -19,16 +19,26 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
     sb.from('operators').select('id, full_name, position').eq('is_active', true).order('sort_order'),
     sb.from('shift_types').select('id, code, description, duration_hours, background_color, text_color, is_off').order('code'),
     sb.from('area_codes').select('id, code, name, category, background_color, text_color').order('code'),
-    sb
-      .from('schedule_assignments')
-      .select('operator_id, schedule_date, shift_type_id, area_code_id')
-      .gte('schedule_date', first)
-      .lte('schedule_date', last),
-    sb
-      .from('standby_assignments')
-      .select('operator_id, schedule_date, standby_type')
-      .gte('schedule_date', first)
-      .lte('schedule_date', last),
+    fetchAll((from, to) =>
+      sb
+        .from('schedule_assignments')
+        .select('operator_id, schedule_date, shift_type_id, area_code_id')
+        .gte('schedule_date', first)
+        .lte('schedule_date', last)
+        .order('schedule_date')
+        .order('operator_id')
+        .range(from, to),
+    ),
+    fetchAll((from, to) =>
+      sb
+        .from('standby_assignments')
+        .select('operator_id, schedule_date, standby_type')
+        .gte('schedule_date', first)
+        .lte('schedule_date', last)
+        .order('schedule_date')
+        .order('operator_id')
+        .range(from, to),
+    ),
     sb
       .from('pm_tasks')
       .select('scheduled_date, assigned_operator_ids, status, title')
@@ -68,9 +78,14 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
     draftItems = (items ?? []) as ChangeRequestItem[];
   }
 
-  const errors = [ops.error, shifts.error, areas.error, rows.error, standby.error, pmTasks.error]
-    .filter(Boolean)
-    .map((e) => e!.message);
+  const errors = [
+    ops.error?.message,
+    shifts.error?.message,
+    areas.error?.message,
+    rows.error,
+    standby.error,
+    pmTasks.error?.message,
+  ].filter((e): e is string => Boolean(e));
 
   return (
     <Roster

@@ -4,7 +4,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { supabaseServer } from '@/lib/supabase/server';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 import { getErrorMessage } from '@/lib/error-utils';
-import { ACTIVITY_MEDIA_BUCKET, extractActivityStoragePath, isStoragePathOwnedByOrg } from '@/lib/activity-media';
+import { ACTIVITY_MEDIA_BUCKET, extractActivityStoragePath, isSamplePhotoPath, isStoragePathOwnedByOrg } from '@/lib/activity-media';
 
 function isAuthorizedBearer(header: string, secret: string): boolean {
   if (!secret) return false;
@@ -168,11 +168,14 @@ async function drainSamplePhotoQueue(db: SupabaseClient, orgId?: string) {
   const removable: typeof rows = [];
   const invalidIds: string[] = [];
   for (const row of rows) {
-    if (isStoragePathOwnedByOrg(row.storage_path, row.organization_id)) removable.push(row);
-    else invalidIds.push(row.id); // can never be removed from this org's folder; drop instead of retrying forever
+    if (isStoragePathOwnedByOrg(row.storage_path, row.organization_id) && isSamplePhotoPath(row.storage_path)) {
+      removable.push(row);
+    } else {
+      invalidIds.push(row.id); // can never be safely purged as a sample photo; drop instead of retrying forever
+    }
   }
   if (invalidIds.length > 0) {
-    console.warn(`[purge-samples] Dropping ${invalidIds.length} queued path(s) outside their org folder`);
+    console.warn(`[purge-samples] Dropping ${invalidIds.length} invalid or non-sample queued path(s)`);
     await db.from('sample_photo_cleanup').delete().in('id', invalidIds);
   }
 
@@ -264,6 +267,9 @@ export async function POST() {
 
     if (!prof || prof.is_active === false) {
       return NextResponse.json({ error: 'Inactive profile' }, { status: 403 });
+    }
+    if (!prof.organization_id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     if (!['admin', 'scheduler', 'manager'].includes(prof.role ?? '')) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

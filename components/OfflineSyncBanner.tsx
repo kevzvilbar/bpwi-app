@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import {
   flushOfflineQueue,
@@ -25,15 +25,18 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
   const [confirmDiscardId, setConfirmDiscardId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState<boolean>(false);
   const [statusNote, setStatusNote] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const didAutoSyncOnMountRef = useRef<boolean>(false);
 
   const refreshQueue = useCallback(async () => {
     const [nextActs, nextReps] = await Promise.all([getOfflineQueue(userId), getOfflineReports(userId)]);
     setActs(nextActs);
     setReps(nextReps);
-    if (nextActs.length + nextReps.length === 0) {
+    const total = nextActs.length + nextReps.length;
+    if (total === 0) {
       setDetailsOpen(false);
       setConfirmDiscardId(null);
     }
+    return total;
   }, [userId]);
 
   const syncAll = useCallback(async () => {
@@ -70,8 +73,14 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
   }, [refreshQueue, userId]);
 
   useEffect(() => {
-    setOnline(typeof navigator !== 'undefined' ? navigator.onLine : true);
-    void refreshQueue();
+    const isNowOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    setOnline(isNowOnline);
+    void refreshQueue().then((total) => {
+      if (isNowOnline && total > 0 && !didAutoSyncOnMountRef.current) {
+        didAutoSyncOnMountRef.current = true;
+        void syncAll();
+      }
+    });
 
     const onOnline = () => {
       setOnline(true);
@@ -224,7 +233,7 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
           }}
         >
           {acts.map((item) => {
-            const meta = describeQueuedActivity(item.payload);
+            const meta = describeQueuedActivity(item.payload, item.editingId);
             const busy = syncing || busyItemId === item.queueId;
             return (
               <div

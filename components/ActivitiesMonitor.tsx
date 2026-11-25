@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
@@ -17,7 +17,7 @@ import { AlertBanner, Badge, SegmentedTabs } from '@/components/ui';
 import { DEFAULT_STATION_CODE } from '@/lib/roster-helpers';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import SampleCleanupHealth from '@/components/SampleCleanupHealth';
-import { enqueueOfflineActivity, flushOfflineQueue, getOfflineQueue, type PendingOfflineActivity } from '@/lib/offline-queue';
+import { enqueueOfflineActivity } from '@/lib/offline-queue';
 
 const ActivityLoggerModal = dynamic(() => import('@/components/ActivityLoggerModal'), { ssr: false });
 const PrintableActivityReport = dynamic(() => import('@/components/PrintableActivityReport'), { ssr: false });
@@ -76,7 +76,6 @@ export default function ActivitiesMonitor(p: {
   const [activities, setActivities] = useState<DailyActivityRow[]>(p.activities);
   const [jobOrders, setJobOrders] = useState<JobOrderRow[]>(p.jobOrders);
   const [handovers, setHandovers] = useState<ShiftHandoverRow[]>(p.handovers);
-  const [offlineQueue, setOfflineQueue] = useState<PendingOfflineActivity[]>([]);
 
   const [filterAreaId, setFilterAreaId] = useState('');
   const [filterType, setFilterType] = useState('');
@@ -108,50 +107,33 @@ export default function ActivitiesMonitor(p: {
     return subscribeVisibilityAwareChannel({
       sb: supabaseBrowser(),
       channelName: 'bpwi-activities-hub',
+      onReconnect: () => router.refresh(),
       listeners: [
         { table: 'daily_activities', onEvent: (pl) => applyRealtimeRecord(setActivities, pl, (rec) => rec.activity_date === p.date) },
         { table: 'job_orders', onEvent: (pl) => applyRealtimeRecord(setJobOrders, pl) },
         { table: 'shift_handovers', onEvent: (pl) => applyRealtimeRecord(setHandovers, pl) },
       ],
     });
-  }, [p.date]);
-
-  const flushOfflineAndReport = useCallback(async (showFailureBanner: boolean) => {
-    const res = await flushOfflineQueue(supabaseBrowser(), p.userId);
-    setOfflineQueue(await getOfflineQueue(p.userId));
-    if (res.synced.length > 0) {
-      setActivities((prev) => [...res.synced, ...prev]);
-      setBannerMsg(
-        res.failed > 0
-          ? `Synced ${res.synced.length} offline log(s); ${res.failed} failed — inspect queue above.`
-          : `✓ Synced ${res.synced.length} offline activity log(s).`,
-      );
-    } else if (showFailureBanner && res.failed > 0) {
-      setBannerMsg(`Sync failed for ${res.failed} item(s): ${res.errors[0]?.message ?? 'Check connection'}`);
-    }
-  }, [p.userId]);
+  }, [p.date, router]);
 
   useEffect(() => {
-    let active = true;
-    const syncNow = async () => {
-      const q = await getOfflineQueue(p.userId);
-      if (!active) return;
-      setOfflineQueue(q);
-      if (q.length > 0 && navigator.onLine) await flushOfflineAndReport(false);
+    const onSynced = (ev: Event) => {
+      const rows = (ev as CustomEvent<{ rows?: DailyActivityRow[] }>).detail?.rows;
+      if (!Array.isArray(rows) || rows.length === 0) return;
+      const forDate = rows.filter((r) => r.activity_date === p.date);
+      if (forDate.length === 0) return;
+      setActivities((prev) => {
+        let next = prev;
+        for (const row of forDate) {
+          next = next.some((x) => x.id === row.id) ? next.map((x) => (x.id === row.id ? row : x)) : [row, ...next];
+        }
+        return next;
+      });
+      setBannerMsg(`✓ Synced ${forDate.length} offline activity log${forDate.length === 1 ? '' : 's'}.`);
     };
-    const onQueueChanged = async () => {
-      const q = await getOfflineQueue(p.userId);
-      if (active) setOfflineQueue(q);
-    };
-    void syncNow();
-    window.addEventListener('online', syncNow);
-    window.addEventListener('bpwi-offline-queue-changed', onQueueChanged);
-    return () => {
-      active = false;
-      window.removeEventListener('online', syncNow);
-      window.removeEventListener('bpwi-offline-queue-changed', onQueueChanged);
-    };
-  }, [p.userId, flushOfflineAndReport]);
+    window.addEventListener('bpwi-offline-activity-synced', onSynced);
+    return () => window.removeEventListener('bpwi-offline-activity-synced', onSynced);
+  }, [p.date]);
 
   const opBy = useMemo(() => new Map(p.operators.map((o) => [o.id, o])), [p.operators]);
   const shiftBy = useMemo(() => new Map(p.shifts.map((s) => [s.id, s])), [p.shifts]);
@@ -332,12 +314,6 @@ export default function ActivitiesMonitor(p: {
       {p.schemaWarning && <AlertBanner tone="warn"><b>Setup Notice:</b> {p.schemaWarning}</AlertBanner>}
       {bannerMsg && <AlertBanner tone={bannerMsg.startsWith('✓') ? 'ok' : 'danger'} onDismiss={() => setBannerMsg('')}>{bannerMsg}</AlertBanner>}
 
-      {offlineQueue.length > 0 && (
-        <AlertBanner tone="warn" action={<button type="button" className="btn" onClick={() => void flushOfflineAndReport(true)}>Sync Now</button>}>
-          <b>{offlineQueue.length}</b> field activity log{offlineQueue.length === 1 ? '' : 's'} queued in browser IndexedDB (offline mode).
-        </AlertBanner>
-      )}
-
       <SegmentedTabs
         ariaLabel="Activity monitoring sections"
         value={tab}
@@ -512,17 +488,15 @@ export default function ActivitiesMonitor(p: {
         <ActivityLoggerModal
           open={loggerOpen} role={p.role} sampleOnly={!p.canLogActivity} canLogSample={Boolean(p.canLogSampleActivity)}
           onClose={() => { setLoggerOpen(false); setLinkedJoForLog(null); setEditingActivity(null); }}
-          onQueuedOffline={async (payload) => {
-            await enqueueOfflineActivity(payload, p.userId);
-            setOfflineQueue(await getOfflineQueue(p.userId));
-            setBannerMsg('Saved to offline queue. It will auto-sync when online.');
-          }}
+          onQueuedOffline={async (payload: Record<string, unknown>, opts?: { editingId?: string | null }) => { await enqueueOfflineActivity(payload, p.userId, opts); }}
           onSaved={(act, opts) => {
             if (!opts?.offline) {
               setActivities((prev) => (prev.some((x) => x.id === act.id) ? prev.map((x) => (x.id === act.id ? act : x)) : [act, ...prev]));
-              setBannerMsg(editingActivity ? '✓ Activity updated.' : '✓ Activity logged.');
+              setBannerMsg(opts?.linkedWarning ?? (editingActivity ? '✓ Activity updated.' : '✓ Activity logged.'));
+            } else if (opts?.linkedWarning) {
+              setBannerMsg(opts.linkedWarning);
             }
-            if (linkedJoForLog && !act.is_sample) {
+            if (linkedJoForLog && !act.is_sample && !opts?.offline) {
               setJobOrders((prev) => prev.map((j) => (j.id === linkedJoForLog.id ? { ...j, status: 'completed', completed_at: new Date().toISOString(), ...(opts?.tatJustification ? { tat_justification: opts.tatJustification } : {}) } : j)));
             }
           }}

@@ -365,8 +365,8 @@ export default function RosterMobileViews(p: {
                     minHeight: 46,
                     borderRadius: 8,
                     border: isSel ? '2px solid var(--accent)' : '1px solid var(--border-light)',
-                    background: d.date === p.today ? '#eff6ff' : 'var(--surface)',
-                    color: '#0f172a',
+                    background: d.date === p.today ? 'var(--info-bg)' : 'var(--surface)',
+                    color: 'var(--text)',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
@@ -376,7 +376,7 @@ export default function RosterMobileViews(p: {
                   }}
                 >
                   <span style={{ fontSize: 12.5, fontWeight: 700 }}>{d.dayNum}</span>
-                  <span style={{ fontSize: 9.5, color: '#475569' }}>
+                  <span style={{ fontSize: 9.5, color: 'var(--text-secondary)' }}>
                     {dutyCnt}d{sbCnt ? `·${sbCnt}⚡` : ''}
                   </span>
                 </button>

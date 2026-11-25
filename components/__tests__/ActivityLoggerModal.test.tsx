@@ -285,11 +285,157 @@ describe('ActivityLoggerModal', () => {
         activity_date: '2026-04-10',
         is_sample: false,
       }),
+      { editingId: null },
     );
     expect(activityInsertSingleMock).not.toHaveBeenCalled();
     expect(onSaved).toHaveBeenCalledWith(
       expect.objectContaining({ organization_id: 'org-1' }),
       { offline: true },
+    );
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes immediately on clean backdrop click, and prompts discard confirmation when dirty', async () => {
+    const user = userEvent.setup();
+    const cleanOnClose = vi.fn();
+
+    const { unmount } = render(
+      <ActivityLoggerModal
+        open
+        onClose={cleanOnClose}
+        onSaved={vi.fn()}
+        orgId="org-1"
+        userId="user-op"
+        role="operator"
+        operatorId="op-1"
+        date="2026-04-10"
+        operators={OPERATORS}
+        areas={AREAS}
+        shifts={SHIFTS}
+        assignments={ASSIGNMENTS}
+        sampleOnly={false}
+      />,
+    );
+
+    await user.click(screen.getByRole('dialog'));
+    expect(cleanOnClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Discard unsaved activity log\?/i)).not.toBeInTheDocument();
+    unmount();
+
+    const dirtyOnClose = vi.fn();
+    render(
+      <ActivityLoggerModal
+        open
+        onClose={dirtyOnClose}
+        onSaved={vi.fn()}
+        orgId="org-1"
+        userId="user-op"
+        role="operator"
+        operatorId="op-1"
+        date="2026-04-10"
+        operators={OPERATORS}
+        areas={AREAS}
+        shifts={SHIFTS}
+        assignments={ASSIGNMENTS}
+        sampleOnly={false}
+      />,
+    );
+
+    await user.type(screen.getByLabelText(/Field Notes \/ Observations/i), 'Unsaved field note');
+    await user.click(screen.getByRole('dialog'));
+
+    expect(dirtyOnClose).not.toHaveBeenCalled();
+    expect(screen.getByText('Discard unsaved activity log?')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Keep Editing' }));
+    expect(screen.queryByText('Discard unsaved activity log?')).not.toBeInTheDocument();
+    expect(dirtyOnClose).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('dialog'));
+    await user.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(dirtyOnClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes pmUpdateFailed and linkedWarning when linked PM update fails after insert', async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn();
+    const onClose = vi.fn();
+    activityInsertSingleMock.mockResolvedValue({ data: makeSavedRow({ pm_task_id: 'pm-1' }), error: null });
+    pmUpdateEqMock.mockResolvedValueOnce({ error: { message: 'PM RLS denied' } });
+
+    render(
+      <ActivityLoggerModal
+        open
+        onClose={onClose}
+        onSaved={onSaved}
+        orgId="org-1"
+        userId="user-op"
+        role="operator"
+        operatorId="op-1"
+        date="2026-04-10"
+        operators={OPERATORS}
+        areas={AREAS}
+        shifts={SHIFTS}
+        assignments={ASSIGNMENTS}
+        linkedPmTask={LINKED_PM}
+        sampleOnly={false}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /Log Activity & Complete PM/i }));
+
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(1);
+    });
+    expect(onSaved).toHaveBeenCalledWith(
+      expect.objectContaining({ pm_task_id: 'pm-1' }),
+      expect.objectContaining({
+        pmUpdateFailed: true,
+        linkedWarning: expect.stringContaining('PM RLS denied'),
+      }),
+    );
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes editingId when queuing an edited activity offline', async () => {
+    const user = userEvent.setup();
+    const onQueuedOffline = vi.fn();
+    const onSaved = vi.fn();
+    const onClose = vi.fn();
+
+    Object.defineProperty(navigator, 'onLine', {
+      configurable: true,
+      value: false,
+    });
+
+    render(
+      <ActivityLoggerModal
+        open
+        onClose={onClose}
+        onSaved={onSaved}
+        onQueuedOffline={onQueuedOffline}
+        orgId="org-1"
+        userId="user-op"
+        role="operator"
+        operatorId="op-1"
+        date="2026-04-10"
+        operators={OPERATORS}
+        areas={AREAS}
+        shifts={SHIFTS}
+        assignments={ASSIGNMENTS}
+        editingActivity={makeSavedRow({ id: 'act-edit-99', status: 'flagged' })}
+        sampleOnly={false}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => {
+      expect(onQueuedOffline).toHaveBeenCalledTimes(1);
+    });
+    expect(onQueuedOffline).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'submitted' }),
+      { editingId: 'act-edit-99' },
     );
     expect(onClose).toHaveBeenCalledTimes(1);
   });

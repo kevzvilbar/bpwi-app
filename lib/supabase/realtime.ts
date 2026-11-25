@@ -12,6 +12,7 @@ export interface VisibilityAwareChannelOptions {
   channelName: string;
   listeners: VisibilityRealtimeListener[];
   hiddenGraceMs?: number;
+  onReconnect?: () => void;
 }
 
 /**
@@ -24,10 +25,12 @@ export function subscribeVisibilityAwareChannel({
   channelName,
   listeners,
   hiddenGraceMs = 30_000,
+  onReconnect,
 }: VisibilityAwareChannelOptions): () => void {
   let active = true;
   let channel: RealtimeChannel | null = null;
   let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let disconnectedWhileHidden = false;
 
   const clearTimer = () => {
     if (disconnectTimer) {
@@ -64,11 +67,15 @@ export function subscribeVisibilityAwareChannel({
     if (!active || typeof document === 'undefined') return;
     if (document.visibilityState === 'visible') {
       clearTimer();
+      const shouldRefresh = disconnectedWhileHidden;
+      disconnectedWhileHidden = false;
       connect();
+      if (shouldRefresh) onReconnect?.();
     } else {
       clearTimer();
       disconnectTimer = setTimeout(() => {
         if (active && document.visibilityState === 'hidden') {
+          disconnectedWhileHidden = true;
           disconnect();
         }
       }, hiddenGraceMs);

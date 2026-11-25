@@ -38,12 +38,25 @@ export type LoggerArea = { id: string; code: string; name: string | null; catego
 export type LoggerShift = { id: string; code: string; description?: string | null; start_time?: string | null; end_time?: string | null; is_off?: boolean };
 export type LoggerAssignment = { operator_id: string; shift_type_id: string | null; area_code_id: string | null };
 
+export type ActivitySubmitPayload = Omit<
+  DailyActivityRow,
+  'id' | 'verified_by' | 'verified_at' | 'review_note' | 'photos_purged_at' | 'created_at' | 'updated_at'
+> & {
+  tat_justification?: string | null;
+};
+
 export type ActivityLoggerModalProps = {
   open: boolean;
   onClose: () => void;
   onSaved: (
     activity: DailyActivityRow,
-    opts?: { offline?: boolean; tatJustification?: string | null; completedByIds?: string[] },
+    opts?: {
+      offline?: boolean;
+      tatJustification?: string | null;
+      completedByIds?: string[];
+      pmUpdateFailed?: boolean;
+      linkedWarning?: string;
+    },
   ) => void;
   orgId: string;
   userId: string;
@@ -62,13 +75,8 @@ export type ActivityLoggerModalProps = {
   editingActivity?: DailyActivityRow | null;
   canLogSample?: boolean;
   sampleOnly?: boolean;
-  onQueuedOffline?: (payload: Record<string, unknown>) => Promise<void> | void;
+  onQueuedOffline?: (payload: ActivitySubmitPayload, opts?: { editingId?: string | null }) => Promise<void> | void;
 };
-
-type ActivitySubmitPayload = Omit<
-  DailyActivityRow,
-  'id' | 'verified_by' | 'verified_at' | 'review_note' | 'photos_purged_at' | 'created_at' | 'updated_at'
->;
 
 function toManilaHHMM(iso: string | null) {
   if (!iso) return '';
@@ -129,6 +137,9 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
   const [joTatJustification, setJoTatJustification] = useState('');
   const [isSample, setIsSample] = useState(Boolean(p.sampleOnly));
   const [openAtMs, setOpenAtMs] = useState(0);
+  const [openSeq, setOpenSeq] = useState(0);
+  const [initialSnapshot, setInitialSnapshot] = useState('');
+  const initPhaseRef = useRef<'closed' | 'init' | 'capture' | 'settled'>('closed');
   const lastParsedRef = useRef('');
   const initCtxRef = useRef({ p, asgByOp, stationAreas, stationIdSet });
   initCtxRef.current = { p, asgByOp, stationAreas, stationIdSet };
@@ -152,6 +163,8 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
   // Initialize defaults whenever modal opens
   useEffect(() => {
     if (!p.open) return;
+    initPhaseRef.current = 'init';
+    setOpenSeq((n) => n + 1);
     const { p: props, asgByOp: asgMap, stationAreas: stAreas, stationIdSet: stIdSet } = initCtxRef.current;
     setErrMsg('');
     setJoTatJustification('');
@@ -314,6 +327,35 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
       if (matchedArea) setAreaCodeId(matchedArea.id);
     }
   }, [details.accountNumber, areaTouched, stationAreas]);
+
+  const currentSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        activityType, leadOpId, crewOpIds, shiftTypeId, areaCodeId, siteOrWell, blockLot,
+        startedHHMM, completedHHMM, notes, gpsLat, gpsLng,
+        photoKeys: photos.map((ph) => ph.storagePath ?? ph.url),
+        details, hasSignature, joTatJustification, isSample,
+      }),
+    [activityType, leadOpId, crewOpIds, shiftTypeId, areaCodeId, siteOrWell, blockLot, startedHHMM, completedHHMM, notes, gpsLat, gpsLng, photos, details, hasSignature, joTatJustification, isSample],
+  );
+
+  useEffect(() => {
+    if (!p.open) {
+      initPhaseRef.current = 'closed';
+      setInitialSnapshot('');
+      return;
+    }
+    if (initPhaseRef.current === 'init') {
+      initPhaseRef.current = 'capture';
+      return;
+    }
+    if (initPhaseRef.current === 'capture') {
+      initPhaseRef.current = 'settled';
+      setInitialSnapshot(currentSnapshot);
+    }
+  }, [p.open, currentSnapshot, openSeq]);
+
+  const isDirty = Boolean(initialSnapshot) && initPhaseRef.current === 'settled' && currentSnapshot !== initialSnapshot;
 
   // Operators on duty today for 1-tap crew tagging
   const { sameShiftOps, otherOps } = useMemo(() => {
@@ -497,6 +539,16 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
       ...(p.linkedJobOrder?.id ? { job_order_id: p.linkedJobOrder.id } : {}),
     };
 
+    const trimmedTat = joTatJustification.trim() || null;
+    const offlinePayload: ActivitySubmitPayload = {
+      ...payload,
+      ...(p.editingActivity
+        ? { status: p.editingActivity.status === 'flagged' ? 'submitted' : p.editingActivity.status }
+        : {}),
+      ...(p.linkedJobOrder?.id && trimmedTat ? { tat_justification: trimmedTat } : {}),
+    };
+    const queueOpts = { editingId: p.editingActivity?.id ?? null };
+
     const buildOfflineActivityRow = (): DailyActivityRow => ({
       id: `offline-${Date.now()}`,
       ...payload,
@@ -508,13 +560,16 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
       updated_at: new Date().toISOString(),
     });
 
-    if (!navigator.onLine && p.onQueuedOffline) {
-      await p.onQueuedOffline(payload);
+    const queueOffline = async () => {
+      if (!p.onQueuedOffline) return false;
+      await p.onQueuedOffline(offlinePayload, queueOpts);
       setSubmitting(false);
       p.onSaved(buildOfflineActivityRow(), { offline: true });
       p.onClose();
-      return;
-    }
+      return true;
+    };
+
+    if (!navigator.onLine && (await queueOffline())) return;
 
     try {
       const sb = supabaseBrowser();
@@ -563,94 +618,58 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
         !effectiveIsSample && p.linkedPmTask?.id
           ? buildPmActualPerformerIds(leadOpId, p.role === 'operator' && p.operatorId ? [...crewOpIds, p.operatorId] : crewOpIds)
           : undefined;
+      let pmErrMsg: string | null = null;
       if (!effectiveIsSample && p.linkedPmTask?.id) {
         const pmBase = { status: 'done', completed_at: p.date, remarks: notes.trim() || `Logged via field activity (${activityType})` };
-        const pmRes = await sb.from('pm_tasks').update({ ...pmBase, completed_by_operator_ids: pmPerformers }).eq('id', p.linkedPmTask.id);
-        if (isMissingCompletedByColumnError(pmRes.error)) await sb.from('pm_tasks').update(pmBase).eq('id', p.linkedPmTask.id);
+        let pmRes = await sb.from('pm_tasks').update({ ...pmBase, completed_by_operator_ids: pmPerformers }).eq('id', p.linkedPmTask.id);
+        if (isMissingCompletedByColumnError(pmRes.error)) {
+          pmRes = await sb.from('pm_tasks').update(pmBase).eq('id', p.linkedPmTask.id);
+        }
+        if (pmRes.error) pmErrMsg = pmRes.error.message;
       }
 
-      const trimmedTat = joTatJustification.trim() || null;
+      let joErrMsg: string | null = null;
       if (!effectiveIsSample && p.linkedJobOrder?.id) {
-        await sb
+        const joRes = await sb
           .from('job_orders')
           .update({ status: 'completed', completed_at: new Date().toISOString(), ...(trimmedTat ? { tat_justification: trimmedTat } : {}) })
           .eq('id', p.linkedJobOrder.id);
+        if (joRes.error) joErrMsg = joRes.error.message;
       }
+
+      const warnParts: string[] = [];
+      if (pmErrMsg) warnParts.push(`PM task could not be marked done (${pmErrMsg})`);
+      if (joErrMsg) warnParts.push(`Job Order could not be closed (${joErrMsg})`);
+      const linkedWarning = warnParts.length > 0 ? `Activity saved, but ${warnParts.join('; ')}.` : undefined;
 
       setSubmitting(false);
       const savedRow: DailyActivityRow = {
         ...(data as unknown as DailyActivityRow),
         ...(sigData !== null ? { signature_data: sigData } : {}),
       };
-      p.onSaved(savedRow, { tatJustification: trimmedTat, completedByIds: pmPerformers });
+      p.onSaved(savedRow, {
+        tatJustification: trimmedTat,
+        completedByIds: pmPerformers,
+        pmUpdateFailed: Boolean(pmErrMsg),
+        linkedWarning,
+      });
       p.onClose();
     } catch (err: unknown) {
       const message = getErrorMessage(err, 'Save failed');
       const looksOffline = !navigator.onLine || /fetch|network|failed to load/i.test(message);
-      if (looksOffline && p.onQueuedOffline) {
-        await p.onQueuedOffline(payload);
-        setSubmitting(false);
-        p.onSaved(buildOfflineActivityRow(), { offline: true });
-        p.onClose();
-        return;
-      }
+      if (looksOffline && (await queueOffline())) return;
       setSubmitting(false);
       setErrMsg(message);
     }
   }
 
   return {
-    stationAreas,
-    activityType,
-    setActivityType,
-    leadOpId,
-    setLeadOpId,
-    crewOpIds,
-    showAllOps,
-    setShowAllOps,
-    shiftTypeId,
-    setShiftTypeId,
-    areaCodeId,
-    setAreaCodeId,
-    setAreaTouched,
-    siteOrWell,
-    setSiteOrWell,
-    blockLot,
-    setBlockLot,
-    startedHHMM,
-    setStartedHHMM,
-    completedHHMM,
-    setCompletedHHMM,
-    notes,
-    setNotes,
-    gpsLat,
-    gpsLng,
-    gpsAccuracyM,
-    gpsSource,
-    handleGpsChange,
-    photos,
-    savedBytesTotal,
-    uploadingPhoto,
-    handlePhotoUpload,
-    handleRemovePhoto,
-    details,
-    setDetails,
-    sigCanvasRef,
-    sigDrawingRef,
-    setHasSignature,
-    submitting,
-    errMsg,
-    joTatJustification,
-    setJoTatJustification,
-    isSample,
-    setIsSample,
-    openAtMs,
-    leadOpName,
-    performedBySummary,
-    sameShiftOps,
-    otherOps,
-    meterCalc,
-    toggleCrew,
-    handleSubmit,
+    stationAreas, activityType, setActivityType, leadOpId, setLeadOpId, crewOpIds, showAllOps, setShowAllOps,
+    shiftTypeId, setShiftTypeId, areaCodeId, setAreaCodeId, setAreaTouched, siteOrWell, setSiteOrWell,
+    blockLot, setBlockLot, startedHHMM, setStartedHHMM, completedHHMM, setCompletedHHMM, notes, setNotes,
+    gpsLat, gpsLng, gpsAccuracyM, gpsSource, handleGpsChange, photos, savedBytesTotal, uploadingPhoto,
+    handlePhotoUpload, handleRemovePhoto, details, setDetails, sigCanvasRef, sigDrawingRef, setHasSignature,
+    submitting, errMsg, joTatJustification, setJoTatJustification, isSample, setIsSample, openAtMs, isDirty,
+    leadOpName, performedBySummary, sameShiftOps, otherOps, meterCalc, toggleCrew, handleSubmit,
   };
 }

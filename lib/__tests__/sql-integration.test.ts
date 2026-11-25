@@ -51,7 +51,8 @@ async function initSupabaseShim(db: PGlite) {
     create table if not exists storage.objects (
       id uuid primary key default gen_random_uuid(),
       bucket_id text,
-      name text
+      name text,
+      owner uuid default auth.uid()
     );
     alter table storage.objects enable row level security;
 
@@ -1536,5 +1537,416 @@ describe('PGlite SQL migrations (all) execution & security invariants', () => {
     await db.exec('begin; drop publication supabase_realtime;');
     await db.exec(sql36);
     await db.exec('rollback;');
+
+    // 20. 037 Harden RLS, trigger integrity guards, and sample photo isolation
+    // Re-apply 037 because sections 17-18 re-ran 034 and 035; also re-run at end for idempotency.
+    const sql37 = fs.readFileSync(path.join(MIGRATIONS_DIR, '037_harden_rls_and_sample_photo_isolation.sql'), 'utf8');
+    await db.exec(sql37);
+
+    // Ensure two distinct operators, an unlinked operator, and a scheduler exist in orgId
+    const unlinkedOpUserId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const schedUserId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    await setAuthUid(db, null);
+    await db.query(
+      `insert into auth.users (id, email, raw_user_meta_data) values ($1, 'unlinkedop@bpwaterworks.com', $2::jsonb)`,
+      [unlinkedOpUserId, JSON.stringify({ full_name: 'Unlinked Op' })],
+    );
+    await db.query(
+      `insert into auth.users (id, email, raw_user_meta_data) values ($1, 'scheduler@bpwaterworks.com', $2::jsonb)`,
+      [schedUserId, JSON.stringify({ full_name: 'Org Scheduler' })],
+    );
+    await db.query(`update user_profiles set role = 'operator', is_active = true, operator_id = null where id = $1`, [
+      unlinkedOpUserId,
+    ]);
+    await db.query(`update user_profiles set role = 'scheduler', is_active = true where id = $1`, [schedUserId]);
+
+    // 20a. Sample photo path & URL isolation in enforce_sample_log_lifecycle()
+    const validSamplePath = `${orgId}/2026-11-25/sample-valid.webp`;
+    const validSampleUrl = `/api/activities/photo?path=${encodeURIComponent(validSamplePath)}`;
+    const badRealPath = `${orgId}/2026-11-25/real-photo.webp`;
+    const badForeignSamplePath = `99999999-9999-4999-8999-999999999999/2026-11-25/sample-foreign.webp`;
+
+    await assert.rejects(
+      () =>
+        runAs(mgr1Id, () =>
+          db.query(
+            `insert into daily_activities (organization_id, logged_by, activity_type, is_sample, photo_storage_paths)
+             values ($1, $2, 'pump_monitoring', true, $3::text[])`,
+            [orgId, mgr1Id, [badRealPath]],
+          ),
+        ),
+      /sample-\* paths/i,
+    );
+    await assert.rejects(
+      () =>
+        runAs(mgr1Id, () =>
+          db.query(
+            `insert into daily_activities (organization_id, logged_by, activity_type, is_sample, photo_storage_paths)
+             values ($1, $2, 'pump_monitoring', true, $3::text[])`,
+            [orgId, mgr1Id, [badForeignSamplePath]],
+          ),
+        ),
+      /sample-\* paths/i,
+    );
+    await assert.rejects(
+      () =>
+        runAs(mgr1Id, () =>
+          db.query(
+            `insert into daily_activities (organization_id, logged_by, activity_type, is_sample, photo_urls)
+             values ($1, $2, 'pump_monitoring', true, $3::text[])`,
+            [orgId, mgr1Id, [`/api/activities/photo?path=${orgId}%2F2026-11-25%2Freal-photo.webp`]],
+          ),
+        ),
+      /sample-\* objects/i,
+    );
+    await assert.rejects(
+      () =>
+        runAs(mgr1Id, () =>
+          db.query(
+            `insert into daily_activities (organization_id, logged_by, activity_type, is_sample, photo_urls)
+             values ($1, $2, 'pump_monitoring', true, $3::text[])`,
+            [orgId, mgr1Id, [`/storage/v1/object/public/activity-media/${badRealPath}`]],
+          ),
+        ),
+      /sample-\* objects/i,
+    );
+
+    const isolatedSampleId = await runAs(mgr1Id, async () => {
+      const r = await db.query<{ id: string }>(
+        `insert into daily_activities (organization_id, logged_by, activity_type, is_sample, photo_storage_paths, photo_urls)
+         values ($1, $2, 'pump_monitoring', true, $3::text[], $4::text[]) returning id`,
+        [orgId, mgr1Id, [validSamplePath], [validSampleUrl, 'data:image/png;base64,AAA']],
+      );
+      return r.rows[0].id;
+    }, true);
+
+    await assert.rejects(
+      () =>
+        runAs(mgr1Id, () =>
+          db.query(`update daily_activities set photo_storage_paths = $2::text[] where id = $1`, [
+            isolatedSampleId,
+            [badRealPath],
+          ]),
+        ),
+      /sample-\* paths/i,
+    );
+    await assert.rejects(
+      () =>
+        runAs(mgr1Id, () =>
+          db.query(`update daily_activities set photo_urls = $2::text[] where id = $1`, [
+            isolatedSampleId,
+            [`/api/activities/photo?path=${encodeURIComponent(badForeignSamplePath)}`],
+          ]),
+        ),
+      /sample-\* objects/i,
+    );
+
+    // 20b. purge_expired_sample_records() skips paths referenced by live real activities & non-sample paths
+    await setAuthUid(db, null);
+    await db.query(`delete from sample_photo_cleanup`);
+    const sharedSamplePath = `${orgId}/2026-11-25/sample-shared.webp`;
+    const onlySamplePath = `${orgId}/2026-11-25/sample-only-37.webp`;
+    await db.query(
+      `insert into daily_activities (organization_id, logged_by, activity_type, is_sample, photo_storage_paths, photo_urls)
+       values ($1, $2, 'pump_monitoring', false, $3::text[], $4::text[])`,
+      [orgId, assignedUserId, [sharedSamplePath], [`/api/activities/photo?path=${encodeURIComponent(sharedSamplePath)}`]],
+    );
+    await db.exec(`
+      alter table daily_activities disable trigger trg_daily_activities_sample_lifecycle;
+      update daily_activities
+      set sample_expires_at = now() - interval '1 minute',
+          photo_storage_paths = array['${sharedSamplePath}', '${onlySamplePath}', '${badRealPath}']::text[],
+          photo_urls = array['/api/activities/photo?path=' || '${sharedSamplePath}']::text[]
+      where id = '${isolatedSampleId}';
+      alter table daily_activities enable trigger trg_daily_activities_sample_lifecycle;
+    `);
+    await db.exec('begin; set local role service_role;');
+    const purge37 = await db.query<{ activities_deleted: number }>(`select * from purge_expired_sample_records()`);
+    await db.exec('commit;');
+    assert.equal(purge37.rows[0]?.activities_deleted, 1);
+
+    const queued37 = await db.query<{ storage_path: string }>(`select storage_path from sample_photo_cleanup order by storage_path`);
+    assert.deepEqual(
+      queued37.rows.map((r) => r.storage_path),
+      [onlySamplePath],
+      'purge must queue own-org sample-* path not referenced by any live activity, and skip shared/real paths',
+    );
+    const purgeAuth37 = await db.query<{ auth: boolean }>(
+      `select has_function_privilege('authenticated', 'purge_expired_sample_records()', 'EXECUTE') as auth`,
+    );
+    assert.equal(purgeAuth37.rows[0]?.auth, false);
+
+    // 20c. Tighten storage.objects "activity-media purge delete" policy
+    const op1DraftObj = `${orgId}/2026-11-25/op1-draft.webp`;
+    const op1VerifiedObj = `${orgId}/2026-11-25/op1-verified.webp`;
+    const realSampleNamedObj = `${orgId}/2026-11-25/sample-attached-to-real.webp`;
+    const otherMgrSampleObj = `${orgId}/2026-11-25/sample-other-mgr.webp`;
+    const ownMgrSampleObj = `${orgId}/2026-11-25/sample-own-mgr.webp`;
+    const schedTargetObj = `${orgId}/2026-11-25/sched-purge.webp`;
+
+    await runAs(assignedUserId, async () => {
+      await db.query(`insert into storage.objects (bucket_id, name) values ('activity-media', $1)`, [op1DraftObj]);
+      await db.query(`insert into storage.objects (bucket_id, name) values ('activity-media', $1)`, [op1VerifiedObj]);
+      await db.query(`insert into storage.objects (bucket_id, name) values ('activity-media', $1)`, [schedTargetObj]);
+    }, true);
+    await runAs(mgr1Id, async () => {
+      await db.query(`insert into storage.objects (bucket_id, name) values ('activity-media', $1)`, [ownMgrSampleObj]);
+    }, true);
+    await runAs(mgrApproverId, async () => {
+      await db.query(`insert into storage.objects (bucket_id, name) values ('activity-media', $1)`, [otherMgrSampleObj]);
+      await db.query(
+        `insert into daily_activities (organization_id, logged_by, activity_type, is_sample, photo_storage_paths)
+         values ($1, $2, 'pump_monitoring', true, $3::text[])`,
+        [orgId, mgrApproverId, [otherMgrSampleObj]],
+      );
+    }, true);
+    await runAs(adminId, async () => {
+      await db.query(`insert into storage.objects (bucket_id, name) values ('activity-media', $1)`, [realSampleNamedObj]);
+      await db.query(
+        `insert into daily_activities (organization_id, logged_by, activity_type, is_sample, photo_storage_paths)
+         values ($1, $2, 'pump_monitoring', false, $3::text[])`,
+        [orgId, adminId, [realSampleNamedObj]],
+      );
+      const actForVerify = await db.query<{ id: string }>(
+        `insert into daily_activities (organization_id, logged_by, activity_type, status, is_sample, photo_storage_paths)
+         values ($1, $2, 'pump_monitoring', 'verified', false, $3::text[]) returning id`,
+        [orgId, assignedUserId, [op1VerifiedObj]],
+      );
+      assert.ok(actForVerify.rows[0].id);
+    }, true);
+
+    // Other operator cannot delete op1DraftObj (owner mismatch)
+    await runAs(subUserId, async () => {
+      const delOtherOp = await db.query(`delete from storage.objects where bucket_id = 'activity-media' and name = $1`, [op1DraftObj]);
+      assert.equal(delOtherOp.affectedRows, 0, 'operator cannot delete another operator storage object');
+    });
+    // Owner operator cannot delete op1VerifiedObj (referenced by verified activity), CAN delete own unverified op1DraftObj
+    await runAs(assignedUserId, async () => {
+      const delVer = await db.query(`delete from storage.objects where bucket_id = 'activity-media' and name = $1`, [op1VerifiedObj]);
+      assert.equal(delVer.affectedRows, 0, 'operator cannot delete photo referenced by verified activity');
+      const delDraft = await db.query(`delete from storage.objects where bucket_id = 'activity-media' and name = $1`, [op1DraftObj]);
+      assert.equal(delDraft.affectedRows, 1, 'operator can delete own unverified photo');
+    }, true);
+    // Manager cannot delete sample-* object referenced by real activity or another manager sample, CAN delete own sample object
+    await runAs(mgr1Id, async () => {
+      const delAttachedReal = await db.query(`delete from storage.objects where bucket_id = 'activity-media' and name = $1`, [realSampleNamedObj]);
+      assert.equal(delAttachedReal.affectedRows, 0, 'manager cannot delete sample-* object attached to real activity');
+      const delOtherMgr = await db.query(`delete from storage.objects where bucket_id = 'activity-media' and name = $1`, [otherMgrSampleObj]);
+      assert.equal(delOtherMgr.affectedRows, 0, 'manager cannot delete sample-* object owned by another user activity');
+      const delOwnSample = await db.query(`delete from storage.objects where bucket_id = 'activity-media' and name = $1`, [ownMgrSampleObj]);
+      assert.equal(delOwnSample.affectedRows, 1, 'manager can delete own sample-* object');
+    }, true);
+    // Scheduler can purge org objects
+    await runAs(schedUserId, async () => {
+      const delSched = await db.query(`delete from storage.objects where bucket_id = 'activity-media' and name = $1`, [schedTargetObj]);
+      assert.equal(delSched.affectedRows, 1, 'scheduler can delete org storage object');
+    }, true);
+
+    // 20d. Harden daily_activities insert policy & touch_daily_activities_updated_at()
+    await assert.rejects(
+      () =>
+        runAs(assignedUserId, () =>
+          db.query(
+            `insert into daily_activities (organization_id, logged_by, activity_type)
+             values ($1, $2, 'pump_monitoring')`,
+            [orgId, subUserId],
+          ),
+        ),
+      /row-level security|own user ID/i,
+    );
+    await assert.rejects(
+      () =>
+        runAs(assignedUserId, () =>
+          db.query(
+            `insert into daily_activities (organization_id, logged_by, activity_type, status)
+             values ($1, $2, 'pump_monitoring', 'verified')`,
+            [orgId, assignedUserId],
+          ),
+        ),
+      /draft or submitted/i,
+    );
+    await assert.rejects(
+      () =>
+        runAs(assignedUserId, () =>
+          db.query(
+            `insert into daily_activities (organization_id, logged_by, activity_type, review_note)
+             values ($1, $2, 'pump_monitoring', 'self-approved')`,
+            [orgId, assignedUserId],
+          ),
+        ),
+      /verification fields on insert/i,
+    );
+
+    const opActId = await runAs(assignedUserId, async () => {
+      const r = await db.query<{ id: string }>(
+        `insert into daily_activities (organization_id, logged_by, activity_type, status)
+         values ($1, $2, 'pump_monitoring', 'submitted') returning id`,
+        [orgId, assignedUserId],
+      );
+      return r.rows[0].id;
+    }, true);
+
+    await assert.rejects(
+      () => runAs(assignedUserId, () => db.query(`update daily_activities set logged_by = $2 where id = $1`, [opActId, subUserId])),
+      /creator cannot be reassigned|row-level security/i,
+    );
+    await assert.rejects(
+      () => runAs(assignedUserId, () => db.query(`update daily_activities set status = 'verified' where id = $1`, [opActId])),
+      /verify or flag/i,
+    );
+
+    await runAs(mgr1Id, async () => {
+      await db.query(`update daily_activities set status = 'verified', verified_by = $2, verified_at = now() where id = $1`, [
+        opActId,
+        mgr1Id,
+      ]);
+    }, true);
+
+    await assert.rejects(
+      () => runAs(assignedUserId, () => db.query(`update daily_activities set notes = 'post-verify tamper' where id = $1`, [opActId])),
+      /Verified activity logs cannot be modified by operators/i,
+    );
+
+    // 20e. Harden accomplishment_reports integrity trigger & update RLS
+    await assert.rejects(
+      () =>
+        runAs(assignedUserId, () =>
+          db.query(
+            `insert into accomplishment_reports (organization_id, report_date, submitted_by, status)
+             values ($1, '2026-11-25', $2, 'checked')`,
+            [orgId, assignedUserId],
+          ),
+        ),
+      /draft or submitted/i,
+    );
+    await assert.rejects(
+      () =>
+        runAs(assignedUserId, () =>
+          db.query(
+            `insert into accomplishment_reports (organization_id, report_date, submitted_by, head_remarks)
+             values ($1, '2026-11-25', $2, 'pre-approved')`,
+            [orgId, assignedUserId],
+          ),
+        ),
+      /review fields on insert/i,
+    );
+    await assert.rejects(
+      () =>
+        runAs(assignedUserId, () =>
+          db.query(
+            `insert into accomplishment_reports (organization_id, report_date, submitted_by, assigned_head_id, status)
+             values ($1, '2026-11-25', $2, $2, 'submitted')`,
+            [orgId, assignedUserId],
+          ),
+        ),
+      /assign themselves as reviewing head/i,
+    );
+
+    const opRepId = await runAs(assignedUserId, async () => {
+      const r = await db.query<{ id: string }>(
+        `insert into accomplishment_reports (organization_id, report_date, submitted_by, assigned_head_id, status)
+         values ($1, '2026-11-25', $2, $3, 'submitted') returning id`,
+        [orgId, assignedUserId, subUserId],
+      );
+      return r.rows[0].id;
+    }, true);
+
+    await assert.rejects(
+      () =>
+        runAs(assignedUserId, () =>
+          db.query(`update accomplishment_reports set status = 'checked' where id = $1`, [opRepId]),
+        ),
+      /check or return reports/i,
+    );
+    await assert.rejects(
+      () =>
+        runAs(assignedUserId, () =>
+          db.query(`update accomplishment_reports set assigned_head_id = $2 where id = $1`, [opRepId, assignedUserId]),
+        ),
+      /assign themselves as reviewing head/i,
+    );
+    await assert.rejects(
+      () =>
+        runAs(assignedUserId, () =>
+          db.query(`update accomplishment_reports set head_remarks = 'tamper', checked_by_name = 'Fake' where id = $1`, [opRepId]),
+        ),
+      /modify review fields/i,
+    );
+
+    // Self-assigned report inserted as service role cannot be checked by submitter even if assigned_head_id = submitted_by
+    await setAuthUid(db, null);
+    const selfAssignedRepRes = await db.query<{ id: string }>(
+      `insert into accomplishment_reports (organization_id, report_date, submitted_by, assigned_head_id, status)
+       values ($1, '2026-11-25', $2, $2, 'submitted') returning id`,
+      [orgId, assignedUserId],
+    );
+    await assert.rejects(
+      () =>
+        runAs(assignedUserId, () =>
+          db.query(`update accomplishment_reports set status = 'checked', checked_by = $2 where id = $1`, [
+            selfAssignedRepRes.rows[0].id,
+            assignedUserId,
+          ]),
+        ),
+      /check or return reports/i,
+    );
+
+    // Assigned head (different user) CAN review, but cannot change submitted_by, and checked reports become immutable
+    await assert.rejects(
+      () =>
+        runAs(subUserId, () =>
+          db.query(`update accomplishment_reports set submitted_by = $2 where id = $1`, [opRepId, subUserId]),
+        ),
+      /submitter cannot be changed|row-level security/i,
+    );
+    await runAs(subUserId, async () => {
+      const chk = await db.query(
+        `update accomplishment_reports set status = 'checked', checked_by = $2, checked_at = now(), head_remarks = 'Verified by head' where id = $1`,
+        [opRepId, subUserId],
+      );
+      assert.equal(chk.affectedRows, 1);
+    }, true);
+    await assert.rejects(
+      () =>
+        runAs(subUserId, () =>
+          db.query(`update accomplishment_reports set head_remarks = 're-edit' where id = $1`, [opRepId]),
+        ),
+      /Checked accomplishment reports cannot be modified/i,
+    );
+
+    // 20f. Fix job_orders update policy (no current_operator_id() is null bypass)
+    await setAuthUid(db, null);
+    const joUnassignedRes = await db.query<{ id: string }>(
+      `insert into job_orders (organization_id, jo_number, title, assigned_operator_ids, created_by)
+       values ($1, 'AUTO', 'Unassigned JO 037', '{}'::uuid[], $2) returning id`,
+      [orgId, adminId],
+    );
+    const joOtherOpRes = await db.query<{ id: string }>(
+      `insert into job_orders (organization_id, jo_number, title, assigned_operator_ids, created_by)
+       values ($1, 'AUTO', 'Other Op JO 037', array[$2]::uuid[], $3) returning id`,
+      [orgId, subOpId, adminId],
+    );
+    const joAssignedOpRes = await db.query<{ id: string }>(
+      `insert into job_orders (organization_id, jo_number, title, assigned_operator_ids, created_by)
+       values ($1, 'AUTO', 'Assigned Op JO 037', array[$2]::uuid[], $3) returning id`,
+      [orgId, opId, adminId],
+    );
+
+    await runAs(unlinkedOpUserId, async () => {
+      const updUnlinked = await db.query(`update job_orders set status = 'in_progress' where id = $1`, [joUnassignedRes.rows[0].id]);
+      assert.equal(updUnlinked.affectedRows, 0, 'operator without linked operator_id cannot update job orders');
+    });
+    await runAs(assignedUserId, async () => {
+      const updOther = await db.query(`update job_orders set status = 'in_progress' where id = $1`, [joOtherOpRes.rows[0].id]);
+      assert.equal(updOther.affectedRows, 0, 'operator cannot update job order assigned only to another operator');
+      const updMine = await db.query(`update job_orders set status = 'in_progress' where id = $1`, [joAssignedOpRes.rows[0].id]);
+      assert.equal(updMine.affectedRows, 1, 'assigned operator can update own job order');
+      const updOpen = await db.query(`update job_orders set status = 'in_progress' where id = $1`, [joUnassignedRes.rows[0].id]);
+      assert.equal(updOpen.affectedRows, 1, 'linked operator can claim unassigned job order');
+    });
+
+    // Re-running 037 migration is idempotent
+    await setAuthUid(db, null);
+    await db.exec(sql37);
   });
 });

@@ -1,20 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import dynamic from 'next/dynamic';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { subscribeVisibilityAwareChannel } from '@/lib/supabase/realtime';
-import type { LinkedPmTask } from '@/components/ActivityLoggerModal';
+import ActivityLoggerModal, { type LinkedPmTask } from '@/components/ActivityLoggerModal';
+import PmCompleteModal from '@/components/PmCompleteModal';
 import MobileActivitiesAndSchedule, { type MobileArea, type MobileOp, type MobileShift } from '@/components/MobileActivitiesAndSchedule';
 import MobileTaskCard, { type MobileActType, type MobileTask } from '@/components/MobileTaskCard';
 import { ACTIVITY_BY_ID, type DailyActivityRow } from '@/lib/activity-types';
-import { enqueueOfflineActivity, flushOfflineQueue, getOfflineQueue, type PendingOfflineActivity } from '@/lib/offline-queue';
+import { enqueueOfflineActivity } from '@/lib/offline-queue';
 import { buildPmActualPerformerIds, isMissingCompletedByColumnError } from '@/lib/pm-credit';
 import { AlertBanner, Badge, SegmentedTabs } from '@/components/ui';
-
-const ActivityLoggerModal = dynamic(() => import('@/components/ActivityLoggerModal'), { ssr: false });
-const PmCompleteModal = dynamic(() => import('@/components/PmCompleteModal'), { ssr: false });
 
 type Asg = { operator_id: string; shift_type_id: string | null; area_code_id: string | null };
 type Standby = { operator_id: string; standby_type: string };
@@ -92,7 +89,6 @@ export default function MobileView(p: {
   const [tab, setTab] = useState<'tasks' | 'activities' | 'schedule'>('tasks');
   const [tasks, setTasks] = useState<MobileTask[]>(p.tasks);
   const [activities, setActivities] = useState<DailyActivityRow[]>(p.initialActivities ?? []);
-  const [offlineQueue, setOfflineQueue] = useState<PendingOfflineActivity[]>([]);
   const [loggerOpen, setLoggerOpen] = useState(false);
   const [linkedPmForLog, setLinkedPmForLog] = useState<LinkedPmTask | null>(null);
   const [editingActivity, setEditingActivity] = useState<DailyActivityRow | null>(null);
@@ -120,6 +116,7 @@ export default function MobileView(p: {
     return subscribeVisibilityAwareChannel({
       sb: supabaseBrowser(),
       channelName: 'pm-mobile-tasks',
+      onReconnect: () => router.refresh(),
       listeners: [
         {
           table: 'pm_tasks',
@@ -153,7 +150,7 @@ export default function MobileView(p: {
         },
       ],
     });
-  }, [p.date]);
+  }, [p.date, router]);
 
   useEffect(() => {
     setNowMinutes(manilaClockMinutes());
@@ -163,36 +160,23 @@ export default function MobileView(p: {
 
   useEffect(() => () => { if (undoTimerRef.current) clearTimeout(undoTimerRef.current); }, []);
 
-  const flushPendingQueue = useCallback(async () => {
-    const res = await flushOfflineQueue(supabaseBrowser(), p.userId);
-    setOfflineQueue(await getOfflineQueue(p.userId));
-    if (res.synced.length > 0) {
-      const todaySynced = res.synced.filter((a) => a.activity_date === p.date);
-      if (todaySynced.length > 0) setActivities((prev) => [...todaySynced, ...prev]);
-    }
-  }, [p.date, p.userId]);
-
   useEffect(() => {
-    let active = true;
-    const syncPending = async () => {
-      const q = await getOfflineQueue(p.userId);
-      if (!active) return;
-      setOfflineQueue(q);
-      if (q.length > 0 && navigator.onLine) await flushPendingQueue();
+    const onSynced = (ev: Event) => {
+      const rows = (ev as CustomEvent<{ rows?: DailyActivityRow[] }>).detail?.rows;
+      if (!Array.isArray(rows) || rows.length === 0) return;
+      const forDate = rows.filter((r) => r.activity_date === p.date);
+      if (forDate.length === 0) return;
+      setActivities((prev) => {
+        let next = prev;
+        for (const row of forDate) {
+          next = next.some((x) => x.id === row.id) ? next.map((x) => (x.id === row.id ? row : x)) : [row, ...next];
+        }
+        return next;
+      });
     };
-    const onQueueChanged = async () => {
-      const q = await getOfflineQueue(p.userId);
-      if (active) setOfflineQueue(q);
-    };
-    void syncPending();
-    window.addEventListener('online', syncPending);
-    window.addEventListener('bpwi-offline-queue-changed', onQueueChanged);
-    return () => {
-      active = false;
-      window.removeEventListener('online', syncPending);
-      window.removeEventListener('bpwi-offline-queue-changed', onQueueChanged);
-    };
-  }, [p.userId, flushPendingQueue]);
+    window.addEventListener('bpwi-offline-activity-synced', onSynced);
+    return () => window.removeEventListener('bpwi-offline-activity-synced', onSynced);
+  }, [p.date]);
 
   const opBy = useMemo(() => new Map(p.operators.map((o) => [o.id, o])), [p.operators]);
   const shiftBy = useMemo(() => new Map(p.shifts.map((s) => [s.id, s])), [p.shifts]);
@@ -391,12 +375,6 @@ export default function MobileView(p: {
 
       {msg && <AlertBanner tone="danger">{msg}</AlertBanner>}
 
-      {offlineQueue.length > 0 && (
-        <AlertBanner tone="warn" action={<button type="button" className="btn btn-sm" onClick={() => void flushPendingQueue()}>Sync Now</button>}>
-          <b>{offlineQueue.length}</b> activity log{offlineQueue.length === 1 ? '' : 's'} queued offline.
-        </AlertBanner>
-      )}
-
       {tab === 'tasks' && (
         <>
           <div className="row-wrap text-sm font-bold">
@@ -497,12 +475,15 @@ export default function MobileView(p: {
         <ActivityLoggerModal
           open={loggerOpen} sampleOnly={!p.canLogActivity} canLogSample={Boolean(p.canLogSampleActivity)}
           onClose={() => { setLoggerOpen(false); setLinkedPmForLog(null); setEditingActivity(null); }}
-          onQueuedOffline={async (payload) => { await enqueueOfflineActivity(payload, p.userId); setOfflineQueue(await getOfflineQueue(p.userId)); }}
+          onQueuedOffline={async (payload: Record<string, unknown>, opts?: { editingId?: string | null }) => { await enqueueOfflineActivity(payload, p.userId, opts); }}
           onSaved={(act, opts) => {
             if (!opts?.offline) {
               setActivities((prev) => (prev.some((x) => x.id === act.id) ? prev.map((x) => (x.id === act.id ? act : x)) : [act, ...prev]));
             }
-            if (linkedPmForLog && !act.is_sample) {
+            if (opts?.linkedWarning) {
+              setMsg(opts.linkedWarning);
+            }
+            if (linkedPmForLog && !act.is_sample && !opts?.offline && !opts?.pmUpdateFailed) {
               const performedByIds = opts?.completedByIds ?? buildPmActualPerformerIds(act.lead_operator_id, act.crew_operator_ids);
               setTasks((prev) =>
                 prev.map((x) =>

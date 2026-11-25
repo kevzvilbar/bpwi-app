@@ -1,4 +1,4 @@
-import { getProfile } from '@/lib/profile';
+import { fetchAll, getProfile } from '@/lib/profile';
 import { manilaToday } from '@/lib/date';
 import { PM_TASK_COLUMNS, PM_TASK_COLUMNS_LEGACY } from '@/lib/query-columns';
 import { isMissingCompletedByColumnError } from '@/lib/pm-credit';
@@ -32,16 +32,26 @@ export default async function PmPage({ searchParams }: { searchParams: Promise<{
     sb.from('operators').select('id, full_name, phone_number').eq('is_active', true).order('sort_order'),
     sb.from('shift_types').select('id, is_off'),
     sb.from('area_codes').select('id, code, name, category, sub_sites'),
-    sb
-      .from('schedule_assignments')
-      .select('operator_id, schedule_date, shift_type_id, area_code_id')
-      .gte('schedule_date', first)
-      .lte('schedule_date', last),
-    sb
-      .from('standby_assignments')
-      .select('operator_id, schedule_date, standby_type')
-      .gte('schedule_date', first)
-      .lte('schedule_date', last),
+    fetchAll((from, to) =>
+      sb
+        .from('schedule_assignments')
+        .select('operator_id, schedule_date, shift_type_id, area_code_id')
+        .gte('schedule_date', first)
+        .lte('schedule_date', last)
+        .order('schedule_date')
+        .order('operator_id')
+        .range(from, to),
+    ),
+    fetchAll((from, to) =>
+      sb
+        .from('standby_assignments')
+        .select('operator_id, schedule_date, standby_type')
+        .gte('schedule_date', first)
+        .lte('schedule_date', last)
+        .order('schedule_date')
+        .order('operator_id')
+        .range(from, to),
+    ),
     sb
       .from('holidays')
       .select('holiday_date, name, holiday_type')
@@ -74,8 +84,8 @@ export default async function PmPage({ searchParams }: { searchParams: Promise<{
     ops.error?.message ||
     shifts.error?.message ||
     areas.error?.message ||
-    asg.error?.message ||
-    standby.error?.message ||
+    asg.error ||
+    standby.error ||
     '';
 
   return (

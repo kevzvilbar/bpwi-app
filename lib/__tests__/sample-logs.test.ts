@@ -102,8 +102,20 @@ describe('sample-logs helpers', () => {
 
   it('threads the sample flag through every photo upload path', () => {
     const modal = fs.readFileSync(path.resolve(process.cwd(), 'components/ActivityLoggerModal.tsx'), 'utf8');
-    assert.match(modal, /uploadActivityPhoto\(sb, p\.orgId, file, \{ sample:/);
+    assert.match(modal, /useActivityLoggerForm/);
+    const formHook = fs.readFileSync(path.resolve(process.cwd(), 'components/useActivityLoggerForm.ts'), 'utf8');
+    assert.match(formHook, /uploadActivityPhoto\(sb, p\.orgId, file, \{ sample:/);
     const sync = fs.readFileSync(path.resolve(process.cwd(), 'lib/offline-sync-core.ts'), 'utf8');
     assert.match(sync, /sample: body\.is_sample === true/);
+  });
+
+  it('enforces sample-prefix path isolation and org check in purge-photos route', () => {
+    const routeSrc = fs.readFileSync(path.resolve(process.cwd(), 'app/api/activities/purge-photos/route.ts'), 'utf8');
+    assert.match(routeSrc, /isSamplePhotoPath/);
+    assert.match(
+      routeSrc,
+      /isStoragePathOwnedByOrg\(row\.storage_path,\s*row\.organization_id\)\s*&&\s*isSamplePhotoPath\(row\.storage_path\)/,
+    );
+    assert.match(routeSrc, /!prof\.organization_id/);
   });
 });

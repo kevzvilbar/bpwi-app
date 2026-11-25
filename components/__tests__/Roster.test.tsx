@@ -333,4 +333,40 @@ describe('Roster', () => {
       within(grid).getByRole('gridcell', { name: /Bob Reyes, 2026-04-03, No shift/i }),
     ).toBeInTheDocument();
   });
+
+  it('reverts a proposed shift edit via draft discard on Ctrl+Z without direct schedule_assignments writes', async () => {
+    const user = userEvent.setup();
+    renderRoster({ role: 'manager', canEdit: false, canPropose: true });
+
+    const grid = screen.getByRole('grid');
+    const targetCell = within(grid).getByRole('gridcell', {
+      name: /Alice Santos, 2026-04-20, No shift/i,
+    });
+
+    await user.click(targetCell);
+
+    await waitFor(() => {
+      expect(changeItemInsertMock).toHaveBeenCalledTimes(1);
+    });
+    expect(await screen.findByLabelText('Pending proposal submission bar')).toHaveTextContent(
+      'Propose Mode: 1 change queued',
+    );
+    expect(
+      within(grid).getByRole('gridcell', { name: /Alice Santos, 2026-04-20, D1/i }),
+    ).toBeInTheDocument();
+
+    await user.keyboard('{Control>}z{/Control}');
+
+    await waitFor(() => {
+      expect(changeItemDeleteEq1Mock).toHaveBeenCalledWith('id', 'draft-item-1');
+    });
+    await waitFor(() => {
+      expect(screen.queryByLabelText('Pending proposal submission bar')).not.toBeInTheDocument();
+    });
+    expect(
+      within(grid).getByRole('gridcell', { name: /Alice Santos, 2026-04-20, No shift/i }),
+    ).toBeInTheDocument();
+    expect(scheduleUpsertMock).not.toHaveBeenCalled();
+    expect(scheduleDeleteEqFirstMock).not.toHaveBeenCalled();
+  });
 });

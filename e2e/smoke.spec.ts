@@ -47,7 +47,7 @@ test.describe('BPWI Smoke Suite', () => {
     expect(cspHeader).toMatch(/script-src[^;]*'nonce-[^']+'/);
 
     await expect(page).toHaveTitle(/BP Waterworks/i);
-    await expect(page.getByText('BP Waterworks, Inc.')).toBeVisible();
+    await expect(page.getByText('BP Waterworks, Inc.', { exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: /Plant Operations Schedule/i })).toBeVisible();
 
     // Confirm the nonce-protected theme bootstrap inline script executed cleanly.

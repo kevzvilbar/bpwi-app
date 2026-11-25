@@ -16,6 +16,7 @@ export type PendingOfflineActivity = {
   attempts?: number;
   lastError?: string | null;
   lastAttemptAt?: string | null;
+  editingId?: string | null;
   payload: Record<string, unknown>;
 };
 
@@ -38,6 +39,12 @@ export type OfflineSyncFailure = {
 function notifyQueueChanged() {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event('bpwi-offline-queue-changed'));
+  }
+}
+
+function notifyActivitySynced(rows: DailyActivityRow[]) {
+  if (typeof window !== 'undefined' && rows.length > 0) {
+    window.dispatchEvent(new CustomEvent('bpwi-offline-activity-synced', { detail: { rows } }));
   }
 }
 
@@ -76,9 +83,14 @@ async function putRecord<T>(storeName: string, value: T): Promise<void> {
 export async function enqueueOfflineActivity(
   payload: Record<string, unknown>,
   ownerUserId?: string | null,
+  opts?: { editingId?: string | null },
 ): Promise<PendingOfflineActivity> {
   const resolvedOwner =
     ownerUserId ?? (typeof payload.logged_by === 'string' && payload.logged_by ? payload.logged_by : null);
+  const editingId = opts?.editingId?.trim() ? opts.editingId.trim() : null;
+  const nextPayload = editingId
+    ? { ...payload }
+    : { ...payload, id: typeof payload.id === 'string' && payload.id ? payload.id : newClientId() };
   const item: PendingOfflineActivity = {
     queueId: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     queuedAt: new Date().toISOString(),
@@ -86,8 +98,9 @@ export async function enqueueOfflineActivity(
     attempts: 0,
     lastError: null,
     lastAttemptAt: null,
-    // Client-generated primary key makes a retried sync idempotent (see offline-sync-core.ts)
-    payload: { ...payload, id: typeof payload.id === 'string' && payload.id ? payload.id : newClientId() },
+    editingId,
+    // Client-generated primary key makes a retried insert sync idempotent (see offline-sync-core.ts)
+    payload: nextPayload,
   };
   await putRecord(STORE_NAME, item);
   notifyQueueChanged();
@@ -147,9 +160,16 @@ export async function retrySingleOfflineActivity(
   item: PendingOfflineActivity,
 ): Promise<{ row: DailyActivityRow | null; error: string | null }> {
   try {
-    const row = await syncQueuedActivity(sb, item.queueId, item.payload, uploadDataUrlPhoto);
+    const row = (await syncQueuedActivity(
+      sb,
+      item.queueId,
+      item.payload,
+      uploadDataUrlPhoto,
+      item.editingId ?? null,
+    )) as unknown as DailyActivityRow;
     await removeOfflineItem(item.queueId);
-    return { row: row as unknown as DailyActivityRow, error: null };
+    notifyActivitySynced([row]);
+    return { row, error: null };
   } catch (err: unknown) {
     const msg = getErrorMessage(err, 'Failed to sync activity');
     await recordActivityError(item, msg);

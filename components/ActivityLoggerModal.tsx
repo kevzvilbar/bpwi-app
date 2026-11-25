@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import {
   ACTIVITY_CATEGORIES,
   ACTIVITY_CATEGORY_LABELS,
@@ -11,6 +12,7 @@ import {
 import { calcDurationMinutes } from '@/lib/activity-logger-details';
 import ActivityCategoryFields from '@/components/ActivityCategoryFields';
 import ActivityMediaCapture from '@/components/ActivityMediaCapture';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import {
   MAX_ACTIVITY_PHOTOS,
   useActivityLoggerForm,
@@ -27,20 +29,35 @@ export type { LoggerOperator, LoggerArea, LoggerShift, LoggerAssignment, Activit
 /** Modal dialog for logging or editing field activities, linked PM completions, and Job Order fulfillments. */
 export default function ActivityLoggerModal(p: ActivityLoggerModalProps) {
   const f = useActivityLoggerForm(p);
+  const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
+
+  useEffect(() => {
+    if (!p.open) setConfirmDiscardOpen(false);
+  }, [p.open]);
 
   if (!p.open) return null;
 
   const selArea = f.stationAreas.find((a) => a.id === f.areaCodeId);
   const subSites = selArea?.sub_sites ?? [];
 
+  function handleAttemptClose() {
+    if (f.submitting) return;
+    if (f.isDirty) {
+      setConfirmDiscardOpen(true);
+    } else {
+      p.onClose();
+    }
+  }
+
   return (
-    <div
-      className="modal-overlay no-print"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="activity-logger-title"
-      onClick={() => !f.submitting && p.onClose()}
-    >
+    <>
+      <div
+        className="modal-overlay no-print"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="activity-logger-title"
+        onClick={handleAttemptClose}
+      >
       <form
         className="modal-sheet stack-md"
         onClick={(e) => e.stopPropagation()}
@@ -62,7 +79,7 @@ export default function ActivityLoggerModal(p: ActivityLoggerModalProps) {
               Date: <b>{p.date}</b> (Manila) · Auto-linked to Roster Shift &amp; Area
             </div>
           </div>
-          <button type="button" className="btn" onClick={p.onClose} disabled={f.submitting} aria-label="Close">
+          <button type="button" className="btn" onClick={handleAttemptClose} disabled={f.submitting} aria-label="Close">
             ✕
           </button>
         </div>
@@ -366,7 +383,7 @@ export default function ActivityLoggerModal(p: ActivityLoggerModalProps) {
         )}
 
         <div className="row-end">
-          <button type="button" className="btn" onClick={p.onClose} disabled={f.submitting}>
+          <button type="button" className="btn" onClick={handleAttemptClose} disabled={f.submitting}>
             Cancel
           </button>
           <button type="submit" className="btn btn-primary" disabled={f.submitting || f.uploadingPhoto}>
@@ -382,6 +399,20 @@ export default function ActivityLoggerModal(p: ActivityLoggerModalProps) {
           </button>
         </div>
       </form>
-    </div>
+      </div>
+      <ConfirmDialog
+        open={confirmDiscardOpen}
+        title="Discard unsaved activity log?"
+        description="You have unsaved changes in this activity log. Discarding will lose any edits, notes, or photos captured so far."
+        confirmLabel="Discard"
+        cancelLabel="Keep Editing"
+        tone="danger"
+        onConfirm={() => {
+          setConfirmDiscardOpen(false);
+          p.onClose();
+        }}
+        onCancel={() => setConfirmDiscardOpen(false)}
+      />
+    </>
   );
 }

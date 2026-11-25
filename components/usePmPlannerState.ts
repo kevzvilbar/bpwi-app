@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { subscribeVisibilityAwareChannel } from '@/lib/supabase/realtime';
@@ -64,6 +64,8 @@ export interface PmPlannerProps {
 /** Manages PM calendar state, realtime sync, activity type config, locations, recurring saves, and day inspector stats. */
 export function usePmPlannerState(p: PmPlannerProps) {
   const router = useRouter();
+  const routerRef = useRef(router);
+  routerRef.current = router;
   const holidayByDate = useMemo(
     () => new Map((p.holidays ?? []).map((h) => [h.holiday_date, h])),
     [p.holidays],
@@ -104,6 +106,7 @@ export function usePmPlannerState(p: PmPlannerProps) {
     return subscribeVisibilityAwareChannel({
       sb,
       channelName: `pm-plan-${p.month}`,
+      onReconnect: () => routerRef.current.refresh(),
       listeners: [
         {
           table: 'pm_tasks',

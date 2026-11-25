@@ -83,6 +83,8 @@ export interface RosterProps {
 /** Manages roster grid state, realtime updates, history undo/redo, direct saves, and manager draft proposals. */
 export function useRosterActions(p: RosterProps) {
   const router = useRouter();
+  const routerRef = useRef(router);
+  routerRef.current = router;
   const [grantExpired, setGrantExpired] = useState(false);
 
   useEffect(() => {
@@ -164,6 +166,7 @@ export function useRosterActions(p: RosterProps) {
     return subscribeVisibilityAwareChannel({
       sb,
       channelName: `roster-sync-${p.month}`,
+      onReconnect: () => startTransition(() => routerRef.current.refresh()),
       listeners: [
         {
           table: 'schedule_assignments',
@@ -266,9 +269,9 @@ export function useRosterActions(p: RosterProps) {
 
   function mergeDraftItems(inserted: ChangeRequestItem[]) {
     if (inserted.length === 0) return;
-    const keys = new Set(inserted.map((x) => `${x.operator_id ?? ''}:${x.schedule_date ?? ''}`));
+    const keys = new Set(inserted.map((x) => `${x.target_table}:${x.operator_id ?? ''}:${x.schedule_date ?? ''}`));
     setDraftItems((prev) => [
-      ...prev.filter((x) => !keys.has(`${x.operator_id ?? ''}:${x.schedule_date ?? ''}`)),
+      ...prev.filter((x) => !keys.has(`${x.target_table}:${x.operator_id ?? ''}:${x.schedule_date ?? ''}`)),
       ...inserted,
     ]);
   }
@@ -341,6 +344,11 @@ export function useRosterActions(p: RosterProps) {
     [dayCount, mo, p.month, y],
   );
 
+  const baseRowByKey = useMemo(() => new Map(p.rows.map((r) => [cellKey(r.operator_id, r.schedule_date), r])), [p.rows]);
+  const baseStandbyByKey = useMemo(
+    () => new Map(p.standby.map((s) => [cellKey(s.operator_id, s.schedule_date), s])),
+    [p.standby],
+  );
   const cell = useMemo(() => new Map(rows.map((r) => [cellKey(r.operator_id, r.schedule_date), r])), [rows]);
   const standbyMap = useMemo(() => new Map(standby.map((s) => [cellKey(s.operator_id, s.schedule_date), s])), [standby]);
   const shiftBy = useMemo(() => new Map(p.shifts.map((s) => [s.id, s])), [p.shifts]);
@@ -446,18 +454,147 @@ export function useRosterActions(p: RosterProps) {
       setStandby((s) => [...s.filter((x) => !sbAffected.has(cellKey(x.operator_id, x.schedule_date))), ...sbUpserts]);
     }
 
+    const directShiftUpserts = shiftUpserts.filter((u) => !shouldProposeDate(u.schedule_date));
+    const directShiftDeletes = shiftDeletes.filter((d) => !shouldProposeDate(d.date));
+    const directShiftRollback = shiftRollback.filter((r) => !shouldProposeDate(r.date));
+
+    const directSbUpserts = sbUpserts.filter((u) => !shouldProposeDate(u.schedule_date));
+    const directSbDeletes = sbDeletes.filter((d) => !shouldProposeDate(d.date));
+    const directSbRollback = sbRollback.filter((r) => !shouldProposeDate(r.date));
+
+    const shiftTargetByKey = new Map<string, { opId: string; date: string; target: Row | null }>();
+    for (const u of shiftUpserts) {
+      shiftTargetByKey.set(cellKey(u.operator_id, u.schedule_date), { opId: u.operator_id, date: u.schedule_date, target: u });
+    }
+    for (const d of shiftDeletes) {
+      shiftTargetByKey.set(cellKey(d.opId, d.date), { opId: d.opId, date: d.date, target: null });
+    }
+
+    const sbTargetByKey = new Map<string, { opId: string; date: string; target: Standby | null }>();
+    for (const u of sbUpserts) {
+      sbTargetByKey.set(cellKey(u.operator_id, u.schedule_date), { opId: u.operator_id, date: u.schedule_date, target: u });
+    }
+    for (const d of sbDeletes) {
+      sbTargetByKey.set(cellKey(d.opId, d.date), { opId: d.opId, date: d.date, target: null });
+    }
+
+    const proposedShiftClearCells: { opId: string; date: string }[] = [];
+    const proposedSbClearCells: { opId: string; date: string }[] = [];
+    const proposedItemsToSave: ProposedChangeInput[] = [];
+    const saveShiftKeys = new Set<string>();
+    const saveSbKeys = new Set<string>();
+
+    for (const [k, item] of shiftTargetByKey) {
+      if (!shouldProposeDate(item.date)) continue;
+      const baseRow = baseRowByKey.get(k) ?? null;
+      const matchesBase =
+        (item.target?.shift_type_id ?? null) === (baseRow?.shift_type_id ?? null) &&
+        (item.target?.area_code_id ?? null) === (baseRow?.area_code_id ?? null);
+      if (matchesBase) {
+        proposedShiftClearCells.push({ opId: item.opId, date: item.date });
+      } else {
+        saveShiftKeys.add(k);
+        proposedItemsToSave.push({
+          target_table: 'schedule_assignments',
+          action: item.target ? 'upsert' : 'delete',
+          operator_id: item.opId,
+          schedule_date: item.date,
+          ...(item.target ? { shift_type_id: item.target.shift_type_id, area_code_id: item.target.area_code_id } : {}),
+          original_state: baseRow
+            ? { shift_type_id: baseRow.shift_type_id, area_code_id: baseRow.area_code_id }
+            : { shift_type_id: null, area_code_id: null },
+        });
+      }
+    }
+
+    for (const [k, item] of sbTargetByKey) {
+      if (!shouldProposeDate(item.date)) continue;
+      const baseSb = baseStandbyByKey.get(k) ?? null;
+      const matchesBase = (item.target?.standby_type ?? null) === (baseSb?.standby_type ?? null);
+      if (matchesBase) {
+        proposedSbClearCells.push({ opId: item.opId, date: item.date });
+      } else {
+        saveSbKeys.add(k);
+        proposedItemsToSave.push({
+          target_table: 'standby_assignments',
+          action: item.target ? 'upsert' : 'delete',
+          operator_id: item.opId,
+          schedule_date: item.date,
+          standby_type: item.target ? item.target.standby_type : null,
+          original_state: baseSb ? { standby_type: baseSb.standby_type } : { standby_type: null },
+        });
+      }
+    }
+
     setSavingCount((c) => c + 1);
     const sb = supabaseBrowser();
-    const shiftErr = await persistDirectShiftChanges(sb, p.orgId, shiftUpserts, shiftDeletes);
-    const sbErr = await persistDirectStandbyChanges(sb, p.orgId, sbUpserts, sbDeletes);
-    const errMsg = shiftErr || sbErr;
+    try {
+      if (directShiftUpserts.length > 0 || directShiftDeletes.length > 0) {
+        const shiftErr = await persistDirectShiftChanges(sb, p.orgId, directShiftUpserts, directShiftDeletes);
+        if (shiftErr) {
+          if (directShiftRollback.length > 0) rollbackShiftKeys(directShiftRollback);
+          setSaveState('error');
+          setMsg(friendlyError(shiftErr, p.role));
+        } else {
+          await clearDraftOverlap(
+            [
+              ...directShiftUpserts.map((u) => ({ opId: u.operator_id, date: u.schedule_date })),
+              ...directShiftDeletes,
+            ],
+            'schedule_assignments',
+          );
+        }
+      }
 
-    setSavingCount((c) => c - 1);
-    if (errMsg) {
-      if (shiftRollback.length > 0) rollbackShiftKeys(shiftRollback);
-      if (sbRollback.length > 0) rollbackStandbyKeys(sbRollback);
-      setSaveState('error');
-      setMsg(friendlyError(errMsg, p.role));
+      if (directSbUpserts.length > 0 || directSbDeletes.length > 0) {
+        const sbErr = await persistDirectStandbyChanges(sb, p.orgId, directSbUpserts, directSbDeletes);
+        if (sbErr) {
+          if (directSbRollback.length > 0) rollbackStandbyKeys(directSbRollback);
+          setSaveState('error');
+          setMsg(friendlyError(sbErr, p.role));
+        } else {
+          await clearDraftOverlap(
+            [
+              ...directSbUpserts.map((u) => ({ opId: u.operator_id, date: u.schedule_date })),
+              ...directSbDeletes,
+            ],
+            'standby_assignments',
+          );
+        }
+      }
+
+      if (proposedShiftClearCells.length > 0) {
+        const clearKeys = new Set(proposedShiftClearCells.map((c) => cellKey(c.opId, c.date)));
+        try {
+          await clearDraftOverlap(proposedShiftClearCells, 'schedule_assignments');
+        } catch (err: unknown) {
+          rollbackShiftKeys(shiftRollback.filter((r) => clearKeys.has(cellKey(r.opId, r.date))));
+          setSaveState('error');
+          setMsg(friendlyError(getErrorMessage(err), p.role));
+        }
+      }
+
+      if (proposedSbClearCells.length > 0) {
+        const clearKeys = new Set(proposedSbClearCells.map((c) => cellKey(c.opId, c.date)));
+        try {
+          await clearDraftOverlap(proposedSbClearCells, 'standby_assignments');
+        } catch (err: unknown) {
+          rollbackStandbyKeys(sbRollback.filter((r) => clearKeys.has(cellKey(r.opId, r.date))));
+          setSaveState('error');
+          setMsg(friendlyError(getErrorMessage(err), p.role));
+        }
+      }
+
+      if (proposedItemsToSave.length > 0) {
+        await saveDraftProposal(proposedItemsToSave, () => {
+          const shiftRb = shiftRollback.filter((r) => saveShiftKeys.has(cellKey(r.opId, r.date)));
+          const sbRb = sbRollback.filter((r) => saveSbKeys.has(cellKey(r.opId, r.date)));
+          if (shiftRb.length > 0) rollbackShiftKeys(shiftRb);
+          if (sbRb.length > 0) rollbackStandbyKeys(sbRb);
+        });
+      }
+    } finally {
+      setSavingCount((c) => c - 1);
     }
   }
 
@@ -513,12 +650,17 @@ export function useRosterActions(p: RosterProps) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [canOperate]);
 
-  async function clearDraftOverlap(cells: { opId: string; date: string }[]) {
+  async function clearDraftOverlap(
+    cells: { opId: string; date: string }[],
+    targetTable?: 'schedule_assignments' | 'standby_assignments',
+  ) {
     if (!draftReqId || draftItems.length === 0 || cells.length === 0) return;
-    const nextDraft = await clearDraftItemsForCells(supabaseBrowser(), draftReqId, draftItems, cells);
-    if (nextDraft !== draftItems) {
+    const scoped = targetTable ? draftItems.filter((x) => x.target_table === targetTable) : draftItems;
+    if (scoped.length === 0) return;
+    const nextDraft = await clearDraftItemsForCells(supabaseBrowser(), draftReqId, scoped, cells);
+    if (nextDraft !== scoped) {
       const kept = new Set(nextDraft.map((x) => x.id));
-      const dropped = new Set(draftItems.filter((x) => !kept.has(x.id)).map((x) => x.id));
+      const dropped = new Set(scoped.filter((x) => !kept.has(x.id)).map((x) => x.id));
       setDraftItems((prev) => prev.filter((x) => !dropped.has(x.id)));
     }
   }
@@ -538,7 +680,10 @@ export function useRosterActions(p: RosterProps) {
           setSaveState('error');
           setMsg(friendlyError(errMsg, p.role));
         } else {
-          await clearDraftOverlap(directEntries.map((e) => ({ opId: e.opId, date: e.date })));
+          await clearDraftOverlap(
+            directEntries.map((e) => ({ opId: e.opId, date: e.date })),
+            'schedule_assignments',
+          );
         }
       }
       if (proposedEntries.length > 0) {
@@ -619,7 +764,7 @@ export function useRosterActions(p: RosterProps) {
         setSaveState('error');
         setMsg(friendlyError(errMsg, p.role));
       } else {
-        await clearDraftOverlap([{ opId, date }]);
+        await clearDraftOverlap([{ opId, date }], 'standby_assignments');
       }
     } finally {
       setSavingCount((c) => c - 1);

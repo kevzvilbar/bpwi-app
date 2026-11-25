@@ -15,6 +15,7 @@ type Err = { code?: string; message: string } | null;
 function fakeSb(opts: { insertFailsOnce?: boolean; pmError?: boolean; updateError?: boolean } = {}) {
   const rows = new Map<string, Record<string, unknown>>();
   const pm: Record<string, unknown>[] = [];
+  const updates: Array<{ table: string; id: string | undefined; patch: Record<string, unknown> }> = [];
   let insertCalls = 0;
   let failNext = Boolean(opts.insertFailsOnce);
   const sb = {
@@ -54,6 +55,7 @@ function fakeSb(opts: { insertFailsOnce?: boolean; pmError?: boolean; updateErro
               },
               select: () => ({
                 single: async () => {
+                  updates.push({ table, id, patch });
                   if (opts.updateError) {
                     return { data: null, error: { message: 'update denied' } as Err };
                   }
@@ -68,7 +70,7 @@ function fakeSb(opts: { insertFailsOnce?: boolean; pmError?: boolean; updateErro
       };
     },
   };
-  return { sb: sb as never, rows, pm, insertCount: () => insertCalls };
+  return { sb: sb as never, rows, pm, updates, insertCount: () => insertCalls };
 }
 
 const okUpload: PhotoUploader = async (_sb, org, _d, o) => ({
@@ -138,6 +140,54 @@ describe('offline activity sync is idempotent', () => {
       completed_by_operator_ids: ['op-sub', 'op-helper'],
     });
   });
+
+  it('updates an existing activity when editingId is set, strips immutable/linked fields, and skips PM/JO side effects', async () => {
+    const f = fakeSb();
+    f.rows.set('act-existing-1', {
+      id: 'act-existing-1',
+      organization_id: 'org1',
+      logged_by: 'user-orig',
+      is_sample: false,
+      notes: 'before',
+    });
+    const p = {
+      ...payload(),
+      pm_task_id: 'pm-1',
+      job_order_id: 'jo-1',
+      tat_justification: 'Awaited parts',
+      is_sample: true,
+      notes: 'after edit',
+      photo_urls: ['data:image/webp;base64,AAA'],
+    };
+    const row = await syncQueuedActivity(f.sb, 'q-edit-1', p, okUpload, 'act-existing-1');
+    assert.equal(f.insertCount(), 0);
+    assert.equal(f.pm.length, 0);
+    assert.equal(row.id, 'act-existing-1');
+    assert.equal(row.notes, 'after edit');
+    assert.equal(f.updates.length, 1);
+    const patch = f.updates[0].patch;
+    for (const stripped of ['id', 'organization_id', 'logged_by', 'is_sample', 'pm_task_id', 'job_order_id', 'tat_justification']) {
+      assert.equal(stripped in patch, false, `Expected ${stripped} to be stripped from update patch`);
+    }
+
+    const failSb = fakeSb({ updateError: true });
+    await assert.rejects(() => syncQueuedActivity(failSb.sb, 'q-edit-2', p, okUpload, 'act-existing-1'), /update denied/);
+  });
+
+  it('strips tat_justification from daily_activities insert and forwards it to job_orders', async () => {
+    const f = fakeSb();
+    const p = {
+      ...payload(),
+      job_order_id: 'jo-99',
+      tat_justification: '  Awaited customer access  ',
+    };
+    const row = await syncQueuedActivity(f.sb, 'q-tat-1', p, okUpload);
+    assert.equal('tat_justification' in row, false);
+    const joUpdate = f.pm.find((x) => x.table === 'job_orders');
+    assert.ok(joUpdate);
+    assert.equal((joUpdate.patch as Record<string, unknown>).status, 'completed');
+    assert.equal((joUpdate.patch as Record<string, unknown>).tat_justification, 'Awaited customer access');
+  });
 });
 
 describe('offline accomplishment report sync is idempotent', () => {
@@ -190,14 +240,27 @@ describe('offline queue user ownership scoping and descriptions', () => {
   });
 
   it('formats readable queue summaries for activities and reports', () => {
-    const act = describeQueuedActivity({
+    const legacyAct = describeQueuedActivity({
       activity_type: 'pump_monitoring',
       activity_date: '2026-11-20',
       sub_site: 'Pavia PS1',
       notes: 'Checked pressure',
     });
-    assert.equal(act.title, 'Pump Monitoring');
-    assert.equal(act.subtitle, '2026-11-20 · Pavia PS1 · Checked pressure');
+    assert.equal(legacyAct.title, 'Pump Monitoring');
+    assert.equal(legacyAct.subtitle, '2026-11-20 · Pavia PS1 · Checked pressure');
+
+    const modernAct = describeQueuedActivity(
+      {
+        activity_type: 'pump_monitoring',
+        activity_date: '2026-11-20',
+        site_or_well: 'Well 2',
+        block_lot: 'Block 4 Lot 12',
+        notes: 'Checked pressure',
+      },
+      'act-123',
+    );
+    assert.equal(modernAct.title, 'Pump Monitoring (Update)');
+    assert.equal(modernAct.subtitle, '2026-11-20 · Well 2 · Block 4 Lot 12 · Checked pressure');
 
     const rep = describeQueuedReport(
       { report_date: '2026-11-20', status: 'submitted', entries: [{}, {}] },

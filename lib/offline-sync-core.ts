@@ -46,20 +46,28 @@ export function isOwnedByUser(
 /**
  * Human-readable summary for a queued field activity item in the offline queue inspector.
  */
-export function describeQueuedActivity(payload: Row): { title: string; subtitle: string } {
+export function describeQueuedActivity(payload: Row, editingId?: string | null): { title: string; subtitle: string } {
   const rawType = typeof payload.activity_type === 'string' ? payload.activity_type : 'field_activity';
   const typeLabel = rawType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const isUpdate = typeof editingId === 'string' && editingId.trim().length > 0;
   const date = typeof payload.activity_date === 'string' ? payload.activity_date : '';
-  const location =
+  const modernLocation = [
+    typeof payload.site_or_well === 'string' ? payload.site_or_well.trim() : '',
+    typeof payload.block_lot === 'string' ? payload.block_lot.trim() : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const legacyLocation =
     typeof payload.sub_site === 'string' && payload.sub_site.trim()
       ? payload.sub_site.trim()
       : typeof payload.location_note === 'string' && payload.location_note.trim()
         ? payload.location_note.trim()
         : '';
+  const location = modernLocation || legacyLocation;
   const notes = typeof payload.notes === 'string' ? payload.notes.trim() : '';
   const subtitleParts = [date, location, notes ? notes.slice(0, 60) : ''].filter(Boolean);
   return {
-    title: typeLabel,
+    title: isUpdate ? `${typeLabel} (Update)` : typeLabel,
     subtitle: subtitleParts.join(' · ') || 'Queued field log',
   };
 }
@@ -98,9 +106,11 @@ export async function syncQueuedActivity(
   queueId: string,
   payload: Row,
   upload: PhotoUploader,
+  editingId?: string | null,
 ): Promise<Row> {
   const body: Row = { ...payload };
-  if (typeof body.id !== 'string' || !body.id) body.id = newClientId();
+  const tatJustification = typeof body.tat_justification === 'string' ? body.tat_justification.trim() || null : null;
+  delete body.tat_justification;
 
   const orgId = typeof body.organization_id === 'string' ? body.organization_id : '';
   if (Array.isArray(body.photo_urls) && body.photo_urls.length > 0 && orgId) {
@@ -123,6 +133,26 @@ export async function syncQueuedActivity(
     body.photo_urls = urls;
     body.photo_storage_paths = paths;
   }
+
+  const targetEditId = typeof editingId === 'string' && editingId.trim() ? editingId.trim() : null;
+  if (targetEditId) {
+    const {
+      id: _dropId,
+      organization_id: _dropOrgId,
+      logged_by: _dropLoggedBy,
+      is_sample: _dropIsSample,
+      pm_task_id: _dropPmTaskId,
+      job_order_id: _dropJobOrderId,
+      ...patch
+    } = body;
+    const upd = await sb.from('daily_activities').update(patch).eq('id', targetEditId).select('*').single();
+    if (upd.error || !upd.data) {
+      throw new Error(upd.error?.message || 'Activity update failed');
+    }
+    return upd.data as Row;
+  }
+
+  if (typeof body.id !== 'string' || !body.id) body.id = newClientId();
 
   const ins = await sb.from('daily_activities').insert(body).select('*').single();
   let row = ins.data as Row | null;
@@ -169,7 +199,11 @@ export async function syncQueuedActivity(
   if (jobOrderId) {
     const r = await sb
       .from('job_orders')
-      .update({ status: 'completed', completed_at: new Date().toISOString() })
+      .update({
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        ...(tatJustification ? { tat_justification: tatJustification } : {}),
+      })
       .eq('id', jobOrderId)
       .neq('status', 'completed');
     if (r.error) throw new Error(r.error.message);
