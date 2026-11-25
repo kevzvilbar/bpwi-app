@@ -168,7 +168,7 @@ export default function CallSheet(p: {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="input"
-          style={{ width: 220, minHeight: 36, padding: '6px 10px', fontSize: 13 }}
+          style={{ flex: '1 1 180px', minWidth: 0, minHeight: 36, padding: '6px 10px', fontSize: 13 }}
         />
         <label style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
           <input type="checkbox" checked={onlyStandby} onChange={(e) => setOnlyStandby(e.target.checked)} />
@@ -386,6 +386,14 @@ export default function CallSheet(p: {
           </tbody>
         </table>
         </div>
+      </div>
+
+      {/* Mobile Coverage Summary (<= 640px) */}
+      <div className="call-sheet-mobile-summary no-print">
+        <Badge tone="violet" size="sm">⚡ {coverageCounts.standby} Standby</Badge>
+        <Badge tone="ok" size="sm">{coverageCounts.onDutyNow} On Duty Now</Badge>
+        <Badge tone="info" size="sm">{coverageCounts.onDutyToday} On Duty Today</Badge>
+        <Badge tone="neutral" size="sm">{coverageCounts.offOrLeave} Off / Leave</Badge>
       </div>
 
       {/* Mobile Card List (<= 640px) */}

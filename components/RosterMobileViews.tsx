@@ -1,7 +1,29 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import { DEFAULT_STATION_CODE, findOffShift, isOffPartnerArea } from '@/lib/roster-helpers';
+import {
+  DEFAULT_STATION_CODE,
+  findOffShift,
+  isHolidayArea,
+  isLeaveArea,
+  isOffPartnerArea,
+  isRestArea,
+} from '@/lib/roster-helpers';
+
+const MONTHS_SHORT = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+] as const;
+
+function formatShortMobileDate(dateYmd: string, dowLabel: string, todayYmd: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateYmd);
+  const todaySuffix = dateYmd === todayYmd ? ' · Today' : '';
+  if (!m) return `${dateYmd} (${dowLabel})${todaySuffix}`;
+  const monthName = MONTHS_SHORT[Number(m[2]) - 1];
+  const dayNum = Number(m[3]);
+  if (!monthName) return `${dateYmd} (${dowLabel})${todaySuffix}`;
+  return `${dowLabel}, ${monthName} ${dayNum}${todaySuffix}`;
+}
 
 type Op = { id: string; full_name: string; position: string | null };
 type Shift = {
@@ -92,6 +114,24 @@ export default function RosterMobileViews(p: {
   const activeOpId = p.operators.some((o) => o.id === selectedOpId) ? selectedOpId : p.operators[0]?.id ?? '';
   const offShift = useMemo(() => findOffShift(Array.from(p.shiftBy.values())), [p.shiftBy]);
 
+  const dayCoverage = useMemo(() => {
+    let duty = 0;
+    let sb = 0;
+    let off = 0;
+    let leave = 0;
+    for (const op of p.operators) {
+      const k = cellKey(op.id, selectedDate);
+      const r = p.cell.get(k);
+      const s = r?.shift_type_id ? p.shiftBy.get(r.shift_type_id) : undefined;
+      const a = r?.area_code_id ? p.areaBy.get(r.area_code_id) : undefined;
+      if (p.standbyMap.has(k)) sb += 1;
+      if (isLeaveArea(a)) leave += 1;
+      else if (isRestArea(a) || isHolidayArea(a) || s?.is_off) off += 1;
+      else if (s && !s.is_off) duty += 1;
+    }
+    return { duty, sb, off, leave };
+  }, [p.areaBy, p.cell, p.operators, p.shiftBy, p.standbyMap, selectedDate]);
+
   function resolveMobileCellVisual(s: Shift | undefined, a: Area | undefined) {
     if (isOffPartnerArea(a)) {
       const effShift = offShift ?? s;
@@ -171,13 +211,28 @@ export default function RosterMobileViews(p: {
             >
               {p.days.map((d) => (
                 <option key={d.date} value={d.date}>
-                  {d.date} ({d.dowLabel}){d.date === p.today ? ' · Today' : ''}
+                  {formatShortMobileDate(d.date, d.dowLabel, p.today)}
                 </option>
               ))}
             </select>
             <button className="btn" onClick={() => stepDay(1)} aria-label="Next day">
               ›
             </button>
+          </div>
+
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', fontSize: 11.5, padding: '2px 2px' }}>
+            <span style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
+              {dayCoverage.duty} On Duty
+            </span>
+            <span style={{ background: 'var(--violet-bg)', color: 'var(--violet-fg)', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
+              {dayCoverage.sb} Standby
+            </span>
+            <span style={{ background: 'var(--surface-muted)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>
+              {dayCoverage.off} Off
+            </span>
+            <span style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
+              {dayCoverage.leave} Leave
+            </span>
           </div>
 
           {p.operators.map((op) => {

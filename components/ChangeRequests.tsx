@@ -328,7 +328,7 @@ export default function ChangeRequests(p: Props) {
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '16px 12px' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+      <div className="mobile-toolbar-compact" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <div>
           <h1 className="page-title">Change Requests &amp; Approvals</h1>
           <p className="page-subtitle">
@@ -376,7 +376,7 @@ export default function ChangeRequests(p: Props) {
       )}
 
       {/* Tabs */}
-      <div style={{ marginBottom: 16 }}>
+      <div className="mobile-scroll-tabs" style={{ marginBottom: 16 }}>
         <SegmentedTabs
           ariaLabel="Change request status filter"
           value={tab}

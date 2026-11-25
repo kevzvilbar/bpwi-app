@@ -13,7 +13,7 @@ import { resolvePmCreditedOperators } from '@/lib/pm-credit';
 import { ACTIVITY_TYPES, type DailyActivityRow, type JobOrderRow, type ShiftHandoverRow } from '@/lib/activity-types';
 import type { LinkedJobOrder } from '@/components/ActivityLoggerModal';
 import ActivityFeedCard, { type PrintPreviewMode } from '@/components/ActivityFeedCard';
-import { AlertBanner, Badge, SegmentedTabs } from '@/components/ui';
+import { AlertBanner, Badge, EmptyState, SegmentedTabs } from '@/components/ui';
 import { DEFAULT_STATION_CODE } from '@/lib/roster-helpers';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import SampleCleanupHealth from '@/components/SampleCleanupHealth';
@@ -81,6 +81,7 @@ export default function ActivitiesMonitor(p: {
   const [filterType, setFilterType] = useState('');
   const [filterOpId, setFilterOpId] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'submitted' | 'verified' | 'flagged'>('all');
+  const [matrixExpanded, setMatrixExpanded] = useState(false);
 
   const [loggerOpen, setLoggerOpen] = useState(false);
   const [loggerLeadOpId, setLoggerLeadOpId] = useState<string | null>(null);
@@ -270,21 +271,42 @@ export default function ActivitiesMonitor(p: {
 
   const openHighJos = jobOrders.filter((j) => !j.is_sample && (j.status === 'pending' || j.status === 'in_progress') && j.priority === 'high').length;
   const overduePms = p.pmTasks.filter((t) => t.status !== 'done' && t.scheduled_date < p.date).length;
+  const MATRIX_PREVIEW_COUNT = 4;
+  const visibleDutyRows = matrixExpanded ? dutyMatrix : dutyMatrix.slice(0, MATRIX_PREVIEW_COUNT);
+  const hasActiveFilters = Boolean(filterAreaId || filterType || filterOpId || filterStatus !== 'all');
+  const resetFilters = () => {
+    setFilterAreaId('');
+    setFilterType('');
+    setFilterOpId('');
+    setFilterStatus('all');
+  };
+  const openNewLogger = (leadOpId: string | null = p.operatorId) => {
+    setLinkedJoForLog(null);
+    setLoggerLeadOpId(leadOpId);
+    setLoggerOpen(true);
+  };
 
   return (
     <div className="stack-md" style={{ maxWidth: 1440, margin: '0 auto', padding: '12px 16px 40px' }}>
-      <div className="card card-pad-sm row-between-wrap mobile-toolbar-compact">
-        <div className="row-wrap">
+      <div className="card card-pad-sm stack-xs mobile-toolbar-compact">
+        <div className="row-between-wrap">
           <div>
             <h1 className="page-title">Daily Employee Activity Monitor</h1>
             <p className="page-subtitle">Schedule-linked field logs, Job Orders, Shift Huddle &amp; Performance KPIs</p>
           </div>
-          <div className="row-xs">
-            <button type="button" className="btn" onClick={() => router.push(`/activities?d=${addDays(p.date, -1)}`)} aria-label="Previous day">‹</button>
-            <input type="date" className="input" aria-label="Monitoring date" value={p.date} onChange={(e) => e.target.value && router.push(`/activities?d=${e.target.value}`)} style={{ width: 150 }} />
-            <button type="button" className="btn" onClick={() => router.push(`/activities?d=${addDays(p.date, 1)}`)} aria-label="Next day">›</button>
-            {p.date !== p.today && (
-              <button type="button" className="btn btn-primary" onClick={() => router.push(`/activities?d=${p.today}`)}>Today</button>
+          <div className="row-wrap" style={{ flex: '1 1 auto', justifyContent: 'flex-end' }}>
+            <div className="row-wrap" style={{ gap: 4 }}>
+              <button type="button" className="btn btn-sm" onClick={() => router.push(`/activities?d=${addDays(p.date, -1)}`)} aria-label="Previous day">‹</button>
+              <input type="date" className="input" aria-label="Monitoring date" value={p.date} onChange={(e) => e.target.value && router.push(`/activities?d=${e.target.value}`)} style={{ width: 'auto', minWidth: 132 }} />
+              <button type="button" className="btn btn-sm" onClick={() => router.push(`/activities?d=${addDays(p.date, 1)}`)} aria-label="Next day">›</button>
+              {p.date !== p.today && (
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => router.push(`/activities?d=${p.today}`)}>Today</button>
+              )}
+            </div>
+            {(p.canLogActivity || p.canLogSampleActivity) && (
+              <button type="button" className="btn btn-primary font-bold" onClick={() => openNewLogger()}>
+                {p.canLogActivity ? '+ Log Activity' : '+ Log Sample'}
+              </button>
             )}
           </div>
         </div>
@@ -296,15 +318,6 @@ export default function ActivitiesMonitor(p: {
           {p.canVerifyActivity && (
             <button type="button" className="btn btn-sm" disabled={purging} onClick={handlePurgeExpiredPhotos}>
               {purging ? 'Purging…' : `Purge Expired Photos${photoRetention.expiredCount > 0 ? ` (${photoRetention.expiredCount})` : ''}`}
-            </button>
-          )}
-          {(p.canLogActivity || p.canLogSampleActivity) && (
-            <button
-              type="button"
-              className="btn btn-primary font-bold"
-              onClick={() => { setLinkedJoForLog(null); setLoggerLeadOpId(p.operatorId); setLoggerOpen(true); }}
-            >
-              {p.canLogActivity ? '+ Log Activity' : '+ Log Sample'}
             </button>
           )}
         </div>
@@ -353,86 +366,116 @@ export default function ActivitiesMonitor(p: {
               {dutyMatrix.length === 0 ? (
                 <div className="text-secondary-sm">No operators scheduled on duty or standby for {p.date}.</div>
               ) : (
-                <div className="grid-auto-md" style={{ gap: 8 }}>
-                  {dutyMatrix.map((row) => {
-                    const hasOutput = row.logsCount > 0 || row.pmsClosedToday > 0;
-                    const canLogForThisOp = p.isAdmin || (p.canLogActivity && p.operatorId === row.op.id);
-                    const isFiltered = filterOpId === row.op.id;
-                    return (
-                      <div
-                        key={row.op.id}
-                        className="card card-pad-sm stack-xs"
-                        style={{
-                          background: isFiltered ? 'var(--info-bg)' : 'var(--surface-muted)',
-                          borderColor: isFiltered ? 'var(--accent)' : hasOutput ? 'var(--ok-border)' : row.isOnDuty ? 'var(--warn-border)' : 'var(--border)',
-                        }}
-                      >
-                        <div className="row-between" style={{ alignItems: 'start' }}>
-                          <div>
-                            <div className="font-bold" style={{ fontSize: 13.5 }}>{row.op.full_name}</div>
-                            <div className="text-secondary-xs">
-                              {row.shift ? row.shift.code : 'Unscheduled'} · {row.area ? row.area.code : row.isOnDuty ? DEFAULT_STATION_CODE : '—'}
-                              {row.standbyType && <span className="font-bold" style={{ marginLeft: 5, color: 'var(--violet)' }}>· {row.standbyType}</span>}
+                <>
+                  <div className="grid-auto-md" style={{ gap: 8 }}>
+                    {visibleDutyRows.map((row) => {
+                      const hasOutput = row.logsCount > 0 || row.pmsClosedToday > 0;
+                      const canLogForThisOp = p.isAdmin || (p.canLogActivity && p.operatorId === row.op.id);
+                      const isFiltered = filterOpId === row.op.id;
+                      return (
+                        <div
+                          key={row.op.id}
+                          className="card stack-xs"
+                          style={{
+                            padding: '8px 10px',
+                            background: isFiltered ? 'var(--info-bg)' : 'var(--surface-muted)',
+                            borderColor: isFiltered ? 'var(--accent)' : hasOutput ? 'var(--ok-border)' : row.isOnDuty ? 'var(--warn-border)' : 'var(--border)',
+                          }}
+                        >
+                          <div className="row-between" style={{ alignItems: 'start' }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div className="font-bold" style={{ fontSize: 13 }}>{row.op.full_name}</div>
+                              <div className="text-secondary-xs">
+                                {row.shift ? row.shift.code : 'Unscheduled'} · {row.area ? row.area.code : row.isOnDuty ? DEFAULT_STATION_CODE : '—'}
+                                {row.standbyType && <span className="font-bold" style={{ marginLeft: 5, color: 'var(--violet)' }}>· {row.standbyType}</span>}
+                              </div>
+                            </div>
+                            <Badge size="sm" tone={hasOutput ? 'ok' : 'warn'}>
+                              {hasOutput ? `✓ ${row.logsCount} log${row.logsCount === 1 ? '' : 's'}${row.pmsClosedToday ? ` + ${row.pmsClosedToday} PM` : ''}` : '⚠️ 0 logs'}
+                            </Badge>
+                          </div>
+                          <div className="row-between text-secondary-xs">
+                            <span>Last: {row.lastTimestamp ? fmtTimeManila(row.lastTimestamp) : '—'}</span>
+                            <div className="row-xs">
+                              <button type="button" className="btn btn-xs" onClick={() => setFilterOpId(isFiltered ? '' : row.op.id)}>
+                                {isFiltered ? 'Clear Filter' : 'Filter Feed'}
+                              </button>
+                              {canLogForThisOp && (
+                                <button type="button" className="btn btn-primary btn-xs" onClick={() => openNewLogger(row.op.id)}>
+                                  + Log
+                                </button>
+                              )}
                             </div>
                           </div>
-                          <Badge size="sm" tone={hasOutput ? 'ok' : 'warn'}>
-                            {hasOutput ? `✓ ${row.logsCount} log${row.logsCount === 1 ? '' : 's'}${row.pmsClosedToday ? ` + ${row.pmsClosedToday} PM` : ''}` : '⚠️ 0 logs'}
-                          </Badge>
                         </div>
-                        <div className="row-between text-secondary-xs">
-                          <span>Last: {row.lastTimestamp ? fmtTimeManila(row.lastTimestamp) : '—'}</span>
-                          <div className="row-xs">
-                            <button type="button" className="btn btn-xs" onClick={() => setFilterOpId(isFiltered ? '' : row.op.id)}>
-                              {isFiltered ? 'Clear Filter' : 'Filter Feed'}
-                            </button>
-                            {canLogForThisOp && (
-                              <button type="button" className="btn btn-primary btn-xs" onClick={() => { setLinkedJoForLog(null); setLoggerLeadOpId(row.op.id); setLoggerOpen(true); }}>
-                                + Log
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                  {dutyMatrix.length > MATRIX_PREVIEW_COUNT && (
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      style={{ width: '100%' }}
+                      onClick={() => setMatrixExpanded((prev) => !prev)}
+                    >
+                      {matrixExpanded ? 'Show fewer operators ▲' : `Show all ${dutyMatrix.length} on-duty operators ▾`}
+                    </button>
+                  )}
+                </>
               )}
             </div>
           )}
 
-          <div className="card card-pad-sm row-wrap">
-            <strong className="section-eyebrow">Filter Logs:</strong>
-            <select className="input" value={filterAreaId} onChange={(e) => setFilterAreaId(e.target.value)} style={{ width: 'auto', minWidth: 150 }}>
+          <div className="card card-pad-sm activity-filter-grid mobile-toolbar-compact">
+            <strong className="section-eyebrow activity-filter-head">Filter Logs</strong>
+            <select className="input" aria-label="Filter by station or area" value={filterAreaId} onChange={(e) => setFilterAreaId(e.target.value)} style={{ flex: '1 1 150px', minWidth: 0 }}>
               <option value="">All Stations / Areas</option>
               {stationAreas.map((a) => <option key={a.id} value={a.id}>{a.code}{a.name ? ` · ${a.name}` : ''}</option>)}
             </select>
-            <select className="input" value={filterType} onChange={(e) => setFilterType(e.target.value)} style={{ width: 'auto', minWidth: 170 }}>
+            <select className="input" aria-label="Filter by activity type" value={filterType} onChange={(e) => setFilterType(e.target.value)} style={{ flex: '1 1 150px', minWidth: 0 }}>
               <option value="">All Activity Types</option>
               {ACTIVITY_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
             </select>
             {p.canVerifyActivity && (
-              <select className="input" value={filterOpId} onChange={(e) => setFilterOpId(e.target.value)} style={{ width: 'auto', minWidth: 160 }}>
+              <select className="input" aria-label="Filter by operator" value={filterOpId} onChange={(e) => setFilterOpId(e.target.value)} style={{ flex: '1 1 150px', minWidth: 0 }}>
                 <option value="">All Operators</option>
                 {p.operators.map((o) => <option key={o.id} value={o.id}>{o.full_name}</option>)}
               </select>
             )}
-            <select className="input" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as 'all' | 'submitted' | 'verified' | 'flagged')} style={{ width: 'auto', minWidth: 130 }}>
+            <select className="input" aria-label="Filter by status" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as 'all' | 'submitted' | 'verified' | 'flagged')} style={{ flex: '1 1 130px', minWidth: 0 }}>
               <option value="all">All Statuses</option>
               <option value="submitted">Submitted</option>
               <option value="verified">Verified</option>
               <option value="flagged">Flagged</option>
             </select>
-            {(filterAreaId || filterType || filterOpId || filterStatus !== 'all') && (
-              <button type="button" className="btn btn-sm" onClick={() => { setFilterAreaId(''); setFilterType(''); setFilterOpId(''); setFilterStatus('all'); }}>
+            {hasActiveFilters && (
+              <button type="button" className="btn btn-sm activity-filter-head" onClick={resetFilters}>
                 Reset
               </button>
             )}
           </div>
 
           {filteredActivities.length === 0 ? (
-            <div className="card card-pad-lg text-center text-secondary-sm">
-              No field activities match the current filter for <b>{p.date}</b>.
-            </div>
+            <EmptyState
+              minHeight={140}
+              title={`No field activities for ${p.date}`}
+              description={
+                hasActiveFilters
+                  ? 'No logged activities match the active station, type, operator, or status filters.'
+                  : 'No field activity logs have been recorded for this date yet.'
+              }
+              action={
+                hasActiveFilters ? (
+                  <button type="button" className="btn btn-sm" onClick={resetFilters}>
+                    Reset Filters
+                  </button>
+                ) : (p.canLogActivity || p.canLogSampleActivity) ? (
+                  <button type="button" className="btn btn-primary btn-sm" onClick={() => openNewLogger()}>
+                    {p.canLogActivity ? '+ Log Activity' : '+ Log Sample'}
+                  </button>
+                ) : undefined
+              }
+            />
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
               {filteredActivities.map((act) => (

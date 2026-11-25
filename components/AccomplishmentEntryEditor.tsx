@@ -13,7 +13,7 @@ export default function AccomplishmentEntryEditor({ entries, isLocked, onUpdate,
   return (
     <>
       {/* Mobile Stacked Card Editor (<= 640px) */}
-      <div className="responsive-cards" style={{ gap: 10 }}>
+      <div className="responsive-cards mobile-toolbar-compact" style={{ gap: 10 }}>
         {entries.map((row, idx) => (
           <div
             key={`m-${row.id}`}
@@ -80,8 +80,8 @@ export default function AccomplishmentEntryEditor({ entries, isLocked, onUpdate,
                 />
               </label>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 6 }}>
-              <label style={{ fontSize: 11.5 }}>
+            <div className="entry-location-grid">
+              <label className="entry-site-field" style={{ fontSize: 11.5 }}>
                 Project / Site
                 <input className="input" disabled={isLocked} value={row.location_project} onChange={(e) => onUpdate(idx, { location_project: e.target.value })} />
               </label>

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { MonthPickerButton } from '@/components/ui';
 import type { ChangeRequestItem } from '@/lib/profile';
 import {
   DEFAULT_STATION_CODE,
@@ -78,14 +79,7 @@ export default function RosterToolbar(p: RosterToolbarProps) {
           <button className="btn" onClick={() => p.onGoMonth(-1)} aria-label="Previous month">
             ‹
           </button>
-          <input
-            type="month"
-            aria-label="Select month"
-            value={p.month}
-            onChange={(e) => e.target.value && p.onSelectMonth(e.target.value)}
-            className="input"
-            style={{ width: 'auto', minHeight: 36, padding: '4px 8px', fontSize: 12.5, fontWeight: 600 }}
-          />
+          <MonthPickerButton value={p.month} onChange={p.onSelectMonth} ariaLabel="Select month" />
           <button className="btn" onClick={() => p.onGoMonth(1)} aria-label="Next month">
             ›
           </button>

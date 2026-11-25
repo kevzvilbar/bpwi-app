@@ -2,6 +2,11 @@ export { AlertBanner, type AlertBannerProps, type AlertTone } from './AlertBanne
 export { Badge, type BadgeProps, type BadgeTone } from './Badge';
 export { EmptyState, type EmptyStateProps } from './EmptyState';
 export {
+  MonthPickerButton,
+  formatShortMonthLabel,
+  type MonthPickerButtonProps,
+} from './MonthPickerButton';
+export {
   SegmentedTabs,
   type SegmentedTabItem,
   type SegmentedTabsProps,

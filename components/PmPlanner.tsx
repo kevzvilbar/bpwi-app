@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import { isMissingGensetsTableError } from '@/lib/gensets';
 import PmDayInspector from '@/components/PmDayInspector';
+import { MonthPickerButton } from '@/components/ui';
 import PmPlannerModals, {
   formatPmDayHeading as formatDayHeading,
   formatPmShortDay as formatShortDay,
@@ -41,14 +42,7 @@ export default function PmPlanner(p: PmPlannerProps) {
             <button className="btn" onClick={() => pm.go(-1)} title="Previous" aria-label="Previous period">
               ‹
             </button>
-            <input
-              type="month"
-              aria-label="Select month"
-              value={p.month}
-              onChange={(e) => pm.selectMonth(e.target.value)}
-              className="input text-sm font-bold"
-              style={{ width: 'auto', padding: '4px 8px' }}
-            />
+            <MonthPickerButton value={p.month} onChange={pm.selectMonth} ariaLabel="Select month" />
             <button className="btn" onClick={() => pm.go(1)} title="Next" aria-label="Next period">
               ›
             </button>

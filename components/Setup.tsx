@@ -271,22 +271,24 @@ export default function Setup(p: {
         Operators, Users &amp; Setup
       </h1>
       <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <SegmentedTabs
-          ariaLabel="Setup sections"
-          size="sm"
-          value={tab}
-          onChange={setTab}
-          items={[
-            { id: 'operators', label: `Operators (${ops.length})` },
-            { id: 'shifts', label: `Shift types (${shifts.length})` },
-            { id: 'areas', label: `Areas & leave (${areas.length})` },
-            { id: 'gensets', label: `Gensets (${gensets.length})` },
-            { id: 'holidays', label: `Holidays (${(p.holidays ?? []).length})` },
-            { id: 'users', label: `Users & roles (${users.length}${pendingUsers ? ` · ${pendingUsers} pending` : ''})` },
-            { id: 'heads', label: `Department heads (${(p.people ?? []).filter((x) => x.role === 'manager').length})` },
-            { id: 'audit', label: auditLoaded ? `Activity log (${auditLogs.length})` : 'Activity log' },
-          ]}
-        />
+        <div className="mobile-scroll-tabs" style={{ maxWidth: '100%' }}>
+          <SegmentedTabs
+            ariaLabel="Setup sections"
+            size="sm"
+            value={tab}
+            onChange={setTab}
+            items={[
+              { id: 'operators', label: `Operators (${ops.length})` },
+              { id: 'shifts', label: `Shift types (${shifts.length})` },
+              { id: 'areas', label: `Areas & leave (${areas.length})` },
+              { id: 'gensets', label: `Gensets (${gensets.length})` },
+              { id: 'holidays', label: `Holidays (${(p.holidays ?? []).length})` },
+              { id: 'users', label: `Users & roles (${users.length}${pendingUsers ? ` · ${pendingUsers} pending` : ''})` },
+              { id: 'heads', label: `Department heads (${(p.people ?? []).filter((x) => x.role === 'manager').length})` },
+              { id: 'audit', label: auditLoaded ? `Activity log (${auditLogs.length})` : 'Activity log' },
+            ]}
+          />
+        </div>
         {dirty.size > 0 && (
           <Badge tone="warn">
             {dirty.size} unsaved {dirty.size === 1 ? 'row' : 'rows'}

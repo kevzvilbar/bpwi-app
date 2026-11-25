@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { enqueueOfflineReport } from '@/lib/offline-queue';
 import { getErrorMessage } from '@/lib/error-utils';
@@ -133,6 +133,9 @@ export default function AccomplishmentReports(p: Props) {
   const [selectedInboxId, setSelectedInboxId] = useState<string | null>(null);
   const [headRemarksInput, setHeadRemarksInput] = useState<string>('');
   const [showPreview, setShowPreview] = useState<boolean>(true);
+  useEffect(() => {
+    if (window.innerWidth <= 640) setShowPreview(false);
+  }, []);
   const [isSample, setIsSample] = useState<boolean>(Boolean(existingForDate?.is_sample));
   const [busy, setBusy] = useState<boolean>(false);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(
@@ -429,6 +432,7 @@ export default function AccomplishmentReports(p: Props) {
           <SegmentedTabs
             ariaLabel="Accomplishment report view"
             size="sm"
+            className="mobile-full-tabs"
             value={tab}
             onChange={setTab}
             items={[
@@ -599,14 +603,14 @@ export default function AccomplishmentReports(p: Props) {
       {/* MY SHIFT REPORT TAB */}
       {tab === 'my' && (
         <div style={{ display: 'grid', gap: 12 }}>
-          <div className="no-print card" style={{ padding: 14, display: 'grid', gap: 12 }}>
+          <div className="no-print card mobile-toolbar-compact" style={{ padding: 14, display: 'grid', gap: 12 }}>
             {activeReportForMy?.status === 'returned' && activeReportForMy.head_remarks && (
-              <div style={{ padding: '8px 12px', borderRadius: 6, background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.3)', color: '#b91c1c', fontSize: 12.5 }}>
+              <div style={{ padding: '8px 12px', borderRadius: 6, background: 'var(--danger-bg)', border: '1px solid var(--danger-border)', color: 'var(--danger-fg)', fontSize: 12.5 }}>
                 <strong>Returned by Head:</strong> {activeReportForMy.head_remarks}
               </div>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
+            <div className="report-meta-grid">
               <label style={{ fontSize: 12 }}>
                 Report Date
                 <input
@@ -615,23 +619,6 @@ export default function AccomplishmentReports(p: Props) {
                   value={reportDate}
                   onChange={(e) => loadDateIntoEditor(e.target.value)}
                 />
-              </label>
-
-              <label style={{ fontSize: 12 }}>
-                Assigned Department Head *
-                <select
-                  className="input"
-                  value={assignedHeadId}
-                  disabled={isLocked}
-                  onChange={(e) => setAssignedHeadId(e.target.value)}
-                >
-                  <option value="">— Select Head —</option>
-                  {p.heads.map((h) => (
-                    <option key={h.id} value={h.id}>
-                      {h.full_name ?? h.id}{h.job_title ? ` (${h.job_title})` : ''}
-                    </option>
-                  ))}
-                </select>
               </label>
 
               <label style={{ fontSize: 12 }}>
@@ -646,6 +633,23 @@ export default function AccomplishmentReports(p: Props) {
                   {p.shifts.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.code}{s.description ? ` · ${s.description}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="report-meta-full" style={{ fontSize: 12 }}>
+                Assigned Department Head *
+                <select
+                  className="input"
+                  value={assignedHeadId}
+                  disabled={isLocked}
+                  onChange={(e) => setAssignedHeadId(e.target.value)}
+                >
+                  <option value="">— Select Head —</option>
+                  {p.heads.map((h) => (
+                    <option key={h.id} value={h.id}>
+                      {h.full_name ?? h.id}{h.job_title ? ` (${h.job_title})` : ''}
                     </option>
                   ))}
                 </select>
@@ -697,7 +701,7 @@ export default function AccomplishmentReports(p: Props) {
               </label>
             )}
 
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div className="mobile-action-grid">
               <button type="button" className="btn" disabled={busy || isLocked} onClick={pullActivitiesForDate}>
                 Load Logged Activities ({reportDate})
               </button>
@@ -709,18 +713,6 @@ export default function AccomplishmentReports(p: Props) {
               >
                 + Add Row
               </button>
-              <button type="button" className="btn" onClick={() => setShowPreview((v) => !v)}>
-                {showPreview ? 'Hide Form Preview' : 'Show Official Form Preview'}
-              </button>
-
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                <button type="button" className="btn" disabled={busy || isLocked} onClick={() => saveReport('draft')}>
-                  Save Draft
-                </button>
-                <button type="button" className="btn btn-primary" disabled={busy || isLocked} onClick={() => saveReport('submitted')}>
-                  {activeReportForMy?.status === 'submitted' ? 'Update & Re-send to Head' : 'Send to Assigned Head'}
-                </button>
-              </div>
             </div>
 
             <AccomplishmentEntryEditor
@@ -729,6 +721,21 @@ export default function AccomplishmentReports(p: Props) {
               onUpdate={updateEntry}
               onRemove={(idx) => setEntries((prev) => prev.filter((_, i) => i !== idx))}
             />
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+              <button type="button" className="btn" onClick={() => setShowPreview((v) => !v)}>
+                {showPreview ? 'Hide Form Preview' : 'Show Official Form Preview'}
+              </button>
+
+              <div className="mobile-action-grid">
+                <button type="button" className="btn" disabled={busy || isLocked} onClick={() => saveReport('draft')}>
+                  Save Draft
+                </button>
+                <button type="button" className="btn btn-primary" disabled={busy || isLocked} onClick={() => saveReport('submitted')}>
+                  {activeReportForMy?.status === 'submitted' ? 'Update & Re-send to Head' : 'Send to Assigned Head'}
+                </button>
+              </div>
+            </div>
           </div>
 
           {showPreview && (

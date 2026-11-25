@@ -1626,6 +1626,54 @@ textarea:focus-visible {
   -webkit-overflow-scrolling: touch;
 }
 .mobile-scroll-tabs::-webkit-scrollbar { display: none; }
+.mobile-scroll-tabs > .segmented-tabs {
+  flex-wrap: nowrap;
+  width: max-content;
+  min-width: 100%;
+}
+.mobile-scroll-tabs > .segmented-tabs > .segmented-tab {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.month-picker-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.month-picker-btn:hover {
+  border-color: var(--text-muted);
+}
+.report-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+}
+.entry-location-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 6px;
+}
+.activity-filter-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.call-sheet-mobile-summary {
+  display: none;
+}
 .btn-teal-soft {
   background: var(--ok-bg);
   color: var(--teal);
@@ -1633,6 +1681,40 @@ textarea:focus-visible {
   font-weight: 700;
 }
 @media screen and (max-width: 640px) {
+  .mobile-full-tabs {
+    width: 100%;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+  }
+  .report-meta-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .report-meta-full {
+    grid-column: 1 / -1;
+  }
+  .entry-location-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .entry-site-field {
+    grid-column: 1 / -1;
+  }
+  .activity-filter-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .activity-filter-head {
+    grid-column: 1 / -1;
+  }
+  .call-sheet-mobile-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
   .mobile-action-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
