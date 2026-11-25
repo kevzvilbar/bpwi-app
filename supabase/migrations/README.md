@@ -1,6 +1,6 @@
 # Supabase Migrations (`bpwi-app`)
 
-Migrations in this folder are strictly numbered (`001`–`037`) and verified by `npm test` (`lib/__tests__/migrations.test.ts`), which checks:
+Migrations in this folder are strictly numbered (`001`–`038`) and verified by `npm test` (`lib/__tests__/migrations.test.ts`), which checks:
 - Sequential numbering with no gaps or duplicates.
 - Every newly created table enables Row Level Security (`ENABLE ROW LEVEL SECURITY`).
 
@@ -13,7 +13,7 @@ supabase db push
 ```
 
 ### Option B — Supabase SQL Editor (Manual Fallback)
-Run each file in ascending numeric order (`001_init.sql` → `037_harden_rls_and_sample_photo_isolation.sql`). All migrations are written idempotently (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
+Run each file in ascending numeric order (`001_init.sql` → `038_photo_paths_gin_and_telemetry_retention.sql`). All migrations are written idempotently (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
 
 ## Optional Local Seeds
 Org-chart structural templates do not commit employee names in migrations. To assign local directory names outside version control, copy `supabase/seeds/org_chart.example.sql` to `supabase/seeds/org_chart.local.sql` (gitignored) or assign holders in `/org-chart`.
@@ -47,3 +47,4 @@ Org-chart structural templates do not commit employee names in migrations. To as
 - `035`: Department heads (`manager`) can edit/delete **sample** logs only via `guard_dept_head_real_log_changes()` on `daily_activities`, `job_orders`, `shift_handovers` and `accomplishment_reports` (verify/flag and check/return review actions stay allowed); `purge_expired_sample_records()` now queues sample photo paths in `sample_photo_cleanup` and deletes all expired samples in SQL; admin-only `sample_cleanup_health()`; Storage policies limit department heads to `sample-*` objects; new PM / job-order indexes.
 - `036`: Idempotently register `public.edit_grants` in the `supabase_realtime` publication (guarded for missing publication) so live Edit Access window grants/revocations propagate to subscribed clients.
 - `037`: Harden RLS, trigger integrity guards, and sample photo isolation: enforce org + `sample-*` photo path/URL checks in `enforce_sample_log_lifecycle()` and `purge_expired_sample_records()`, scope `storage.objects` `"activity-media purge delete"` by role/ownership/activity status, require `logged_by = auth.uid()` and insert/update verification guards on `daily_activities`, add `guard_accomplishment_report_integrity()` and prevent self-review on `accomplishment_reports`, and remove the `current_operator_id() is null` bypass in `"job_orders update"`.
+- `038`: Add GIN indexes on `daily_activities` (`photo_storage_paths`, `photo_urls`) for photo-proxy RLS lookups and add `service_role`-only `purge_expired_telemetry_pii(p_retention_days int default 365)` (minimum 30 days) to scrub expired GPS/signature/accuracy metadata on `daily_activities` and `contact_number` on completed/cancelled `job_orders`.

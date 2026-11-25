@@ -475,7 +475,12 @@ export default function MobileView(p: {
         <ActivityLoggerModal
           open={loggerOpen} sampleOnly={!p.canLogActivity} canLogSample={Boolean(p.canLogSampleActivity)}
           onClose={() => { setLoggerOpen(false); setLinkedPmForLog(null); setEditingActivity(null); }}
-          onQueuedOffline={async (payload: Record<string, unknown>, opts?: { editingId?: string | null }) => { await enqueueOfflineActivity(payload, p.userId, opts); }}
+          onQueuedOffline={async (
+            payload: Record<string, unknown>,
+            opts?: { editingId?: string | null; expectedUpdatedAt?: string | null },
+          ) => {
+            await enqueueOfflineActivity(payload, p.userId, opts);
+          }}
           onSaved={(act, opts) => {
             if (!opts?.offline) {
               setActivities((prev) => (prev.some((x) => x.id === act.id) ? prev.map((x) => (x.id === act.id ? act : x)) : [act, ...prev]));

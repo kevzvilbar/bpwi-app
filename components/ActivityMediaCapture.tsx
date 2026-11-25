@@ -219,7 +219,7 @@ export default function ActivityMediaCapture({
       )}
 
       <div style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-        <span>{helperNote ?? 'Compressed client-side · Photos auto-deleted after 30 days to conserve storage limits.'}</span>
+        <span>{helperNote ?? 'GPS check-in is optional and operator-initiated · Photos auto-delete after 30 days · Telemetry governed by BPWI RA 10173 retention policy.'}</span>
         {savedBytesTotal > 0 && (
           <span style={{ color: 'var(--ok-fg)', fontWeight: 700 }}>
             Saved {(savedBytesTotal / 1024).toFixed(0)} KB

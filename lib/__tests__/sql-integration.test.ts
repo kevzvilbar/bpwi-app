@@ -1948,5 +1948,185 @@ describe('PGlite SQL migrations (all) execution & security invariants', () => {
     // Re-running 037 migration is idempotent
     await setAuthUid(db, null);
     await db.exec(sql37);
+
+    // 21. 038 GIN indexes on daily_activities photo arrays & RA 10173 telemetry PII retention purge
+    const sql38 = fs.readFileSync(path.join(MIGRATIONS_DIR, '038_photo_paths_gin_and_telemetry_retention.sql'), 'utf8');
+    await db.exec(sql38);
+
+    // 21a. Verify both GIN indexes exist on daily_activities
+    const ginIdxRes = await db.query<{ indexname: string; indexdef: string }>(
+      `select indexname, indexdef
+       from pg_indexes
+       where schemaname = 'public'
+         and tablename = 'daily_activities'
+         and indexname in ('daily_activities_photo_storage_paths_gin_idx', 'daily_activities_photo_urls_gin_idx')
+       order by indexname`,
+    );
+    assert.deepEqual(
+      ginIdxRes.rows.map((r) => r.indexname),
+      ['daily_activities_photo_storage_paths_gin_idx', 'daily_activities_photo_urls_gin_idx'],
+    );
+    for (const row of ginIdxRes.rows) {
+      assert.match(row.indexdef, /using gin/i);
+    }
+
+    // 21b. Verify purge_expired_telemetry_pii(int) privileges (service_role only)
+    const piiPrivs = await db.query<{ pub: boolean; anon: boolean; auth: boolean; svc: boolean }>(
+      `select
+         has_function_privilege('public', 'purge_expired_telemetry_pii(int)', 'EXECUTE') as pub,
+         has_function_privilege('anon', 'purge_expired_telemetry_pii(int)', 'EXECUTE') as anon,
+         has_function_privilege('authenticated', 'purge_expired_telemetry_pii(int)', 'EXECUTE') as auth,
+         has_function_privilege('service_role', 'purge_expired_telemetry_pii(int)', 'EXECUTE') as svc`,
+    );
+    assert.deepEqual(piiPrivs.rows[0], { pub: false, anon: false, auth: false, svc: true });
+
+    await setAuthUid(db, adminId);
+    await db.exec('begin; set local role authenticated;');
+    await assert.rejects(() => db.query(`select * from purge_expired_telemetry_pii(365)`), /permission denied/i);
+    await db.exec('rollback;');
+
+    // 21c. Retention period < 30 days (or null) raises SQLSTATE 22023
+    await setAuthUid(db, null);
+    await db.exec('begin; set local role service_role;');
+    await assert.rejects(
+      () => db.query(`select * from purge_expired_telemetry_pii(29)`),
+      (err: unknown) => {
+        assert.match(err instanceof Error ? err.message : String(err), /Retention period must be at least 30 days/i);
+        assert.equal((err as { code?: string }).code, '22023');
+        return true;
+      },
+    );
+    await db.exec('rollback;');
+
+    await db.exec('begin; set local role service_role;');
+    await assert.rejects(
+      () => db.query(`select * from purge_expired_telemetry_pii(null)`),
+      (err: unknown) => {
+        assert.match(err instanceof Error ? err.message : String(err), /Retention period must be at least 30 days/i);
+        assert.equal((err as { code?: string }).code, '22023');
+        return true;
+      },
+    );
+    await db.exec('rollback;');
+
+    // 21d. Seed expired vs recent activities and closed vs open/recent job orders
+    const expActRes = await db.query<{ id: string }>(
+      `insert into daily_activities (organization_id, logged_by, activity_type, gps_lat, gps_lng, signature_data, notes, details, is_sample, created_at)
+       values ($1, $2, 'pump_monitoring', 10.7202, 122.5621, 'data:image/png;base64,SIGOLD', 'Keep operational note', $3::jsonb, false, now() - interval '400 days')
+       returning id`,
+      [orgId, assignedUserId, JSON.stringify({ gpsSource: 'device', gpsAccuracyM: 8, pumpPressure: 42 })],
+    );
+    const expActId = expActRes.rows[0].id;
+
+    const recentActRes = await db.query<{ id: string }>(
+      `insert into daily_activities (organization_id, logged_by, activity_type, gps_lat, gps_lng, signature_data, notes, details, is_sample, created_at)
+       values ($1, $2, 'pump_monitoring', 10.7300, 122.5700, 'data:image/png;base64,SIGNEW', 'Recent note', $3::jsonb, false, now() - interval '10 days')
+       returning id`,
+      [orgId, assignedUserId, JSON.stringify({ gpsSource: 'map_pin', gpsAccuracyM: 12 })],
+    );
+    const recentActId = recentActRes.rows[0].id;
+
+    const expSampleActRes = await db.query<{ id: string }>(
+      `insert into daily_activities (organization_id, logged_by, activity_type, gps_lat, gps_lng, signature_data, details, is_sample, created_at)
+       values ($1, $2, 'pump_monitoring', 10.7400, 122.5800, 'sample-sig', $3::jsonb, true, now() - interval '400 days')
+       returning id`,
+      [orgId, mgr1Id, JSON.stringify({ gpsSource: 'device', gpsAccuracyM: 5 })],
+    );
+    const expSampleActId = expSampleActRes.rows[0].id;
+
+    const expCompletedJoRes = await db.query<{ id: string }>(
+      `insert into job_orders (organization_id, jo_number, title, status, contact_number, completed_at, created_at, updated_at, created_by, is_sample)
+       values ($1, 'AUTO', 'Expired Completed JO', 'completed', '09171234567', now() - interval '400 days', now() - interval '405 days', now() - interval '400 days', $2, false)
+       returning id`,
+      [orgId, adminId],
+    );
+    const expCompletedJoId = expCompletedJoRes.rows[0].id;
+
+    const expCancelledJoRes = await db.query<{ id: string }>(
+      `insert into job_orders (organization_id, jo_number, title, status, contact_number, completed_at, created_at, updated_at, created_by, is_sample)
+       values ($1, 'AUTO', 'Expired Cancelled JO', 'cancelled', '09181234567', null, now() - interval '410 days', now() - interval '400 days', $2, false)
+       returning id`,
+      [orgId, adminId],
+    );
+    const expCancelledJoId = expCancelledJoRes.rows[0].id;
+
+    const openOldJoRes = await db.query<{ id: string }>(
+      `insert into job_orders (organization_id, jo_number, title, status, contact_number, created_at, updated_at, created_by, is_sample)
+       values ($1, 'AUTO', 'Open Old JO', 'in_progress', '09191234567', now() - interval '400 days', now() - interval '400 days', $2, false)
+       returning id`,
+      [orgId, adminId],
+    );
+    const openOldJoId = openOldJoRes.rows[0].id;
+
+    const recentCompletedJoRes = await db.query<{ id: string }>(
+      `insert into job_orders (organization_id, jo_number, title, status, contact_number, completed_at, created_at, updated_at, created_by, is_sample)
+       values ($1, 'AUTO', 'Recent Completed JO', 'completed', '09201234567', now() - interval '10 days', now() - interval '15 days', now() - interval '10 days', $2, false)
+       returning id`,
+      [orgId, adminId],
+    );
+    const recentCompletedJoId = recentCompletedJoRes.rows[0].id;
+
+    // Run telemetry PII retention purge as service_role
+    await db.exec('begin; set local role service_role;');
+    const purgePiiRes = await db.query<{ activities_scrubbed: number; job_orders_scrubbed: number }>(
+      `select * from purge_expired_telemetry_pii(365)`,
+    );
+    await db.exec('commit;');
+    assert.deepEqual(purgePiiRes.rows[0], { activities_scrubbed: 1, job_orders_scrubbed: 2 });
+
+    // Expired real activity: GPS/signature/gpsMeta scrubbed, operational note & other details preserved
+    const expActAfter = await db.query<{
+      gps_lat: string | null;
+      gps_lng: string | null;
+      signature_data: string | null;
+      notes: string | null;
+      details: Record<string, unknown>;
+    }>(`select gps_lat, gps_lng, signature_data, notes, details from daily_activities where id = $1`, [expActId]);
+    assert.equal(expActAfter.rows[0].gps_lat, null);
+    assert.equal(expActAfter.rows[0].gps_lng, null);
+    assert.equal(expActAfter.rows[0].signature_data, null);
+    assert.equal(expActAfter.rows[0].notes, 'Keep operational note');
+    assert.deepEqual(expActAfter.rows[0].details, { pumpPressure: 42 });
+
+    // Recent real activity & sample activity remain untouched
+    const recentActAfter = await db.query<{
+      gps_lat: string | null;
+      gps_lng: string | null;
+      signature_data: string | null;
+      details: Record<string, unknown>;
+    }>(`select gps_lat, gps_lng, signature_data, details from daily_activities where id = $1`, [recentActId]);
+    assert.ok(recentActAfter.rows[0].gps_lat !== null);
+    assert.ok(recentActAfter.rows[0].gps_lng !== null);
+    assert.equal(recentActAfter.rows[0].signature_data, 'data:image/png;base64,SIGNEW');
+    assert.deepEqual(recentActAfter.rows[0].details, { gpsSource: 'map_pin', gpsAccuracyM: 12 });
+
+    const sampleActAfter = await db.query<{ gps_lat: string | null; signature_data: string | null }>(
+      `select gps_lat, signature_data from daily_activities where id = $1`,
+      [expSampleActId],
+    );
+    assert.ok(sampleActAfter.rows[0].gps_lat !== null);
+    assert.equal(sampleActAfter.rows[0].signature_data, 'sample-sig');
+
+    // Expired completed & cancelled JOs scrubbed; open & recent completed JOs intact
+    const joContacts = await db.query<{ id: string; contact_number: string | null }>(
+      `select id, contact_number from job_orders where id = any($1::uuid[])`,
+      [[expCompletedJoId, expCancelledJoId, openOldJoId, recentCompletedJoId]],
+    );
+    const contactMap = new Map(joContacts.rows.map((r) => [r.id, r.contact_number]));
+    assert.equal(contactMap.get(expCompletedJoId), null);
+    assert.equal(contactMap.get(expCancelledJoId), null);
+    assert.equal(contactMap.get(openOldJoId), '09191234567');
+    assert.equal(contactMap.get(recentCompletedJoId), '09201234567');
+
+    // Second run is a no-op
+    await db.exec('begin; set local role service_role;');
+    const purgePiiSecond = await db.query<{ activities_scrubbed: number; job_orders_scrubbed: number }>(
+      `select * from purge_expired_telemetry_pii(365)`,
+    );
+    await db.exec('commit;');
+    assert.deepEqual(purgePiiSecond.rows[0], { activities_scrubbed: 0, job_orders_scrubbed: 0 });
+
+    // Re-running 038 migration is idempotent
+    await db.exec(sql38);
   });
 });

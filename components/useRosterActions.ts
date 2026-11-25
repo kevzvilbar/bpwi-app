@@ -1,45 +1,19 @@
 'use client';
 
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useTransition, type Dispatch, type SetStateAction } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
-import { subscribeVisibilityAwareChannel } from '@/lib/supabase/realtime';
 import type { ChangeRequestItem, ChangeRequestOriginalState, EditGrant } from '@/lib/profile';
 import { getErrorMessage } from '@/lib/error-utils';
 import { canManagerDirectEditDate, isGrantActiveAt } from '@/lib/edit-grant';
+import { buildShiftProposalInput, useRosterDrafts } from '@/components/useRosterDrafts';
+import { useRosterRealtime } from '@/components/useRosterRealtime';
 import {
-  buildRosterCsv,
-  buildRosterPendingMap,
-  cellKey,
-  clearDraftItemsForCells,
-  computeHistoryTransition,
-  DEFAULT_STATION_CODE,
-  findOffShift,
-  friendlyError,
-  isHolidayArea,
-  isLeaveArea,
-  isOffPartnerArea,
-  isRestArea,
-  MONTHS_FULL,
-  normalizeShiftForArea,
-  persistDirectShiftChanges,
-  persistDirectStandbyChanges,
-  replaceProposedDraftItems,
-  resolveAreaSelection,
-  resolveShiftSelection,
-  WEEKDAYS,
-  type Area,
-  type HistoryEntry,
-  type HolidayItem,
-  type Op,
-  type PmMarkTask,
-  type ProposedChangeInput,
-  type RosterDragBatch,
-  type Row,
-  type Shift,
-  type ShiftHistoryItem,
-  type Standby,
-  type ToolMode,
+  buildRosterCsv, buildRosterPendingMap, cellKey, computeHistoryTransition, DEFAULT_STATION_CODE,
+  findOffShift, friendlyError, isHolidayArea, isLeaveArea, isOffPartnerArea, isRestArea, MONTHS_FULL,
+  normalizeShiftForArea, persistDirectShiftChanges, persistDirectStandbyChanges, resolveAreaSelection,
+  resolveShiftSelection, WEEKDAYS, type Area, type HistoryEntry, type HolidayItem, type Op,
+  type PmMarkTask, type RosterDragBatch, type Row, type Shift, type ShiftHistoryItem, type Standby, type ToolMode,
 } from '@/lib/roster-helpers';
 
 export interface RosterPendingItem {
@@ -80,52 +54,33 @@ export interface RosterProps {
   initialError?: string;
 }
 
+function replaceCellInState<T extends { operator_id: string; schedule_date: string }>(
+  setter: Dispatch<SetStateAction<T[]>>,
+  opId: string,
+  date: string,
+  nextVal: T | null,
+) {
+  const k = cellKey(opId, date);
+  setter((prev) => {
+    const rest = prev.filter((x) => cellKey(x.operator_id, x.schedule_date) !== k);
+    return nextVal ? [...rest, nextVal] : rest;
+  });
+}
+
+function restoreCellsInState<T extends { operator_id: string; schedule_date: string }>(
+  setter: Dispatch<SetStateAction<T[]>>,
+  keys: { opId: string; date: string; prev: T | null }[],
+) {
+  const keySet = new Set(keys.map((k) => cellKey(k.opId, k.date)));
+  const restore = keys.map((k) => k.prev).filter((x): x is T => Boolean(x));
+  setter((prev) => [...prev.filter((x) => !keySet.has(cellKey(x.operator_id, x.schedule_date))), ...restore]);
+}
+
 /** Manages roster grid state, realtime updates, history undo/redo, direct saves, and manager draft proposals. */
 export function useRosterActions(p: RosterProps) {
   const router = useRouter();
   const routerRef = useRef(router);
   routerRef.current = router;
-  const [grantExpired, setGrantExpired] = useState(false);
-
-  useEffect(() => {
-    setGrantExpired(false);
-    if (p.role !== 'manager' || !p.editGrant) return;
-    const ms = Date.parse(p.editGrant.ends_at) - Date.now();
-    if (ms <= 0) {
-      setGrantExpired(true);
-      return;
-    }
-    const timer = setTimeout(() => setGrantExpired(true), Math.min(ms + 250, 2_000_000_000));
-    return () => clearTimeout(timer);
-  }, [p.role, p.editGrant]);
-
-  const hasActiveEdit = p.canEdit && (p.role !== 'manager' || (!grantExpired && isGrantActiveAt(p.editGrant)));
-  const isPropose = p.role === 'manager' && !hasActiveEdit;
-  const canOperate = hasActiveEdit || Boolean(p.canPropose) || p.role === 'manager';
-  const shouldProposeDate = useCallback(
-    (date: string) => p.role === 'manager' && (!hasActiveEdit || !canManagerDirectEditDate(p.editGrant, date)),
-    [hasActiveEdit, p.editGrant, p.role],
-  );
-  const holidayByDate = useMemo(
-    () => new Map((p.holidays ?? []).map((h) => [h.holiday_date, h])),
-    [p.holidays],
-  );
-
-  const [draftReqId, setDraftReqId] = useState<string | null>(p.initialDraftRequestId ?? null);
-  const [draftItems, setDraftItems] = useState<ChangeRequestItem[]>(p.initialDraftItems ?? []);
-  const [submitModalOpen, setSubmitModalOpen] = useState(false);
-  const [submitNote, setSubmitNote] = useState('');
-  const [isSubmittingDraft, setIsSubmittingDraft] = useState(false);
-
-  const proposedDraftItems = useMemo(
-    () => draftItems.filter((item) => !item.schedule_date || shouldProposeDate(item.schedule_date)),
-    [draftItems, shouldProposeDate],
-  );
-
-  const pendingMap = useMemo(
-    () => buildRosterPendingMap(p.pendingItems ?? [], proposedDraftItems),
-    [p.pendingItems, proposedDraftItems],
-  );
 
   const [rows, setRows] = useState<Row[]>(p.rows);
   const [standby, setStandby] = useState<Standby[]>(p.standby);
@@ -150,81 +105,45 @@ export function useRosterActions(p: RosterProps) {
   const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
   const [clipboard, setClipboard] = useState<{ shift_type_id: string | null; area_code_id: string | null } | null>(null);
-
   const dragRef = useRef<RosterDragBatch | null>(null);
 
-  useEffect(() => {
-    setRows(p.rows);
-  }, [p.rows]);
+  const grantExpired = useRosterRealtime({
+    month: p.month, role: p.role, editGrant: p.editGrant, routerRef, startTransition, setRows, setStandby,
+  });
 
-  useEffect(() => {
-    setStandby(p.standby);
-  }, [p.standby]);
+  const hasActiveEdit = p.canEdit && (p.role !== 'manager' || (!grantExpired && isGrantActiveAt(p.editGrant)));
+  const isPropose = p.role === 'manager' && !hasActiveEdit;
+  const canOperate = hasActiveEdit || Boolean(p.canPropose) || p.role === 'manager';
+  const shouldProposeDate = useCallback(
+    (date: string) => p.role === 'manager' && (!hasActiveEdit || !canManagerDirectEditDate(p.editGrant, date)),
+    [hasActiveEdit, p.editGrant, p.role],
+  );
+  const holidayByDate = useMemo(() => new Map((p.holidays ?? []).map((h) => [h.holiday_date, h])), [p.holidays]);
 
-  useEffect(() => {
-    const sb = supabaseBrowser();
-    return subscribeVisibilityAwareChannel({
-      sb,
-      channelName: `roster-sync-${p.month}`,
-      onReconnect: () => startTransition(() => routerRef.current.refresh()),
-      listeners: [
-        {
-          table: 'schedule_assignments',
-          onEvent: (payload) => {
-            const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as Partial<Row> | undefined;
-            if (!rec?.operator_id || !rec?.schedule_date || !rec.schedule_date.startsWith(p.month)) return;
-            if (payload.eventType === 'DELETE') {
-              setRows((r) => r.filter((x) => !(x.operator_id === rec.operator_id && x.schedule_date === rec.schedule_date)));
-            } else {
-              const nextRow: Row = {
-                operator_id: rec.operator_id,
-                schedule_date: rec.schedule_date,
-                shift_type_id: rec.shift_type_id ?? null,
-                area_code_id: rec.area_code_id ?? null,
-              };
-              setRows((r) => [...r.filter((x) => !(x.operator_id === nextRow.operator_id && x.schedule_date === nextRow.schedule_date)), nextRow]);
-            }
-          },
-        },
-        {
-          table: 'standby_assignments',
-          onEvent: (payload) => {
-            const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as Partial<Standby> | undefined;
-            if (!rec?.operator_id || !rec?.schedule_date || !rec.schedule_date.startsWith(p.month)) return;
-            if (payload.eventType === 'DELETE') {
-              setStandby((s) => s.filter((x) => !(x.operator_id === rec.operator_id && x.schedule_date === rec.schedule_date)));
-            } else {
-              const nextSb: Standby = {
-                operator_id: rec.operator_id,
-                schedule_date: rec.schedule_date,
-                standby_type: rec.standby_type ?? 'OC',
-              };
-              setStandby((s) => [
-                ...s.filter((x) => !(x.operator_id === nextSb.operator_id && x.schedule_date === nextSb.schedule_date)),
-                nextSb,
-              ]);
-            }
-          },
-        },
-      ],
-    });
-  }, [p.month]);
+  const drafts = useRosterDrafts({
+    orgId: p.orgId, userId: p.userId, month: p.month, role: p.role,
+    initialDraftRequestId: p.initialDraftRequestId, initialDraftItems: p.initialDraftItems,
+    shouldProposeDate, setSaveState, setMsg, startTransition, router,
+  });
+
+  const pendingMap = useMemo(
+    () => buildRosterPendingMap(p.pendingItems ?? [], drafts.proposedDraftItems),
+    [p.pendingItems, drafts.proposedDraftItems],
+  );
+
+  useEffect(() => { setRows(p.rows); }, [p.rows]);
+  useEffect(() => { setStandby(p.standby); }, [p.standby]);
 
   useEffect(() => {
     if (!ctxMenu) return;
     const close = () => setCtxMenu(null);
     window.addEventListener('click', close);
     window.addEventListener('scroll', close, true);
-    return () => {
-      window.removeEventListener('click', close);
-      window.removeEventListener('scroll', close, true);
-    };
+    return () => { window.removeEventListener('click', close); window.removeEventListener('scroll', close, true); };
   }, [ctxMenu]);
 
   useEffect(() => {
-    if (hasActiveEdit && localStorage.getItem('bpwi-roster-hint-dismissed') !== '1') {
-      setShowHint(true);
-    }
+    if (hasActiveEdit && localStorage.getItem('bpwi-roster-hint-dismissed') !== '1') setShowHint(true);
   }, [hasActiveEdit]);
 
   useEffect(() => {
@@ -239,116 +158,29 @@ export function useRosterActions(p: RosterProps) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setCtxMenu(null);
-        setConfirmFill(null);
-        if (!importing) setImportOpen(false);
-      }
+      if (e.key !== 'Escape') return;
+      setCtxMenu(null);
+      setConfirmFill(null);
+      if (!importing) setImportOpen(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [importing]);
 
-  async function ensureDraftRequestId(): Promise<string> {
-    if (draftReqId) return draftReqId;
-    const sb = supabaseBrowser();
-    const { data, error } = await sb
-      .from('change_requests')
-      .insert({
-        organization_id: p.orgId,
-        requester_id: p.userId,
-        status: 'draft',
-        title: `Schedule Proposal for ${p.month}`,
-      })
-      .select('id')
-      .single();
-    if (error || !data) throw new Error(error?.message ?? 'Could not create draft request');
-    setDraftReqId(data.id);
-    return data.id;
-  }
-
-  function mergeDraftItems(inserted: ChangeRequestItem[]) {
-    if (inserted.length === 0) return;
-    const keys = new Set(inserted.map((x) => `${x.target_table}:${x.operator_id ?? ''}:${x.schedule_date ?? ''}`));
-    setDraftItems((prev) => [
-      ...prev.filter((x) => !keys.has(`${x.target_table}:${x.operator_id ?? ''}:${x.schedule_date ?? ''}`)),
-      ...inserted,
-    ]);
-  }
-
-  async function saveDraftProposal(items: ProposedChangeInput[], onErrorRollback: () => void) {
-    try {
-      const reqId = await ensureDraftRequestId();
-      const inserted = await replaceProposedDraftItems(supabaseBrowser(), reqId, p.orgId, items);
-      mergeDraftItems(inserted);
-    } catch (err: unknown) {
-      onErrorRollback();
-      setSaveState('error');
-      setMsg(friendlyError(getErrorMessage(err), p.role));
-    }
-  }
-
-  async function submitDraftBatch() {
-    if (!draftReqId || draftItems.length === 0) return;
-    setIsSubmittingDraft(true);
-    setMsg('');
-    const sb = supabaseBrowser();
-
-    try {
-      const { error } = await sb.rpc('submit_change_request', {
-        p_request_id: draftReqId,
-        p_note: submitNote.trim() || null,
-      });
-
-      if (error) {
-        setMsg('Could not submit changes: ' + error.message);
-      } else {
-        const count = draftItems.length;
-        setDraftReqId(null);
-        setDraftItems([]);
-        setSubmitModalOpen(false);
-        setSubmitNote('');
-        setMsg(`✓ Successfully submitted ${count} change(s) for admin approval.`);
-        startTransition(() => router.refresh());
-      }
-    } catch (e: unknown) {
-      setMsg(getErrorMessage(e, 'Network error while submitting changes'));
-    } finally {
-      setIsSubmittingDraft(false);
-    }
-  }
-
-  async function discardDraftBatch() {
-    if (!draftReqId) {
-      setDraftItems([]);
-      return;
-    }
-    const sb = supabaseBrowser();
-    await sb.from('change_requests').delete().eq('id', draftReqId);
-    setDraftReqId(null);
-    setDraftItems([]);
-    setMsg('Draft proposal discarded.');
-    startTransition(() => router.refresh());
-  }
-
   const [y, mo] = p.month.split('-').map(Number);
   const monthLabel = `${MONTHS_FULL[(mo - 1 + 12) % 12]} ${y}`;
   const dayCount = new Date(y, mo, 0).getDate();
   const days = useMemo(
-    () =>
-      Array.from({ length: dayCount }, (_, i) => {
-        const date = `${p.month}-${String(i + 1).padStart(2, '0')}`;
-        const dow = new Date(y, mo - 1, i + 1).getDay();
-        return { date, dayNum: i + 1, dow, dowLabel: WEEKDAYS[dow], isWeekend: dow === 0 || dow === 6 };
-      }),
+    () => Array.from({ length: dayCount }, (_, i) => {
+      const date = `${p.month}-${String(i + 1).padStart(2, '0')}`;
+      const dow = new Date(y, mo - 1, i + 1).getDay();
+      return { date, dayNum: i + 1, dow, dowLabel: WEEKDAYS[dow], isWeekend: dow === 0 || dow === 6 };
+    }),
     [dayCount, mo, p.month, y],
   );
 
   const baseRowByKey = useMemo(() => new Map(p.rows.map((r) => [cellKey(r.operator_id, r.schedule_date), r])), [p.rows]);
-  const baseStandbyByKey = useMemo(
-    () => new Map(p.standby.map((s) => [cellKey(s.operator_id, s.schedule_date), s])),
-    [p.standby],
-  );
+  const baseStandbyByKey = useMemo(() => new Map(p.standby.map((s) => [cellKey(s.operator_id, s.schedule_date), s])), [p.standby]);
   const cell = useMemo(() => new Map(rows.map((r) => [cellKey(r.operator_id, r.schedule_date), r])), [rows]);
   const standbyMap = useMemo(() => new Map(standby.map((s) => [cellKey(s.operator_id, s.schedule_date), s])), [standby]);
   const shiftBy = useMemo(() => new Map(p.shifts.map((s) => [s.id, s])), [p.shifts]);
@@ -357,10 +189,7 @@ export function useRosterActions(p: RosterProps) {
   const lastDutyShiftIdRef = useRef<string | null>(p.shifts.find((s) => !s.is_off)?.id ?? p.shifts[0]?.id ?? null);
 
   function handleSelectShift(nextShiftId: string | null) {
-    if (!nextShiftId) {
-      setShiftId(null);
-      return;
-    }
+    if (!nextShiftId) { setShiftId(null); return; }
     const { shiftId: nextS, areaId: nextA } = resolveShiftSelection(nextShiftId, areaId, shiftBy, areaBy);
     if (!shiftBy.get(nextS)?.is_off) lastDutyShiftIdRef.current = nextS;
     setShiftId(nextS);
@@ -369,12 +198,7 @@ export function useRosterActions(p: RosterProps) {
 
   function handleSelectArea(nextAreaId: string | null) {
     const { shiftId: nextS, areaId: nextA } = resolveAreaSelection(
-      nextAreaId,
-      shiftId,
-      lastDutyShiftIdRef.current,
-      shiftBy,
-      areaBy,
-      offShift,
+      nextAreaId, shiftId, lastDutyShiftIdRef.current, shiftBy, areaBy, offShift,
     );
     setShiftId(nextS);
     setAreaId(nextA);
@@ -387,12 +211,8 @@ export function useRosterActions(p: RosterProps) {
       for (const opId of t.assigned_operator_ids ?? []) {
         const k = cellKey(opId, t.scheduled_date);
         const cur = m.get(k);
-        if (cur) {
-          cur.titles.push(t.title);
-          if (warn) cur.warn = true;
-        } else {
-          m.set(k, { titles: [t.title], warn });
-        }
+        if (cur) { cur.titles.push(t.title); if (warn) cur.warn = true; }
+        else m.set(k, { titles: [t.title], warn });
       }
     }
     return m;
@@ -411,188 +231,73 @@ export function useRosterActions(p: RosterProps) {
 
   const go = (d: number) => {
     const t = new Date(y, mo - 1 + d, 1);
-    startTransition(() => {
-      router.push(`/?m=${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`);
-    });
+    startTransition(() => router.push(`/?m=${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`));
   };
-
   const selectMonth = (m: string) => startTransition(() => router.push(`/?m=${m}`));
   const goToday = () => startTransition(() => router.push(`/?m=${p.today.slice(0, 7)}`));
 
-  function rollbackShiftKeys(keys: { opId: string; date: string; prev: Row | null }[]) {
-    const keySet = new Set(keys.map((k) => cellKey(k.opId, k.date)));
-    const restore = keys.map((k) => k.prev).filter((x): x is Row => Boolean(x));
-    setRows((r) => [...r.filter((x) => !keySet.has(cellKey(x.operator_id, x.schedule_date))), ...restore]);
-  }
+  const rollbackShiftKeys = (keys: { opId: string; date: string; prev: Row | null }[]) => restoreCellsInState(setRows, keys);
+  const rollbackStandbyKeys = (keys: { opId: string; date: string; prev: Standby | null }[]) => restoreCellsInState(setStandby, keys);
 
-  function rollbackStandbyKeys(keys: { opId: string; date: string; prev: Standby | null }[]) {
-    const keySet = new Set(keys.map((k) => cellKey(k.opId, k.date)));
-    const restore = keys.map((k) => k.prev).filter((x): x is Standby => Boolean(x));
-    setStandby((s) => [...s.filter((x) => !keySet.has(cellKey(x.operator_id, x.schedule_date))), ...restore]);
+  async function runDirectSave(
+    persist: () => Promise<string>,
+    cells: { opId: string; date: string }[],
+    targetTable: 'schedule_assignments' | 'standby_assignments',
+    rollback: () => void,
+  ) {
+    const errMsg = await persist();
+    if (errMsg) {
+      rollback();
+      setSaveState('error');
+      setMsg(friendlyError(errMsg, p.role));
+    } else {
+      await drafts.clearDraftOverlap(cells, targetTable);
+    }
   }
 
   async function applyHistory(entries: HistoryEntry, dir: 'undo' | 'redo') {
-    const {
-      shiftUpserts,
-      shiftDeletes,
-      shiftAffected,
-      shiftRollback,
-      sbUpserts,
-      sbDeletes,
-      sbAffected,
-      sbRollback,
-      skippedConcurrent,
-    } = computeHistoryTransition(entries, dir, cell, standbyMap);
+    const tr = computeHistoryTransition(entries, dir, cell, standbyMap);
+    if (tr.skippedConcurrent > 0) setMsg(`Skipped undo on ${tr.skippedConcurrent} cell(s) modified by another user.`);
+    if (tr.shiftAffected.size === 0 && tr.sbAffected.size === 0) return;
 
-    if (skippedConcurrent > 0) setMsg(`Skipped undo on ${skippedConcurrent} cell(s) modified by another user.`);
-    if (shiftAffected.size === 0 && sbAffected.size === 0) return;
-
-    if (shiftAffected.size > 0) {
-      setRows((r) => [...r.filter((x) => !shiftAffected.has(cellKey(x.operator_id, x.schedule_date))), ...shiftUpserts]);
+    if (tr.shiftAffected.size > 0) {
+      setRows((r) => [...r.filter((x) => !tr.shiftAffected.has(cellKey(x.operator_id, x.schedule_date))), ...tr.shiftUpserts]);
     }
-    if (sbAffected.size > 0) {
-      setStandby((s) => [...s.filter((x) => !sbAffected.has(cellKey(x.operator_id, x.schedule_date))), ...sbUpserts]);
+    if (tr.sbAffected.size > 0) {
+      setStandby((s) => [...s.filter((x) => !tr.sbAffected.has(cellKey(x.operator_id, x.schedule_date))), ...tr.sbUpserts]);
     }
 
-    const directShiftUpserts = shiftUpserts.filter((u) => !shouldProposeDate(u.schedule_date));
-    const directShiftDeletes = shiftDeletes.filter((d) => !shouldProposeDate(d.date));
-    const directShiftRollback = shiftRollback.filter((r) => !shouldProposeDate(r.date));
-
-    const directSbUpserts = sbUpserts.filter((u) => !shouldProposeDate(u.schedule_date));
-    const directSbDeletes = sbDeletes.filter((d) => !shouldProposeDate(d.date));
-    const directSbRollback = sbRollback.filter((r) => !shouldProposeDate(r.date));
-
-    const shiftTargetByKey = new Map<string, { opId: string; date: string; target: Row | null }>();
-    for (const u of shiftUpserts) {
-      shiftTargetByKey.set(cellKey(u.operator_id, u.schedule_date), { opId: u.operator_id, date: u.schedule_date, target: u });
-    }
-    for (const d of shiftDeletes) {
-      shiftTargetByKey.set(cellKey(d.opId, d.date), { opId: d.opId, date: d.date, target: null });
-    }
-
-    const sbTargetByKey = new Map<string, { opId: string; date: string; target: Standby | null }>();
-    for (const u of sbUpserts) {
-      sbTargetByKey.set(cellKey(u.operator_id, u.schedule_date), { opId: u.operator_id, date: u.schedule_date, target: u });
-    }
-    for (const d of sbDeletes) {
-      sbTargetByKey.set(cellKey(d.opId, d.date), { opId: d.opId, date: d.date, target: null });
-    }
-
-    const proposedShiftClearCells: { opId: string; date: string }[] = [];
-    const proposedSbClearCells: { opId: string; date: string }[] = [];
-    const proposedItemsToSave: ProposedChangeInput[] = [];
-    const saveShiftKeys = new Set<string>();
-    const saveSbKeys = new Set<string>();
-
-    for (const [k, item] of shiftTargetByKey) {
-      if (!shouldProposeDate(item.date)) continue;
-      const baseRow = baseRowByKey.get(k) ?? null;
-      const matchesBase =
-        (item.target?.shift_type_id ?? null) === (baseRow?.shift_type_id ?? null) &&
-        (item.target?.area_code_id ?? null) === (baseRow?.area_code_id ?? null);
-      if (matchesBase) {
-        proposedShiftClearCells.push({ opId: item.opId, date: item.date });
-      } else {
-        saveShiftKeys.add(k);
-        proposedItemsToSave.push({
-          target_table: 'schedule_assignments',
-          action: item.target ? 'upsert' : 'delete',
-          operator_id: item.opId,
-          schedule_date: item.date,
-          ...(item.target ? { shift_type_id: item.target.shift_type_id, area_code_id: item.target.area_code_id } : {}),
-          original_state: baseRow
-            ? { shift_type_id: baseRow.shift_type_id, area_code_id: baseRow.area_code_id }
-            : { shift_type_id: null, area_code_id: null },
-        });
-      }
-    }
-
-    for (const [k, item] of sbTargetByKey) {
-      if (!shouldProposeDate(item.date)) continue;
-      const baseSb = baseStandbyByKey.get(k) ?? null;
-      const matchesBase = (item.target?.standby_type ?? null) === (baseSb?.standby_type ?? null);
-      if (matchesBase) {
-        proposedSbClearCells.push({ opId: item.opId, date: item.date });
-      } else {
-        saveSbKeys.add(k);
-        proposedItemsToSave.push({
-          target_table: 'standby_assignments',
-          action: item.target ? 'upsert' : 'delete',
-          operator_id: item.opId,
-          schedule_date: item.date,
-          standby_type: item.target ? item.target.standby_type : null,
-          original_state: baseSb ? { standby_type: baseSb.standby_type } : { standby_type: null },
-        });
-      }
-    }
+    const directShiftUpserts = tr.shiftUpserts.filter((u) => !shouldProposeDate(u.schedule_date));
+    const directShiftDeletes = tr.shiftDeletes.filter((d) => !shouldProposeDate(d.date));
+    const directShiftRollback = tr.shiftRollback.filter((r) => !shouldProposeDate(r.date));
+    const directSbUpserts = tr.sbUpserts.filter((u) => !shouldProposeDate(u.schedule_date));
+    const directSbDeletes = tr.sbDeletes.filter((d) => !shouldProposeDate(d.date));
+    const directSbRollback = tr.sbRollback.filter((r) => !shouldProposeDate(r.date));
 
     setSavingCount((c) => c + 1);
     const sb = supabaseBrowser();
     try {
       if (directShiftUpserts.length > 0 || directShiftDeletes.length > 0) {
-        const shiftErr = await persistDirectShiftChanges(sb, p.orgId, directShiftUpserts, directShiftDeletes);
-        if (shiftErr) {
-          if (directShiftRollback.length > 0) rollbackShiftKeys(directShiftRollback);
-          setSaveState('error');
-          setMsg(friendlyError(shiftErr, p.role));
-        } else {
-          await clearDraftOverlap(
-            [
-              ...directShiftUpserts.map((u) => ({ opId: u.operator_id, date: u.schedule_date })),
-              ...directShiftDeletes,
-            ],
-            'schedule_assignments',
-          );
-        }
+        await runDirectSave(
+          () => persistDirectShiftChanges(sb, p.orgId, directShiftUpserts, directShiftDeletes),
+          [...directShiftUpserts.map((u) => ({ opId: u.operator_id, date: u.schedule_date })), ...directShiftDeletes],
+          'schedule_assignments',
+          () => { if (directShiftRollback.length > 0) rollbackShiftKeys(directShiftRollback); },
+        );
       }
-
       if (directSbUpserts.length > 0 || directSbDeletes.length > 0) {
-        const sbErr = await persistDirectStandbyChanges(sb, p.orgId, directSbUpserts, directSbDeletes);
-        if (sbErr) {
-          if (directSbRollback.length > 0) rollbackStandbyKeys(directSbRollback);
-          setSaveState('error');
-          setMsg(friendlyError(sbErr, p.role));
-        } else {
-          await clearDraftOverlap(
-            [
-              ...directSbUpserts.map((u) => ({ opId: u.operator_id, date: u.schedule_date })),
-              ...directSbDeletes,
-            ],
-            'standby_assignments',
-          );
-        }
+        await runDirectSave(
+          () => persistDirectStandbyChanges(sb, p.orgId, directSbUpserts, directSbDeletes),
+          [...directSbUpserts.map((u) => ({ opId: u.operator_id, date: u.schedule_date })), ...directSbDeletes],
+          'standby_assignments',
+          () => { if (directSbRollback.length > 0) rollbackStandbyKeys(directSbRollback); },
+        );
       }
-
-      if (proposedShiftClearCells.length > 0) {
-        const clearKeys = new Set(proposedShiftClearCells.map((c) => cellKey(c.opId, c.date)));
-        try {
-          await clearDraftOverlap(proposedShiftClearCells, 'schedule_assignments');
-        } catch (err: unknown) {
-          rollbackShiftKeys(shiftRollback.filter((r) => clearKeys.has(cellKey(r.opId, r.date))));
-          setSaveState('error');
-          setMsg(friendlyError(getErrorMessage(err), p.role));
-        }
-      }
-
-      if (proposedSbClearCells.length > 0) {
-        const clearKeys = new Set(proposedSbClearCells.map((c) => cellKey(c.opId, c.date)));
-        try {
-          await clearDraftOverlap(proposedSbClearCells, 'standby_assignments');
-        } catch (err: unknown) {
-          rollbackStandbyKeys(sbRollback.filter((r) => clearKeys.has(cellKey(r.opId, r.date))));
-          setSaveState('error');
-          setMsg(friendlyError(getErrorMessage(err), p.role));
-        }
-      }
-
-      if (proposedItemsToSave.length > 0) {
-        await saveDraftProposal(proposedItemsToSave, () => {
-          const shiftRb = shiftRollback.filter((r) => saveShiftKeys.has(cellKey(r.opId, r.date)));
-          const sbRb = sbRollback.filter((r) => saveSbKeys.has(cellKey(r.opId, r.date)));
-          if (shiftRb.length > 0) rollbackShiftKeys(shiftRb);
-          if (sbRb.length > 0) rollbackStandbyKeys(sbRb);
-        });
-      }
+      await drafts.syncProposedHistoryChanges({
+        shiftUpserts: tr.shiftUpserts, shiftDeletes: tr.shiftDeletes, shiftRollback: tr.shiftRollback,
+        sbUpserts: tr.sbUpserts, sbDeletes: tr.sbDeletes, sbRollback: tr.sbRollback,
+        baseRowByKey, baseStandbyByKey, rollbackShiftKeys, rollbackStandbyKeys,
+      });
     } finally {
       setSavingCount((c) => c - 1);
     }
@@ -628,13 +333,9 @@ export function useRosterActions(p: RosterProps) {
     } else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
       if (e.key >= '1' && e.key <= '9') {
         const shift = p.shifts[Number(e.key) - 1];
-        if (shift) {
-          setMode('paint');
-          handleSelectShift(shift.id);
-        }
+        if (shift) { setMode('paint'); handleSelectShift(shift.id); }
       } else if (e.key === '0') {
-        setMode('paint');
-        setAreaId(null);
+        setMode('paint'); setAreaId(null);
       } else if (e.key.toLowerCase() === 's') {
         setMode((m) => (m === 'standby' ? 'paint' : 'standby'));
       } else if (e.key.toLowerCase() === 'e') {
@@ -650,21 +351,6 @@ export function useRosterActions(p: RosterProps) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [canOperate]);
 
-  async function clearDraftOverlap(
-    cells: { opId: string; date: string }[],
-    targetTable?: 'schedule_assignments' | 'standby_assignments',
-  ) {
-    if (!draftReqId || draftItems.length === 0 || cells.length === 0) return;
-    const scoped = targetTable ? draftItems.filter((x) => x.target_table === targetTable) : draftItems;
-    if (scoped.length === 0) return;
-    const nextDraft = await clearDraftItemsForCells(supabaseBrowser(), draftReqId, scoped, cells);
-    if (nextDraft !== scoped) {
-      const kept = new Set(nextDraft.map((x) => x.id));
-      const dropped = new Set(scoped.filter((x) => !kept.has(x.id)).map((x) => x.id));
-      setDraftItems((prev) => prev.filter((x) => !dropped.has(x.id)));
-    }
-  }
-
   async function persistShiftEntries(entries: ShiftHistoryItem[]) {
     if (entries.length === 0) return;
     const directEntries = entries.filter((e) => !shouldProposeDate(e.date));
@@ -674,30 +360,16 @@ export function useRosterActions(p: RosterProps) {
       if (directEntries.length > 0) {
         const upserts = directEntries.map((e) => e.next).filter((x): x is Row => Boolean(x));
         const deletes = directEntries.filter((e) => !e.next).map((e) => ({ opId: e.opId, date: e.date }));
-        const errMsg = await persistDirectShiftChanges(supabaseBrowser(), p.orgId, upserts, deletes);
-        if (errMsg) {
-          rollbackShiftKeys(directEntries.map((e) => ({ opId: e.opId, date: e.date, prev: e.prev })));
-          setSaveState('error');
-          setMsg(friendlyError(errMsg, p.role));
-        } else {
-          await clearDraftOverlap(
-            directEntries.map((e) => ({ opId: e.opId, date: e.date })),
-            'schedule_assignments',
-          );
-        }
+        await runDirectSave(
+          () => persistDirectShiftChanges(supabaseBrowser(), p.orgId, upserts, deletes),
+          directEntries.map((e) => ({ opId: e.opId, date: e.date })),
+          'schedule_assignments',
+          () => rollbackShiftKeys(directEntries.map((e) => ({ opId: e.opId, date: e.date, prev: e.prev }))),
+        );
       }
       if (proposedEntries.length > 0) {
-        await saveDraftProposal(
-          proposedEntries.map((e) => ({
-            target_table: 'schedule_assignments',
-            action: e.next ? 'upsert' : 'delete',
-            operator_id: e.opId,
-            schedule_date: e.date,
-            ...(e.next ? { shift_type_id: e.next.shift_type_id, area_code_id: e.next.area_code_id } : {}),
-            original_state: e.prev
-              ? { shift_type_id: e.prev.shift_type_id, area_code_id: e.prev.area_code_id }
-              : { shift_type_id: null, area_code_id: null },
-          })),
+        await drafts.saveDraftProposal(
+          proposedEntries.map(buildShiftProposalInput),
           () => rollbackShiftKeys(proposedEntries.map((e) => ({ opId: e.opId, date: e.date, prev: e.prev }))),
         );
       }
@@ -707,11 +379,7 @@ export function useRosterActions(p: RosterProps) {
   }
 
   async function saveShiftCell(opId: string, date: string, nextRow: Row | null, prevCell: Row | null) {
-    if (nextRow) {
-      setRows((r) => [...r.filter((x) => !(x.operator_id === opId && x.schedule_date === date)), nextRow]);
-    } else {
-      setRows((r) => r.filter((x) => cellKey(x.operator_id, x.schedule_date) !== cellKey(opId, date)));
-    }
+    replaceCellInState(setRows, opId, date, nextRow);
     const entry: ShiftHistoryItem = { kind: 'shift', opId, date, prev: prevCell, next: nextRow };
     setUndoStack((s) => [...s.slice(-29), [entry]]);
     setRedoStack([]);
@@ -721,15 +389,9 @@ export function useRosterActions(p: RosterProps) {
   async function setStandbyValue(opId: string, date: string, nextType: string | null) {
     if (!canOperate) return;
     setMsg('');
-    const k = cellKey(opId, date);
-    const prevSb = standbyMap.get(k) ?? null;
+    const prevSb = standbyMap.get(cellKey(opId, date)) ?? null;
     const nextSb: Standby | null = nextType ? { operator_id: opId, schedule_date: date, standby_type: nextType } : null;
-
-    if (nextSb === null) {
-      setStandby((s) => s.filter((x) => cellKey(x.operator_id, x.schedule_date) !== k));
-    } else {
-      setStandby((s) => [...s.filter((x) => cellKey(x.operator_id, x.schedule_date) !== k), nextSb]);
-    }
+    replaceCellInState(setStandby, opId, date, nextSb);
     setUndoStack((s) => [...s.slice(-29), [{ kind: 'standby', opId, date, prev: prevSb, next: nextSb }]]);
     setRedoStack([]);
     setSavingCount((c) => c + 1);
@@ -737,35 +399,20 @@ export function useRosterActions(p: RosterProps) {
     const rollback = () => rollbackStandbyKeys([{ opId, date, prev: prevSb }]);
     try {
       if (shouldProposeDate(date)) {
-        await saveDraftProposal(
-          [
-            {
-              target_table: 'standby_assignments',
-              action: nextType === null ? 'delete' : 'upsert',
-              operator_id: opId,
-              schedule_date: date,
-              standby_type: nextType,
-              original_state: prevSb ? { standby_type: prevSb.standby_type } : { standby_type: null },
-            },
-          ],
-          rollback,
-        );
+        await drafts.saveDraftProposal([{
+          target_table: 'standby_assignments',
+          action: nextType === null ? 'delete' : 'upsert',
+          operator_id: opId, schedule_date: date, standby_type: nextType,
+          original_state: prevSb ? { standby_type: prevSb.standby_type } : { standby_type: null },
+        }], rollback);
         return;
       }
-
-      const errMsg = await persistDirectStandbyChanges(
-        supabaseBrowser(),
-        p.orgId,
-        nextSb ? [nextSb] : [],
-        nextSb ? [] : [{ opId, date }],
+      await runDirectSave(
+        () => persistDirectStandbyChanges(supabaseBrowser(), p.orgId, nextSb ? [nextSb] : [], nextSb ? [] : [{ opId, date }]),
+        [{ opId, date }],
+        'standby_assignments',
+        rollback,
       );
-      if (errMsg) {
-        rollback();
-        setSaveState('error');
-        setMsg(friendlyError(errMsg, p.role));
-      } else {
-        await clearDraftOverlap([{ opId, date }], 'standby_assignments');
-      }
     } finally {
       setSavingCount((c) => c - 1);
     }
@@ -782,24 +429,14 @@ export function useRosterActions(p: RosterProps) {
   async function fillRight(opId: string, fromDate: string) {
     if (!canOperate) return;
     const source = cell.get(cellKey(opId, fromDate));
-    if (!source) {
-      setMsg('Select a cell with an assignment before filling right.');
-      return;
-    }
+    if (!source) { setMsg('Select a cell with an assignment before filling right.'); return; }
     const normalizedShiftId = normalizeShiftForArea(source.shift_type_id, source.area_code_id, areaBy, offShift);
     const targets = days.filter((d) => d.date >= fromDate).map((d) => d.date);
     const upserts: Row[] = targets.map((date) => ({
-      operator_id: opId,
-      schedule_date: date,
-      shift_type_id: normalizedShiftId,
-      area_code_id: source.area_code_id,
+      operator_id: opId, schedule_date: date, shift_type_id: normalizedShiftId, area_code_id: source.area_code_id,
     }));
     const history: ShiftHistoryItem[] = upserts.map((next) => ({
-      kind: 'shift',
-      opId,
-      date: next.schedule_date,
-      prev: cell.get(cellKey(opId, next.schedule_date)) ?? null,
-      next,
+      kind: 'shift', opId, date: next.schedule_date, prev: cell.get(cellKey(opId, next.schedule_date)) ?? null, next,
     }));
     const targetSet = new Set(targets);
     setRows((r) => [...r.filter((x) => !(x.operator_id === opId && targetSet.has(x.schedule_date))), ...upserts]);
@@ -820,7 +457,7 @@ export function useRosterActions(p: RosterProps) {
       if (!prevCell) return;
       batch.entries.push({ kind: 'shift', opId, date, prev: prevCell, next: null });
       batch.deletes.push({ opId, date });
-      setRows((r) => r.filter((x) => cellKey(x.operator_id, x.schedule_date) !== k));
+      replaceCellInState(setRows, opId, date, null);
       return;
     }
 
@@ -829,23 +466,20 @@ export function useRosterActions(p: RosterProps) {
     const nextRow: Row = { operator_id: opId, schedule_date: date, shift_type_id: effShiftId, area_code_id: areaId };
     batch.entries.push({ kind: 'shift', opId, date, prev: prevCell, next: nextRow });
     batch.upserts.push(nextRow);
-    setRows((r) => [...r.filter((x) => !(x.operator_id === opId && x.schedule_date === date)), nextRow]);
+    replaceCellInState(setRows, opId, date, nextRow);
   }
 
   async function commitDragBatch() {
     const batch = dragRef.current;
     dragRef.current = null;
     if (!batch || batch.entries.length === 0) return;
-
     setUndoStack((s) => [...s.slice(-29), batch.entries]);
     setRedoStack([]);
     await persistShiftEntries(batch.entries);
   }
 
   const pointerUpRef = useRef<() => void>(() => {});
-  pointerUpRef.current = () => {
-    if (dragRef.current?.active) void commitDragBatch();
-  };
+  pointerUpRef.current = () => { if (dragRef.current?.active) void commitDragBatch(); };
 
   useEffect(() => {
     const onPointerUp = () => pointerUpRef.current();
@@ -861,10 +495,7 @@ export function useRosterActions(p: RosterProps) {
       await setStandbyValue(opId, date, existing?.standby_type === standbyType ? null : standbyType);
       return;
     }
-    if (mode === 'erase') {
-      await clearCell(opId, date);
-      return;
-    }
+    if (mode === 'erase') { await clearCell(opId, date); return; }
     const effShiftId = normalizeShiftForArea(shiftId, areaId, areaBy, offShift);
     if (!effShiftId && !areaId) return;
     const prevCell = cell.get(cellKey(opId, date)) ?? null;
@@ -873,24 +504,22 @@ export function useRosterActions(p: RosterProps) {
 
   function copyCell(opId: string, date: string) {
     const existing = cell.get(cellKey(opId, date));
-    setClipboard(existing ? { shift_type_id: existing.shift_type_id, area_code_id: existing.area_code_id } : { shift_type_id: null, area_code_id: null });
+    setClipboard(
+      existing ? { shift_type_id: existing.shift_type_id, area_code_id: existing.area_code_id } : { shift_type_id: null, area_code_id: null },
+    );
   }
 
   function pasteCell(opId: string, date: string) {
     if (!clipboard || !canOperate) return;
     const effShiftId = normalizeShiftForArea(clipboard.shift_type_id, clipboard.area_code_id, areaBy, offShift);
-    if (!effShiftId && !clipboard.area_code_id) {
-      void clearCell(opId, date);
-      return;
-    }
+    if (!effShiftId && !clipboard.area_code_id) { void clearCell(opId, date); return; }
     const prevCell = cell.get(cellKey(opId, date)) ?? null;
     void saveShiftCell(opId, date, { operator_id: opId, schedule_date: date, shift_type_id: effShiftId, area_code_id: clipboard.area_code_id }, prevCell);
   }
 
   function exportCsv() {
     const csv = buildRosterCsv({ days, operators: filteredOperators, cell, shiftBy, areaBy, standbyMap });
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a');
     a.href = url;
     a.download = `bpwi-roster-${p.month}.csv`;
@@ -904,12 +533,7 @@ export function useRosterActions(p: RosterProps) {
     setImporting(true);
     setImportStatus('');
     try {
-      const text = await file.text();
-      const res = await fetch('/api/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: text,
-      });
+      const res = await fetch('/api/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: await file.text() });
       const json = await res.json();
       if (!res.ok) {
         setImportStatus(`Error: ${json.error ?? res.statusText}`);
@@ -927,25 +551,21 @@ export function useRosterActions(p: RosterProps) {
   }
 
   const dailyWorkingCounts = useMemo(
-    () =>
-      days.map((d) => {
-        let count = 0;
-        for (const o of filteredOperators) {
-          const r = cell.get(cellKey(o.id, d.date));
-          const s = r?.shift_type_id ? shiftBy.get(r.shift_type_id) : undefined;
-          const a = r?.area_code_id ? areaBy.get(r.area_code_id) : undefined;
-          if (s && !s.is_off && !isOffPartnerArea(a)) count += 1;
-        }
-        return count;
-      }),
+    () => days.map((d) => {
+      let count = 0;
+      for (const o of filteredOperators) {
+        const r = cell.get(cellKey(o.id, d.date));
+        const s = r?.shift_type_id ? shiftBy.get(r.shift_type_id) : undefined;
+        const a = r?.area_code_id ? areaBy.get(r.area_code_id) : undefined;
+        if (s && !s.is_off && !isOffPartnerArea(a)) count += 1;
+      }
+      return count;
+    }),
     [areaBy, cell, days, filteredOperators, shiftBy],
   );
 
   const todayCoverage = useMemo(() => {
-    let duty = 0;
-    let sb = 0;
-    let off = 0;
-    let leave = 0;
+    let duty = 0, sb = 0, off = 0, leave = 0;
     for (const o of p.operators) {
       const k = cellKey(o.id, p.today);
       const r = cell.get(k);
@@ -961,84 +581,27 @@ export function useRosterActions(p: RosterProps) {
 
   const selectedShift = shiftId ? shiftBy.get(shiftId) : undefined;
   const selectedArea = areaId ? areaBy.get(areaId) : undefined;
-  const brushLabel =
-    mode === 'erase'
-      ? 'Clear Cell'
-      : mode === 'standby'
-        ? `Standby (${standbyType})`
-        : `${selectedShift?.code ?? '—'} + ${selectedArea?.code ?? (selectedShift?.is_off ? 'none' : DEFAULT_STATION_CODE)}`;
+  const brushLabel = mode === 'erase' ? 'Clear Cell'
+    : mode === 'standby' ? `Standby (${standbyType})`
+    : `${selectedShift?.code ?? '—'} + ${selectedArea?.code ?? (selectedShift?.is_off ? 'none' : DEFAULT_STATION_CODE)}`;
 
   return {
-    hasActiveEdit,
-    isPropose,
-    canOperate,
-    holidayByDate,
-    draftItems,
-    proposedDraftItems,
-    submitModalOpen,
-    setSubmitModalOpen,
-    submitNote,
-    setSubmitNote,
-    isSubmittingDraft,
-    pendingMap,
-    onlyMe,
-    setOnlyMe,
-    mode,
-    setMode,
-    standbyType,
-    setStandbyType,
-    shiftId,
-    areaId,
-    search,
-    setSearch,
-    isPending,
-    saveState,
-    msg,
-    showHint,
-    setShowHint,
-    mobileToolsOpen,
-    setMobileToolsOpen,
-    confirmFill,
-    setConfirmFill,
-    importOpen,
-    setImportOpen,
-    importing,
-    importStatus,
-    setImportStatus,
-    ctxMenu,
-    setCtxMenu,
-    canUndo: undoStack.length > 0,
-    canRedo: redoStack.length > 0,
-    dragRef,
-    monthLabel,
-    days,
-    cell,
-    standbyMap,
-    shiftBy,
-    areaBy,
-    pmByCell,
-    hasLinkedOp,
-    filteredOperators,
-    dailyWorkingCounts,
-    todayCoverage,
-    brushLabel,
-    go,
-    selectMonth,
-    goToday,
-    handleSelectShift,
-    handleSelectArea,
-    handleUndo,
-    handleRedo,
-    applyBrushLocal,
-    activateCell,
-    clearCell,
-    setStandbyValue,
-    fillRight,
-    copyCell,
-    pasteCell,
-    exportCsv,
-    handleImportFile,
-    submitDraftBatch,
-    discardDraftBatch,
+    hasActiveEdit, isPropose, canOperate, holidayByDate,
+    draftItems: drafts.draftItems, proposedDraftItems: drafts.proposedDraftItems,
+    submitModalOpen: drafts.submitModalOpen, setSubmitModalOpen: drafts.setSubmitModalOpen,
+    submitNote: drafts.submitNote, setSubmitNote: drafts.setSubmitNote,
+    isSubmittingDraft: drafts.isSubmittingDraft,
+    pendingMap, onlyMe, setOnlyMe, mode, setMode, standbyType, setStandbyType,
+    shiftId, areaId, search, setSearch, isPending, saveState, msg,
+    showHint, setShowHint, mobileToolsOpen, setMobileToolsOpen,
+    confirmFill, setConfirmFill, importOpen, setImportOpen, importing, importStatus, setImportStatus,
+    ctxMenu, setCtxMenu, canUndo: undoStack.length > 0, canRedo: redoStack.length > 0,
+    dragRef, monthLabel, days, cell, standbyMap, shiftBy, areaBy, pmByCell,
+    hasLinkedOp, filteredOperators, dailyWorkingCounts, todayCoverage, brushLabel,
+    go, selectMonth, goToday, handleSelectShift, handleSelectArea, handleUndo, handleRedo,
+    applyBrushLocal, activateCell, clearCell, setStandbyValue, fillRight, copyCell, pasteCell,
+    exportCsv, handleImportFile,
+    submitDraftBatch: drafts.submitDraftBatch,
+    discardDraftBatch: drafts.discardDraftBatch,
   };
 }

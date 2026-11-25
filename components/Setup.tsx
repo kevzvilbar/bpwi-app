@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import type { Database } from '@/lib/supabase/database.types';
 import { getSetupSaveLabel, SETUP_CELL_STYLE, SETUP_INPUT_STYLE } from '@/lib/setup-constants';
 import type { GensetRow } from '@/lib/gensets';
 import { buildSavedLocationCatalog, type PmLocationRow } from '@/lib/pm-locations';
@@ -168,9 +169,30 @@ export default function Setup(p: {
     setSavedKey('');
     const { id, ...rest } = row;
     const sb = supabaseBrowser();
-    const res = id
-      ? await sb.from(table).update(rest as Record<string, unknown>).eq('id', id).select().single()
-      : await sb.from(table).insert({ ...rest, organization_id: p.orgId } as Record<string, unknown>).select().single();
+    type Tables = Database['public']['Tables'];
+    const runSave = async (): Promise<{ data: unknown; error: { message: string } | null }> => {
+      switch (table) {
+        case 'operators':
+          return id
+            ? sb.from('operators').update(rest as Tables['operators']['Update']).eq('id', id).select().single()
+            : sb.from('operators').insert({ ...(rest as unknown as Omit<Tables['operators']['Insert'], 'organization_id'>), organization_id: p.orgId }).select().single();
+        case 'shift_types':
+          return id
+            ? sb.from('shift_types').update(rest as Tables['shift_types']['Update']).eq('id', id).select().single()
+            : sb.from('shift_types').insert({ ...(rest as unknown as Omit<Tables['shift_types']['Insert'], 'organization_id'>), organization_id: p.orgId }).select().single();
+        case 'area_codes':
+          return id
+            ? sb.from('area_codes').update(rest as Tables['area_codes']['Update']).eq('id', id).select().single()
+            : sb.from('area_codes').insert({ ...(rest as unknown as Omit<Tables['area_codes']['Insert'], 'organization_id'>), organization_id: p.orgId }).select().single();
+        case 'user_profiles':
+          return id
+            ? sb.from('user_profiles').update(rest as Tables['user_profiles']['Update']).eq('id', id).select().single()
+            : { data: null, error: { message: 'User profile id is required for updates.' } };
+        default:
+          return { data: null, error: { message: `Unsupported setup table: ${table}` } };
+      }
+    };
+    const res = await runSave();
 
     setBusy('');
     if (res.error) {
@@ -193,7 +215,12 @@ export default function Setup(p: {
     if (!confirmDel) return;
     const { table, id, idx } = confirmDel;
     setConfirmDel(null);
-    const { error } = await supabaseBrowser().from(table).delete().eq('id', id);
+    const sb = supabaseBrowser();
+    let error: { message: string } | null = null;
+    if (table === 'operators') ({ error } = await sb.from('operators').delete().eq('id', id));
+    else if (table === 'shift_types') ({ error } = await sb.from('shift_types').delete().eq('id', id));
+    else if (table === 'area_codes') ({ error } = await sb.from('area_codes').delete().eq('id', id));
+    else error = { message: `Unsupported delete table: ${table}` };
     if (error) {
       setMsg(error.message.includes('foreign key') ? 'Cannot delete: it is still used in the schedule.' : error.message);
       return;

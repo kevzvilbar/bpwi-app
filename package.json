@@ -10,7 +10,8 @@
     "lint": "eslint app components lib middleware.ts --ext .ts,.tsx",
     "test": "node scripts/run-tests.mjs",
     "test:ui": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "db:types": "npx supabase gen types typescript --linked > lib/supabase/database.types.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

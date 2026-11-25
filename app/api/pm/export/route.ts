@@ -32,6 +32,10 @@ export async function GET(req: NextRequest) {
 
   const typeFilter = (sp.get('type') ?? '').trim();
   const statusFilter = (sp.get('status') ?? '').trim();
+  const validStatuses = new Set<'planned' | 'done' | 'postponed'>(['planned', 'done', 'postponed']);
+  const typedStatusFilter = validStatuses.has(statusFilter as 'planned' | 'done' | 'postponed')
+    ? (statusFilter as 'planned' | 'done' | 'postponed')
+    : null;
   const areaFilter = (sp.get('area') ?? '').trim();
   const rawLabel = (sp.get('label') ?? `${from}_to_${to}`).replace(/[^a-zA-Z0-9_-]/g, '-');
 
@@ -59,7 +63,8 @@ export async function GET(req: NextRequest) {
           );
       q = q.gte('scheduled_date', from).lte('scheduled_date', to).order('scheduled_date', { ascending: true }).range(start, end);
       if (typeFilter) q = q.eq('activity_type', typeFilter);
-      if (statusFilter) q = q.eq('status', statusFilter);
+      if (typedStatusFilter) q = q.eq('status', typedStatusFilter);
+      else if (statusFilter) return { data: [], error: null };
       const { data, error } = await q;
       return { data: data as PmExportRow[] | null, error };
     });

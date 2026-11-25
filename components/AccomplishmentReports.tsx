@@ -290,8 +290,10 @@ export default function AccomplishmentReports(p: Props) {
       ...(targetStatus === 'submitted' ? { submitted_at: new Date().toISOString() } : {}),
     };
 
+    const expectedUpdatedAt = editingId ? (existingForDate?.updated_at ?? null) : null;
+
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      await enqueueOfflineReport(editingId, payload, p.userId);
+      await enqueueOfflineReport(editingId, payload, p.userId, { expectedUpdatedAt });
       setBusy(false);
       setMsg({
         kind: 'ok',
@@ -309,7 +311,7 @@ export default function AccomplishmentReports(p: Props) {
       if (res.error || !res.data) {
         const errText = res.error?.message ?? 'Failed to save report.';
         if (/fetch|network|failed to load/i.test(errText)) {
-          await enqueueOfflineReport(editingId, payload, p.userId);
+          await enqueueOfflineReport(editingId, payload, p.userId, { expectedUpdatedAt });
           setMsg({
             kind: 'ok',
             text: 'Weak signal — report saved offline and will auto-sync when connection returns.',
@@ -335,7 +337,7 @@ export default function AccomplishmentReports(p: Props) {
     } catch (err: unknown) {
       const errText = getErrorMessage(err, 'Failed to save report.');
       if (!navigator.onLine || /fetch|network|failed to load/i.test(errText)) {
-        await enqueueOfflineReport(editingId, payload, p.userId);
+        await enqueueOfflineReport(editingId, payload, p.userId, { expectedUpdatedAt });
         setBusy(false);
         setMsg({
           kind: 'ok',
@@ -354,7 +356,7 @@ export default function AccomplishmentReports(p: Props) {
     const patch =
       nextStatus === 'checked'
         ? {
-            status: 'checked',
+            status: 'checked' as const,
             checked_by: p.userId,
             checked_by_name: p.userName,
             checked_by_title: p.userJobTitle || 'Project Head/Technical Head',
@@ -362,7 +364,7 @@ export default function AccomplishmentReports(p: Props) {
             head_remarks: headRemarksInput.trim() || null,
           }
         : {
-            status: 'returned',
+            status: 'returned' as const,
             head_remarks: headRemarksInput.trim() || 'Please review and update entries.',
           };
 

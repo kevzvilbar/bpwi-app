@@ -15,7 +15,12 @@ type Err = { code?: string; message: string } | null;
 function fakeSb(opts: { insertFailsOnce?: boolean; pmError?: boolean; updateError?: boolean } = {}) {
   const rows = new Map<string, Record<string, unknown>>();
   const pm: Record<string, unknown>[] = [];
-  const updates: Array<{ table: string; id: string | undefined; patch: Record<string, unknown> }> = [];
+  const updates: Array<{
+    table: string;
+    id: string | undefined;
+    patch: Record<string, unknown>;
+    eqFilters: Array<{ column: string; value: string | undefined }>;
+  }> = [];
   let insertCalls = 0;
   let failNext = Boolean(opts.insertFailsOnce);
   const sb = {
@@ -47,25 +52,37 @@ function fakeSb(opts: { insertFailsOnce?: boolean; pmError?: boolean; updateErro
           }),
         }),
         update(patch: Record<string, unknown>) {
-          return {
-            eq: (_c: string, id?: string) => ({
-              neq: async () => {
-                pm.push({ table, patch });
-                return { error: opts.pmError ? ({ message: 'pm failed' } as Err) : null };
-              },
-              select: () => ({
-                single: async () => {
-                  updates.push({ table, id, patch });
-                  if (opts.updateError) {
-                    return { data: null, error: { message: 'update denied' } as Err };
-                  }
-                  const updated = { ...(rows.get(id ?? '') ?? {}), ...patch, id };
-                  if (id) rows.set(id, updated);
-                  return { data: updated, error: null as Err };
-                },
-              }),
-            }),
+          const eqFilters: Array<{ column: string; value: string | undefined }> = [];
+          const runSelect = () => {
+            const execute = async () => {
+              const id = eqFilters.find((f) => f.column === 'id')?.value;
+              const expectedUpdatedAt = eqFilters.find((f) => f.column === 'updated_at')?.value;
+              updates.push({ table, id, patch, eqFilters: [...eqFilters] });
+              if (opts.updateError) {
+                return { data: null, error: { message: 'update denied' } as Err };
+              }
+              const existing = id ? rows.get(id) : undefined;
+              if (expectedUpdatedAt !== undefined && existing?.updated_at !== expectedUpdatedAt) {
+                return { data: null, error: null as Err };
+              }
+              const updated = { ...(existing ?? {}), ...patch, id };
+              if (id) rows.set(id, updated);
+              return { data: updated, error: null as Err };
+            };
+            return { single: execute, maybeSingle: execute };
           };
+          const builder = {
+            eq(column: string, value?: string) {
+              eqFilters.push({ column, value });
+              return builder;
+            },
+            neq: async () => {
+              pm.push({ table, patch });
+              return { error: opts.pmError ? ({ message: 'pm failed' } as Err) : null };
+            },
+            select: runSelect,
+          };
+          return builder;
         },
       };
     },
@@ -174,6 +191,59 @@ describe('offline activity sync is idempotent', () => {
     await assert.rejects(() => syncQueuedActivity(failSb.sb, 'q-edit-2', p, okUpload, 'act-existing-1'), /update denied/);
   });
 
+  it('enforces optimistic concurrency on activity edits when expectedUpdatedAt is provided', async () => {
+    const f = fakeSb();
+    f.rows.set('act-oc-1', {
+      id: 'act-oc-1',
+      organization_id: 'org1',
+      logged_by: 'user-1',
+      notes: 'before',
+      updated_at: '2026-11-25T08:00:00Z',
+    });
+
+    const updated = await syncQueuedActivity(
+      f.sb,
+      'q-oc-1',
+      { ...payload(), notes: 'offline edit' },
+      okUpload,
+      'act-oc-1',
+      '2026-11-25T08:00:00Z',
+    );
+    assert.equal(updated.notes, 'offline edit');
+    assert.deepEqual(f.updates[0].eqFilters, [
+      { column: 'id', value: 'act-oc-1' },
+      { column: 'updated_at', value: '2026-11-25T08:00:00Z' },
+    ]);
+
+    const conflictSb = fakeSb();
+    conflictSb.rows.set('act-oc-2', {
+      id: 'act-oc-2',
+      organization_id: 'org1',
+      logged_by: 'user-1',
+      notes: 'newer server version',
+      updated_at: '2026-11-25T09:00:00Z',
+    });
+    await assert.rejects(
+      () =>
+        syncQueuedActivity(
+          conflictSb.sb,
+          'q-oc-2',
+          { ...payload(), notes: 'stale offline edit' },
+          okUpload,
+          'act-oc-2',
+          '2026-11-25T08:00:00Z',
+        ),
+      /Conflict: this record was updated by someone else while you were offline/,
+    );
+    assert.equal(conflictSb.rows.get('act-oc-2')?.notes, 'newer server version');
+
+    const errSb = fakeSb({ updateError: true });
+    await assert.rejects(
+      () => syncQueuedActivity(errSb.sb, 'q-oc-3', payload(), okUpload, 'act-oc-2', '2026-11-25T08:00:00Z'),
+      /update denied/,
+    );
+  });
+
   it('strips tat_justification from daily_activities insert and forwards it to job_orders', async () => {
     const f = fakeSb();
     const p = {
@@ -222,6 +292,42 @@ describe('offline accomplishment report sync is idempotent', () => {
 
     const failSb = fakeSb({ updateError: true });
     await assert.rejects(() => syncQueuedReport(failSb.sb, 'rep-existing-1', reportPayload()), /update denied/);
+  });
+
+  it('enforces optimistic concurrency on report edits when expectedUpdatedAt is provided', async () => {
+    const f = fakeSb();
+    f.rows.set('rep-oc-1', {
+      id: 'rep-oc-1',
+      organization_id: 'org1',
+      status: 'draft',
+      updated_at: '2026-11-25T08:00:00Z',
+    });
+
+    const updated = await syncQueuedReport(f.sb, 'rep-oc-1', reportPayload(), '2026-11-25T08:00:00Z');
+    assert.equal(updated.status, 'submitted');
+    assert.deepEqual(f.updates[0].eqFilters, [
+      { column: 'id', value: 'rep-oc-1' },
+      { column: 'updated_at', value: '2026-11-25T08:00:00Z' },
+    ]);
+
+    const conflictSb = fakeSb();
+    conflictSb.rows.set('rep-oc-2', {
+      id: 'rep-oc-2',
+      organization_id: 'org1',
+      status: 'checked',
+      updated_at: '2026-11-25T09:00:00Z',
+    });
+    await assert.rejects(
+      () => syncQueuedReport(conflictSb.sb, 'rep-oc-2', reportPayload(), '2026-11-25T08:00:00Z'),
+      /Conflict: this record was updated by someone else while you were offline/,
+    );
+    assert.equal(conflictSb.rows.get('rep-oc-2')?.status, 'checked');
+
+    const errSb = fakeSb({ updateError: true });
+    await assert.rejects(
+      () => syncQueuedReport(errSb.sb, 'rep-oc-2', reportPayload(), '2026-11-25T08:00:00Z'),
+      /update denied/,
+    );
   });
 });
 

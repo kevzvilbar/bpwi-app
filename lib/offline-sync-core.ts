@@ -91,6 +91,38 @@ export function describeQueuedReport(payload: Row, editingId: string | null): { 
   };
 }
 
+const CONFLICT_ERROR_MESSAGE =
+  'Conflict: this record was updated by someone else while you were offline. Refresh to review the latest version or discard this queued edit.';
+
+async function updateWithOptimisticConcurrency(
+  sb: SupabaseClient,
+  table: 'daily_activities' | 'accomplishment_reports',
+  targetEditId: string,
+  patch: Row,
+  expectedUpdatedAt: string | null | undefined,
+  fallbackErrorMsg: string,
+): Promise<Row> {
+  const expectedTs =
+    typeof expectedUpdatedAt === 'string' && expectedUpdatedAt.trim() ? expectedUpdatedAt.trim() : null;
+  let query = sb.from(table).update(patch).eq('id', targetEditId);
+  if (expectedTs) {
+    query = query.eq('updated_at', expectedTs);
+    const upd = await query.select('*').maybeSingle();
+    if (upd.error) {
+      throw new Error(upd.error.message);
+    }
+    if (!upd.data) {
+      throw new Error(CONFLICT_ERROR_MESSAGE);
+    }
+    return upd.data as Row;
+  }
+  const upd = await query.select('*').single();
+  if (upd.error || !upd.data) {
+    throw new Error(upd.error?.message || fallbackErrorMsg);
+  }
+  return upd.data as Row;
+}
+
 /**
  * Pushes one queued field activity to the server so that retrying after ANY partial failure is safe:
  *  - the row carries a client-generated id, so a retry after a lost response hits the primary key
@@ -107,6 +139,7 @@ export async function syncQueuedActivity(
   payload: Row,
   upload: PhotoUploader,
   editingId?: string | null,
+  expectedUpdatedAt?: string | null,
 ): Promise<Row> {
   const body: Row = { ...payload };
   const tatJustification = typeof body.tat_justification === 'string' ? body.tat_justification.trim() || null : null;
@@ -145,11 +178,14 @@ export async function syncQueuedActivity(
       job_order_id: _dropJobOrderId,
       ...patch
     } = body;
-    const upd = await sb.from('daily_activities').update(patch).eq('id', targetEditId).select('*').single();
-    if (upd.error || !upd.data) {
-      throw new Error(upd.error?.message || 'Activity update failed');
-    }
-    return upd.data as Row;
+    return updateWithOptimisticConcurrency(
+      sb,
+      'daily_activities',
+      targetEditId,
+      patch,
+      expectedUpdatedAt,
+      'Activity update failed',
+    );
   }
 
   if (typeof body.id !== 'string' || !body.id) body.id = newClientId();
@@ -222,14 +258,19 @@ export async function syncQueuedReport(
   sb: SupabaseClient,
   editingId: string | null,
   payload: Row,
+  expectedUpdatedAt?: string | null,
 ): Promise<Row> {
-  if (editingId) {
+  const targetEditId = typeof editingId === 'string' && editingId.trim() ? editingId.trim() : null;
+  if (targetEditId) {
     const { id: _dropId, ...patch } = payload;
-    const upd = await sb.from('accomplishment_reports').update(patch).eq('id', editingId).select('*').single();
-    if (upd.error || !upd.data) {
-      throw new Error(upd.error?.message || 'Report update failed');
-    }
-    return upd.data as Row;
+    return updateWithOptimisticConcurrency(
+      sb,
+      'accomplishment_reports',
+      targetEditId,
+      patch,
+      expectedUpdatedAt,
+      'Report update failed',
+    );
   }
 
   const body: Row = { ...payload };

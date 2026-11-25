@@ -18,7 +18,6 @@ import {
 } from '@/lib/well-pullout-types';
 import {
   REPORT_ACCENT,
-  REPORT_BORDER_HEAVY,
   REPORT_BORDER_LIGHT,
   ReportLetterhead,
   ReportSignatureGrid,
@@ -35,7 +34,6 @@ interface TankCleaningReportSheetProps {
 }
 
 const B = REPORT_BORDER_LIGHT;
-const THICK_B = REPORT_BORDER_HEAVY;
 const ACCENT = REPORT_ACCENT;
 
 const SEC_TITLE: React.CSSProperties = {

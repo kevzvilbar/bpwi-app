@@ -352,6 +352,9 @@ function LoginForm() {
             </p>
           )}
         </form>
+        <p style={{ marginTop: 14, fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.45, marginBottom: 0 }}>
+          Internal BP Waterworks, Inc. operations platform. Account details, shift/activity logs, and optional field GPS check-ins are processed for utility dispatch and audit under the Data Privacy Act (RA 10173). Field photos expire after 30 days.
+        </p>
       </div>
     </div>
   );

@@ -54,25 +54,15 @@ export async function GET(req: Request) {
     let actRow = primaryAct;
     if (!actRow) {
       const legacyProxyUrl = `/api/activities/photo?path=${storagePath}`;
-      const { data: legacyAct } = await me
-        .from('daily_activities')
-        .select('id, is_sample')
-        .contains('photo_urls', [legacyProxyUrl])
-        .limit(1)
-        .maybeSingle();
-      actRow = legacyAct;
-    }
-    if (!actRow) {
       const encodedProxyUrl = `/api/activities/photo?path=${encodeURIComponent(storagePath)}`;
-      if (encodedProxyUrl !== `/api/activities/photo?path=${storagePath}`) {
-        const { data: encodedLegacyAct } = await me
-          .from('daily_activities')
-          .select('id, is_sample')
-          .contains('photo_urls', [encodedProxyUrl])
-          .limit(1)
-          .maybeSingle();
-        actRow = encodedLegacyAct;
-      }
+      const legacyCandidates = Array.from(new Set([legacyProxyUrl, encodedProxyUrl]));
+      const baseQuery = me.from('daily_activities').select('id, is_sample');
+      const filteredQuery =
+        legacyCandidates.length === 1
+          ? baseQuery.contains('photo_urls', legacyCandidates)
+          : baseQuery.overlaps('photo_urls', legacyCandidates);
+      const { data: legacyAct } = await filteredQuery.limit(1).maybeSingle();
+      actRow = legacyAct;
     }
 
     if (!actRow) {

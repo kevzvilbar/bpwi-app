@@ -30,7 +30,7 @@ interface PmDayInspectorProps {
 }
 
 export default function PmDayInspector({
-  selectedDate,
+  selectedDate: _selectedDate,
   heading,
   dayRel,
   holiday,

@@ -285,7 +285,7 @@ describe('ActivityLoggerModal', () => {
         activity_date: '2026-04-10',
         is_sample: false,
       }),
-      { editingId: null },
+      { editingId: null, expectedUpdatedAt: null },
     );
     expect(activityInsertSingleMock).not.toHaveBeenCalled();
     expect(onSaved).toHaveBeenCalledWith(
@@ -397,7 +397,7 @@ describe('ActivityLoggerModal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('passes editingId when queuing an edited activity offline', async () => {
+  it('passes editingId and expectedUpdatedAt when queuing an edited activity offline', async () => {
     const user = userEvent.setup();
     const onQueuedOffline = vi.fn();
     const onSaved = vi.fn();
@@ -423,7 +423,7 @@ describe('ActivityLoggerModal', () => {
         areas={AREAS}
         shifts={SHIFTS}
         assignments={ASSIGNMENTS}
-        editingActivity={makeSavedRow({ id: 'act-edit-99', status: 'flagged' })}
+        editingActivity={makeSavedRow({ id: 'act-edit-99', status: 'flagged', updated_at: '2026-04-10T09:15:30.123Z' })}
         sampleOnly={false}
       />,
     );
@@ -435,7 +435,7 @@ describe('ActivityLoggerModal', () => {
     });
     expect(onQueuedOffline).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'submitted' }),
-      { editingId: 'act-edit-99' },
+      { editingId: 'act-edit-99', expectedUpdatedAt: '2026-04-10T09:15:30.123Z' },
     );
     expect(onClose).toHaveBeenCalledTimes(1);
   });

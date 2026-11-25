@@ -75,7 +75,10 @@ export type ActivityLoggerModalProps = {
   editingActivity?: DailyActivityRow | null;
   canLogSample?: boolean;
   sampleOnly?: boolean;
-  onQueuedOffline?: (payload: ActivitySubmitPayload, opts?: { editingId?: string | null }) => Promise<void> | void;
+  onQueuedOffline?: (
+    payload: ActivitySubmitPayload,
+    opts?: { editingId?: string | null; expectedUpdatedAt?: string | null },
+  ) => Promise<void> | void;
 };
 
 function toManilaHHMM(iso: string | null) {
@@ -547,7 +550,10 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
         : {}),
       ...(p.linkedJobOrder?.id && trimmedTat ? { tat_justification: trimmedTat } : {}),
     };
-    const queueOpts = { editingId: p.editingActivity?.id ?? null };
+    const queueOpts = {
+      editingId: p.editingActivity?.id ?? null,
+      expectedUpdatedAt: p.editingActivity?.updated_at ?? null,
+    };
 
     const buildOfflineActivityRow = (): DailyActivityRow => ({
       id: `offline-${Date.now()}`,
@@ -573,8 +579,9 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
 
     try {
       const sb = supabaseBrowser();
+      const { tat_justification: _omitTat, ...dbInsertPayload } = payload;
       if (p.editingActivity?.id) {
-        const updatePayload: Partial<ActivitySubmitPayload> = {
+        const updatePayload: Omit<Partial<ActivitySubmitPayload>, 'tat_justification'> = {
           lead_operator_id: payload.lead_operator_id,
           crew_operator_ids: payload.crew_operator_ids,
           shift_type_id: payload.shift_type_id,
@@ -611,7 +618,7 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
         return;
       }
 
-      const { data, error } = await sb.from('daily_activities').insert(payload).select(DAILY_ACTIVITY_LIST_COLUMNS).single();
+      const { data, error } = await sb.from('daily_activities').insert(dbInsertPayload).select(DAILY_ACTIVITY_LIST_COLUMNS).single();
       if (error) throw error;
 
       const pmPerformers =
@@ -620,7 +627,11 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
           : undefined;
       let pmErrMsg: string | null = null;
       if (!effectiveIsSample && p.linkedPmTask?.id) {
-        const pmBase = { status: 'done', completed_at: p.date, remarks: notes.trim() || `Logged via field activity (${activityType})` };
+        const pmBase = {
+          status: 'done' as const,
+          completed_at: p.date,
+          remarks: notes.trim() || `Logged via field activity (${activityType})`,
+        };
         let pmRes = await sb.from('pm_tasks').update({ ...pmBase, completed_by_operator_ids: pmPerformers }).eq('id', p.linkedPmTask.id);
         if (isMissingCompletedByColumnError(pmRes.error)) {
           pmRes = await sb.from('pm_tasks').update(pmBase).eq('id', p.linkedPmTask.id);

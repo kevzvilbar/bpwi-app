@@ -9,6 +9,11 @@ const DB_VERSION = 2;
 const STORE_NAME = 'pending_activities';
 const REPORT_STORE_NAME = 'pending_reports';
 
+export type EnqueueOfflineOptions = {
+  editingId?: string | null;
+  expectedUpdatedAt?: string | null;
+};
+
 export type PendingOfflineActivity = {
   queueId: string;
   queuedAt: string;
@@ -17,6 +22,7 @@ export type PendingOfflineActivity = {
   lastError?: string | null;
   lastAttemptAt?: string | null;
   editingId?: string | null;
+  expectedUpdatedAt?: string | null;
   payload: Record<string, unknown>;
 };
 
@@ -28,6 +34,7 @@ export type PendingOfflineReport = {
   lastError?: string | null;
   lastAttemptAt?: string | null;
   editingId: string | null;
+  expectedUpdatedAt?: string | null;
   payload: Record<string, unknown>;
 };
 
@@ -83,7 +90,7 @@ async function putRecord<T>(storeName: string, value: T): Promise<void> {
 export async function enqueueOfflineActivity(
   payload: Record<string, unknown>,
   ownerUserId?: string | null,
-  opts?: { editingId?: string | null },
+  opts?: EnqueueOfflineOptions,
 ): Promise<PendingOfflineActivity> {
   const resolvedOwner =
     ownerUserId ?? (typeof payload.logged_by === 'string' && payload.logged_by ? payload.logged_by : null);
@@ -99,6 +106,7 @@ export async function enqueueOfflineActivity(
     lastError: null,
     lastAttemptAt: null,
     editingId,
+    expectedUpdatedAt: opts?.expectedUpdatedAt ?? null,
     // Client-generated primary key makes a retried insert sync idempotent (see offline-sync-core.ts)
     payload: nextPayload,
   };
@@ -166,6 +174,7 @@ export async function retrySingleOfflineActivity(
       item.payload,
       uploadDataUrlPhoto,
       item.editingId ?? null,
+      item.expectedUpdatedAt ?? null,
     )) as unknown as DailyActivityRow;
     await removeOfflineItem(item.queueId);
     notifyActivitySynced([row]);
@@ -222,6 +231,7 @@ export async function enqueueOfflineReport(
   editingId: string | null,
   payload: Record<string, unknown>,
   ownerUserId?: string | null,
+  opts?: { expectedUpdatedAt?: string | null },
 ): Promise<PendingOfflineReport> {
   const resolvedOwner =
     ownerUserId ?? (typeof payload.submitted_by === 'string' && payload.submitted_by ? payload.submitted_by : null);
@@ -236,6 +246,7 @@ export async function enqueueOfflineReport(
     lastError: null,
     lastAttemptAt: null,
     editingId,
+    expectedUpdatedAt: opts?.expectedUpdatedAt ?? null,
     payload: nextPayload,
   };
   await putRecord(REPORT_STORE_NAME, item);
@@ -296,7 +307,7 @@ export async function retrySingleOfflineReport(
   item: PendingOfflineReport,
 ): Promise<{ ok: boolean; error: string | null }> {
   try {
-    await syncQueuedReport(sb, item.editingId, item.payload);
+    await syncQueuedReport(sb, item.editingId, item.payload, item.expectedUpdatedAt ?? null);
     await removeOfflineReport(item.queueId);
     return { ok: true, error: null };
   } catch (err: unknown) {

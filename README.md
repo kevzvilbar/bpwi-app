@@ -6,7 +6,7 @@
    supabase link --project-ref <your-project-ref>
    supabase db push
    ```
-   (Or run `supabase/migrations/001_init.sql` through `035_dept_head_sample_only_edits.sql` in ascending order in the SQL Editor; see [`supabase/migrations/README.md`](supabase/migrations/README.md).)
+   (Or run `supabase/migrations/001_init.sql` through `038_photo_paths_gin_and_telemetry_retention.sql` in ascending order in the SQL Editor; see [`supabase/migrations/README.md`](supabase/migrations/README.md).)
 2. Bootstrap the organization and initial admin (sign-ups never auto-promote to `admin`):
    - First, initialize the organization in the Supabase SQL Editor:
      ```sql
@@ -60,3 +60,8 @@ Route visualization in **Activities → Footprints & Routes** and map pin pickin
 ## Included (v1 core)
 Login, role-aware monthly roster with click-to-paint (admin/scheduler), RLS, audit triggers, realtime-ready tables, JSON importer.
 Also: Daily Activity Monitor (`/activities`), PM Planner (`/pm`: monthly/week calendar, recurring series, editable activity names/colors, `.ics` export), Leave Summary (`/leave`), Call Sheet (`/call-sheet`), Mobile/Tasks (`/mobile`), Generate Schedule (`/generate`: repeating shift cycles), Operators & Setup (`/operators`, admin only: operators, shift types, area/leave codes, users & roles), OC standby painting, drag-to-paint, Ctrl+Z/Ctrl+Y undo/redo, Ctrl+C/Ctrl+V copy/paste, realtime sync, CSV/print exports, PWA offline support.
+
+## Documentation
+- [System & Security Architecture (`docs/ARCHITECTURE.md`)](docs/ARCHITECTURE.md) — App Router layout, defense-in-depth Postgres/CSP architecture, RBAC role matrix, and operations/DR runbook.
+- [Privacy & Data Retention (`docs/PRIVACY_AND_RETENTION.md`)](docs/PRIVACY_AND_RETENTION.md) — RA 10173 data inventory, 24h/30d/365d retention & scrubbing schedules, and admin execution guide.
+- [Supabase Migrations Index (`supabase/migrations/README.md`)](supabase/migrations/README.md) — Ordered migration guide (`001`–`038`) and RLS test conventions.

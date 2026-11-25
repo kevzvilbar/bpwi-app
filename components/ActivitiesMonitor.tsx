@@ -488,7 +488,12 @@ export default function ActivitiesMonitor(p: {
         <ActivityLoggerModal
           open={loggerOpen} role={p.role} sampleOnly={!p.canLogActivity} canLogSample={Boolean(p.canLogSampleActivity)}
           onClose={() => { setLoggerOpen(false); setLinkedJoForLog(null); setEditingActivity(null); }}
-          onQueuedOffline={async (payload: Record<string, unknown>, opts?: { editingId?: string | null }) => { await enqueueOfflineActivity(payload, p.userId, opts); }}
+          onQueuedOffline={async (
+            payload: Record<string, unknown>,
+            opts?: { editingId?: string | null; expectedUpdatedAt?: string | null },
+          ) => {
+            await enqueueOfflineActivity(payload, p.userId, opts);
+          }}
           onSaved={(act, opts) => {
             if (!opts?.offline) {
               setActivities((prev) => (prev.some((x) => x.id === act.id) ? prev.map((x) => (x.id === act.id ? act : x)) : [act, ...prev]));

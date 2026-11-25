@@ -27,7 +27,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function RequestsPage() {
   const profile = await getProfile();
-  const { sb, user, isActive, canApprove, isManager, orgId } = profile;
+  const { sb, user, isActive, canApprove, isManager } = profile;
 
   if (!user || !isActive) {
     redirect('/login');

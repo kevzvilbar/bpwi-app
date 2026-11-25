@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
 
   const [asg, holAsg] = await Promise.all([
     leaveIds.length
-      ? fetchAll<{ operator_id: string; schedule_date: string; area_code_id: string }>((from, to) =>
+      ? fetchAll<{ operator_id: string; schedule_date: string; area_code_id: string | null }>((from, to) =>
           sb.from('schedule_assignments').select('operator_id, schedule_date, area_code_id').in('area_code_id', leaveIds)
             .gte('schedule_date', `${year}-01-01`).lte('schedule_date', `${year}-12-31`).order('schedule_date').range(from, to))
       : Promise.resolve({ data: [], error: '' }),

@@ -179,7 +179,11 @@ export default function JobOrdersTab({
       return;
     }
     const sb = supabaseBrowser();
-    const updates: Record<string, unknown> = {
+    const updates: {
+      status: JobOrderRow['status'];
+      completed_at: string | null;
+      tat_justification?: string | null;
+    } = {
       status: nextStatus,
       completed_at: nextStatus === 'completed' ? new Date().toISOString() : null,
       ...(tatJustification !== undefined ? { tat_justification: tatJustification } : {}),

@@ -251,7 +251,8 @@ export default function Generator(p: {
                   onChange={(e) =>
                     setSel((s) => {
                       const n = new Set(s);
-                      e.target.checked ? n.add(o.id) : n.delete(o.id);
+                      if (e.target.checked) n.add(o.id);
+                      else n.delete(o.id);
                       return n;
                     })
                   }
