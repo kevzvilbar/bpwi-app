@@ -16,7 +16,7 @@ import {
   ACTIVITY_CATEGORY_LABELS,
   type ActivityCategory,
 } from '@/lib/activity-types';
-import { AlertBanner, SegmentedTabs, StatCard } from '@/components/ui';
+import { AlertBanner, Badge, SegmentedTabs, type BadgeTone } from '@/components/ui';
 import {
   evaluateGensetHealth,
   formatGensetRunModeShort,
@@ -62,7 +62,6 @@ type KpiJo = {
   completed_at: string | null;
   deadline: string | null;
 };
-
 type KpiDataset = {
   fetchedDays: 7 | 30 | 90;
   acts: KpiAct[];
@@ -72,10 +71,43 @@ type KpiDataset = {
   jobOrders: KpiJo[];
 };
 
+const STANDBY_TONES: Record<GensetStandbyVerdict, BadgeTone> = {
+  READY: 'ok',
+  NEEDS_ATTENTION: 'warn',
+  CRITICAL: 'danger',
+};
+const CARD_HEADER_BORDER = { borderBottom: '1px solid var(--border-light)' };
+const BAR_TRACK_STYLE = { height: 8, background: 'var(--surface-muted)', borderRadius: 999, overflow: 'hidden' };
+
 function subtractDays(ymd: string, n: number) {
   const d = new Date(ymd + 'T00:00:00Z');
   d.setUTCDate(d.getUTCDate() - n);
   return d.toISOString().slice(0, 10);
+}
+
+function computeJoSlaStats(doneJos: KpiJo[]): { avgTatHours: number | null; onTimePct: number | null } {
+  if (doneJos.length === 0) return { avgTatHours: null, onTimePct: null };
+  let sumHrs = 0;
+  let tatCount = 0;
+  let onTimeCount = 0;
+  let deadlineChecked = 0;
+  for (const j of doneJos) {
+    if (j.created_at && j.completed_at) {
+      const hrs = (new Date(j.completed_at).getTime() - new Date(j.created_at).getTime()) / (1000 * 60 * 60);
+      if (Number.isFinite(hrs) && hrs >= 0) {
+        sumHrs += hrs;
+        tatCount += 1;
+      }
+    }
+    if (j.deadline && j.completed_at) {
+      deadlineChecked += 1;
+      if (new Date(j.completed_at).getTime() <= new Date(j.deadline).getTime()) onTimeCount += 1;
+    }
+  }
+  return {
+    avgTatHours: tatCount > 0 ? Math.round((sumHrs / tatCount) * 10) / 10 : null,
+    onTimePct: deadlineChecked > 0 ? Math.round((onTimeCount / deadlineChecked) * 100) : null,
+  };
 }
 
 async function fetchAllClient<T>(
@@ -89,6 +121,39 @@ async function fetchAllClient<T>(
     if (!data || data.length < 1000) break;
   }
   return { data: out, error: '' };
+}
+
+function BreakdownCard({
+  title,
+  emptyText,
+  barColor,
+  items,
+}: {
+  title: string;
+  emptyText?: string;
+  barColor: string;
+  items: Array<{ key: string; label: string; count: number; pct: number }>;
+}) {
+  return (
+    <div className="card card-pad stack-sm">
+      <strong style={{ fontSize: 13.5 }}>{title}</strong>
+      {items.length === 0 ? (
+        <span className="text-secondary-sm">{emptyText}</span>
+      ) : (
+        items.map((item) => (
+          <div key={item.key} className="stack-xs">
+            <div className="row-between" style={{ fontSize: 12 }}>
+              <span style={{ fontWeight: 600 }}>{item.label}</span>
+              <span className="tabular-nums font-bold">{item.count}</span>
+            </div>
+            <div style={BAR_TRACK_STYLE}>
+              <div style={{ width: `${item.pct}%`, height: '100%', background: barColor, borderRadius: 999 }} />
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
 }
 
 export default function ActivitiesKpiTab(p: {
@@ -182,13 +247,7 @@ export default function ActivitiesKpiTab(p: {
 
       if (!active) return;
 
-      const firstErr =
-        actsRes.error ||
-        gensetRes.error?.message ||
-        asgRes.error ||
-        pmRes.error ||
-        joRes.error ||
-        '';
+      const firstErr = actsRes.error || gensetRes.error?.message || asgRes.error || pmRes.error || joRes.error || '';
       if (firstErr) {
         setErrMsg(firstErr);
         setLoading(false);
@@ -225,12 +284,10 @@ export default function ActivitiesKpiTab(p: {
     () => (dataset?.acts ?? []).filter((a) => a.activity_date >= startDate && a.activity_date <= p.anchorDate),
     [dataset, startDate, p.anchorDate],
   );
-
   const periodPms = useMemo(
     () => (dataset?.pmTasks ?? []).filter((t) => t.scheduled_date >= startDate && t.scheduled_date <= p.anchorDate),
     [dataset, startDate, p.anchorDate],
   );
-
   const periodJos = useMemo(
     () =>
       (dataset?.jobOrders ?? []).filter((j) => {
@@ -239,13 +296,11 @@ export default function ActivitiesKpiTab(p: {
       }),
     [dataset, startDate, p.anchorDate],
   );
-
   const periodAsgs = useMemo(
     () => (dataset?.assignments ?? []).filter((a) => a.schedule_date >= startDate && a.schedule_date <= p.anchorDate),
     [dataset, startDate, p.anchorDate],
   );
 
-  // Per-operator scorecard
   const operatorRows = useMemo(() => {
     const rows = p.operators.map((op) => {
       let dutyDays = 0;
@@ -264,57 +319,28 @@ export default function ActivitiesKpiTab(p: {
         (act) => act.lead_operator_id === op.id || (act.crew_operator_ids ?? []).includes(op.id),
       );
       const verifiedActs = opActs.filter((a) => a.status === 'verified').length;
-
       const pmStats = computeOperatorPmKpis(op.id, periodPms);
-      const assignedPmsCount = pmStats.assignedCount;
-      const donePms = pmStats.doneCount;
-      const pmCompliance = pmStats.compliancePct;
-
       const opJos = periodJos.filter((j) => (j.assigned_operator_ids ?? []).includes(op.id));
       const doneJos = opJos.filter((j) => j.status === 'completed');
-      let avgTatHours: number | null = null;
-      let onTimeCount = 0;
-      let deadlineChecked = 0;
-      if (doneJos.length > 0) {
-        let sumHrs = 0;
-        let tatCount = 0;
-        for (const j of doneJos) {
-          if (j.created_at && j.completed_at) {
-            const hrs = (new Date(j.completed_at).getTime() - new Date(j.created_at).getTime()) / (1000 * 60 * 60);
-            if (Number.isFinite(hrs) && hrs >= 0) {
-              sumHrs += hrs;
-              tatCount += 1;
-            }
-          }
-          if (j.deadline && j.completed_at) {
-            deadlineChecked += 1;
-            if (new Date(j.completed_at).getTime() <= new Date(j.deadline).getTime()) {
-              onTimeCount += 1;
-            }
-          }
-        }
-        if (tatCount > 0) avgTatHours = Math.round((sumHrs / tatCount) * 10) / 10;
-      }
-      const onTimePct = deadlineChecked > 0 ? Math.round((onTimeCount / deadlineChecked) * 100) : null;
+      const { avgTatHours, onTimePct } = computeJoSlaStats(doneJos);
 
-      const totalOutput = opActs.length + donePms + doneJos.length;
       return {
         op,
         dutyDays,
         dutyHours,
         actCount: opActs.length,
         verifiedActs,
-        donePms,
-        assignedPms: assignedPmsCount,
+        donePms: pmStats.doneCount,
+        assignedPms: pmStats.assignedCount,
         plannedDonePms: pmStats.plannedDoneCount,
         substituteDonePms: pmStats.substituteDoneCount,
         missedAssignedPms: pmStats.missedAssignedCount,
-        pmCompliance,
+        pmCompliance: pmStats.compliancePct,
         doneJos: doneJos.length,
         assignedJos: opJos.length,
         avgTatHours,
         onTimePct,
-        totalOutput,
+        totalOutput: opActs.length + pmStats.doneCount + doneJos.length,
       };
     });
 
@@ -322,41 +348,16 @@ export default function ActivitiesKpiTab(p: {
     return rows;
   }, [p.operators, periodAsgs, periodActs, periodPms, periodJos, shiftBy, nonWorkingAreaIds]);
 
-  // Overall totals
   const summary = useMemo(() => {
     const totalActs = periodActs.length;
     const verified = periodActs.filter((a) => a.status === 'verified').length;
     const verifiedRate = totalActs > 0 ? Math.round((verified / totalActs) * 100) : 0;
     const pmsDone = periodPms.filter((t) => t.status === 'done').length;
     const josDone = periodJos.filter((j) => j.status === 'completed');
-    let avgJoTat: number | null = null;
-    let joSlaChecked = 0;
-    let joSlaMet = 0;
-    if (josDone.length > 0) {
-      let sum = 0;
-      let cnt = 0;
-      for (const j of josDone) {
-        if (j.created_at && j.completed_at) {
-          const hrs = (new Date(j.completed_at).getTime() - new Date(j.created_at).getTime()) / (1000 * 60 * 60);
-          if (Number.isFinite(hrs) && hrs >= 0) {
-            sum += hrs;
-            cnt += 1;
-          }
-        }
-        if (j.deadline && j.completed_at) {
-          joSlaChecked += 1;
-          if (new Date(j.completed_at).getTime() <= new Date(j.deadline).getTime()) {
-            joSlaMet += 1;
-          }
-        }
-      }
-      if (cnt > 0) avgJoTat = Math.round((sum / cnt) * 10) / 10;
-    }
-    const joSlaCompliancePct = joSlaChecked > 0 ? Math.round((joSlaMet / joSlaChecked) * 100) : null;
+    const { avgTatHours: avgJoTat, onTimePct: joSlaCompliancePct } = computeJoSlaStats(josDone);
     return { totalActs, verified, verifiedRate, pmsDone, pmsTotal: periodPms.length, josDone: josDone.length, avgJoTat, joSlaCompliancePct };
   }, [periodActs, periodPms, periodJos]);
 
-  // Breakdown by category
   const categoryCounts = useMemo(() => {
     const counts: Record<ActivityCategory, number> = { plant: 0, network: 0, metering: 0, grounds: 0 };
     for (const a of periodActs) {
@@ -365,14 +366,13 @@ export default function ActivitiesKpiTab(p: {
     }
     const maxCount = Math.max(1, ...Object.values(counts));
     return ACTIVITY_CATEGORIES.map((cat) => ({
-      cat,
+      key: cat,
       label: ACTIVITY_CATEGORY_LABELS[cat],
       count: counts[cat],
       pct: Math.round((counts[cat] / maxCount) * 100),
     }));
   }, [periodActs]);
 
-  // Breakdown by Station / Area
   const stationCounts = useMemo(() => {
     const map = new Map<string, number>();
     for (const a of periodActs) {
@@ -382,21 +382,18 @@ export default function ActivitiesKpiTab(p: {
     const list = Array.from(map.entries()).map(([code, count]) => ({ code, count }));
     list.sort((a, b) => b.count - a.count);
     const maxCount = Math.max(1, ...list.map((x) => x.count));
-    return list.slice(0, 8).map((x) => ({ ...x, pct: Math.round((x.count / maxCount) * 100) }));
+    return list.slice(0, 8).map((x) => ({ key: x.code, label: x.code, count: x.count, pct: Math.round((x.count / maxCount) * 100) }));
   }, [periodActs, areaBy]);
 
-  // Genset Fuel & PMS Inspection Telemetry logs
   const gensetLogs = useMemo(() => {
-    const prim = (v: unknown): string | number | null =>
-      typeof v === 'string' || typeof v === 'number' ? v : null;
+    const prim = (v: unknown): string | number | null => (typeof v === 'string' || typeof v === 'number' ? v : null);
     return (dataset?.gensetActs ?? [])
       .filter((a) => a.activity_date >= startDate && a.activity_date <= p.anchorDate)
       .slice(0, 12)
       .map((a) => {
         const d = a.details ?? {};
         const isRefill = a.activity_type === 'genset_fuel_refill';
-        const hasChecklist = !isRefill && hasGensetChecklistDetails(d);
-        const gState = hasChecklist ? hydrateGensetMonitoringDetails(d) : null;
+        const gState = !isRefill && hasGensetChecklistDetails(d) ? hydrateGensetMonitoringDetails(d) : null;
         const health = gState ? evaluateGensetHealth(gState) : null;
         const runSummary = gState
           ? gState.runMode === 'skipped_ran_outage'
@@ -451,14 +448,13 @@ export default function ActivitiesKpiTab(p: {
   }, [gensetLogs]);
 
   return (
-    <div style={{ display: 'grid', gap: 14 }}>
-      {/* Period Selector & Top KPI Summary */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+    <div className="stack-md">
+      <div className="row-between-wrap">
         <div>
           <strong style={{ fontSize: 15 }}>Performance &amp; Telemetry Scorecards</strong>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+          <div className="text-secondary-sm">
             Window: <b>{startDate}</b> to <b>{p.anchorDate}</b>
-            {loading && <span style={{ marginLeft: 8, color: 'var(--accent)', fontWeight: 600 }}>Loading window…</span>}
+            {loading && <span className="font-bold" style={{ marginLeft: 8, color: 'var(--accent)' }}>Loading window…</span>}
           </div>
         </div>
         <SegmentedTabs
@@ -474,143 +470,91 @@ export default function ActivitiesKpiTab(p: {
         />
       </div>
 
-      {errMsg && (
-        <AlertBanner tone="danger">
-          Could not load KPI metrics: {errMsg}
-        </AlertBanner>
-      )}
+      {errMsg && <AlertBanner tone="danger">Could not load KPI metrics: {errMsg}</AlertBanner>}
 
       {loading && !dataset && (
-        <div className="card" style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--text-secondary)' }}>
-          Loading {periodDays}-day KPI metrics…
-        </div>
+        <div className="card card-pad-lg text-center text-secondary-sm">Loading {periodDays}-day KPI metrics…</div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
-        <StatCard
-          label="Activities Logged"
-          value={<span style={{ color: 'var(--accent)' }}>{summary.totalActs}</span>}
-          subtitle={`${summary.verified} verified (${summary.verifiedRate}%)`}
-        />
-        <StatCard
-          label="PM Compliance"
-          value={<span style={{ color: 'var(--teal)' }}>{summary.pmsDone}/{summary.pmsTotal}</span>}
-          subtitle={`${summary.pmsTotal > 0 ? Math.round((summary.pmsDone / summary.pmsTotal) * 100) : 100}% closed in window`}
-        />
-        <StatCard
-          label="Job Orders Closed"
-          value={<span style={{ color: 'var(--violet)' }}>{summary.josDone}</span>}
-          subtitle={`Avg TAT: ${summary.avgJoTat !== null ? `${summary.avgJoTat} hrs` : '—'}${summary.joSlaCompliancePct !== null ? ` · ${summary.joSlaCompliancePct}% within SLA` : ''}`}
-        />
+      <div className="grid-auto-md">
+        <div className="card kpi-stat-card">
+          <span className="stat-label">Activities Logged</span>
+          <strong className="kpi-stat-value" style={{ color: 'var(--accent)' }}>{summary.totalActs}</strong>
+          <span className="stat-sub">{summary.verified} verified ({summary.verifiedRate}%)</span>
+        </div>
+        <div className="card kpi-stat-card">
+          <span className="stat-label">PM Compliance</span>
+          <strong className="kpi-stat-value" style={{ color: 'var(--teal)' }}>{summary.pmsDone}/{summary.pmsTotal}</strong>
+          <span className="stat-sub">
+            {summary.pmsTotal > 0 ? Math.round((summary.pmsDone / summary.pmsTotal) * 100) : 100}% closed in window
+          </span>
+        </div>
+        <div className="card kpi-stat-card">
+          <span className="stat-label">Job Orders Closed</span>
+          <strong className="kpi-stat-value" style={{ color: 'var(--violet)' }}>{summary.josDone}</strong>
+          <span className="stat-sub">
+            Avg TAT: {summary.avgJoTat !== null ? `${summary.avgJoTat} hrs` : '—'}
+            {summary.joSlaCompliancePct !== null ? ` · ${summary.joSlaCompliancePct}% within SLA` : ''}
+          </span>
+        </div>
       </div>
 
-      {/* Breakdown Bars */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
-        <div className="card" style={{ padding: 14, display: 'grid', gap: 10 }}>
-          <strong style={{ fontSize: 13.5 }}>Activities by Operational Category</strong>
-          {categoryCounts.map((c) => (
-            <div key={c.cat} style={{ display: 'grid', gap: 4 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                <span style={{ fontWeight: 600 }}>{c.label}</span>
-                <span className="tabular-nums" style={{ fontWeight: 700 }}>{c.count}</span>
-              </div>
-              <div style={{ height: 8, background: 'var(--surface-muted)', borderRadius: 999, overflow: 'hidden' }}>
-                <div style={{ width: `${c.pct}%`, height: '100%', background: 'var(--accent)', borderRadius: 999 }} />
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="card" style={{ padding: 14, display: 'grid', gap: 10 }}>
-          <strong style={{ fontSize: 13.5 }}>Station / Area Activity Coverage</strong>
-          {stationCounts.length === 0 ? (
-            <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>No activities recorded in this period yet.</span>
-          ) : (
-            stationCounts.map((s) => (
-              <div key={s.code} style={{ display: 'grid', gap: 4 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                  <span style={{ fontWeight: 600 }}>{s.code}</span>
-                  <span className="tabular-nums" style={{ fontWeight: 700 }}>{s.count}</span>
-                </div>
-                <div style={{ height: 8, background: 'var(--surface-muted)', borderRadius: 999, overflow: 'hidden' }}>
-                  <div style={{ width: `${s.pct}%`, height: '100%', background: 'var(--teal)', borderRadius: 999 }} />
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+      <div className="grid-auto-md">
+        <BreakdownCard title="Activities by Operational Category" barColor="var(--accent)" items={categoryCounts} />
+        <BreakdownCard
+          title="Station / Area Activity Coverage"
+          emptyText="No activities recorded in this period yet."
+          barColor="var(--teal)"
+          items={stationCounts}
+        />
       </div>
 
       {/* Employee Performance Scorecard Table */}
-      <div className="card" style={{ overflow: 'auto' }}>
-        <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-light)' }}>
+      <div className="card scroll-x">
+        <div className="card-pad-sm" style={CARD_HEADER_BORDER}>
           <strong style={{ fontSize: 14 }}>Employee Performance Leaderboard ({periodDays}-Day Window)</strong>
         </div>
         <table className="data-table">
           <thead>
-            <tr style={{ background: 'var(--surface-muted)', textAlign: 'left', fontSize: 11, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
-              <th style={{ padding: '8px 12px' }}>Operator</th>
-              <th style={{ padding: '8px 10px', textAlign: 'right' }}>Duty Days / Hrs</th>
-              <th style={{ padding: '8px 10px', textAlign: 'right' }}>Activities (Verified)</th>
-              <th style={{ padding: '8px 10px', textAlign: 'right' }}>PM Done / Compliance</th>
-              <th style={{ padding: '8px 10px', textAlign: 'right' }}>JOs Closed</th>
-              <th style={{ padding: '8px 12px', textAlign: 'right' }}>Avg JO TAT / On-Time</th>
+            <tr style={{ textAlign: 'left' }}>
+              <th>Operator</th>
+              <th className="text-right">Duty Days / Hrs</th>
+              <th className="text-right">Activities (Verified)</th>
+              <th className="text-right">PM Done / Compliance</th>
+              <th className="text-right">JOs Closed</th>
+              <th className="text-right">Avg JO TAT / On-Time</th>
             </tr>
           </thead>
           <tbody>
             {operatorRows.map((r) => (
               <tr key={r.op.id}>
-                <td style={{ padding: '8px 12px' }}>
-                  <div style={{ fontWeight: 700 }}>{r.op.full_name}</div>
-                  {r.op.position && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{r.op.position}</div>}
+                <td>
+                  <div className="font-bold">{r.op.full_name}</div>
+                  {r.op.position && <div className="text-secondary-xs">{r.op.position}</div>}
                 </td>
-                <td className="tabular-nums" style={{ padding: '8px 10px', textAlign: 'right' }}>
-                  {r.dutyDays}d / {r.dutyHours}h
-                </td>
-                <td className="tabular-nums" style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700 }}>
-                  {r.actCount} <span style={{ fontWeight: 400, color: 'var(--text-secondary)' }}>({r.verifiedActs} ✓)</span>
+                <td className="tabular-nums text-right">{r.dutyDays}d / {r.dutyHours}h</td>
+                <td className="tabular-nums text-right font-bold">
+                  {r.actCount} <span className="text-secondary-xs" style={{ fontWeight: 400 }}>({r.verifiedActs} ✓)</span>
                 </td>
                 <td
-                  className="tabular-nums"
-                  style={{ padding: '8px 10px', textAlign: 'right' }}
+                  className="tabular-nums text-right"
                   title={`Planned & Done: ${r.plannedDonePms} · Unlisted Substitute Done: ${r.substituteDonePms} · Assigned Not Participating: ${r.missedAssignedPms}`}
                 >
                   {r.donePms}/{r.assignedPms}{' '}
                   {r.pmCompliance !== null && (
-                    <span
-                      style={{
-                        marginLeft: 4,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: r.pmCompliance >= 80 ? 'var(--ok-fg)' : 'var(--warn-fg)',
-                      }}
-                    >
+                    <span className="font-bold" style={{ marginLeft: 4, fontSize: 11, color: r.pmCompliance >= 80 ? 'var(--ok-fg)' : 'var(--warn-fg)' }}>
                       ({r.pmCompliance}%)
                     </span>
                   )}
                   {r.substituteDonePms > 0 && (
-                    <span
-                      style={{
-                        marginLeft: 4,
-                        fontSize: 10.5,
-                        fontWeight: 700,
-                        padding: '1px 5px',
-                        borderRadius: 999,
-                        background: 'var(--warn-bg)',
-                        color: 'var(--warn-fg)',
-                      }}
-                    >
-                      +{r.substituteDonePms} sub
-                    </span>
+                    <span style={{ marginLeft: 4 }}><Badge tone="warn" size="sm">+{r.substituteDonePms} sub</Badge></span>
                   )}
                 </td>
-                <td className="tabular-nums" style={{ padding: '8px 10px', textAlign: 'right' }}>
-                  {r.doneJos}/{r.assignedJos}
-                </td>
-                <td className="tabular-nums" style={{ padding: '8px 12px', textAlign: 'right' }}>
+                <td className="tabular-nums text-right">{r.doneJos}/{r.assignedJos}</td>
+                <td className="tabular-nums text-right">
                   {r.avgTatHours !== null ? `${r.avgTatHours}h` : '—'}
                   {r.onTimePct !== null && (
-                    <span style={{ marginLeft: 4, fontSize: 11, color: r.onTimePct >= 80 ? 'var(--ok-fg)' : 'var(--danger)', fontWeight: 700 }}>
+                    <span className="font-bold" style={{ marginLeft: 4, fontSize: 11, color: r.onTimePct >= 80 ? 'var(--ok-fg)' : 'var(--danger)' }}>
                       ({r.onTimePct}%)
                     </span>
                   )}
@@ -623,53 +567,46 @@ export default function ActivitiesKpiTab(p: {
 
       {/* Genset Fuel & Weekly PMS Health Table */}
       {gensetLogs.length > 0 && (
-        <div className="card" style={{ overflow: 'auto' }}>
-          <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <div className="card scroll-x">
+          <div className="card-pad-sm row-between-wrap" style={CARD_HEADER_BORDER}>
             <strong style={{ fontSize: 14 }}>Recent Genset Fuel &amp; PMS Logs</strong>
             {gensetHealthCounts.totalChecklist > 0 && (
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 11.5, fontWeight: 700 }}>
-                <span style={{ padding: '2px 8px', borderRadius: 999, background: 'var(--ok-bg)', color: 'var(--ok-fg)', border: '1px solid var(--ok-border)' }}>
-                  Ready: {gensetHealthCounts.ready}
-                </span>
-                {gensetHealthCounts.attention > 0 && (
-                  <span style={{ padding: '2px 8px', borderRadius: 999, background: 'var(--warn-bg)', color: 'var(--warn-fg)', border: '1px solid var(--warn-border)' }}>
-                    Attention: {gensetHealthCounts.attention}
-                  </span>
-                )}
-                {gensetHealthCounts.critical > 0 && (
-                  <span style={{ padding: '2px 8px', borderRadius: 999, background: 'var(--danger-bg)', color: 'var(--danger-fg)', border: '1px solid var(--danger-border)' }}>
-                    Critical: {gensetHealthCounts.critical}
-                  </span>
-                )}
+              <div className="row-wrap" style={{ gap: 6 }}>
+                <Badge tone="ok" size="sm">Ready: {gensetHealthCounts.ready}</Badge>
+                {gensetHealthCounts.attention > 0 && <Badge tone="warn" size="sm">Attention: {gensetHealthCounts.attention}</Badge>}
+                {gensetHealthCounts.critical > 0 && <Badge tone="danger" size="sm">Critical: {gensetHealthCounts.critical}</Badge>}
               </div>
             )}
           </div>
           <table className="data-table">
             <thead>
-              <tr style={{ background: 'var(--surface-muted)', textAlign: 'left', fontSize: 11, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
-                <th style={{ padding: '7px 12px', borderBottom: '1px solid var(--border)' }}>Date</th>
-                <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)' }}>Station / Unit</th>
-                <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)' }}>Cause / Mode</th>
-                <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Initial Fuel</th>
-                <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Refilled (L)</th>
-                <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Final Fuel</th>
-                <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)' }}>Run / Oil</th>
-                <th style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Hr Meter</th>
-                <th style={{ padding: '7px 12px', borderBottom: '1px solid var(--border)' }}>Standby Health</th>
+              <tr style={{ textAlign: 'left' }}>
+                <th>Date</th>
+                <th>Station / Unit</th>
+                <th>Cause / Mode</th>
+                <th className="text-right">Initial Fuel</th>
+                <th className="text-right">Refilled (L)</th>
+                <th className="text-right">Final Fuel</th>
+                <th>Run / Oil</th>
+                <th className="text-right">Hr Meter</th>
+                <th>Standby Health</th>
               </tr>
             </thead>
             <tbody>
               {gensetLogs.map((g) => (
-                <tr key={g.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                  <td style={{ padding: '7px 12px' }}>{g.date}</td>
-                  <td style={{ padding: '7px 10px', fontWeight: 600 }}>{g.station} · {g.site}</td>
-                  <td style={{ padding: '7px 10px' }}>{g.cause}</td>
-                  <td className="tabular-nums" style={{ padding: '7px 10px', textAlign: 'right' }}>{g.initialFuel ?? '—'}</td>
-                  <td className="tabular-nums" style={{ padding: '7px 10px', textAlign: 'right', color: g.refilledLiters !== null ? 'var(--ok-fg)' : undefined, fontWeight: g.refilledLiters !== null ? 700 : undefined }}>
+                <tr key={g.id}>
+                  <td>{g.date}</td>
+                  <td style={{ fontWeight: 600 }}>{g.station} · {g.site}</td>
+                  <td>{g.cause}</td>
+                  <td className="tabular-nums text-right">{g.initialFuel ?? '—'}</td>
+                  <td
+                    className="tabular-nums text-right"
+                    style={{ color: g.refilledLiters !== null ? 'var(--ok-fg)' : undefined, fontWeight: g.refilledLiters !== null ? 700 : undefined }}
+                  >
                     {g.refilledLiters !== null ? `+${g.refilledLiters}` : '—'}
                   </td>
-                  <td className="tabular-nums" style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700 }}>{g.finalFuel ?? '—'}</td>
-                  <td style={{ padding: '7px 10px', fontSize: 12 }}>
+                  <td className="tabular-nums text-right font-bold">{g.finalFuel ?? '—'}</td>
+                  <td className="text-xs">
                     {g.runSummary || g.oilLevel ? (
                       <>
                         {g.runSummary && <span>{g.runSummary}</span>}
@@ -677,12 +614,7 @@ export default function ActivitiesKpiTab(p: {
                         {g.oilLevel && (
                           <span
                             style={{
-                              color:
-                                g.oilLevel === 'Critical / Empty'
-                                  ? 'var(--danger-fg)'
-                                  : g.oilLevel !== 'Normal / Full'
-                                    ? 'var(--warn-fg)'
-                                    : undefined,
+                              color: g.oilLevel === 'Critical / Empty' ? 'var(--danger-fg)' : g.oilLevel !== 'Normal / Full' ? 'var(--warn-fg)' : undefined,
                               fontWeight: g.oilLevel !== 'Normal / Full' ? 700 : undefined,
                             }}
                           >
@@ -690,45 +622,13 @@ export default function ActivitiesKpiTab(p: {
                           </span>
                         )}
                       </>
-                    ) : (
-                      '—'
-                    )}
+                    ) : '—'}
                   </td>
-                  <td className="tabular-nums" style={{ padding: '7px 10px', textAlign: 'right' }}>{g.runningHours ?? '—'}</td>
-                  <td style={{ padding: '7px 12px' }} title={g.findingsText || undefined}>
-                    {g.standbyLabel ? (
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          padding: '2px 8px',
-                          borderRadius: 999,
-                          fontSize: 11,
-                          fontWeight: 700,
-                          background:
-                            g.standbyVerdict === 'READY'
-                              ? 'var(--ok-bg)'
-                              : g.standbyVerdict === 'NEEDS_ATTENTION'
-                                ? 'var(--warn-bg)'
-                                : 'var(--danger-bg)',
-                          color:
-                            g.standbyVerdict === 'READY'
-                              ? 'var(--ok-fg)'
-                              : g.standbyVerdict === 'NEEDS_ATTENTION'
-                                ? 'var(--warn-fg)'
-                                : 'var(--danger-fg)',
-                          border:
-                            g.standbyVerdict === 'READY'
-                              ? '1px solid var(--ok-border)'
-                              : g.standbyVerdict === 'NEEDS_ATTENTION'
-                                ? '1px solid var(--warn-border)'
-                                : '1px solid var(--danger-border)',
-                        }}
-                      >
-                        {g.standbyLabel}
-                      </span>
-                    ) : (
-                      <span style={{ color: 'var(--text-muted)' }}>—</span>
-                    )}
+                  <td className="tabular-nums text-right">{g.runningHours ?? '—'}</td>
+                  <td title={g.findingsText || undefined}>
+                    {g.standbyLabel && g.standbyVerdict ? (
+                      <Badge tone={STANDBY_TONES[g.standbyVerdict]} size="sm">{g.standbyLabel}</Badge>
+                    ) : <span className="text-muted-xs">—</span>}
                   </td>
                 </tr>
               ))}

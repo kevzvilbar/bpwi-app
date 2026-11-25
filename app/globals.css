@@ -1472,3 +1472,61 @@ textarea:focus-visible {
     z-index: 10000;
   }
 }
+
+/* Shared Layout, Form & Typography Utility Primitives (replaces repetitive inline style={{}}) */
+.stack-xs { display: grid; gap: 4px; }
+.stack-sm { display: grid; gap: 8px; }
+.stack-md { display: grid; gap: 12px; }
+.stack-lg { display: grid; gap: 16px; }
+.row-xs { display: flex; align-items: center; gap: 4px; }
+.row-sm { display: flex; align-items: center; gap: 8px; }
+.row-md { display: flex; align-items: center; gap: 12px; }
+.row-wrap { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.row-between { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.row-between-wrap { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.row-end { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.grid-auto-sm { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.grid-auto-md { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.card-pad-xs { padding: 8px 10px; }
+.card-pad-sm { padding: 10px 12px; }
+.card-pad { padding: 14px; }
+.card-pad-lg { padding: 18px; }
+.field-label { display: grid; gap: 4px; font-size: 12.5px; font-weight: 600; color: var(--text); }
+.field-hint { font-size: 11.5px; font-weight: 400; color: var(--text-muted); }
+.section-eyebrow { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.text-xs { font-size: 11.5px; }
+.text-sm { font-size: 12.5px; }
+.text-muted-xs { font-size: 11.5px; color: var(--text-muted); }
+.text-muted-sm { font-size: 12.5px; color: var(--text-muted); }
+.text-secondary-xs { font-size: 11.5px; color: var(--text-secondary); }
+.text-secondary-sm { font-size: 12.5px; color: var(--text-secondary); }
+.text-danger-sm { font-size: 12.5px; color: var(--danger); }
+.text-ok-sm { font-size: 12.5px; color: var(--ok-fg); }
+.text-right { text-align: right; }
+.text-center { text-align: center; }
+.font-bold { font-weight: 700; }
+.w-full { width: 100%; }
+.flex-1 { flex: 1 1 0%; min-width: 0; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mono-xs { font-family: var(--font-mono), ui-monospace, monospace; font-size: 11px; }
+.btn-xs { min-height: 28px; padding: 2px 8px; font-size: 11.5px; }
+.btn-sm { min-height: 32px; padding: 4px 10px; font-size: 12px; }
+.btn-danger-soft { background: var(--danger-bg); color: var(--danger-fg); border-color: var(--danger-border); font-weight: 700; }
+.kpi-stat-card { padding: 12px 14px; display: grid; gap: 4px; }
+.kpi-stat-value { font-size: 22px; font-weight: 800; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* Printable Paper Report Sheet Primitives */
+.rpt-sheet { background: #ffffff; color: #0f172a; padding: 18px 20px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 11px; line-height: 1.35; }
+.rpt-section-hdr { background: #0f172a; color: #ffffff; padding: 4px 8px; font-size: 10.5px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; margin-top: 10px; }
+.rpt-tbl { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 10.5px; }
+.rpt-th { border: 1px solid #475569; padding: 4px 6px; background: #e2e8f0; color: #0f172a; font-weight: 700; text-align: left; }
+.rpt-th-c { border: 1px solid #475569; padding: 4px 6px; background: #e2e8f0; color: #0f172a; font-weight: 700; text-align: center; }
+.rpt-td { border: 1px solid #94a3b8; padding: 4px 6px; vertical-align: top; color: #0f172a; }
+.rpt-td-c { border: 1px solid #94a3b8; padding: 4px 6px; vertical-align: top; text-align: center; color: #0f172a; }
+.rpt-td-r { border: 1px solid #94a3b8; padding: 4px 6px; vertical-align: top; text-align: right; color: #0f172a; font-variant-numeric: tabular-nums; }
+.rpt-lbl { background: #f1f5f9; font-weight: 700; color: #334155; }
+.rpt-sig-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 18px; }
+.rpt-sig-box { border-top: 1px solid #0f172a; padding-top: 4px; text-align: center; font-size: 10px; }

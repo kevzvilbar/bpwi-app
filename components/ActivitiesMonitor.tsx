@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
@@ -9,21 +9,12 @@ import { DAILY_ACTIVITY_LIST_COLUMNS } from '@/lib/query-columns';
 import { getErrorMessage } from '@/lib/error-utils';
 import { addIsoDays as addDays, fmtTimeManila } from '@/lib/date';
 import { isValidCoordinate } from '@/lib/route-footprints';
-import { extractGpsMetadata, formatGpsBadgeLabel } from '@/lib/gps-accuracy';
 import { resolvePmCreditedOperators } from '@/lib/pm-credit';
-import { resolveActivityPhotoUrl } from '@/lib/activity-media';
-import {
-  ACTIVITY_BY_ID,
-  ACTIVITY_TYPES,
-  type DailyActivityRow,
-  type JobOrderRow,
-  type ShiftHandoverRow,
-} from '@/lib/activity-types';
-import { formatTelemetrySummary } from '@/lib/activity-telemetry';
+import { ACTIVITY_TYPES, type DailyActivityRow, type JobOrderRow, type ShiftHandoverRow } from '@/lib/activity-types';
 import type { LinkedJobOrder } from '@/components/ActivityLoggerModal';
+import ActivityFeedCard, { type PrintPreviewMode } from '@/components/ActivityFeedCard';
 import { AlertBanner, Badge, SegmentedTabs } from '@/components/ui';
 import { DEFAULT_STATION_CODE } from '@/lib/roster-helpers';
-import { SampleBadge } from '@/components/SampleBadge';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import SampleCleanupHealth from '@/components/SampleCleanupHealth';
 import { enqueueOfflineActivity, flushOfflineQueue, getOfflineQueue, type PendingOfflineActivity } from '@/lib/offline-queue';
@@ -42,20 +33,19 @@ type MonAsg = { operator_id: string; schedule_date: string; shift_type_id: strin
 type MonStandby = { operator_id: string; standby_type: string };
 type MonPm = { id: string; activity_type: string; title: string; scheduled_date: string; completed_at: string | null; status: string; assigned_operator_ids: string[]; completed_by_operator_ids?: string[] | null };
 
-type PrintPreviewMode = 'activity' | 'meter_test' | 'well_pull_out' | 'tank_cleaning' | 'leak_volume_loss' | 'flushing_volume';
-
-const SPECIAL_PRINT_BUTTONS: Record<string, { mode: PrintPreviewMode; label: string; color: string }> = {
-  meter_test: { mode: 'meter_test', label: '🖨 Meter Certificate', color: 'var(--violet)' },
-  well_pull_out: { mode: 'well_pull_out', label: '🖨 Pull-Out Form', color: 'var(--accent)' },
-  tank_cleaning: { mode: 'tank_cleaning', label: '🖨 Tank Cleaning Report', color: 'var(--ok-fg)' },
-  leak_repair: { mode: 'leak_volume_loss', label: '💧 Volume Loss Sheet', color: 'var(--danger)' },
-  flushing: { mode: 'flushing_volume', label: '💧 Flushing Volume Sheet', color: 'var(--accent)' },
-};
-
-function daysUntil(iso: string | null | undefined) {
-  if (!iso) return null;
-  const ms = new Date(iso).getTime() - Date.now();
-  return Math.ceil(ms / (1000 * 60 * 60 * 24));
+function applyRealtimeRecord<T extends { id: string }>(
+  setList: React.Dispatch<React.SetStateAction<T[]>>,
+  payload: { eventType: string; old: Record<string, unknown>; new: Record<string, unknown> },
+  acceptNew?: (rec: T) => boolean,
+) {
+  const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as unknown as T;
+  if (!rec?.id) return;
+  if (payload.eventType === 'DELETE') {
+    setList((prev) => prev.filter((x) => x.id !== rec.id));
+    return;
+  }
+  if (acceptNew && !acceptNew(rec)) return;
+  setList((prev) => (prev.some((x) => x.id === rec.id) ? prev.map((x) => (x.id === rec.id ? rec : x)) : [rec, ...prev]));
 }
 
 export default function ActivitiesMonitor(p: {
@@ -88,36 +78,24 @@ export default function ActivitiesMonitor(p: {
   const [handovers, setHandovers] = useState<ShiftHandoverRow[]>(p.handovers);
   const [offlineQueue, setOfflineQueue] = useState<PendingOfflineActivity[]>([]);
 
-  // Filters on Monitor tab
   const [filterAreaId, setFilterAreaId] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterOpId, setFilterOpId] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'submitted' | 'verified' | 'flagged'>('all');
 
-  // Logger Modal state
   const [loggerOpen, setLoggerOpen] = useState(false);
   const [loggerLeadOpId, setLoggerLeadOpId] = useState<string | null>(null);
   const [linkedJoForLog, setLinkedJoForLog] = useState<LinkedJobOrder | null>(null);
   const [editingActivity, setEditingActivity] = useState<DailyActivityRow | null>(null);
 
-  // Printable preview state
-  const [printState, setPrintState] = useState<{
-    mode: PrintPreviewMode;
-    activity?: DailyActivityRow | null;
-    jobOrder?: JobOrderRow | null;
-  } | null>(null);
-
-  // Flag review inline state
+  const [printState, setPrintState] = useState<{ mode: PrintPreviewMode; activity?: DailyActivityRow | null; jobOrder?: JobOrderRow | null } | null>(null);
   const [flaggingId, setFlaggingId] = useState<string | null>(null);
   const [flagReason, setFlagReason] = useState('');
   const [pendingDeleteAct, setPendingDeleteAct] = useState<DailyActivityRow | null>(null);
   const [deletingAct, setDeletingAct] = useState(false);
-
-  // Storage purge feedback
   const [purging, setPurging] = useState(false);
   const [bannerMsg, setBannerMsg] = useState('');
 
-  // Job Orders & Shift Handover tab permissions/filters
   const canManageJo = p.isAdmin || p.role === 'scheduler' || p.role === 'manager';
   const [joFilter, setJoFilter] = useState<'open' | 'completed' | 'all'>('open');
   const canLogHandover = p.canLogActivity || p.canVerifyActivity;
@@ -126,80 +104,40 @@ export default function ActivitiesMonitor(p: {
   useEffect(() => setJobOrders(p.jobOrders), [p.jobOrders]);
   useEffect(() => setHandovers(p.handovers), [p.handovers]);
 
-  // Visibility-aware Realtime sync
   useEffect(() => {
-    const sb = supabaseBrowser();
     return subscribeVisibilityAwareChannel({
-      sb,
+      sb: supabaseBrowser(),
       channelName: 'bpwi-activities-hub',
       listeners: [
-        {
-          table: 'daily_activities',
-          onEvent: (payload) => {
-            const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as unknown as DailyActivityRow;
-            if (!rec?.id) return;
-            if (payload.eventType === 'DELETE') {
-              setActivities((prev) => prev.filter((x) => x.id !== rec.id));
-              return;
-            }
-            if (rec.activity_date !== p.date) return;
-            setActivities((prev) =>
-              prev.some((x) => x.id === rec.id) ? prev.map((x) => (x.id === rec.id ? rec : x)) : [rec, ...prev],
-            );
-          },
-        },
-        {
-          table: 'job_orders',
-          onEvent: (payload) => {
-            const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as unknown as JobOrderRow;
-            if (!rec?.id) return;
-            if (payload.eventType === 'DELETE') {
-              setJobOrders((prev) => prev.filter((x) => x.id !== rec.id));
-            } else {
-              setJobOrders((prev) =>
-                prev.some((x) => x.id === rec.id) ? prev.map((x) => (x.id === rec.id ? rec : x)) : [rec, ...prev],
-              );
-            }
-          },
-        },
-        {
-          table: 'shift_handovers',
-          onEvent: (payload) => {
-            const rec = (payload.eventType === 'DELETE' ? payload.old : payload.new) as unknown as ShiftHandoverRow;
-            if (!rec?.id) return;
-            if (payload.eventType === 'DELETE') {
-              setHandovers((prev) => prev.filter((x) => x.id !== rec.id));
-            } else {
-              setHandovers((prev) =>
-                prev.some((x) => x.id === rec.id) ? prev.map((x) => (x.id === rec.id ? rec : x)) : [rec, ...prev],
-              );
-            }
-          },
-        },
+        { table: 'daily_activities', onEvent: (pl) => applyRealtimeRecord(setActivities, pl, (rec) => rec.activity_date === p.date) },
+        { table: 'job_orders', onEvent: (pl) => applyRealtimeRecord(setJobOrders, pl) },
+        { table: 'shift_handovers', onEvent: (pl) => applyRealtimeRecord(setHandovers, pl) },
       ],
     });
   }, [p.date]);
 
-  // Offline queue listener & auto-flush
+  const flushOfflineAndReport = useCallback(async (showFailureBanner: boolean) => {
+    const res = await flushOfflineQueue(supabaseBrowser(), p.userId);
+    setOfflineQueue(await getOfflineQueue(p.userId));
+    if (res.synced.length > 0) {
+      setActivities((prev) => [...res.synced, ...prev]);
+      setBannerMsg(
+        res.failed > 0
+          ? `Synced ${res.synced.length} offline log(s); ${res.failed} failed — inspect queue above.`
+          : `✓ Synced ${res.synced.length} offline activity log(s).`,
+      );
+    } else if (showFailureBanner && res.failed > 0) {
+      setBannerMsg(`Sync failed for ${res.failed} item(s): ${res.errors[0]?.message ?? 'Check connection'}`);
+    }
+  }, [p.userId]);
+
   useEffect(() => {
     let active = true;
     const syncNow = async () => {
       const q = await getOfflineQueue(p.userId);
       if (!active) return;
       setOfflineQueue(q);
-      if (q.length > 0 && navigator.onLine) {
-        const res = await flushOfflineQueue(supabaseBrowser(), p.userId);
-        if (!active) return;
-        if (res.synced.length > 0) {
-          setActivities((prev) => [...res.synced, ...prev]);
-          setBannerMsg(
-            res.failed > 0
-              ? `Synced ${res.synced.length} offline log(s); ${res.failed} failed — inspect queue above.`
-              : `✓ Synced ${res.synced.length} offline activity log(s).`,
-          );
-        }
-        setOfflineQueue(await getOfflineQueue(p.userId));
-      }
+      if (q.length > 0 && navigator.onLine) await flushOfflineAndReport(false);
     };
     const onQueueChanged = async () => {
       const q = await getOfflineQueue(p.userId);
@@ -213,9 +151,8 @@ export default function ActivitiesMonitor(p: {
       window.removeEventListener('online', syncNow);
       window.removeEventListener('bpwi-offline-queue-changed', onQueueChanged);
     };
-  }, [p.userId]);
+  }, [p.userId, flushOfflineAndReport]);
 
-  // Lookup maps
   const opBy = useMemo(() => new Map(p.operators.map((o) => [o.id, o])), [p.operators]);
   const shiftBy = useMemo(() => new Map(p.shifts.map((s) => [s.id, s])), [p.shifts]);
   const areaBy = useMemo(() => new Map(p.areas.map((a) => [a.id, a])), [p.areas]);
@@ -238,7 +175,6 @@ export default function ActivitiesMonitor(p: {
     );
   }, [activities, p.date, p.canVerifyActivity, p.userId, p.operatorId]);
 
-  // Daily Duty-vs-Activity Matrix
   const dutyMatrix = useMemo(() => {
     return p.operators
       .map((op) => {
@@ -248,26 +184,13 @@ export default function ActivitiesMonitor(p: {
         const standbyType = standbyByOp.get(op.id);
         const isLeaveOrRest = Boolean(area && (area.category === 'leave' || area.category === 'rest' || area.category === 'holiday'));
         const isOnDuty = Boolean(shift && !shift.is_off && !isLeaveOrRest);
-
         const opActs = dateActivities.filter(
           (a) => !a.is_sample && (a.lead_operator_id === op.id || (a.crew_operator_ids ?? []).includes(op.id)),
         );
         const pmsClosedToday = p.pmTasks.filter(
           (t) => t.status === 'done' && t.completed_at === p.date && resolvePmCreditedOperators(t).includes(op.id),
         ).length;
-        const lastTimestamp = opActs[0]?.completed_at ?? opActs[0]?.created_at ?? null;
-
-        return {
-          op,
-          shift,
-          area,
-          standbyType,
-          isOnDuty,
-          isLeaveOrRest,
-          logsCount: opActs.length,
-          pmsClosedToday,
-          lastTimestamp,
-        };
+        return { op, shift, area, standbyType, isOnDuty, isLeaveOrRest, logsCount: opActs.length, pmsClosedToday, lastTimestamp: opActs[0]?.completed_at ?? opActs[0]?.created_at ?? null };
       })
       .filter((row) => row.isOnDuty || row.standbyType || row.logsCount > 0 || row.pmsClosedToday > 0)
       .sort((a, b) => Number(b.isOnDuty) - Number(a.isOnDuty) || b.logsCount - a.logsCount || a.op.full_name.localeCompare(b.op.full_name));
@@ -278,21 +201,16 @@ export default function ActivitiesMonitor(p: {
     [dutyMatrix],
   );
 
-  // Filtered Activity Feed for p.date
   const filteredActivities = useMemo(() => {
     return dateActivities.filter((a) => {
       if (filterAreaId && a.area_code_id !== filterAreaId) return false;
       if (filterType && a.activity_type !== filterType) return false;
       if (filterStatus !== 'all' && a.status !== filterStatus) return false;
-      if (filterOpId) {
-        const involved = a.lead_operator_id === filterOpId || (a.crew_operator_ids ?? []).includes(filterOpId);
-        if (!involved) return false;
-      }
+      if (filterOpId && a.lead_operator_id !== filterOpId && !(a.crew_operator_ids ?? []).includes(filterOpId)) return false;
       return true;
     });
   }, [dateActivities, filterAreaId, filterType, filterStatus, filterOpId]);
 
-  // Photo retention stats across loaded activities
   const photoRetention = useMemo(() => {
     const nowMs = Date.now();
     let activeWithPhotos = 0;
@@ -300,22 +218,17 @@ export default function ActivitiesMonitor(p: {
     for (const a of activities) {
       if (!a.photos_purged_at && Array.isArray(a.photo_urls) && a.photo_urls.length > 0) {
         activeWithPhotos += 1;
-        if (a.photos_expires_at && new Date(a.photos_expires_at).getTime() < nowMs) {
-          expiredCount += 1;
-        }
+        if (a.photos_expires_at && new Date(a.photos_expires_at).getTime() < nowMs) expiredCount += 1;
       }
     }
     return { activeWithPhotos, expiredCount };
   }, [activities]);
 
-  // Filtered Job Orders (non-supervisors only see JOs assigned to them or unassigned)
   const filteredJobOrders = useMemo(() => {
     const scoped = p.canVerifyActivity
       ? jobOrders
       : jobOrders.filter(
-          (j) =>
-            (j.assigned_operator_ids ?? []).length === 0 ||
-            (p.operatorId && (j.assigned_operator_ids ?? []).includes(p.operatorId)),
+          (j) => (j.assigned_operator_ids ?? []).length === 0 || (p.operatorId && (j.assigned_operator_ids ?? []).includes(p.operatorId)),
         );
     if (joFilter === 'open') return scoped.filter((j) => j.status === 'pending' || j.status === 'in_progress');
     if (joFilter === 'completed') return scoped.filter((j) => j.status === 'completed' || j.status === 'cancelled');
@@ -328,9 +241,8 @@ export default function ActivitiesMonitor(p: {
     try {
       const res = await fetch('/api/activities/purge-photos', { method: 'POST' });
       const json = await res.json();
-      if (!res.ok) {
-        setBannerMsg(`Purge error: ${json.error ?? res.statusText}`);
-      } else {
+      if (!res.ok) setBannerMsg(`Purge error: ${json.error ?? res.statusText}`);
+      else {
         setBannerMsg(`✓ Purged expired photos from ${json.purgedCount} record(s) (${json.filesRemoved} file(s) removed).`);
         if (json.purgedCount > 0) router.refresh();
       }
@@ -343,20 +255,12 @@ export default function ActivitiesMonitor(p: {
 
   async function updateActivityVerification(act: DailyActivityRow, nextStatus: 'verified' | 'flagged', note?: string) {
     if (!p.canVerifyActivity) return;
-    const sb = supabaseBrowser();
-    const nowIso = new Date().toISOString();
-    const { data, error } = await sb
+    const { data, error } = await supabaseBrowser()
       .from('daily_activities')
-      .update({
-        status: nextStatus,
-        verified_by: p.userId,
-        verified_at: nowIso,
-        review_note: note?.trim() || null,
-      })
+      .update({ status: nextStatus, verified_by: p.userId, verified_at: new Date().toISOString(), review_note: note?.trim() || null })
       .eq('id', act.id)
       .select(DAILY_ACTIVITY_LIST_COLUMNS)
       .single();
-
     if (error) {
       setBannerMsg(`Could not update verification: ${error.message}`);
       return;
@@ -369,8 +273,7 @@ export default function ActivitiesMonitor(p: {
   async function handleDeleteActivity(act: DailyActivityRow) {
     setDeletingAct(true);
     try {
-      const sb = supabaseBrowser();
-      const { error } = await sb.from('daily_activities').delete().eq('id', act.id);
+      const { error } = await supabaseBrowser().from('daily_activities').delete().eq('id', act.id);
       if (error) {
         setBannerMsg(`Could not delete activity: ${error.message}`);
         return;
@@ -383,71 +286,41 @@ export default function ActivitiesMonitor(p: {
     }
   }
 
-  // Huddle summary numbers for p.date (samples excluded)
   const openHighJos = jobOrders.filter((j) => !j.is_sample && (j.status === 'pending' || j.status === 'in_progress') && j.priority === 'high').length;
   const overduePms = p.pmTasks.filter((t) => t.status !== 'done' && t.scheduled_date < p.date).length;
 
   return (
-    <div style={{ maxWidth: 1440, margin: '0 auto', padding: '12px 16px 40px', display: 'grid', gap: 12 }}>
-      {/* Top Action & Date Toolbar */}
-      <div className="card" style={{ padding: 12, display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+    <div className="stack-md" style={{ maxWidth: 1440, margin: '0 auto', padding: '12px 16px 40px' }}>
+      <div className="card card-pad-sm row-between-wrap">
+        <div className="row-wrap">
           <div>
             <h1 className="page-title">Daily Employee Activity Monitor</h1>
-            <p className="page-subtitle">
-              Schedule-linked field logs, Job Orders, Shift Huddle &amp; Performance KPIs
-            </p>
+            <p className="page-subtitle">Schedule-linked field logs, Job Orders, Shift Huddle &amp; Performance KPIs</p>
           </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <button type="button" className="btn" onClick={() => router.push(`/activities?d=${addDays(p.date, -1)}`)} aria-label="Previous day">
-              ‹
-            </button>
-            <input
-              type="date"
-              className="input"
-              aria-label="Monitoring date"
-              value={p.date}
-              onChange={(e) => e.target.value && router.push(`/activities?d=${e.target.value}`)}
-              style={{ width: 150 }}
-            />
-            <button type="button" className="btn" onClick={() => router.push(`/activities?d=${addDays(p.date, 1)}`)} aria-label="Next day">
-              ›
-            </button>
+          <div className="row-xs">
+            <button type="button" className="btn" onClick={() => router.push(`/activities?d=${addDays(p.date, -1)}`)} aria-label="Previous day">‹</button>
+            <input type="date" className="input" aria-label="Monitoring date" value={p.date} onChange={(e) => e.target.value && router.push(`/activities?d=${e.target.value}`)} style={{ width: 150 }} />
+            <button type="button" className="btn" onClick={() => router.push(`/activities?d=${addDays(p.date, 1)}`)} aria-label="Next day">›</button>
             {p.date !== p.today && (
-              <button type="button" className="btn btn-primary" onClick={() => router.push(`/activities?d=${p.today}`)}>
-                Today
-              </button>
+              <button type="button" className="btn btn-primary" onClick={() => router.push(`/activities?d=${p.today}`)}>Today</button>
             )}
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Badge
-            tone="neutral"
-            title="Photos uploaded to Supabase Storage auto-expire after 30 days to stay within storage limits."
-          >
+        <div className="row-wrap">
+          <Badge tone="neutral" title="Photos uploaded to Supabase Storage auto-expire after 30 days to stay within storage limits.">
             30d Photo Retention ({photoRetention.activeWithPhotos} active)
           </Badge>
-
           {p.canVerifyActivity && (
-            <button
-              type="button"
-              className="btn"
-              disabled={purging}
-              onClick={handlePurgeExpiredPhotos}
-              style={{ fontSize: 12 }}
-            >
+            <button type="button" className="btn btn-sm" disabled={purging} onClick={handlePurgeExpiredPhotos}>
               {purging ? 'Purging…' : `Purge Expired Photos${photoRetention.expiredCount > 0 ? ` (${photoRetention.expiredCount})` : ''}`}
             </button>
           )}
-
           {(p.canLogActivity || p.canLogSampleActivity) && (
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn btn-primary font-bold"
               onClick={() => { setLinkedJoForLog(null); setLoggerLeadOpId(p.operatorId); setLoggerOpen(true); }}
-              style={{ fontWeight: 700 }}
             >
               {p.canLogActivity ? '+ Log Activity' : '+ Log Sample'}
             </button>
@@ -456,50 +329,15 @@ export default function ActivitiesMonitor(p: {
       </div>
 
       {p.isAdmin && <SampleCleanupHealth />}
-
-      {p.schemaWarning && (
-        <AlertBanner tone="warn">
-          <b>Setup Notice:</b> {p.schemaWarning}
-        </AlertBanner>
-      )}
-
-      {bannerMsg && (
-        <AlertBanner tone={bannerMsg.startsWith('✓') ? 'ok' : 'danger'} onDismiss={() => setBannerMsg('')}>
-          {bannerMsg}
-        </AlertBanner>
-      )}
+      {p.schemaWarning && <AlertBanner tone="warn"><b>Setup Notice:</b> {p.schemaWarning}</AlertBanner>}
+      {bannerMsg && <AlertBanner tone={bannerMsg.startsWith('✓') ? 'ok' : 'danger'} onDismiss={() => setBannerMsg('')}>{bannerMsg}</AlertBanner>}
 
       {offlineQueue.length > 0 && (
-        <AlertBanner
-          tone="warn"
-          action={
-            <button
-              type="button"
-              className="btn"
-              onClick={async () => {
-                const res = await flushOfflineQueue(supabaseBrowser(), p.userId);
-                setOfflineQueue(await getOfflineQueue(p.userId));
-                if (res.synced.length > 0) {
-                  setActivities((prev) => [...res.synced, ...prev]);
-                  setBannerMsg(
-                    res.failed > 0
-                      ? `Synced ${res.synced.length} item(s); ${res.failed} failed — use Inspect Queue above.`
-                      : `✓ Synced ${res.synced.length} offline item(s).`,
-                  );
-                } else if (res.failed > 0) {
-                  setBannerMsg(`Sync failed for ${res.failed} item(s): ${res.errors[0]?.message ?? 'Check connection'}`);
-                }
-              }}
-            >
-              Sync Now
-            </button>
-          }
-        >
+        <AlertBanner tone="warn" action={<button type="button" className="btn" onClick={() => void flushOfflineAndReport(true)}>Sync Now</button>}>
           <b>{offlineQueue.length}</b> field activity log{offlineQueue.length === 1 ? '' : 's'} queued in browser IndexedDB (offline mode).
         </AlertBanner>
       )}
 
-      {/* Navigation Tabs */}
       <SegmentedTabs
         ariaLabel="Activity monitoring sections"
         value={tab}
@@ -513,139 +351,91 @@ export default function ActivitiesMonitor(p: {
         ]}
       />
 
-      {/* TAB 1: DAILY DUTY & ACTIVITY FEED */}
       {tab === 'monitor' && (
-        <div style={{ display: 'grid', gap: 14 }}>
+        <div className="stack-md">
           {!p.canLogActivity && (
-            <div className="card" style={{ padding: '8px 12px', fontSize: 12.5, color: 'var(--text-secondary)' }}>
+            <div className="card card-pad-xs text-secondary-sm">
               Real activity submission is restricted to <b>operator</b> and <b>admin</b> logins.
               {p.canLogSampleActivity ? ' As department head, you can log 24h auto-expiring sample activities via + Log Sample.' : ` Your role (${p.role}) has monitoring${p.canVerifyActivity ? ' & verification' : ''} access.`}
             </div>
           )}
 
-          {/* On-Duty Operator Activity Matrix (Supervisors / Admins / Dept Heads only) */}
           {p.canVerifyActivity && (
-          <div className="card" style={{ padding: 14, display: 'grid', gap: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-              <div>
-                <strong style={{ fontSize: 14.5 }}>On-Duty Operator Activity Matrix ({p.date})</strong>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  Reconciles today&apos;s scheduled roster crew against logged activities and closed PM tasks.
+            <div className="card card-pad stack-sm">
+              <div className="row-between-wrap">
+                <div>
+                  <strong style={{ fontSize: 14.5 }}>On-Duty Operator Activity Matrix ({p.date})</strong>
+                  <div className="text-secondary-xs">Reconciles today&apos;s scheduled roster crew against logged activities and closed PM tasks.</div>
                 </div>
+                {idleOnDutyCount > 0 && (
+                  <Badge tone="warn">⚠️ {idleOnDutyCount} on-duty operator{idleOnDutyCount === 1 ? '' : 's'} with 0 logs yet</Badge>
+                )}
               </div>
-              {idleOnDutyCount > 0 && (
-                <span style={{ background: 'var(--warn-bg)', color: 'var(--warn-fg)', border: '1px solid var(--warn-border)', padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
-                  ⚠️ {idleOnDutyCount} on-duty operator{idleOnDutyCount === 1 ? '' : 's'} with 0 logs yet
-                </span>
-              )}
-            </div>
 
-            {dutyMatrix.length === 0 ? (
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                No operators scheduled on duty or standby for {p.date}.
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(255px, 1fr))', gap: 8 }}>
-                {dutyMatrix.map((row) => {
-                  const hasOutput = row.logsCount > 0 || row.pmsClosedToday > 0;
-                  const canLogForThisOp = p.isAdmin || (p.canLogActivity && p.operatorId === row.op.id);
-                  const isFiltered = filterOpId === row.op.id;
-
-                  return (
-                    <div
-                      key={row.op.id}
-                      className="card"
-                      style={{
-                        padding: 10,
-                        display: 'grid',
-                        gap: 6,
-                        background: isFiltered ? 'var(--info-bg)' : 'var(--surface-muted)',
-                        borderColor: isFiltered ? 'var(--accent)' : hasOutput ? 'var(--ok-border)' : row.isOnDuty ? 'var(--warn-border)' : 'var(--border)',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 6 }}>
-                        <div>
-                          <div style={{ fontWeight: 700, fontSize: 13.5 }}>{row.op.full_name}</div>
-                          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                            {row.shift ? `${row.shift.code}` : 'Unscheduled'} · {row.area ? row.area.code : row.isOnDuty ? DEFAULT_STATION_CODE : '—'}
-                            {row.standbyType && (
-                              <span style={{ marginLeft: 5, color: 'var(--violet)', fontWeight: 700 }}>· {row.standbyType}</span>
+              {dutyMatrix.length === 0 ? (
+                <div className="text-secondary-sm">No operators scheduled on duty or standby for {p.date}.</div>
+              ) : (
+                <div className="grid-auto-md" style={{ gap: 8 }}>
+                  {dutyMatrix.map((row) => {
+                    const hasOutput = row.logsCount > 0 || row.pmsClosedToday > 0;
+                    const canLogForThisOp = p.isAdmin || (p.canLogActivity && p.operatorId === row.op.id);
+                    const isFiltered = filterOpId === row.op.id;
+                    return (
+                      <div
+                        key={row.op.id}
+                        className="card card-pad-sm stack-xs"
+                        style={{
+                          background: isFiltered ? 'var(--info-bg)' : 'var(--surface-muted)',
+                          borderColor: isFiltered ? 'var(--accent)' : hasOutput ? 'var(--ok-border)' : row.isOnDuty ? 'var(--warn-border)' : 'var(--border)',
+                        }}
+                      >
+                        <div className="row-between" style={{ alignItems: 'start' }}>
+                          <div>
+                            <div className="font-bold" style={{ fontSize: 13.5 }}>{row.op.full_name}</div>
+                            <div className="text-secondary-xs">
+                              {row.shift ? row.shift.code : 'Unscheduled'} · {row.area ? row.area.code : row.isOnDuty ? DEFAULT_STATION_CODE : '—'}
+                              {row.standbyType && <span className="font-bold" style={{ marginLeft: 5, color: 'var(--violet)' }}>· {row.standbyType}</span>}
+                            </div>
+                          </div>
+                          <Badge size="sm" tone={hasOutput ? 'ok' : 'warn'}>
+                            {hasOutput ? `✓ ${row.logsCount} log${row.logsCount === 1 ? '' : 's'}${row.pmsClosedToday ? ` + ${row.pmsClosedToday} PM` : ''}` : '⚠️ 0 logs'}
+                          </Badge>
+                        </div>
+                        <div className="row-between text-secondary-xs">
+                          <span>Last: {row.lastTimestamp ? fmtTimeManila(row.lastTimestamp) : '—'}</span>
+                          <div className="row-xs">
+                            <button type="button" className="btn btn-xs" onClick={() => setFilterOpId(isFiltered ? '' : row.op.id)}>
+                              {isFiltered ? 'Clear Filter' : 'Filter Feed'}
+                            </button>
+                            {canLogForThisOp && (
+                              <button type="button" className="btn btn-primary btn-xs" onClick={() => { setLinkedJoForLog(null); setLoggerLeadOpId(row.op.id); setLoggerOpen(true); }}>
+                                + Log
+                              </button>
                             )}
                           </div>
                         </div>
-                        <span
-                          style={{
-                            padding: '2px 7px',
-                            borderRadius: 999,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            background: hasOutput ? 'var(--ok-bg)' : 'var(--warn-bg)',
-                            color: hasOutput ? 'var(--ok-fg)' : 'var(--warn-fg)',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {hasOutput ? `✓ ${row.logsCount} log${row.logsCount === 1 ? '' : 's'}${row.pmsClosedToday ? ` + ${row.pmsClosedToday} PM` : ''}` : '⚠️ 0 logs'}
-                        </span>
                       </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                        <span>Last: {row.lastTimestamp ? fmtTimeManila(row.lastTimestamp) : '—'}</span>
-                        <div style={{ display: 'flex', gap: 5 }}>
-                          <button
-                            type="button"
-                            className="btn"
-                            onClick={() => setFilterOpId(isFiltered ? '' : row.op.id)}
-                            style={{ minHeight: 26, padding: '2px 8px', fontSize: 11 }}
-                          >
-                            {isFiltered ? 'Clear Filter' : 'Filter Feed'}
-                          </button>
-                          {canLogForThisOp && (
-                            <button
-                              type="button"
-                              className="btn btn-primary"
-                              onClick={() => {
-                                setLinkedJoForLog(null);
-                                setLoggerLeadOpId(row.op.id);
-                                setLoggerOpen(true);
-                              }}
-                              style={{ minHeight: 26, padding: '2px 8px', fontSize: 11 }}
-                            >
-                              + Log
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           )}
 
-          {/* Filter Bar for Feed */}
-          <div className="card" style={{ padding: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <strong style={{ fontSize: 12, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Filter Logs:</strong>
+          <div className="card card-pad-sm row-wrap">
+            <strong className="section-eyebrow">Filter Logs:</strong>
             <select className="input" value={filterAreaId} onChange={(e) => setFilterAreaId(e.target.value)} style={{ width: 'auto', minWidth: 150 }}>
               <option value="">All Stations / Areas</option>
-              {stationAreas.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.code}{a.name ? ` · ${a.name}` : ''}
-                </option>
-              ))}
+              {stationAreas.map((a) => <option key={a.id} value={a.id}>{a.code}{a.name ? ` · ${a.name}` : ''}</option>)}
             </select>
             <select className="input" value={filterType} onChange={(e) => setFilterType(e.target.value)} style={{ width: 'auto', minWidth: 170 }}>
               <option value="">All Activity Types</option>
-              {ACTIVITY_TYPES.map((t) => (
-                <option key={t.id} value={t.id}>{t.label}</option>
-              ))}
+              {ACTIVITY_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
             </select>
             {p.canVerifyActivity && (
               <select className="input" value={filterOpId} onChange={(e) => setFilterOpId(e.target.value)} style={{ width: 'auto', minWidth: 160 }}>
                 <option value="">All Operators</option>
-                {p.operators.map((o) => (
-                  <option key={o.id} value={o.id}>{o.full_name}</option>
-                ))}
+                {p.operators.map((o) => <option key={o.id} value={o.id}>{o.full_name}</option>)}
               </select>
             )}
             <select className="input" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as 'all' | 'submitted' | 'verified' | 'flagged')} style={{ width: 'auto', minWidth: 130 }}>
@@ -655,211 +445,36 @@ export default function ActivitiesMonitor(p: {
               <option value="flagged">Flagged</option>
             </select>
             {(filterAreaId || filterType || filterOpId || filterStatus !== 'all') && (
-              <button
-                type="button"
-                className="btn"
-                onClick={() => {
-                  setFilterAreaId('');
-                  setFilterType('');
-                  setFilterOpId('');
-                  setFilterStatus('all');
-                }}
-                style={{ fontSize: 12 }}
-              >
+              <button type="button" className="btn btn-sm" onClick={() => { setFilterAreaId(''); setFilterType(''); setFilterOpId(''); setFilterStatus('all'); }}>
                 Reset
               </button>
             )}
           </div>
 
-          {/* Live Activity Feed Cards */}
           {filteredActivities.length === 0 ? (
-            <div className="card" style={{ padding: 28, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13.5 }}>
+            <div className="card card-pad-lg text-center text-secondary-sm">
               No field activities match the current filter for <b>{p.date}</b>.
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
-              {filteredActivities.map((act) => {
-                const def = ACTIVITY_BY_ID[act.activity_type];
-                const area = act.area_code_id ? areaBy.get(act.area_code_id) : undefined;
-                const lead = act.lead_operator_id ? opBy.get(act.lead_operator_id) : undefined;
-                const crew = (act.crew_operator_ids ?? []).map((id) => opBy.get(id)?.full_name).filter(Boolean) as string[];
-                const telemetry = formatTelemetrySummary(act);
-                const expDays = daysUntil(act.photos_expires_at);
-
-                return (
-                  <div
-                    key={act.id}
-                    className="card"
-                    style={{
-                      padding: 14,
-                      display: 'grid',
-                      gap: 8,
-                      borderLeft: `4px solid ${def?.color ?? 'var(--accent)'}`,
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                      <span style={{ background: def?.color ?? 'var(--primary)', color: '#ffffff', padding: '3px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700 }}>
-                        {def?.label ?? act.activity_type}
-                      </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                        {act.is_sample && <SampleBadge expiresAt={act.sample_expires_at} />}
-                        <span
-                          style={{
-                            padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
-                            background: act.status === 'verified' ? 'var(--ok-bg)' : act.status === 'flagged' ? 'var(--danger-bg)' : 'var(--info-bg)',
-                            color: act.status === 'verified' ? 'var(--ok-fg)' : act.status === 'flagged' ? 'var(--danger-fg)' : 'var(--info-fg)',
-                          }}
-                        >
-                          {act.status}
-                        </span>
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13.5, fontWeight: 700 }}>
-                      <span>
-                        {area ? `${area.code}${area.name ? ` · ${area.name}` : ''}` : 'Unassigned Area'}
-                        {act.site_or_well ? ` — ${act.site_or_well}` : ''}
-                      </span>
-                      <span style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--text-secondary)' }}>
-                        {fmtTimeManila(act.completed_at ?? act.created_at)}
-                      </span>
-                    </div>
-
-                    {act.block_lot && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Location: {act.block_lot}</div>}
-
-                    <div style={{ fontSize: 12.5 }}>
-                      Lead: <b>{lead?.full_name ?? 'Unspecified'}</b>
-                      {crew.length > 0 && (
-                        <span style={{ color: 'var(--text-secondary)' }}> · Crew: {crew.join(', ')}</span>
-                      )}
-                    </div>
-
-                    {telemetry.length > 0 && (
-                      <div style={{ padding: '6px 9px', borderRadius: 6, background: 'var(--surface-muted)', fontSize: 12, display: 'grid', gap: 2 }}>
-                        {telemetry.map((line, i) => (
-                          <div key={i}>{line}</div>
-                        ))}
-                      </div>
-                    )}
-
-                    {act.notes && <div style={{ fontSize: 12.5 }}>{act.notes}</div>}
-
-                    {act.review_note && (
-                      <div style={{ fontSize: 12, color: 'var(--danger-fg)', background: 'var(--danger-bg)', padding: '5px 8px', borderRadius: 6 }}>
-                        <b>Supervisor Note:</b> {act.review_note}
-                      </div>
-                    )}
-
-                    {act.gps_lat != null && act.gps_lng != null && (() => {
-                      const gpsMeta = extractGpsMetadata(act.details);
-                      const gpsLabel = formatGpsBadgeLabel(act.details);
-                      const gpsTone =
-                        gpsMeta.gpsSource === 'map_pin'
-                          ? 'warn'
-                          : (gpsMeta.gpsAccuracyM ?? 99) <= 5
-                            ? 'ok'
-                            : 'info';
-                      return (
-                        <div style={{ fontSize: 11.5, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          <a
-                            href={`https://maps.google.com/?q=${act.gps_lat},${act.gps_lng}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ color: 'var(--accent)', fontWeight: 600 }}
-                          >
-                            📍 GPS: {act.gps_lat}, {act.gps_lng}
-                          </a>
-                          {gpsLabel && <Badge size="sm" tone={gpsTone}>{gpsLabel}</Badge>}
-                        </div>
-                      );
-                    })()}
-
-                    {/* Photo thumbnails or purged notice */}
-                    {act.photos_purged_at ? (
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                        Photos auto-purged after 30-day storage retention ({act.photos_purged_at.slice(0, 10)}).
-                      </div>
-                    ) : Array.isArray(act.photo_urls) && act.photo_urls.length > 0 ? (
-                      <div style={{ display: 'grid', gap: 4 }}>
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          {act.photo_urls.map((u, idx) => {
-                            const photoSrc = resolveActivityPhotoUrl(u, act.photo_storage_paths?.[idx]);
-                            return (
-                              <a key={idx} href={photoSrc} target="_blank" rel="noreferrer">
-                                <img
-                                  src={photoSrc}
-                                  alt={`Photo ${idx + 1}`}
-                                  style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }}
-                                />
-                              </a>
-                            );
-                          })}
-                        </div>
-                        {expDays !== null && (
-                          <span style={{ fontSize: 10.5, color: expDays <= 5 ? 'var(--warn-fg)' : 'var(--text-secondary)' }}>
-                            {expDays > 0 ? `Storage auto-expires in ${expDays}d` : 'Photo retention expired — ready to purge'}
-                          </span>
-                        )}
-                      </div>
-                    ) : null}
-
-                    {/* Action Bar */}
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4, borderTop: '1px solid var(--border-light)', paddingTop: 8 }}>
-                      {p.canVerifyActivity && !act.is_sample && act.status !== 'verified' && (
-                        <button type="button" className="btn" onClick={() => void updateActivityVerification(act, 'verified')} style={{ fontSize: 11.5, background: 'var(--ok-bg)', color: 'var(--ok-fg)', borderColor: 'var(--ok-border)', fontWeight: 700 }}>
-                          ✓ Verify
-                        </button>
-                      )}
-                      {p.canVerifyActivity && !act.is_sample && act.status !== 'flagged' && (
-                        <button type="button" className="btn" onClick={() => { setFlaggingId(flaggingId === act.id ? null : act.id); setFlagReason(''); }} style={{ fontSize: 11.5, color: 'var(--danger)' }}>
-                          ⚠ Flag
-                        </button>
-                      )}
-                      <button type="button" className="btn" onClick={() => setPrintState({ mode: 'activity', activity: act })} style={{ fontSize: 11.5 }}>
-                        🖨 Print Report
-                      </button>
-                      {SPECIAL_PRINT_BUTTONS[act.activity_type] && (() => {
-                        const sp = SPECIAL_PRINT_BUTTONS[act.activity_type];
-                        return (
-                          <button type="button" className="btn" onClick={() => setPrintState({ mode: sp.mode, activity: act })} style={{ fontSize: 11.5, color: sp.color, fontWeight: 700 }}>
-                            {sp.label}
-                          </button>
-                        );
-                      })()}
-                      {(p.isAdmin || act.logged_by === p.userId) && act.status !== 'verified' && (
-                        <>
-                          <button type="button" className="btn" onClick={() => { setLinkedJoForLog(null); setEditingActivity(act); setLoggerOpen(true); }} style={{ fontSize: 11.5 }}>
-                            Edit
-                          </button>
-                          <button type="button" className="btn" onClick={() => setPendingDeleteAct(act)} style={{ fontSize: 11.5, color: 'var(--danger)' }}>
-                            Delete
-                          </button>
-                        </>
-                      )}
-                    </div>
-
-                    {flaggingId === act.id && (
-                      <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                        <input
-                          className="input"
-                          placeholder="Reason for flagging…"
-                          value={flagReason}
-                          onChange={(e) => setFlagReason(e.target.value)}
-                          style={{ flex: 1, minHeight: 34, fontSize: 12 }}
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-primary"
-                          onClick={() => void updateActivityVerification(act, 'flagged', flagReason)}
-                          style={{ minHeight: 34, fontSize: 12 }}
-                        >
-                          Confirm
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {filteredActivities.map((act) => (
+                <ActivityFeedCard
+                  key={act.id} act={act}
+                  area={act.area_code_id ? areaBy.get(act.area_code_id) : undefined}
+                  leadName={act.lead_operator_id ? opBy.get(act.lead_operator_id)?.full_name : undefined}
+                  crewNames={(act.crew_operator_ids ?? []).map((id) => opBy.get(id)?.full_name).filter(Boolean) as string[]}
+                  canVerifyActivity={p.canVerifyActivity}
+                  canEditOrDelete={(p.isAdmin || act.logged_by === p.userId) && act.status !== 'verified'}
+                  isFlagging={flaggingId === act.id} flagReason={flagReason}
+                  onFlagReasonChange={setFlagReason}
+                  onToggleFlag={() => { setFlaggingId(flaggingId === act.id ? null : act.id); setFlagReason(''); }}
+                  onVerify={() => void updateActivityVerification(act, 'verified')}
+                  onConfirmFlag={() => void updateActivityVerification(act, 'flagged', flagReason)}
+                  onPrint={(mode) => setPrintState({ mode, activity: act })}
+                  onEdit={() => { setLinkedJoForLog(null); setEditingActivity(act); setLoggerOpen(true); }}
+                  onDelete={() => setPendingDeleteAct(act)}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -872,20 +487,17 @@ export default function ActivitiesMonitor(p: {
       {tab === 'job-orders' && (
         <JobOrdersTab
           orgId={p.orgId} userId={p.userId} canManageJo={canManageJo} canLogActivity={p.canLogActivity} canLogSample={p.canLogSampleActivity} role={p.role}
-          joFilter={joFilter} onChangeJoFilter={setJoFilter} filteredJobOrders={filteredJobOrders}
-          operators={p.operators} stationAreas={stationAreas} opBy={opBy} areaBy={areaBy}
+          joFilter={joFilter} onChangeJoFilter={setJoFilter} filteredJobOrders={filteredJobOrders} operators={p.operators} stationAreas={stationAreas} opBy={opBy} areaBy={areaBy}
           onJobOrderCreated={(jo) => setJobOrders((prev) => [jo, ...prev])}
           onJobOrderUpdated={(jo) => setJobOrders((prev) => prev.map((x) => (x.id === jo.id ? jo : x)))}
           onFulfillJobOrder={(jo) => { setLinkedJoForLog(jo); setLoggerLeadOpId(jo.assigned_operator_ids?.[0] ?? p.operatorId); setLoggerOpen(true); }}
-          onPrintJobOrder={(jo) => setPrintState({ mode: 'activity', jobOrder: jo })}
-          onBannerMsg={setBannerMsg}
+          onPrintJobOrder={(jo) => setPrintState({ mode: 'activity', jobOrder: jo })} onBannerMsg={setBannerMsg}
         />
       )}
 
       {tab === 'handovers' && (
         <ShiftHandoversTab
-          orgId={p.orgId} userId={p.userId} operatorId={p.operatorId} date={p.date}
-          canLogHandover={canLogHandover} canLogSample={p.canLogSampleActivity}
+          orgId={p.orgId} userId={p.userId} operatorId={p.operatorId} date={p.date} canLogHandover={canLogHandover} canLogSample={p.canLogSampleActivity}
           dateActivities={dateActivities} idleOnDutyCount={idleOnDutyCount} openHighJos={openHighJos} overduePms={overduePms}
           handovers={handovers} operators={p.operators} stationAreas={stationAreas} opBy={opBy} areaBy={areaBy}
           onHandoverCreated={(ho) => setHandovers((prev) => [ho, ...prev])} onBannerMsg={setBannerMsg}
@@ -924,16 +536,11 @@ export default function ActivitiesMonitor(p: {
       )}
 
       <ConfirmDialog
-        open={pendingDeleteAct !== null}
-        title="Delete activity log?"
+        open={pendingDeleteAct !== null} title="Delete activity log?"
         description="This permanently removes the activity log from the feed. This action cannot be undone."
-        confirmLabel={deletingAct ? 'Deleting…' : 'Delete log'}
-        tone="danger"
-        busy={deletingAct}
+        confirmLabel={deletingAct ? 'Deleting…' : 'Delete log'} tone="danger" busy={deletingAct}
         onCancel={() => setPendingDeleteAct(null)}
-        onConfirm={() => {
-          if (pendingDeleteAct) void handleDeleteActivity(pendingDeleteAct);
-        }}
+        onConfirm={() => { if (pendingDeleteAct) void handleDeleteActivity(pendingDeleteAct); }}
       />
     </div>
   );

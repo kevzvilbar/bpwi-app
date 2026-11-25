@@ -1,5 +1,6 @@
 'use client';
 
+import type { CSSProperties } from 'react';
 import type { DailyActivityRow } from '@/lib/activity-types';
 import {
   formatPulloutDateDisplay,
@@ -23,26 +24,67 @@ interface WellPulloutReportSheetProps {
   crewNames?: string[];
 }
 
+type FieldRowSpec = {
+  label: string;
+  value: string;
+  suffix?: string;
+  uppercase?: boolean;
+  indent?: boolean;
+};
+
 const B = REPORT_BORDER;
 const TB = REPORT_BORDER_HEAVY;
-const MIDDLE_W = '196px';
-const IR_COL_W = '64px';
-const PHASE_ROW_GRID = '116px repeat(3, minmax(0, 1fr))';
-const PHASE_SLOT_GRID = 'minmax(0, 1fr) 38px';
 
-const HDR_BAR: React.CSSProperties = {
-  ...REPORT_SECTION_BAR_STYLE,
-  fontSize: 9,
-  padding: '2.5px 6px',
-  lineHeight: 1.25,
-};
-
-const PAD_CELL: React.CSSProperties = {
-  padding: '2px 5px',
-  fontSize: 8.8,
-  lineHeight: 1.25,
-  color: '#0f172a',
-};
+const S = {
+  root: { color: '#0f172a', fontFamily: 'Arial, sans-serif' },
+  outerBox: { border: TB },
+  titleBar: { marginTop: 0, padding: '3.5px 8px' },
+  hdrBar: { ...REPORT_SECTION_BAR_STYLE, fontSize: 9, padding: '2.5px 6px', lineHeight: 1.25 },
+  padCell: { padding: '2px 5px', fontSize: 8.8, lineHeight: 1.25, color: '#0f172a' },
+  padCellCol: { padding: '2px 5px', fontSize: 8.8, lineHeight: 1.25, color: '#0f172a', display: 'flex', flexDirection: 'column' },
+  padCellGrid2: { padding: '2px 5px', fontSize: 8.8, lineHeight: 1.25, color: '#0f172a', display: 'grid', gap: 2 },
+  padCellGrid3: { padding: '3px 5px', fontSize: 8.8, lineHeight: 1.25, color: '#0f172a', display: 'grid', gap: 3 },
+  halfBorderR: { padding: '2px 5px', fontSize: 8.8, lineHeight: 1.25, color: '#0f172a', borderRight: B, display: 'grid', gap: 2 },
+  irSplit: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 64px' },
+  irSplitTop: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 64px', borderBottom: TB },
+  irHeader: { borderLeft: TB, background: '#f8fafc', display: 'grid', placeItems: 'center', padding: 4, fontSize: 7.8, fontWeight: 800, lineHeight: 1.25 },
+  irStrip: { borderLeft: TB, display: 'grid', gridTemplateRows: 'repeat(34, minmax(0, 1fr))' },
+  irNum: { borderRight: B, color: '#475569' },
+  metaBand: { display: 'grid', gridTemplateColumns: '2.2fr 1fr 0.8fr', gap: 10, padding: '3px 6px', borderBottom: TB, fontSize: 9 },
+  sec1Grid: { display: 'grid', gridTemplateColumns: '1.25fr 1fr', gap: 12, padding: '3px 6px' },
+  secSplit: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 196px', borderBottom: TB },
+  sec5Split: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 196px' },
+  secLeft: { borderRight: B },
+  secSubHdr: { padding: '2px 5px', fontSize: 8, fontWeight: 700, color: '#334155', borderBottom: B, lineHeight: 1.25 },
+  zeroGapBorderB: { gap: 0, borderBottom: B },
+  zeroGap: { gap: 0 },
+  subTitle: { fontWeight: 800, fontSize: 8.5, textDecoration: 'underline' },
+  phaseRow: { display: 'grid', gridTemplateColumns: '116px repeat(3, minmax(0, 1fr))', gap: 6, alignItems: 'baseline', fontSize: 8.5 },
+  phaseSlot: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 38px', alignItems: 'baseline', gap: 3 },
+  phaseLabel: { fontWeight: 600, color: '#334155' },
+  unitText: { fontSize: 7.8, color: '#334155' },
+  underlineSpan: { borderBottom: '1px solid #475569', textAlign: 'center', fontWeight: 700, color: '#0f172a', minHeight: 12, padding: '0 3px' },
+  remarksLbl: { fontWeight: 700, borderBottom: B, paddingBottom: 2, marginBottom: 3 },
+  remarksLblPlain: { fontWeight: 700, marginBottom: 3 },
+  upperVal: { textTransform: 'uppercase' },
+  midCol: { display: 'flex', flexDirection: 'column', fontSize: 8.2 },
+  reminderRow: { padding: '2px 5px', fontSize: 8.8, lineHeight: 1.25, color: '#0f172a', borderBottom: B, display: 'grid', gridTemplateColumns: '68px 1fr', gap: 6 },
+  irCompareRow: { padding: '4px 6px', borderBottom: B },
+  tbl: { marginTop: 0, fontSize: 8.1 },
+  tdCompact: { padding: '2px 4px', borderColor: '#1e293b' },
+  tdCompactWide: { padding: '2px 4px', borderColor: '#1e293b', width: '68%' },
+  bottomBandTop: { borderTop: TB, display: 'grid', gridTemplateColumns: '1fr 1.25fr' },
+  bottomBandCert: { borderTop: B, display: 'grid', gridTemplateColumns: '1fr 1.25fr' },
+  bottomLeftHeavy: { borderRight: TB },
+  overallBox: { padding: '2px 5px', fontSize: 8.8, lineHeight: 1.25, color: '#0f172a', textTransform: 'uppercase', minHeight: 28 },
+  performedCol: { padding: '2px 5px', fontSize: 8.8, color: '#0f172a', borderRight: TB, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' },
+  sigLine: { minHeight: 16, fontWeight: 800, fontSize: 8.8, borderBottom: '1px solid #0f172a', paddingBottom: 1 },
+  sigImg: { maxHeight: 22, maxWidth: '100%', objectFit: 'contain' },
+  sigSub: { fontSize: 7.8, marginTop: 1 },
+  certBox: { padding: '2px 5px', fontSize: 8.2, lineHeight: 1.35, fontWeight: 600, color: '#0f172a' },
+  notesWrap: { fontSize: 8, color: '#334155', lineHeight: 1.3 },
+  notesBody: { paddingLeft: 18 },
+} satisfies Record<string, CSSProperties>;
 
 function deriveMonthYear(dateStr: string): { month: string; year: string } {
   const parts = dateStr.split('-');
@@ -62,12 +104,12 @@ function StatusCheck({ checked, label }: { checked: boolean; label: string }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, marginRight: 8, fontSize: 8.5 }}>
       <span
+        className="text-center"
         style={{
           display: 'inline-block',
           width: 10,
           height: 10,
           border: '1px solid #0f172a',
-          textAlign: 'center',
           lineHeight: '9px',
           fontWeight: 800,
           fontSize: 8,
@@ -90,141 +132,116 @@ function UnderlinedRow({
   labelWidth = '118px',
   unitWidth = '24px',
   indent = false,
-}: {
-  label: string;
-  value: string;
-  suffix?: string;
-  uppercase?: boolean;
-  labelWidth?: string;
-  unitWidth?: string;
-  indent?: boolean;
-}) {
+}: FieldRowSpec & { labelWidth?: string; unitWidth?: string }) {
   const showUnitCol = unitWidth !== '0px';
   return (
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: showUnitCol
-          ? `${labelWidth} minmax(0, 1fr) ${unitWidth}`
-          : `${labelWidth} minmax(0, 1fr)`,
+        gridTemplateColumns: showUnitCol ? `${labelWidth} minmax(0, 1fr) ${unitWidth}` : `${labelWidth} minmax(0, 1fr)`,
         alignItems: 'baseline',
         gap: 4,
         fontSize: 8.5,
         lineHeight: 1.35,
       }}
     >
-      <span
-        style={{
-          color: '#334155',
-          fontWeight: 600,
-          paddingLeft: indent ? 10 : 0,
-        }}
-      >
-        {label}
-      </span>
-      <span
-        style={{
-          borderBottom: '1px solid #475569',
-          textAlign: 'center',
-          fontWeight: 700,
-          color: '#0f172a',
-          minHeight: 12,
-          padding: '0 3px',
-          textTransform: uppercase ? 'uppercase' : 'none',
-        }}
-      >
-        {value || ''}
-      </span>
+      <span style={{ color: '#334155', fontWeight: 600, paddingLeft: indent ? 10 : 0 }}>{label}</span>
+      <span style={{ ...S.underlineSpan, textTransform: uppercase ? 'uppercase' : 'none' }}>{value || ''}</span>
       {showUnitCol && <span style={{ fontSize: 8, color: '#334155' }}>{suffix}</span>}
     </div>
   );
 }
 
-function PhaseLineRow({
-  label,
-  slots,
+function FieldRowsList({
+  rows,
+  labelWidth,
+  unitWidth,
 }: {
-  label: string;
-  slots: ReadonlyArray<{ val: string; unit: string }>;
+  rows: ReadonlyArray<FieldRowSpec>;
+  labelWidth: string;
+  unitWidth: string;
 }) {
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: PHASE_ROW_GRID,
-        gap: 6,
-        alignItems: 'baseline',
-        fontSize: 8.5,
-      }}
-    >
-      <span style={{ fontWeight: 600, color: '#334155' }}>{label}</span>
+    <>
+      {rows.map((r) => (
+        <UnderlinedRow key={r.label} {...r} labelWidth={labelWidth} unitWidth={unitWidth} />
+      ))}
+    </>
+  );
+}
+
+function PhaseLineRow({ label, slots }: { label: string; slots: ReadonlyArray<{ val: string; unit: string }> }) {
+  return (
+    <div style={S.phaseRow}>
+      <span style={S.phaseLabel}>{label}</span>
       {slots.map((s) => (
-        <div
-          key={s.unit}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: PHASE_SLOT_GRID,
-            alignItems: 'baseline',
-            gap: 3,
-          }}
-        >
-          <span
-            style={{
-              borderBottom: '1px solid #475569',
-              textAlign: 'center',
-              fontWeight: 700,
-              minHeight: 12,
-            }}
-          >
-            {s.val || ''}
-          </span>
-          <span style={{ fontSize: 7.8, color: '#334155', whiteSpace: 'nowrap' }}>{s.unit}</span>
+        <div key={s.unit} style={S.phaseSlot}>
+          <span style={S.underlineSpan}>{s.val || ''}</span>
+          <span style={{ ...S.unitText, whiteSpace: 'nowrap' }}>{s.unit}</span>
         </div>
       ))}
     </div>
   );
 }
 
-function VerticalIrColumn({
-  title,
-  vals,
-  unit = 'MΩ',
-}: {
-  title: string;
-  vals: readonly [string, string, string];
-  unit?: string;
-}) {
+function VerticalIrColumn({ title, vals }: { title: string; vals: readonly [string, string, string] }) {
   return (
     <div style={{ display: 'grid', gap: 3 }}>
       <div style={{ fontSize: 8.2, fontWeight: 700, color: '#0f172a', lineHeight: 1.25 }}>{title}</div>
       <div style={{ display: 'grid', gap: 2, paddingTop: 2 }}>
         {(['L1', 'L2', 'L3'] as const).map((phase, idx) => (
-          <div
-            key={phase}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '108px 38px',
-              alignItems: 'baseline',
-              gap: 4,
-              fontSize: 8.5,
-            }}
-          >
-            <span
-              style={{
-                borderBottom: '1px solid #475569',
-                textAlign: 'center',
-                fontWeight: 700,
-                minHeight: 12,
-              }}
-            >
-              {vals[idx] || ''}
-            </span>
-            <span style={{ fontSize: 8, color: '#334155', whiteSpace: 'nowrap' }}>
-              ({phase}) {unit}
-            </span>
+          <div key={phase} style={{ display: 'grid', gridTemplateColumns: '108px 38px', alignItems: 'baseline', gap: 4, fontSize: 8.5 }}>
+            <span style={S.underlineSpan}>{vals[idx] || ''}</span>
+            <span style={{ fontSize: 8, color: '#334155', whiteSpace: 'nowrap' }}>({phase}) MΩ</span>
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function MotorControlDetailsBlock({
+  title,
+  cableSize,
+  cableLength,
+  splicingCount,
+  relayRange,
+  relaySetting,
+  contactorRating,
+}: {
+  title: string;
+  cableSize: string;
+  cableLength: string;
+  splicingCount: string;
+  relayRange: string;
+  relaySetting: string;
+  contactorRating: string;
+}) {
+  const rows: FieldRowSpec[] = [
+    { label: 'Cable Size', value: cableSize, suffix: 'mm²' },
+    { label: 'Cable Length', value: cableLength, suffix: 'm' },
+    { label: '# of Splicing (ex. pigtail)', value: splicingCount },
+  ];
+  const relayRows: FieldRowSpec[] = [
+    { label: 'Range', value: relayRange, suffix: 'A', indent: true },
+    { label: 'Setting', value: relaySetting, suffix: 'A', indent: true },
+    { label: 'Magnetic Contactor Rating', value: contactorRating, suffix: 'A' },
+  ];
+  return (
+    <div style={{ ...S.padCellGrid2, alignContent: 'start' }}>
+      <div style={S.subTitle}>{title}</div>
+      <FieldRowsList rows={rows} labelWidth="132px" unitWidth="24px" />
+      <div className="font-bold" style={{ fontSize: 8.2, marginTop: 1 }}>Thermal Overload Relay</div>
+      <FieldRowsList rows={relayRows} labelWidth="132px" unitWidth="24px" />
+    </div>
+  );
+}
+
+function MiddleTimeHeader({ value }: { value: string }) {
+  return (
+    <div className="row-between" style={S.hdrBar}>
+      <span>Time:</span>
+      <span>{formatPulloutTimeDisplay(value) || '—'}</span>
     </div>
   );
 }
@@ -236,29 +253,119 @@ export default function WellPulloutReportSheet({
   leadOpName,
   crewNames = [],
 }: WellPulloutReportSheetProps) {
-  const w = resolveInstalledPulloutSpecs(
-    hydrateWellPulloutDetails(activity.details ?? {}),
-    activity.activity_date,
-  );
+  const w = resolveInstalledPulloutSpecs(hydrateWellPulloutDetails(activity.details ?? {}), activity.activity_date);
   const derivedMY = deriveMonthYear(activity.activity_date || w.dateStarted);
   const station = activity.site_or_well || areaLabel || w.projectPumpStation || 'N/A';
   const month = derivedMY.month || w.reportMonth;
   const year = derivedMY.year || w.reportYear;
   const startDateDisplay = formatPulloutDateDisplay(w.dateStarted || activity.activity_date);
-  const startTimeDisplay = formatPulloutTimeDisplay(w.timeStarted);
   const endDateDisplay = formatPulloutDateDisplay(w.dateFinished || w.dateStarted || activity.activity_date);
-  const endTimeDisplay = formatPulloutTimeDisplay(w.timeFinished);
   const performedByDisplay =
-    Array.from(new Set([leadOpName, ...crewNames].filter(Boolean))).join(', ') ||
-    w.performedByContractor ||
-    '';
-  const signatureDataUrl =
-    typeof activity.details?.signatureDataUrl === 'string' ? activity.details.signatureDataUrl : '';
-
+    Array.from(new Set([leadOpName, ...crewNames].filter(Boolean))).join(', ') || w.performedByContractor || '';
+  const signatureDataUrl = typeof activity.details?.signatureDataUrl === 'string' ? activity.details.signatureDataUrl : '';
   const irRows = Array.from({ length: 34 }, (_, idx) => idx + 1);
 
+  const headerMetaFields = [
+    { label: 'Project - Pump Station:', value: station, uppercase: true, center: false },
+    { label: 'Month:', value: month, uppercase: false, center: true },
+    { label: 'Year:', value: year, uppercase: false, center: true },
+  ];
+
+  const sec1Left: FieldRowSpec[] = [
+    { label: 'Contractor / Site Coordinator:', value: w.contractorCoordinator },
+    { label: 'Time Reported to Engineer:', value: formatPulloutTimeDisplay(w.timeReportedToEngineer) },
+    { label: 'Arrival Time at Site:', value: formatPulloutTimeDisplay(w.arrivalTimeAtSite) },
+    { label: 'Time of Set-up:', value: formatPulloutTimeDisplay(w.timeOfSetUp) },
+  ];
+  const sec1Right: FieldRowSpec[] = [
+    { label: 'Date Started:', value: startDateDisplay },
+    { label: 'Time Started:', value: formatPulloutTimeDisplay(w.timeStarted) },
+    { label: 'Date Finished:', value: endDateDisplay },
+    { label: 'Time Finished:', value: formatPulloutTimeDisplay(w.timeFinished) },
+  ];
+
+  const sec2PhaseRows = [
+    { label: 'Insulation Resistance', slots: [{ val: w.beforePulloutIrL1, unit: '(L1) mΩ' }, { val: w.beforePulloutIrL2, unit: '(L2) mΩ' }, { val: w.beforePulloutIrL3, unit: '(L3) mΩ' }] },
+    { label: 'Current Reading', slots: [{ val: w.beforePulloutCurrentL1, unit: '(L1) A' }, { val: w.beforePulloutCurrentL2, unit: '(L2) A' }, { val: w.beforePulloutCurrentL3, unit: '(L3) A' }] },
+    { label: 'Voltage Reading', slots: [{ val: w.beforePulloutVoltageL1, unit: '(L1) V' }, { val: w.beforePulloutVoltageL2, unit: '(L2) V' }, { val: w.beforePulloutVoltageL3, unit: '(L3) V' }] },
+  ];
+
+  const sec3PumpRows: FieldRowSpec[] = [
+    { label: 'Brand', value: w.pulledPumpBrand, uppercase: true },
+    { label: 'Model', value: w.pulledPumpModel, uppercase: true },
+    { label: 'Stock No.:', value: w.pulledPumpStockNo, uppercase: true },
+  ];
+  const sec3MotorRows: FieldRowSpec[] = [
+    { label: 'Brand', value: w.pulledMotorBrand, uppercase: true },
+    { label: 'HP / Voltage / Phase', value: w.pulledMotorHpVoltPhase, uppercase: true },
+    { label: 'Serial No. / Stock No.:', value: w.pulledMotorSerialNo, uppercase: true },
+  ];
+  const sec3DeepwellRows: FieldRowSpec[] = [
+    { label: 'Size of Riser Pipes', value: w.pulledRiserPipeSizeMm, suffix: 'mm' },
+    { label: 'Type of Riser Material:', value: w.pulledRiserPipeMaterial },
+    { label: 'No. of Riser Pipes', value: w.pulledRiserPipeCount, suffix: 'pcs' },
+    { label: 'Well Casing Diameter', value: w.wellCasingDiameterMm, suffix: 'mm' },
+    { label: 'Well Depth', value: w.wellDepthM, suffix: 'm' },
+    { label: 'Pump Setting', value: w.pumpSettingM, suffix: 'm' },
+    { label: 'Static Water Level', value: w.swlMeters, suffix: 'm' },
+    { label: 'Pumping Water Level', value: w.pwlMeters, suffix: 'm' },
+    { label: 'Motor Control Type:', value: w.motorControlType, uppercase: true },
+  ];
+
+  const sec4EquipGroups = [
+    {
+      title: 'PUMP DETAILS',
+      labelWidth: '64px',
+      borderRight: true,
+      status: w.installPumpStatus,
+      rows: [
+        { label: 'Brand', value: w.installPumpBrand, uppercase: true },
+        { label: 'Model', value: w.installPumpModel, uppercase: true },
+        { label: 'Control No.', value: w.installPumpControlNo, uppercase: true },
+      ],
+    },
+    {
+      title: 'MOTOR DETAILS',
+      labelWidth: '108px',
+      borderRight: false,
+      status: w.installMotorStatus,
+      rows: [
+        { label: 'Brand', value: w.installMotorBrand, uppercase: true },
+        { label: 'HP / Voltage / Phase:', value: w.installMotorHpVoltPhase, uppercase: true },
+        { label: 'Serial No.', value: w.installMotorSerialNo, uppercase: true },
+      ],
+    },
+  ];
+  const sec4AcceptanceRows = [
+    ['No loose thread', w.checkNoLooseThread || 'NONE'],
+    ['No visible corrosion', w.checkNoVisibleCorrosion || 'NONE'],
+    ['Should not be 0 Meg', w.checkElectrodeNotZeroMeg || 'YES'],
+  ] as const;
+  const sec4SpliceRows = [
+    ['Before splicing', 'should not be < 100 MΩ', w.beforeSpliceRemarks || ''],
+    ['After splicing', 'should not be < 2 MΩ', w.afterSpliceRemarks || ''],
+  ] as const;
+
+  const sec5DeepwellRows: FieldRowSpec[] = [
+    { label: 'Size of Riser Pipes', value: w.installRiserPipeSizeMm, suffix: 'mm' },
+    { label: 'No. of Riser Pipes', value: w.installRiserPipeCount, suffix: 'pcs' },
+    { label: 'No. of Sounding Pipes', value: w.soundingPipeLengthM, suffix: 'm' },
+    { label: 'Flowrate:', value: w.afterInstallFlowrateLps, suffix: 'lps' },
+    { label: 'Pressure at Source:', value: w.afterInstallPressurePsi, suffix: 'psi' },
+  ];
+  const sec5PhaseRows = [
+    { label: 'Insulation Resistance:', slots: [{ val: w.afterInstallIrL1, unit: '(L1) MΩ' }, { val: w.afterInstallIrL2, unit: '(L2) MΩ' }, { val: w.afterInstallIrL3, unit: '(L3) MΩ' }] },
+    { label: 'Current Reading:', slots: [{ val: w.afterInstallCurrentL1, unit: '(L1) A' }, { val: w.afterInstallCurrentL2, unit: '(L2) A' }, { val: w.afterInstallCurrentL3, unit: '(L3) A' }] },
+    { label: 'Voltage Reading:', slots: [{ val: w.afterInstallVoltageL1, unit: '(L1) V' }, { val: w.afterInstallVoltageL2, unit: '(L2) V' }, { val: w.afterInstallVoltageL3, unit: '(L3) V' }] },
+  ];
+  const sec5AcceptanceRows = [
+    ['should not be < 2 MΩ', w.acceptIrAbove2Meg || 'YES'],
+    ['should not be + 14%', w.acceptCurrentWithin14Pct || 'YES'],
+    ['should not be +/-10% of nominal 230V', w.acceptVoltageWithin10Pct || 'YES'],
+  ] as const;
+
   return (
-    <div style={{ display: 'grid', gap: 5, color: '#0f172a', fontFamily: 'Arial, sans-serif' }}>
+    <div className="stack-xs" style={S.root}>
       <ReportLetterhead
         variant="compact"
         orgName={orgName}
@@ -267,257 +374,140 @@ export default function WellPulloutReportSheet({
         dateLabel={`Activity Date: ${formatPulloutDateDisplay(activity.activity_date) || 'N/A'}`}
       />
 
-      {/* Main Bordered Form */}
-      <div style={{ border: TB }}>
-        {/* Upper Band: Title, Project/Month/Year, Section 1 + Right IR Header */}
-        <div style={{ display: 'grid', gridTemplateColumns: `minmax(0, 1fr) ${IR_COL_W}`, borderBottom: TB }}>
+      <div style={S.outerBox}>
+        <div style={S.irSplitTop}>
           <div>
-            <div
-              style={{
-                background: '#0f172a',
-                color: '#ffffff',
-                textAlign: 'center',
-                fontWeight: 800,
-                fontSize: 10.5,
-                letterSpacing: '0.04em',
-                padding: '3.5px 8px',
-              }}
-            >
+            <div className="rpt-section-hdr text-center" style={S.titleBar}>
               PULL OUT AND INSTALLATION ACCOMPLISHMENT REPORT FORM FOR DEEPWELL
             </div>
 
-            {/* Project / Month / Year */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '2.2fr 1fr 0.8fr',
-                gap: 10,
-                padding: '3px 6px',
-                borderBottom: TB,
-                fontSize: 9,
-              }}
-            >
-              <div style={{ display: 'flex', gap: 4 }}>
-                <span style={{ fontWeight: 700 }}>Project - Pump Station:</span>
-                <span style={{ flex: 1, borderBottom: B, fontWeight: 800, textTransform: 'uppercase' }}>{station}</span>
-              </div>
-              <div style={{ display: 'flex', gap: 4 }}>
-                <span style={{ fontWeight: 700 }}>Month:</span>
-                <span style={{ flex: 1, borderBottom: B, fontWeight: 800, textAlign: 'center' }}>{month}</span>
-              </div>
-              <div style={{ display: 'flex', gap: 4 }}>
-                <span style={{ fontWeight: 700 }}>Year:</span>
-                <span style={{ flex: 1, borderBottom: B, fontWeight: 800, textAlign: 'center' }}>{year}</span>
-              </div>
+            <div style={S.metaBand}>
+              {headerMetaFields.map((f) => (
+                <div key={f.label} className="row-xs">
+                  <span className="font-bold">{f.label}</span>
+                  <span
+                    className={`flex-1 font-bold ${f.center ? 'text-center' : ''}`}
+                    style={{ borderBottom: B, fontWeight: 800, textTransform: f.uppercase ? 'uppercase' : 'none' }}
+                  >
+                    {f.value}
+                  </span>
+                </div>
+              ))}
             </div>
 
-            {/* Section 1 */}
-            <div style={HDR_BAR}>1. TO BE FILLED UP BY CONTRACTOR / SITE COORDINATOR</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 1fr', gap: 12, padding: '3px 6px' }}>
+            <div style={S.hdrBar}>1. TO BE FILLED UP BY CONTRACTOR / SITE COORDINATOR</div>
+            <div style={S.sec1Grid}>
               <div style={{ display: 'grid', gap: 2 }}>
-                <UnderlinedRow label="Contractor / Site Coordinator:" value={w.contractorCoordinator} labelWidth="130px" unitWidth="0px" />
-                <UnderlinedRow label="Time Reported to Engineer:" value={formatPulloutTimeDisplay(w.timeReportedToEngineer)} labelWidth="130px" unitWidth="0px" />
-                <UnderlinedRow label="Arrival Time at Site:" value={formatPulloutTimeDisplay(w.arrivalTimeAtSite)} labelWidth="130px" unitWidth="0px" />
-                <UnderlinedRow label="Time of Set-up:" value={formatPulloutTimeDisplay(w.timeOfSetUp)} labelWidth="130px" unitWidth="0px" />
+                <FieldRowsList rows={sec1Left} labelWidth="130px" unitWidth="0px" />
               </div>
               <div style={{ display: 'grid', gap: 2 }}>
-                <UnderlinedRow label="Date Started:" value={startDateDisplay} labelWidth="82px" unitWidth="0px" />
-                <UnderlinedRow label="Time Started:" value={startTimeDisplay} labelWidth="82px" unitWidth="0px" />
-                <UnderlinedRow label="Date Finished:" value={endDateDisplay} labelWidth="82px" unitWidth="0px" />
-                <UnderlinedRow label="Time Finished:" value={endTimeDisplay} labelWidth="82px" unitWidth="0px" />
+                <FieldRowsList rows={sec1Right} labelWidth="82px" unitWidth="0px" />
               </div>
             </div>
           </div>
 
-          {/* Right Header Cell: INSULATION RESISTANCE READING */}
-          <div
-            style={{
-              borderLeft: TB,
-              background: '#f8fafc',
-              display: 'grid',
-              placeItems: 'center',
-              textAlign: 'center',
-              padding: 4,
-              fontSize: 7.8,
-              fontWeight: 800,
-              lineHeight: 1.25,
-            }}
-          >
-            INSULATION RESISTANCE READING (meg Ω)
-          </div>
+          <div className="text-center" style={S.irHeader}>INSULATION RESISTANCE READING (meg Ω)</div>
         </div>
 
-        {/* Middle Band: Sections 2-5 Left+Middle alongside numbered IR 1-34 Column */}
-        <div style={{ display: 'grid', gridTemplateColumns: `minmax(0, 1fr) ${IR_COL_W}` }}>
+        <div style={S.irSplit}>
           <div>
             {/* SECTION 2 */}
-            <div style={{ display: 'grid', gridTemplateColumns: `minmax(0, 1fr) ${MIDDLE_W}`, borderBottom: TB }}>
-              <div style={{ borderRight: B }}>
-                <div style={HDR_BAR}>2. BEFORE PULL OUT OF PUMP AND MOTOR</div>
-                <div style={{ ...PAD_CELL, display: 'grid', gap: 3 }}>
+            <div style={S.secSplit}>
+              <div style={S.secLeft}>
+                <div style={S.hdrBar}>2. BEFORE PULL OUT OF PUMP AND MOTOR</div>
+                <div style={S.padCellGrid3}>
                   <div style={{ fontSize: 8, fontWeight: 700, color: '#334155' }}>Get the following before Pull Out</div>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: PHASE_ROW_GRID,
-                      gap: 6,
-                      alignItems: 'baseline',
-                      fontSize: 8.5,
-                    }}
-                  >
-                    <span style={{ fontWeight: 600, color: '#334155' }}>Flowrate:</span>
-                    <div style={{ display: 'grid', gridTemplateColumns: PHASE_SLOT_GRID, alignItems: 'baseline', gap: 3 }}>
-                      <span style={{ borderBottom: '1px solid #475569', textAlign: 'center', fontWeight: 700, minHeight: 12 }}>
-                        {w.beforePulloutFlowrateLps || ''}
-                      </span>
-                      <span style={{ fontSize: 7.8, color: '#334155' }}>lps</span>
+                  <div style={S.phaseRow}>
+                    <span style={S.phaseLabel}>Flowrate:</span>
+                    <div style={S.phaseSlot}>
+                      <span style={S.underlineSpan}>{w.beforePulloutFlowrateLps || ''}</span>
+                      <span style={S.unitText}>lps</span>
                     </div>
-                    <span style={{ fontWeight: 600, color: '#334155', textAlign: 'right', paddingRight: 4 }}>
-                      Pressure at Source:
-                    </span>
-                    <div style={{ display: 'grid', gridTemplateColumns: PHASE_SLOT_GRID, alignItems: 'baseline', gap: 3 }}>
-                      <span style={{ borderBottom: '1px solid #475569', textAlign: 'center', fontWeight: 700, minHeight: 12 }}>
-                        {w.beforePulloutPressurePsi || ''}
-                      </span>
-                      <span style={{ fontSize: 7.8, color: '#334155' }}>psi</span>
+                    <span className="text-right" style={{ ...S.phaseLabel, paddingRight: 4 }}>Pressure at Source:</span>
+                    <div style={S.phaseSlot}>
+                      <span style={S.underlineSpan}>{w.beforePulloutPressurePsi || ''}</span>
+                      <span style={S.unitText}>psi</span>
                     </div>
                   </div>
-                  <PhaseLineRow
-                    label="Insulation Resistance"
-                    slots={[
-                      { val: w.beforePulloutIrL1, unit: '(L1) mΩ' },
-                      { val: w.beforePulloutIrL2, unit: '(L2) mΩ' },
-                      { val: w.beforePulloutIrL3, unit: '(L3) mΩ' },
-                    ]}
-                  />
-                  <PhaseLineRow
-                    label="Current Reading"
-                    slots={[
-                      { val: w.beforePulloutCurrentL1, unit: '(L1) A' },
-                      { val: w.beforePulloutCurrentL2, unit: '(L2) A' },
-                      { val: w.beforePulloutCurrentL3, unit: '(L3) A' },
-                    ]}
-                  />
-                  <PhaseLineRow
-                    label="Voltage Reading"
-                    slots={[
-                      { val: w.beforePulloutVoltageL1, unit: '(L1) V' },
-                      { val: w.beforePulloutVoltageL2, unit: '(L2) V' },
-                      { val: w.beforePulloutVoltageL3, unit: '(L3) V' },
-                    ]}
-                  />
+                  {sec2PhaseRows.map((row) => (
+                    <PhaseLineRow key={row.label} label={row.label} slots={row.slots} />
+                  ))}
                 </div>
               </div>
-              <div style={{ ...PAD_CELL, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ fontWeight: 700, borderBottom: B, paddingBottom: 2, marginBottom: 3 }}>Remarks:</div>
-                <div style={{ fontWeight: 700, textTransform: 'uppercase', flex: 1 }}>
-                  {w.beforePulloutRemarks || ''}
-                </div>
+              <div style={S.padCellCol}>
+                <div style={S.remarksLbl}>Remarks:</div>
+                <div className="flex-1 font-bold" style={S.upperVal}>{w.beforePulloutRemarks || ''}</div>
               </div>
             </div>
 
             {/* SECTION 3 */}
-            <div style={{ display: 'grid', gridTemplateColumns: `minmax(0, 1fr) ${MIDDLE_W}`, borderBottom: TB }}>
-              <div style={{ borderRight: B }}>
-                <div style={HDR_BAR}>3. AFTER PULL OUT OF PUMP AND MOTOR</div>
-                <div style={{ ...PAD_CELL, borderBottom: B, fontSize: 8, fontWeight: 700, color: '#334155' }}>
-                  Get the following data upon completion of Pull-out of Pump and Motor
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: B }}>
-                  <div style={{ ...PAD_CELL, borderRight: B, display: 'grid', gap: 2 }}>
-                    <div style={{ fontWeight: 800, fontSize: 8.5, textDecoration: 'underline' }}>PUMP DETAILS</div>
-                    <UnderlinedRow label="Brand" value={w.pulledPumpBrand} uppercase labelWidth="64px" unitWidth="0px" />
-                    <UnderlinedRow label="Model" value={w.pulledPumpModel} uppercase labelWidth="64px" unitWidth="0px" />
-                    <UnderlinedRow label="Stock No.:" value={w.pulledPumpStockNo} uppercase labelWidth="64px" unitWidth="0px" />
+            <div style={S.secSplit}>
+              <div style={S.secLeft}>
+                <div style={S.hdrBar}>3. AFTER PULL OUT OF PUMP AND MOTOR</div>
+                <div style={S.secSubHdr}>Get the following data upon completion of Pull-out of Pump and Motor</div>
+                <div className="grid-2" style={S.zeroGapBorderB}>
+                  <div style={S.halfBorderR}>
+                    <div style={S.subTitle}>PUMP DETAILS</div>
+                    <FieldRowsList rows={sec3PumpRows} labelWidth="64px" unitWidth="0px" />
                   </div>
-                  <div style={{ ...PAD_CELL, display: 'grid', gap: 2 }}>
-                    <div style={{ fontWeight: 800, fontSize: 8.5, textDecoration: 'underline' }}>MOTOR DETAILS</div>
-                    <UnderlinedRow label="Brand" value={w.pulledMotorBrand} uppercase labelWidth="108px" unitWidth="0px" />
-                    <UnderlinedRow label="HP / Voltage / Phase" value={w.pulledMotorHpVoltPhase} uppercase labelWidth="108px" unitWidth="0px" />
-                    <UnderlinedRow label="Serial No. / Stock No.:" value={w.pulledMotorSerialNo} uppercase labelWidth="108px" unitWidth="0px" />
+                  <div style={S.padCellGrid2}>
+                    <div style={S.subTitle}>MOTOR DETAILS</div>
+                    <FieldRowsList rows={sec3MotorRows} labelWidth="108px" unitWidth="0px" />
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-                  <div style={{ ...PAD_CELL, borderRight: B, display: 'grid', gap: 2 }}>
-                    <div style={{ fontWeight: 800, fontSize: 8.5, textDecoration: 'underline' }}>DEEPWELL DETAILS</div>
-                    <UnderlinedRow label="Size of Riser Pipes" value={w.pulledRiserPipeSizeMm} suffix="mm" labelWidth="118px" unitWidth="24px" />
-                    <UnderlinedRow label="Type of Riser Material:" value={w.pulledRiserPipeMaterial} labelWidth="118px" unitWidth="24px" />
-                    <UnderlinedRow label="No. of Riser Pipes" value={w.pulledRiserPipeCount} suffix="pcs" labelWidth="118px" unitWidth="24px" />
-                    <UnderlinedRow label="Well Casing Diameter" value={w.wellCasingDiameterMm} suffix="mm" labelWidth="118px" unitWidth="24px" />
-                    <UnderlinedRow label="Well Depth" value={w.wellDepthM} suffix="m" labelWidth="118px" unitWidth="24px" />
-                    <UnderlinedRow label="Pump Setting" value={w.pumpSettingM} suffix="m" labelWidth="118px" unitWidth="24px" />
-                    <UnderlinedRow label="Static Water Level" value={w.swlMeters} suffix="m" labelWidth="118px" unitWidth="24px" />
-                    <UnderlinedRow label="Pumping Water Level" value={w.pwlMeters} suffix="m" labelWidth="118px" unitWidth="24px" />
-                    <UnderlinedRow label="Motor Control Type:" value={w.motorControlType} uppercase labelWidth="118px" unitWidth="24px" />
+                <div className="grid-2" style={S.zeroGap}>
+                  <div style={S.halfBorderR}>
+                    <div style={S.subTitle}>DEEPWELL DETAILS</div>
+                    <FieldRowsList rows={sec3DeepwellRows} labelWidth="118px" unitWidth="24px" />
                   </div>
-                  <div style={{ ...PAD_CELL, display: 'grid', gap: 2, alignContent: 'start' }}>
-                    <div style={{ fontWeight: 800, fontSize: 8.5, textDecoration: 'underline' }}>Motor Control Details</div>
-                    <UnderlinedRow label="Cable Size" value={w.pulledCableSizeMm2} suffix="mm²" labelWidth="132px" unitWidth="24px" />
-                    <UnderlinedRow label="Cable Length" value={w.pulledCableLengthM} suffix="m" labelWidth="132px" unitWidth="24px" />
-                    <UnderlinedRow label="# of Splicing (ex. pigtail)" value={w.pulledCableSplicingCount} labelWidth="132px" unitWidth="24px" />
-                    <div style={{ fontWeight: 700, fontSize: 8.2, marginTop: 2 }}>Thermal Overload Relay</div>
-                    <UnderlinedRow label="Range" value={w.pulledOverloadRelayRangeA} suffix="A" labelWidth="132px" unitWidth="24px" indent />
-                    <UnderlinedRow label="Setting" value={w.pulledOverloadRelaySettingA} suffix="A" labelWidth="132px" unitWidth="24px" indent />
-                    <UnderlinedRow label="Magnetic Contactor Rating" value={w.pulledMagneticContactorRatingA} suffix="A" labelWidth="132px" unitWidth="24px" />
-                  </div>
+                  <MotorControlDetailsBlock
+                    title="Motor Control Details"
+                    cableSize={w.pulledCableSizeMm2}
+                    cableLength={w.pulledCableLengthM}
+                    splicingCount={w.pulledCableSplicingCount}
+                    relayRange={w.pulledOverloadRelayRangeA}
+                    relaySetting={w.pulledOverloadRelaySettingA}
+                    contactorRating={w.pulledMagneticContactorRatingA}
+                  />
                 </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <div style={{ ...HDR_BAR, display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Time:</span>
-                  <span>{formatPulloutTimeDisplay(w.afterPulloutTime) || '—'}</span>
-                </div>
-                <div style={{ ...PAD_CELL, flex: 1 }}>
-                  <div style={{ fontWeight: 700, marginBottom: 3 }}>Remarks:</div>
-                  <div style={{ fontWeight: 700, textTransform: 'uppercase' }}>{w.afterPulloutRemarks || ''}</div>
+              <div style={S.midCol}>
+                <MiddleTimeHeader value={w.afterPulloutTime} />
+                <div className="flex-1" style={S.padCell}>
+                  <div style={S.remarksLblPlain}>Remarks:</div>
+                  <div className="font-bold" style={S.upperVal}>{w.afterPulloutRemarks || ''}</div>
                 </div>
               </div>
             </div>
 
-            {/* SECTION 4 — Reworked per screenshot */}
-            <div style={{ display: 'grid', gridTemplateColumns: `minmax(0, 1fr) ${MIDDLE_W}`, borderBottom: TB }}>
-              <div style={{ borderRight: B }}>
-                <div style={HDR_BAR}>4. BEFORE INSTALLATION PUMP AND MOTOR</div>
-                {/* Reminder block */}
-                <div style={{ ...PAD_CELL, borderBottom: B, display: 'grid', gridTemplateColumns: '68px 1fr', gap: 6 }}>
-                  <span style={{ fontWeight: 700 }}>Reminder:</span>
-                  <div style={{ fontWeight: 700, lineHeight: 1.3 }}>
+            {/* SECTION 4 */}
+            <div style={S.secSplit}>
+              <div style={S.secLeft}>
+                <div style={S.hdrBar}>4. BEFORE INSTALLATION PUMP AND MOTOR</div>
+                <div style={S.reminderRow}>
+                  <span className="font-bold">Reminder:</span>
+                  <div className="font-bold" style={{ lineHeight: 1.3 }}>
                     <div>No corrosion at vertical pipes assembly</div>
                     <div>Electrode shall be cleaned before installation</div>
                     <div>Check condition of electrode wires</div>
                   </div>
                 </div>
-                {/* PUMP / MOTOR DETAILS */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: B }}>
-                  <div style={{ ...PAD_CELL, borderRight: B, display: 'grid', gap: 2 }}>
-                    <div style={{ fontWeight: 800, fontSize: 8.5, textDecoration: 'underline' }}>PUMP DETAILS</div>
-                    <UnderlinedRow label="Brand" value={w.installPumpBrand} uppercase labelWidth="64px" unitWidth="0px" />
-                    <UnderlinedRow label="Model" value={w.installPumpModel} uppercase labelWidth="64px" unitWidth="0px" />
-                    <UnderlinedRow label="Control No." value={w.installPumpControlNo} uppercase labelWidth="64px" unitWidth="0px" />
-                    <div style={{ display: 'grid', gridTemplateColumns: '64px minmax(0, 1fr)', alignItems: 'center', gap: 4, paddingTop: 2 }}>
-                      <span style={{ fontWeight: 600, color: '#334155' }}>Status:</span>
-                      <div>
-                        <StatusCheck checked={w.installPumpStatus === 'Brand New'} label="Brand New" />
-                        <StatusCheck checked={w.installPumpStatus === 'Repaired'} label="Repaired" />
+                <div className="grid-2" style={S.zeroGapBorderB}>
+                  {sec4EquipGroups.map((g) => (
+                    <div key={g.title} style={g.borderRight ? S.halfBorderR : S.padCellGrid2}>
+                      <div style={S.subTitle}>{g.title}</div>
+                      <FieldRowsList rows={g.rows} labelWidth={g.labelWidth} unitWidth="0px" />
+                      <div style={{ display: 'grid', gridTemplateColumns: `${g.labelWidth} minmax(0, 1fr)`, alignItems: 'center', gap: 4, paddingTop: 2 }}>
+                        <span style={S.phaseLabel}>Status:</span>
+                        <div>
+                          <StatusCheck checked={g.status === 'Brand New'} label="Brand New" />
+                          <StatusCheck checked={g.status === 'Repaired'} label="Repaired" />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div style={{ ...PAD_CELL, display: 'grid', gap: 2 }}>
-                    <div style={{ fontWeight: 800, fontSize: 8.5, textDecoration: 'underline' }}>MOTOR DETAILS</div>
-                    <UnderlinedRow label="Brand" value={w.installMotorBrand} uppercase labelWidth="108px" unitWidth="0px" />
-                    <UnderlinedRow label="HP / Voltage / Phase:" value={w.installMotorHpVoltPhase} uppercase labelWidth="108px" unitWidth="0px" />
-                    <UnderlinedRow label="Serial No." value={w.installMotorSerialNo} uppercase labelWidth="108px" unitWidth="0px" />
-                    <div style={{ display: 'grid', gridTemplateColumns: '108px minmax(0, 1fr)', alignItems: 'center', gap: 4, paddingTop: 2 }}>
-                      <span style={{ fontWeight: 600, color: '#334155' }}>Status:</span>
-                      <div>
-                        <StatusCheck checked={w.installMotorStatus === 'Brand New'} label="Brand New" />
-                        <StatusCheck checked={w.installMotorStatus === 'Repaired'} label="Repaired" />
-                      </div>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-                {/* Side-by-side IR Before Splicing & IR After Splicing */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '4px 6px', borderBottom: B }}>
+                <div className="grid-2" style={S.irCompareRow}>
                   <VerticalIrColumn
                     title="Insulation Resistance of the MOTOR (before splicing) should not be less than 100 Mega Ohms"
                     vals={[w.motorIrBeforeSpliceL1, w.motorIrBeforeSpliceL2, w.motorIrBeforeSpliceL3]}
@@ -527,155 +517,101 @@ export default function WellPulloutReportSheet({
                     vals={[w.splicedIrL1, w.splicedIrL2, w.splicedIrL3]}
                   />
                 </div>
-                {/* No Load Current Reading */}
-                <div style={{ ...PAD_CELL, paddingTop: 3, paddingBottom: 3 }}>
+                <div style={S.padCellGrid3}>
                   <PhaseLineRow
                     label="No Load Current Reading"
-                    slots={[
-                      { val: w.noLoadCurrentL1, unit: '(L1) A' },
-                      { val: w.noLoadCurrentL2, unit: '(L2) A' },
-                      { val: w.noLoadCurrentL3, unit: '(L3) A' },
-                    ]}
+                    slots={[{ val: w.noLoadCurrentL1, unit: '(L1) A' }, { val: w.noLoadCurrentL2, unit: '(L2) A' }, { val: w.noLoadCurrentL3, unit: '(L3) A' }]}
                   />
                 </div>
               </div>
 
-              {/* Section 4 Middle Column: Time + Acceptance Criteria + Splice Remarks */}
-              <div style={{ display: 'flex', flexDirection: 'column', fontSize: 8.2 }}>
-                <div style={{ ...HDR_BAR, display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Time:</span>
-                  <span>{formatPulloutTimeDisplay(w.beforeInstallTime) || '—'}</span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.65fr', borderBottom: B }}>
-                  <div style={{ ...PAD_CELL, borderRight: B, fontWeight: 700, background: '#f8fafc' }}>
-                    Acceptance Criteria
-                  </div>
-                  <div style={{ ...PAD_CELL, fontWeight: 700, background: '#f8fafc' }}>Remarks</div>
-                  <div style={{ ...PAD_CELL, borderTop: B, borderRight: B }}>No loose thread</div>
-                  <div style={{ ...PAD_CELL, borderTop: B, fontWeight: 800, textAlign: 'center' }}>
-                    {w.checkNoLooseThread || 'NONE'}
-                  </div>
-                  <div style={{ ...PAD_CELL, borderTop: B, borderRight: B }}>No visible corrosion</div>
-                  <div style={{ ...PAD_CELL, borderTop: B, fontWeight: 800, textAlign: 'center' }}>
-                    {w.checkNoVisibleCorrosion || 'NONE'}
-                  </div>
-                  <div style={{ ...PAD_CELL, borderTop: B, borderRight: B }}>Should not be 0 Meg</div>
-                  <div style={{ ...PAD_CELL, borderTop: B, fontWeight: 800, textAlign: 'center' }}>
-                    {w.checkElectrodeNotZeroMeg || 'YES'}
-                  </div>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.65fr', flex: 1 }}>
-                  <div style={{ ...PAD_CELL, borderRight: B, borderBottom: B }}>
-                    <div style={{ fontWeight: 700 }}>Before splicing</div>
-                    <div>should not be &lt; 100 MΩ</div>
-                  </div>
-                  <div style={{ ...PAD_CELL, borderBottom: B, fontWeight: 700, textAlign: 'center' }}>
-                    {w.beforeSpliceRemarks || ''}
-                  </div>
-                  <div style={{ ...PAD_CELL, borderRight: B }}>
-                    <div style={{ fontWeight: 700 }}>After splicing</div>
-                    <div>should not be &lt; 2 MΩ</div>
-                  </div>
-                  <div style={{ ...PAD_CELL, fontWeight: 700, textAlign: 'center' }}>
-                    {w.afterSpliceRemarks || ''}
-                  </div>
-                </div>
+              <div style={S.midCol}>
+                <MiddleTimeHeader value={w.beforeInstallTime} />
+                <table className="rpt-tbl" style={S.tbl}>
+                  <thead>
+                    <tr>
+                      <th className="rpt-th rpt-lbl" style={S.tdCompact}>Acceptance Criteria</th>
+                      <th className="rpt-th rpt-lbl" style={S.tdCompact}>Remarks</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sec4AcceptanceRows.map(([criteria, remark]) => (
+                      <tr key={criteria}>
+                        <td className="rpt-td" style={S.tdCompact}>{criteria}</td>
+                        <td className="rpt-td-c font-bold" style={S.tdCompact}>{remark}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <table className="rpt-tbl flex-1" style={S.tbl}>
+                  <tbody>
+                    {sec4SpliceRows.map(([title, rule, remark]) => (
+                      <tr key={title}>
+                        <td className="rpt-td" style={S.tdCompactWide}>
+                          <div className="font-bold">{title}</div>
+                          <div>{rule}</div>
+                        </td>
+                        <td className="rpt-td-c font-bold" style={S.tdCompact}>{remark}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
 
             {/* SECTION 5 */}
-            <div style={{ display: 'grid', gridTemplateColumns: `minmax(0, 1fr) ${MIDDLE_W}` }}>
-              <div style={{ borderRight: B }}>
-                <div style={HDR_BAR}>5. AFTER INSTALLATION</div>
-                <div style={{ ...PAD_CELL, borderBottom: B, fontSize: 8, lineHeight: 1.3 }}>
-                  <div style={{ fontWeight: 700 }}>
-                    * Check if there are leaks on the fittings on the deepwell upon the completion of the activity.
-                  </div>
-                  <div style={{ fontWeight: 700 }}>
-                    * The Contractor should not vacate the area until the leaks are fixed.
-                  </div>
-                  <div style={{ color: '#334155', marginTop: 1 }}>
-                    Get the following data upon completion of Installation of Pump and Motor
-                  </div>
+            <div style={S.sec5Split}>
+              <div style={S.secLeft}>
+                <div style={S.hdrBar}>5. AFTER INSTALLATION</div>
+                <div style={{ ...S.padCell, borderBottom: B, fontSize: 8, lineHeight: 1.3 }}>
+                  <div className="font-bold">* Check if there are leaks on the fittings on the deepwell upon the completion of the activity.</div>
+                  <div className="font-bold">* The Contractor should not vacate the area until the leaks are fixed.</div>
+                  <div style={{ color: '#334155', marginTop: 1 }}>Get the following data upon completion of Installation of Pump and Motor</div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: B }}>
-                  <div style={{ ...PAD_CELL, borderRight: B, display: 'grid', gap: 2 }}>
-                    <div style={{ fontWeight: 800, fontSize: 8.5, textDecoration: 'underline' }}>DEEPWELL DETAILS</div>
-                    <UnderlinedRow label="Size of Riser Pipes" value={w.installRiserPipeSizeMm} suffix="mm" labelWidth="118px" unitWidth="24px" />
-                    <UnderlinedRow label="No. of Riser Pipes" value={w.installRiserPipeCount} suffix="pcs" labelWidth="118px" unitWidth="24px" />
-                    <UnderlinedRow label="No. of Sounding Pipes" value={w.soundingPipeLengthM} suffix="m" labelWidth="118px" unitWidth="24px" />
-                    <UnderlinedRow label="Flowrate:" value={w.afterInstallFlowrateLps} suffix="lps" labelWidth="118px" unitWidth="24px" />
-                    <UnderlinedRow label="Pressure at Source:" value={w.afterInstallPressurePsi} suffix="psi" labelWidth="118px" unitWidth="24px" />
+                <div className="grid-2" style={S.zeroGapBorderB}>
+                  <div style={S.halfBorderR}>
+                    <div style={S.subTitle}>DEEPWELL DETAILS</div>
+                    <FieldRowsList rows={sec5DeepwellRows} labelWidth="118px" unitWidth="24px" />
                   </div>
-                  <div style={{ ...PAD_CELL, display: 'grid', gap: 2, alignContent: 'start' }}>
-                    <div style={{ fontWeight: 800, fontSize: 8.5, textDecoration: 'underline' }}>MOTOR CONTROL DETAILS</div>
-                    <UnderlinedRow label="Cable Size" value={w.installCableSizeMm2} suffix="mm²" labelWidth="132px" unitWidth="24px" />
-                    <UnderlinedRow label="Cable Length" value={w.installCableLengthM} suffix="m" labelWidth="132px" unitWidth="24px" />
-                    <UnderlinedRow label="# of Splicing (ex. pigtail)" value={w.installCableSplicingCount} labelWidth="132px" unitWidth="24px" />
-                    <div style={{ fontWeight: 700, fontSize: 8.2, marginTop: 1 }}>Thermal Overload Relay</div>
-                    <UnderlinedRow label="Range" value={w.installOverloadRelayRangeA} suffix="A" labelWidth="132px" unitWidth="24px" indent />
-                    <UnderlinedRow label="Setting" value={w.installOverloadRelaySettingA} suffix="A" labelWidth="132px" unitWidth="24px" indent />
-                    <UnderlinedRow label="Magnetic Contactor Rating" value={w.installMagneticContactorRatingA} suffix="A" labelWidth="132px" unitWidth="24px" />
-                  </div>
+                  <MotorControlDetailsBlock
+                    title="MOTOR CONTROL DETAILS"
+                    cableSize={w.installCableSizeMm2}
+                    cableLength={w.installCableLengthM}
+                    splicingCount={w.installCableSplicingCount}
+                    relayRange={w.installOverloadRelayRangeA}
+                    relaySetting={w.installOverloadRelaySettingA}
+                    contactorRating={w.installMagneticContactorRatingA}
+                  />
                 </div>
-                <div style={{ ...PAD_CELL, display: 'grid', gap: 3, paddingTop: 3, paddingBottom: 3 }}>
-                  <PhaseLineRow
-                    label="Insulation Resistance:"
-                    slots={[
-                      { val: w.afterInstallIrL1, unit: '(L1) MΩ' },
-                      { val: w.afterInstallIrL2, unit: '(L2) MΩ' },
-                      { val: w.afterInstallIrL3, unit: '(L3) MΩ' },
-                    ]}
-                  />
-                  <PhaseLineRow
-                    label="Current Reading:"
-                    slots={[
-                      { val: w.afterInstallCurrentL1, unit: '(L1) A' },
-                      { val: w.afterInstallCurrentL2, unit: '(L2) A' },
-                      { val: w.afterInstallCurrentL3, unit: '(L3) A' },
-                    ]}
-                  />
-                  <PhaseLineRow
-                    label="Voltage Reading:"
-                    slots={[
-                      { val: w.afterInstallVoltageL1, unit: '(L1) V' },
-                      { val: w.afterInstallVoltageL2, unit: '(L2) V' },
-                      { val: w.afterInstallVoltageL3, unit: '(L3) V' },
-                    ]}
-                  />
+                <div style={S.padCellGrid3}>
+                  {sec5PhaseRows.map((row) => (
+                    <PhaseLineRow key={row.label} label={row.label} slots={row.slots} />
+                  ))}
                 </div>
               </div>
 
-              {/* Section 5 Middle Column */}
-              <div style={{ display: 'flex', flexDirection: 'column', fontSize: 8.2 }}>
-                <div style={{ ...HDR_BAR, display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Time:</span>
-                  <span>{formatPulloutTimeDisplay(w.afterInstallTime) || '—'}</span>
+              <div style={S.midCol}>
+                <MiddleTimeHeader value={w.afterInstallTime} />
+                <div className="flex-1" style={{ ...S.padCell, borderBottom: B }}>
+                  <div style={S.remarksLblPlain}>Remarks:</div>
+                  <div className="font-bold" style={S.upperVal}>{w.afterInstallRemarks || ''}</div>
                 </div>
-                <div style={{ ...PAD_CELL, flex: 1, borderBottom: B }}>
-                  <div style={{ fontWeight: 700, marginBottom: 3 }}>Remarks:</div>
-                  <div style={{ fontWeight: 700, textTransform: 'uppercase' }}>{w.afterInstallRemarks || ''}</div>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.65fr' }}>
-                  <div style={{ ...PAD_CELL, borderRight: B, borderBottom: B }}>should not be &lt; 2 MΩ</div>
-                  <div style={{ ...PAD_CELL, borderBottom: B, fontWeight: 800, textAlign: 'center' }}>
-                    {w.acceptIrAbove2Meg || 'YES'}
-                  </div>
-                  <div style={{ ...PAD_CELL, borderRight: B, borderBottom: B }}>should not be + 14%</div>
-                  <div style={{ ...PAD_CELL, borderBottom: B, fontWeight: 800, textAlign: 'center' }}>
-                    {w.acceptCurrentWithin14Pct || 'YES'}
-                  </div>
-                  <div style={{ ...PAD_CELL, borderRight: B }}>should not be +/-10% of nominal 230V</div>
-                  <div style={{ ...PAD_CELL, fontWeight: 800, textAlign: 'center' }}>
-                    {w.acceptVoltageWithin10Pct || 'YES'}
-                  </div>
-                </div>
+                <table className="rpt-tbl" style={S.tbl}>
+                  <tbody>
+                    {sec5AcceptanceRows.map(([rule, remark]) => (
+                      <tr key={rule}>
+                        <td className="rpt-td" style={S.tdCompactWide}>{rule}</td>
+                        <td className="rpt-td-c font-bold" style={S.tdCompact}>{remark}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
 
           {/* Right Strip: 1 to 34 */}
-          <div style={{ borderLeft: TB, display: 'grid', gridTemplateRows: 'repeat(34, minmax(0, 1fr))' }}>
+          <div style={S.irStrip}>
             {irRows.map((num) => (
               <div
                 key={num}
@@ -687,64 +623,44 @@ export default function WellPulloutReportSheet({
                   fontSize: 7.5,
                 }}
               >
-                <span style={{ borderRight: B, textAlign: 'center', fontWeight: 700, color: '#475569' }}>{num}</span>
+                <span className="text-center font-bold" style={S.irNum}>{num}</span>
                 <span />
               </div>
             ))}
           </div>
         </div>
 
-        {/* Bottom Band: Section 6 & Section 7 Side-by-Side + Performed By & Certification */}
-        <div style={{ borderTop: TB, display: 'grid', gridTemplateColumns: '1fr 1.25fr' }}>
-          <div style={{ borderRight: TB }}>
-            <div style={HDR_BAR}>6. Results of Operation</div>
-            <div style={{ ...PAD_CELL, display: 'grid', gap: 3 }}>
-              <UnderlinedRow
-                label="Duration of Pull Out & Installation"
-                value={w.operationDuration}
-                uppercase
-                labelWidth="148px"
-                unitWidth="0px"
-              />
-              <UnderlinedRow
-                label="Reason of Pull Out & Installation"
-                value={w.reasonOfPullout}
-                uppercase
-                labelWidth="148px"
-                unitWidth="0px"
-              />
+        {/* Bottom Band */}
+        <div style={S.bottomBandTop}>
+          <div style={S.bottomLeftHeavy}>
+            <div style={S.hdrBar}>6. Results of Operation</div>
+            <div style={S.padCellGrid3}>
+              <UnderlinedRow label="Duration of Pull Out & Installation" value={w.operationDuration} uppercase labelWidth="148px" unitWidth="0px" />
+              <UnderlinedRow label="Reason of Pull Out & Installation" value={w.reasonOfPullout} uppercase labelWidth="148px" unitWidth="0px" />
             </div>
           </div>
           <div>
-            <div style={HDR_BAR}>7. Over All Remarks</div>
-            <div style={{ ...PAD_CELL, fontWeight: 700, textTransform: 'uppercase', minHeight: 28 }}>
-              {w.overallRemarks || activity.notes || '—'}
-            </div>
+            <div style={S.hdrBar}>7. Over All Remarks</div>
+            <div className="font-bold" style={S.overallBox}>{w.overallRemarks || activity.notes || '—'}</div>
           </div>
         </div>
 
-        <div style={{ borderTop: B, display: 'grid', gridTemplateColumns: '1fr 1.25fr' }}>
-          <div style={{ ...PAD_CELL, borderRight: TB, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-            <div style={{ fontSize: 8.5, fontWeight: 700 }}>Performed By:</div>
-            <div style={{ textAlign: 'center', paddingTop: 2 }}>
-              <div style={{ minHeight: 16, fontWeight: 800, fontSize: 8.8, borderBottom: '1px solid #0f172a', paddingBottom: 1 }}>
+        <div style={S.bottomBandCert}>
+          <div style={S.performedCol}>
+            <div className="font-bold" style={{ fontSize: 8.5 }}>Performed By:</div>
+            <div className="text-center" style={{ paddingTop: 2 }}>
+              <div style={S.sigLine}>
                 {signatureDataUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={signatureDataUrl}
-                    alt="Contractor signature"
-                    style={{ maxHeight: 22, maxWidth: '100%', objectFit: 'contain' }}
-                  />
+                  <img src={signatureDataUrl} alt="Contractor signature" style={S.sigImg} />
                 ) : (
                   performedByDisplay
                 )}
               </div>
-              <div style={{ fontSize: 7.8, fontWeight: 700, marginTop: 1 }}>
-                Contractor&apos;s Name / Signature / Date
-              </div>
+              <div className="font-bold" style={S.sigSub}>Contractor&apos;s Name / Signature / Date</div>
             </div>
           </div>
-          <div style={{ ...PAD_CELL, fontSize: 8.2, lineHeight: 1.35, fontWeight: 600 }}>
+          <div style={S.certBox}>
             <div>This is to certify that preventive maintenance/check up/and or repair of the water facilities was done.</div>
             <div>Water facilities or equipment that has been pulled out and repaired was restored in good condition.</div>
             <div>Water supply has been restored.</div>
@@ -752,28 +668,17 @@ export default function WellPulloutReportSheet({
         </div>
       </div>
 
-      {/* Footer Notes & Checked / Noted Signatories */}
-      <div style={{ fontSize: 8, color: '#334155', lineHeight: 1.3 }}>
+      <div style={S.notesWrap}>
         <div style={{ fontWeight: 800 }}>NOTES:</div>
-        <div style={{ paddingLeft: 18 }}>
+        <div style={S.notesBody}>
           <strong>Pls Write: OK</strong> - if Voltage and Current Reading is within acceptable range ·{' '}
           <strong>Not Ok</strong> - if Reading is NOT within acceptable range
         </div>
       </div>
       <ReportSignatureGrid
         entries={[
-          {
-            topLabel: 'Checked By:',
-            printedName: w.checkedByCoordinator,
-            roleTitle: '',
-            subtitle: 'Site Coordinator / Electrician',
-          },
-          {
-            topLabel: 'Noted By:',
-            printedName: w.notedByEngineer,
-            roleTitle: '',
-            subtitle: 'Electromechanical Engineer / Technical Head',
-          },
+          { topLabel: 'Checked By:', printedName: w.checkedByCoordinator, roleTitle: '', subtitle: 'Site Coordinator / Electrician' },
+          { topLabel: 'Noted By:', printedName: w.notedByEngineer, roleTitle: '', subtitle: 'Electromechanical Engineer / Technical Head' },
         ]}
         lineHeight={18}
         gap={36}

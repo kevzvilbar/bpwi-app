@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import {
   resolvePositionDisplayName,
@@ -47,6 +47,70 @@ const THEME_STYLES: Record<OrgColorTheme, { bg: string; fg: string; border: stri
   slate: { bg: 'var(--surface)', fg: 'var(--text)', border: 'var(--border)', badgeBg: 'var(--info-bg)', badgeFg: 'var(--info-fg)' },
 };
 
+const ORG_S = {
+  canvas: { background: 'var(--surface-muted)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 18px 20px', display: 'grid', gap: 0 },
+  execGrid: { display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'start', gap: 0 },
+  execCenter: { display: 'flex', flexDirection: 'column', alignItems: 'center' },
+  supportBox: { border: '1.5px dashed var(--border)', borderRadius: 8, background: 'var(--surface)' },
+  teamBox: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8 },
+  emptyTeamBox: { background: 'var(--surface)', border: '1px dashed var(--border)', borderRadius: 8 },
+  orphanBox: { border: '1px dashed var(--border)', borderRadius: 8, background: 'var(--surface)', marginTop: 12 },
+  stemWrap: { display: 'flex', justifyContent: 'center' },
+  stemLine: { width: 2, height: '100%', background: 'var(--border)' },
+  logoImg: { width: 48, height: 36, objectFit: 'contain' },
+} satisfies Record<string, CSSProperties>;
+
+function StemDown({ height = 14 }: { height?: number }) {
+  return (
+    <div style={{ ...ORG_S.stemWrap, height }}>
+      <div style={ORG_S.stemLine} />
+    </div>
+  );
+}
+
+function BusConnector({
+  items,
+  gridTemplateColumns,
+  height,
+}: {
+  items: Array<{ key: string; span?: number }>;
+  gridTemplateColumns: string;
+  height: number;
+}) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns, columnGap: 12 }}>
+      {items.map((item, idx) => (
+        <div
+          key={item.key}
+          style={{ gridColumn: item.span ? `span ${item.span}` : undefined, position: 'relative', height }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: idx === 0 ? '50%' : -6,
+              right: idx === items.length - 1 ? '50%' : -6,
+              height: 2,
+              background: 'var(--border)',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: '50%',
+              width: 2,
+              height,
+              background: 'var(--border)',
+              transform: 'translateX(-50%)',
+            }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function OrgChart(p: Props) {
   const sb = useMemo(() => supabaseBrowser(), []);
   const [positions, setPositions] = useState<OrgPositionRow[]>(p.initialPositions);
@@ -57,7 +121,6 @@ export default function OrgChart(p: Props) {
     p.error ? { kind: 'err', text: p.error } : null,
   );
 
-  // Editable chart header (Pic 1)
   const [meta, setMeta] = useState<OrgChartMeta>({
     title: p.initialMeta?.title || DEFAULT_META.title,
     subtitle: p.initialMeta?.subtitle || DEFAULT_META.subtitle,
@@ -81,9 +144,7 @@ export default function OrgChart(p: Props) {
     }
   }, [p.initialMeta, p.orgId]);
 
-  // Position editor modal state
   const [editingPos, setEditingPos] = useState<Partial<OrgPositionRow> | null>(null);
-  // Absorb / Restructure modal state (admin only)
   const [absorbOpen, setAbsorbOpen] = useState<boolean>(false);
   const [absorbSourceId, setAbsorbSourceId] = useState<string>('');
   const [absorbTargetId, setAbsorbTargetId] = useState<string>('');
@@ -103,14 +164,12 @@ export default function OrgChart(p: Props) {
   const leadmen = useMemo(() => activePositions.filter((x) => x.tier === 'leadman'), [activePositions]);
   const staff = useMemo(() => activePositions.filter((x) => x.tier === 'staff'), [activePositions]);
 
-  // Direct staff under executive (e.g. Gardener)
   const execIds = useMemo(() => new Set(executives.map((e) => e.id)), [executives]);
   const execDirectStaff = useMemo(
     () => staff.filter((s) => s.parent_position_id && execIds.has(s.parent_position_id)),
     [staff, execIds],
   );
 
-  // Group staff under each Head into side-by-side team columns
   const headColumns = useMemo(() => {
     return heads.map((head) => {
       const myLeadmenIds = new Set(
@@ -127,11 +186,7 @@ export default function OrgChart(p: Props) {
         byGroup.set(g, list);
       }
       const groups = Array.from(byGroup.entries());
-      return {
-        head,
-        groups,
-        span: Math.max(1, groups.length),
-      };
+      return { head, groups, span: Math.max(1, groups.length) };
     });
   }, [heads, leadmen, staff]);
 
@@ -140,7 +195,6 @@ export default function OrgChart(p: Props) {
     [headColumns],
   );
 
-  // Any orphan staff whose parent isn't an active executive/head/leadman
   const assignedStaffIds = useMemo(() => {
     const ids = new Set<string>(execDirectStaff.map((s) => s.id));
     for (const col of headColumns) {
@@ -225,10 +279,7 @@ export default function OrgChart(p: Props) {
       return;
     }
     const saved = res.data as OrgPositionRow;
-    setPositions((prev) => {
-      const exists = prev.some((x) => x.id === saved.id);
-      return exists ? prev.map((x) => (x.id === saved.id ? saved : x)) : [...prev, saved];
-    });
+    setPositions((prev) => (prev.some((x) => x.id === saved.id) ? prev.map((x) => (x.id === saved.id ? saved : x)) : [...prev, saved]));
     setEditingPos(null);
     setMsg({ kind: 'ok', text: `Saved "${saved.title}".` });
   }
@@ -257,25 +308,18 @@ export default function OrgChart(p: Props) {
     const children = positions.filter((x) => x.parent_position_id === absorbSourceId);
 
     for (const child of children) {
-      const { error } = await sb
-        .from('org_positions')
-        .update({ parent_position_id: absorbTargetId })
-        .eq('id', child.id);
+      const { error } = await sb.from('org_positions').update({ parent_position_id: absorbTargetId }).eq('id', child.id);
       if (error) {
         setBusy(false);
         setMsg({ kind: 'err', text: error.message });
         return;
       }
       if (child.holder_operator_id && targetHead?.holder_user_id) {
-        await sb
-          .from('operators')
-          .update({ department_head_id: targetHead.holder_user_id })
-          .eq('id', child.holder_operator_id);
+        await sb.from('operators').update({ department_head_id: targetHead.holder_user_id }).eq('id', child.holder_operator_id);
       }
     }
 
-    const secChildren = positions.filter((x) => x.secondary_parent_id === absorbSourceId);
-    for (const sc of secChildren) {
+    for (const sc of positions.filter((x) => x.secondary_parent_id === absorbSourceId)) {
       await sb.from('org_positions').update({ secondary_parent_id: absorbTargetId }).eq('id', sc.id);
     }
 
@@ -283,12 +327,7 @@ export default function OrgChart(p: Props) {
       await sb.from('org_positions').update({ is_active: false, is_vacant: true, holder_user_id: null }).eq('id', absorbSourceId);
     }
 
-    const { data: refreshed } = await sb
-      .from('org_positions')
-      .select('*')
-      .eq('organization_id', p.orgId)
-      .order('sort_order');
-
+    const { data: refreshed } = await sb.from('org_positions').select('*').eq('organization_id', p.orgId).order('sort_order');
     setBusy(false);
     if (refreshed) setPositions(refreshed as OrgPositionRow[]);
     setAbsorbOpen(false);
@@ -300,43 +339,34 @@ export default function OrgChart(p: Props) {
     const theme = THEME_STYLES[pos.color_theme] ?? THEME_STYLES.slate;
     const isSolidHeader = pos.tier === 'executive' || pos.tier === 'head';
     const isNightCard = pos.color_theme === 'amber' && !isSolidHeader;
-    const bg = pos.is_vacant ? 'var(--warn-bg)' : isSolidHeader ? theme.bg : isNightCard ? 'var(--warn-bg)' : 'var(--surface)';
-    const fg = pos.is_vacant ? 'var(--warn-fg)' : isSolidHeader ? theme.fg : isNightCard ? 'var(--warn-fg)' : 'var(--text)';
-    const border = pos.is_vacant ? '2px dashed var(--warn-border)' : `1px solid ${theme.border}`;
+    const editable = editMode && p.canEdit;
 
     return (
       <div
         key={pos.id}
-        onClick={() => {
-          if (editMode && p.canEdit) setEditingPos({ ...pos });
-        }}
+        onClick={() => editable && setEditingPos({ ...pos })}
+        className={centered ? 'row-sm text-center' : 'row-between'}
         style={{
-          background: bg,
-          color: fg,
-          border,
+          justifyContent: centered ? 'center' : 'space-between',
+          background: pos.is_vacant ? 'var(--warn-bg)' : isSolidHeader ? theme.bg : isNightCard ? 'var(--warn-bg)' : 'var(--surface)',
+          color: pos.is_vacant ? 'var(--warn-fg)' : isSolidHeader ? theme.fg : isNightCard ? 'var(--warn-fg)' : 'var(--text)',
+          border: pos.is_vacant ? '2px dashed var(--warn-border)' : `1px solid ${theme.border}`,
           borderRadius: 8,
           padding: compact ? '6px 9px' : '10px 14px',
-          cursor: editMode && p.canEdit ? 'pointer' : 'default',
+          cursor: editable ? 'pointer' : 'default',
           opacity: pos.is_active ? 1 : 0.55,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: centered ? 'center' : 'space-between',
-          textAlign: centered ? 'center' : 'left',
-          gap: 8,
           boxShadow: isSolidHeader ? '0 2px 6px rgba(15,23,42,0.12)' : '0 1px 2px rgba(15,23,42,0.04)',
-          outline: editMode && p.canEdit ? '1px dashed rgba(2,132,199,0.35)' : undefined,
+          outline: editable ? '1px dashed rgba(2,132,199,0.35)' : undefined,
         }}
-        title={editMode && p.canEdit ? 'Click to edit position or reassign person' : undefined}
+        title={editable ? 'Click to edit position or reassign person' : undefined}
       >
         <div style={{ minWidth: 0 }}>
           {pos.tier === 'executive' && (
-            <div style={{ fontSize: 9.5, fontWeight: 700, opacity: 0.8, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 1 }}>
+            <div className="font-bold" style={{ fontSize: 9.5, opacity: 0.8, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 1 }}>
               {pos.department_group}
             </div>
           )}
-          <div style={{ fontWeight: 700, fontSize: compact ? 12 : 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {name}
-          </div>
+          <div className="font-bold truncate" style={{ fontSize: compact ? 12 : 14 }}>{name}</div>
           <div style={{ fontSize: compact ? 10.5 : 11.5, opacity: isSolidHeader && !pos.is_vacant ? 0.9 : 0.72 }}>
             {pos.title}
             {!pos.is_active ? ' · Archived' : ''}
@@ -344,12 +374,12 @@ export default function OrgChart(p: Props) {
         </div>
         {pos.shift_badge && (
           <span
+            className="font-bold"
             style={{
               background: pos.color_theme === 'amber' ? 'var(--warn-bg)' : theme.badgeBg,
               color: pos.color_theme === 'amber' ? 'var(--warn-fg)' : theme.badgeFg,
               border: pos.color_theme === 'amber' ? '1px solid var(--warn-border)' : undefined,
               fontSize: 10,
-              fontWeight: 700,
               padding: '2px 7px',
               borderRadius: 999,
               whiteSpace: 'nowrap',
@@ -362,8 +392,13 @@ export default function OrgChart(p: Props) {
     );
   }
 
+  const openHeaderEditor = () => {
+    setDraftMeta(meta);
+    setEditingHeader(true);
+  };
+
   return (
-    <div style={{ display: 'grid', gap: 12 }}>
+    <div className="stack-md">
       <style>{`
         @media print {
           @page { size: landscape; margin: 8mm; }
@@ -371,16 +406,15 @@ export default function OrgChart(p: Props) {
         }
       `}</style>
 
-      {/* Toolbar */}
-      <div className="no-print card" style={{ padding: '10px 14px', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <div className="no-print card card-pad-sm row-wrap">
+        <div>
           <h1 className="page-title" style={{ fontSize: 15 }}>Master Organizational Chart</h1>
-          <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+          <span className="text-secondary-xs">
             Heads &amp; Up · Auto-updates when heads resign or new heads sign up
           </span>
         </div>
 
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="row-wrap" style={{ marginLeft: 'auto' }}>
           {p.canEdit && (
             <>
               <button
@@ -392,16 +426,7 @@ export default function OrgChart(p: Props) {
               </button>
               {editMode && (
                 <>
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => {
-                      setDraftMeta(meta);
-                      setEditingHeader(true);
-                    }}
-                  >
-                    Edit Header
-                  </button>
+                  <button type="button" className="btn" onClick={openHeaderEditor}>Edit Header</button>
                   <button
                     type="button"
                     className="btn btn-add"
@@ -430,7 +455,7 @@ export default function OrgChart(p: Props) {
                       Restructure / Absorb Dept
                     </button>
                   )}
-                  <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <label className="row-xs text-sm">
                     <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
                     Show archived
                   </label>
@@ -438,25 +463,21 @@ export default function OrgChart(p: Props) {
               )}
             </>
           )}
-          <button type="button" className="btn" onClick={() => window.print()}>
-            Print / Save PDF
-          </button>
+          <button type="button" className="btn" onClick={() => window.print()}>Print / Save PDF</button>
         </div>
       </div>
 
       {p.migrationMissing && (
-        <div className="no-print card" style={{ padding: 12, borderLeft: '4px solid var(--warn-border)', fontSize: 12.5 }}>
+        <div className="no-print card card-pad-sm text-sm" style={{ borderLeft: '4px solid var(--warn-border)' }}>
           Run migration <code>supabase/migrations/015_org_chart.sql</code> in Supabase SQL Editor to enable and seed the editable Organizational Chart.
         </div>
       )}
 
       {msg && (
         <div
-          className="no-print card"
+          className="no-print card card-pad-xs text-sm"
           role="alert"
           style={{
-            padding: '8px 12px',
-            fontSize: 12.5,
             borderLeft: `4px solid ${msg.kind === 'err' ? 'var(--danger)' : 'var(--ok-fg)'}`,
             color: msg.kind === 'err' ? 'var(--danger-fg)' : 'var(--ok-fg)',
           }}
@@ -466,38 +487,17 @@ export default function OrgChart(p: Props) {
       )}
 
       {editMode && p.canEdit && (
-        <div className="no-print" style={{ fontSize: 12, color: 'var(--text-secondary)', padding: '0 4px' }}>
+        <div className="no-print text-secondary-sm" style={{ padding: '0 4px' }}>
           Tip: Click the header or any card below to edit titles, shift legends, reporting parents, or assign/vacate occupants.
         </div>
       )}
 
       {/* Visual Org Chart Canvas */}
-      <div
-        className="org-canvas"
-        style={{
-          background: 'var(--surface-muted)',
-          color: 'var(--text)',
-          border: '1px solid var(--border)',
-          borderRadius: 10,
-          padding: '16px 18px 20px',
-          display: 'grid',
-          gap: 0,
-          overflowX: 'auto',
-        }}
-      >
-        {/* Chart Header (Pic 1 - Editable) */}
+      <div className="org-canvas scroll-x" style={ORG_S.canvas}>
         <div
-          onClick={() => {
-            if (editMode && p.canEdit) {
-              setDraftMeta(meta);
-              setEditingHeader(true);
-            }
-          }}
+          onClick={() => editMode && p.canEdit && openHeaderEditor()}
+          className="row-between-wrap"
           style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
             gap: 12,
             borderBottom: '1px solid var(--border-light)',
             paddingBottom: 12,
@@ -506,29 +506,19 @@ export default function OrgChart(p: Props) {
           }}
           title={editMode && p.canEdit ? 'Click to edit chart title, subtitle, and shift legends' : undefined}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="row-md">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/bpwi-logo.svg" alt="BPWI Logo" style={{ width: 48, height: 36, objectFit: 'contain' }} />
+            <img src="/bpwi-logo.svg" alt="BPWI Logo" style={ORG_S.logoImg} />
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>{meta.title}</span>
+              <div className="row-sm">
+                <span className="font-bold" style={{ fontSize: 18, color: 'var(--text)' }}>{meta.title}</span>
                 {p.canEdit && (
                   <button
                     type="button"
-                    className="no-print"
+                    className="no-print btn btn-xs"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setDraftMeta(meta);
-                      setEditingHeader(true);
-                    }}
-                    style={{
-                      border: '1px solid var(--border)',
-                      background: 'var(--surface)',
-                      color: 'var(--text-secondary)',
-                      borderRadius: 5,
-                      padding: '2px 7px',
-                      fontSize: 11,
-                      cursor: 'pointer',
+                      openHeaderEditor();
                     }}
                     title="Edit chart header & legends"
                   >
@@ -536,105 +526,65 @@ export default function OrgChart(p: Props) {
                   </button>
                 )}
               </div>
-              <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>{meta.subtitle}</div>
+              <div className="text-secondary-sm">{meta.subtitle}</div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {meta.legend1 && (
-              <span style={{ background: 'var(--info-bg)', color: 'var(--info-fg)', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6 }}>
-                {meta.legend1}
-              </span>
-            )}
-            {meta.legend2 && (
-              <span style={{ background: 'var(--warn-bg)', color: 'var(--warn-fg)', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6 }}>
-                {meta.legend2}
-              </span>
-            )}
+          <div className="row-wrap">
+            {meta.legend1 && <span className="badge badge-info">{meta.legend1}</span>}
+            {meta.legend2 && <span className="badge badge-warn">{meta.legend2}</span>}
           </div>
         </div>
 
         {/* Tier 1: Executive + Support Group + Direct Staff */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'start', gap: 0 }}>
+        <div style={ORG_S.execGrid}>
           <div />
-          {/* Center: Managing Head */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div style={ORG_S.execCenter}>
             <div style={{ minWidth: 270 }}>{executives.map((ex) => renderPersonCard(ex, false, true))}</div>
-            <div style={{ width: 2, height: 22, background: 'var(--border)' }} />
+            <StemDown height={22} />
           </div>
 
-          {/* Right: Dashed Connector + Support Group + Gardener */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start', paddingLeft: 0 }}>
+          <div className="stack-sm" style={{ justifyItems: 'start' }}>
             {supportGroup.length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center' }}>
+              <div className="row-sm" style={{ gap: 0 }}>
                 <div style={{ width: 20, borderTop: '2px dashed var(--border)' }} />
-                <div style={{ border: '1.5px dashed var(--border)', borderRadius: 8, padding: 8, background: 'var(--surface)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9.5, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 5, gap: 12 }}>
+                <div className="card-pad-xs" style={ORG_S.supportBox}>
+                  <div className="row-between text-secondary-xs font-bold" style={{ fontSize: 9.5, marginBottom: 5, gap: 12 }}>
                     <span>SUPPORT GROUP</span>
                     <span style={{ fontStyle: 'italic', fontWeight: 500 }}>Advisory &amp; Control</span>
                   </div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {supportGroup.map((s) => renderPersonCard(s, true))}
-                  </div>
+                  <div className="row-wrap" style={{ gap: 6 }}>{supportGroup.map((s) => renderPersonCard(s, true))}</div>
                 </div>
               </div>
             )}
             {execDirectStaff.length > 0 && (
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 20 }}>
+              <div className="row-wrap" style={{ gap: 6, paddingLeft: 20 }}>
                 {execDirectStaff.map((s) => renderPersonCard(s, true))}
               </div>
             )}
           </div>
         </div>
 
-        {/* Horizontal Bus Bar connecting Managing Head down to Department Heads */}
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${totalTeamCols}, minmax(205px, 1fr))`, columnGap: 12 }}>
-          {headColumns.map((col, idx) => (
-            <div key={`stem-${col.head.id}`} style={{ gridColumn: `span ${col.span}`, position: 'relative', height: 20 }}>
-              {/* Continuous horizontal line bridging column gaps */}
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: idx === 0 ? '50%' : -6,
-                  right: idx === headColumns.length - 1 ? '50%' : -6,
-                  height: 2,
-                  background: 'var(--border)',
-                }}
-              />
-              {/* Vertical drop touching Head card */}
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: '50%',
-                  width: 2,
-                  height: 20,
-                  background: 'var(--border)',
-                  transform: 'translateX(-50%)',
-                }}
-              />
-            </div>
-          ))}
-        </div>
+        <BusConnector
+          items={headColumns.map((col) => ({ key: `stem-${col.head.id}`, span: col.span }))}
+          gridTemplateColumns={`repeat(${totalTeamCols}, minmax(205px, 1fr))`}
+          height={20}
+        />
 
-        {/* Tier 2 & 3: Department Heads + Optional Leadman + Side-by-Side Team Columns */}
+        {/* Tier 2 & 3: Department Heads + Optional Leadman + Team Columns */}
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${totalTeamCols}, minmax(205px, 1fr))`, columnGap: 12, alignItems: 'start' }}>
-          {headColumns.map(({ head, groups, span }) => {
+          {headColumns.map(({ head, groups }) => {
             const headLeadmen = leadmen.filter((l) => l.parent_position_id === head.id);
-            const teamCols = groups.length ? groups : [];
             return (
-              <div key={head.id} style={{ gridColumn: `span ${span}`, display: 'flex', flexDirection: 'column' }}>
+              <div key={head.id} style={{ gridColumn: `span ${Math.max(1, groups.length)}`, display: 'flex', flexDirection: 'column' }}>
                 {renderPersonCard(head, false, true)}
 
                 {headLeadmen.length > 0 && (
                   <>
-                    <div style={{ display: 'flex', justifyContent: 'center', height: 14 }}>
-                      <div style={{ width: 2, height: '100%', background: 'var(--border)' }} />
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
+                    <StemDown />
+                    <div className="row-sm" style={{ justifyContent: 'center' }}>
                       {headLeadmen.map((lm) => (
-                        <div key={lm.id} style={{ minWidth: 230, maxWidth: 290, width: '100%' }}>
+                        <div key={lm.id} className="w-full" style={{ minWidth: 230, maxWidth: 290 }}>
                           {renderPersonCard(lm, true)}
                         </div>
                       ))}
@@ -642,59 +592,21 @@ export default function OrgChart(p: Props) {
                   </>
                 )}
 
-                {teamCols.length > 0 ? (
+                <StemDown />
+
+                {groups.length > 0 ? (
                   <>
-                    {/* Stem down from Head / Leadman */}
-                    <div style={{ display: 'flex', justifyContent: 'center', height: 14 }}>
-                      <div style={{ width: 2, height: '100%', background: 'var(--border)' }} />
-                    </div>
-
-                    {/* Branching horizontal line when Head has 2+ team columns */}
-                    {teamCols.length > 1 && (
-                      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${teamCols.length}, 1fr)`, columnGap: 12 }}>
-                        {teamCols.map(([gName], gIdx) => (
-                          <div key={`substem-${head.id}-${gName}`} style={{ position: 'relative', height: 14 }}>
-                            <div
-                              style={{
-                                position: 'absolute',
-                                top: 0,
-                                left: gIdx === 0 ? '50%' : -6,
-                                right: gIdx === teamCols.length - 1 ? '50%' : -6,
-                                height: 2,
-                                background: 'var(--border)',
-                              }}
-                            />
-                            <div
-                              style={{
-                                position: 'absolute',
-                                top: 0,
-                                left: '50%',
-                                width: 2,
-                                height: 14,
-                                background: 'var(--border)',
-                                transform: 'translateX(-50%)',
-                              }}
-                            />
-                          </div>
-                        ))}
-                      </div>
+                    {groups.length > 1 && (
+                      <BusConnector
+                        items={groups.map(([gName]) => ({ key: `substem-${head.id}-${gName}` }))}
+                        gridTemplateColumns={`repeat(${groups.length}, 1fr)`}
+                        height={14}
+                      />
                     )}
-
-                    {/* Team Boxes */}
-                    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${teamCols.length}, 1fr)`, columnGap: 12, alignItems: 'start' }}>
-                      {teamCols.map(([groupName, members]) => (
-                        <div
-                          key={`${head.id}-${groupName}`}
-                          style={{
-                            background: 'var(--surface)',
-                            border: '1px solid var(--border)',
-                            borderRadius: 8,
-                            padding: 10,
-                            display: 'grid',
-                            gap: 7,
-                          }}
-                        >
-                          <div style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--accent)', letterSpacing: '0.03em' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${groups.length}, 1fr)`, columnGap: 12, alignItems: 'start' }}>
+                      {groups.map(([groupName, members]) => (
+                        <div key={`${head.id}-${groupName}`} className="card-pad-xs stack-sm" style={ORG_S.teamBox}>
+                          <div className="font-bold" style={{ fontSize: 10.5, color: 'var(--accent)', letterSpacing: '0.03em' }}>
                             {groupName}
                           </div>
                           {members.map((m) => renderPersonCard(m, true))}
@@ -703,24 +615,9 @@ export default function OrgChart(p: Props) {
                     </div>
                   </>
                 ) : (
-                  <>
-                    <div style={{ display: 'flex', justifyContent: 'center', height: 14 }}>
-                      <div style={{ width: 2, height: '100%', background: 'var(--border)' }} />
-                    </div>
-                    <div
-                      style={{
-                        background: 'var(--surface)',
-                        border: '1px dashed var(--border)',
-                        borderRadius: 8,
-                        padding: 10,
-                        fontSize: 11.5,
-                        color: 'var(--text-muted)',
-                        textAlign: 'center',
-                      }}
-                    >
-                      No staff assigned yet
-                    </div>
-                  </>
+                  <div className="card-pad-xs text-center text-muted-xs" style={ORG_S.emptyTeamBox}>
+                    No staff assigned yet
+                  </div>
                 )}
               </div>
             );
@@ -728,13 +625,9 @@ export default function OrgChart(p: Props) {
         </div>
 
         {orphanStaff.length > 0 && (
-          <div style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 10, background: 'var(--surface)', marginTop: 12 }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6 }}>
-              UNASSIGNED / OTHER NODES
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {orphanStaff.map((s) => renderPersonCard(s, true))}
-            </div>
+          <div className="card-pad-xs stack-xs" style={ORG_S.orphanBox}>
+            <div className="section-eyebrow">UNASSIGNED / OTHER NODES</div>
+            <div className="row-wrap">{orphanStaff.map((s) => renderPersonCard(s, true))}</div>
           </div>
         )}
       </div>
