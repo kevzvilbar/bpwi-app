@@ -5,7 +5,7 @@ export type PhotoUploader = (
   sb: SupabaseClient,
   orgId: string,
   dataUrl: string,
-  opts: { fileStem: string; requireStorage: true },
+  opts: { fileStem: string; requireStorage: true; sample?: boolean },
 ) => Promise<{ url: string; storagePath: string | null }>;
 
 type Row = Record<string, unknown>;
@@ -112,7 +112,7 @@ export async function syncQueuedActivity(
       i += 1;
       if (typeof raw !== 'string') continue;
       if (raw.startsWith('data:image/')) {
-        const up = await upload(sb, orgId, raw, { fileStem: `${queueId}-${i}`, requireStorage: true });
+        const up = await upload(sb, orgId, raw, { fileStem: `${queueId}-${i}`, requireStorage: true, sample: body.is_sample === true });
         urls.push(up.url);
         if (up.storagePath && !paths.includes(up.storagePath)) paths.push(up.storagePath);
       } else {

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { ACTIVITY_MEDIA_BUCKET, buildActivityPhotoUrl } from './activity-media.ts';
+import { ACTIVITY_MEDIA_BUCKET, buildActivityPhotoUrl, samplePhotoStem } from './activity-media.ts';
 
 export interface CompressedImageResult {
   blob: Blob;
@@ -85,12 +85,13 @@ export async function uploadActivityPhoto(
   sb: SupabaseClient,
   orgId: string,
   file: File,
+  opts: { sample?: boolean } = {},
 ): Promise<{ url: string; storagePath: string | null; savedBytes: number }> {
   const compressed = await compressImageFile(file, 1024, 0.72);
   const ext = compressed.mimeType === 'image/webp' ? 'webp' : 'jpg';
   const rand = Math.random().toString(36).slice(2, 8);
   const dateFolder = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
-  const storagePath = `${orgId}/${dateFolder}/${Date.now()}-${rand}.${ext}`;
+  const storagePath = `${orgId}/${dateFolder}/${samplePhotoStem(`${Date.now()}-${rand}`, opts.sample)}.${ext}`;
 
   try {
     const { error } = await sb.storage
@@ -146,7 +147,7 @@ export async function uploadDataUrlPhoto(
   sb: SupabaseClient,
   orgId: string,
   dataUrl: string,
-  opts: { fileStem?: string; requireStorage?: boolean } = {},
+  opts: { fileStem?: string; requireStorage?: boolean; sample?: boolean } = {},
 ): Promise<{ url: string; storagePath: string | null }> {
   if (!dataUrl.startsWith('data:image/')) {
     return { url: dataUrl, storagePath: null };
@@ -158,7 +159,7 @@ export async function uploadDataUrlPhoto(
     const rand = Math.random().toString(36).slice(2, 8);
     const dateFolder = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
     const stem = opts.fileStem && /^[A-Za-z0-9_-]+$/.test(opts.fileStem) ? opts.fileStem : `${Date.now()}-${rand}`;
-    const storagePath = `${orgId}/${dateFolder}/${stem}.${ext}`;
+    const storagePath = `${orgId}/${dateFolder}/${samplePhotoStem(stem, opts.sample)}.${ext}`;
 
     const { error } = await sb.storage
       .from(ACTIVITY_MEDIA_BUCKET)

@@ -27,6 +27,8 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
   const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.d ?? '') ? sp.d! : today;
   const hoFrom = addDays(date, -14);
   const joFrom = addDays(date, -30);
+  // Open PM tasks older than this are not surfaced as "overdue" here; it keeps the feed query bounded as history grows.
+  const overdueFrom = addDays(date, -180);
   const ownActFilter = !p.canVerifyActivity ? buildOwnActivityOrFilter(p.user?.id, p.operatorId) : null;
 
   const [areasPrimary, opsRes, shiftsRes, asgRes, standbyRes, pmPrimary, actRes, joRes, hoRes] = await Promise.all([
@@ -51,8 +53,9 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
     p.sb
       .from('pm_tasks')
       .select(PM_TASK_MONITOR_COLUMNS)
-      .or(`completed_at.eq.${date},and(status.neq.done,scheduled_date.lt.${date})`)
-      .order('scheduled_date'),
+      .or(`completed_at.eq.${date},and(status.neq.done,scheduled_date.lt.${date},scheduled_date.gte.${overdueFrom})`)
+      .order('scheduled_date')
+      .limit(1000),
     (() => {
       let q = p.sb
         .from('daily_activities')
@@ -83,8 +86,9 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
     const legacyPm = await p.sb
       .from('pm_tasks')
       .select(PM_TASK_MONITOR_COLUMNS_LEGACY)
-      .or(`completed_at.eq.${date},and(status.neq.done,scheduled_date.lt.${date})`)
-      .order('scheduled_date');
+      .or(`completed_at.eq.${date},and(status.neq.done,scheduled_date.lt.${date},scheduled_date.gte.${overdueFrom})`)
+      .order('scheduled_date')
+      .limit(1000);
     pmTasksData = (legacyPm.data ?? []).map((t) => ({ ...t, completed_by_operator_ids: [] as string[] }));
     pmError = legacyPm.error;
   }

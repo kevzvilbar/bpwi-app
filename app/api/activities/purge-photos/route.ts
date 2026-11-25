@@ -141,69 +141,75 @@ async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
   };
 }
 
-async function executeSamplePurge(db: SupabaseClient, orgId?: string) {
-  const nowIso = new Date().toISOString();
+const SAMPLE_QUEUE_BATCH = 500;
+
+/**
+ * Removes the Storage objects of already-deleted sample activities. purge_expired_sample_records() queues
+ * each photo path in `sample_photo_cleanup` before it deletes the expired rows, so row deletion never
+ * waits for this route; failed removals stay queued (attempts + last_error) and are retried next run.
+ */
+async function drainSamplePhotoQueue(db: SupabaseClient, orgId?: string) {
   let query = db
-    .from('daily_activities')
-    .select('id, organization_id, photo_storage_paths, photo_urls')
-    .eq('is_sample', true)
-    .lte('sample_expires_at', nowIso);
+    .from('sample_photo_cleanup')
+    .select('id, organization_id, storage_path, attempts')
+    .order('queued_at', { ascending: true })
+    .limit(SAMPLE_QUEUE_BATCH);
+  if (orgId) query = query.eq('organization_id', orgId);
 
-  if (orgId) {
-    query = query.eq('organization_id', orgId);
+  const { data, error } = await query;
+  if (error) {
+    console.error(`[purge-samples] Failed to read sample photo queue: ${error.message}`);
+    return { filesRemoved: 0, failedFiles: 0, queueError: true };
   }
 
-  const { data: expiredSamples, error: fetchErr } = await query;
-  const failedPaths = new Set<string>();
-  let filesRemoved = 0;
+  const rows = (data ?? []) as Array<{ id: string; organization_id: string; storage_path: string; attempts: number }>;
+  if (rows.length === 0) return { filesRemoved: 0, failedFiles: 0, queueError: false };
 
-  if (fetchErr) {
-    console.error(`[purge-samples] Failed to query expired samples: ${fetchErr.message}`);
-  } else if (Array.isArray(expiredSamples) && expiredSamples.length > 0) {
-    const { rowsWithMedia, pathsByRow, allPaths } = collectMediaRowsAndPaths(
-      expiredSamples as ActivityPhotoRow[],
-      '[purge-samples]',
-    );
-
-    if (rowsWithMedia.length > 0) {
-      const removed = await removeStoragePathsInChunks(db, allPaths, '[purge-samples]');
-      filesRemoved = removed.filesRemoved;
-      removed.failedPaths.forEach((p) => failedPaths.add(p));
-
-      // Clear photo columns only on rows whose storage objects were completely removed;
-      // rows with failed removals keep their paths so purge_expired_sample_records skips them for retry.
-      const clearedRowIds = [...pathsByRow.entries()]
-        .filter(([, paths]) => paths.every((p) => !failedPaths.has(p)))
-        .map(([id]) => id);
-
-      if (clearedRowIds.length > 0) {
-        let clrQuery = db
-          .from('daily_activities')
-          .update({
-            photo_urls: [],
-            photo_storage_paths: [],
-            photos_purged_at: nowIso,
-          })
-          .in('id', clearedRowIds);
-        if (orgId) {
-          clrQuery = clrQuery.eq('organization_id', orgId);
-        }
-        const { error: clrErr } = await clrQuery;
-        if (clrErr) {
-          console.error(`[purge-samples] Failed to clear photo metadata before delete: ${clrErr.message}`);
-        }
-      }
-    }
+  const removable: typeof rows = [];
+  const invalidIds: string[] = [];
+  for (const row of rows) {
+    if (isStoragePathOwnedByOrg(row.storage_path, row.organization_id)) removable.push(row);
+    else invalidIds.push(row.id); // can never be removed from this org's folder; drop instead of retrying forever
+  }
+  if (invalidIds.length > 0) {
+    console.warn(`[purge-samples] Dropping ${invalidIds.length} queued path(s) outside their org folder`);
+    await db.from('sample_photo_cleanup').delete().in('id', invalidIds);
   }
 
+  const { failedPaths, filesRemoved } = await removeStoragePathsInChunks(
+    db,
+    [...new Set(removable.map((r) => r.storage_path))],
+    '[purge-samples]',
+  );
+
+  const doneIds = removable.filter((r) => !failedPaths.has(r.storage_path)).map((r) => r.id);
+  const failedIds = removable.filter((r) => failedPaths.has(r.storage_path)).map((r) => r.id);
+  if (doneIds.length > 0) {
+    const { error: delErr } = await db.from('sample_photo_cleanup').delete().in('id', doneIds);
+    if (delErr) console.error(`[purge-samples] Failed to clear processed queue rows: ${delErr.message}`);
+  }
+  for (const row of removable.filter((r) => failedIds.includes(r.id))) {
+    await db
+      .from('sample_photo_cleanup')
+      .update({ attempts: row.attempts + 1, last_error: 'Storage removal failed' })
+      .eq('id', row.id);
+  }
+
+  return { filesRemoved, failedFiles: failedPaths.size, queueError: false };
+}
+
+/**
+ * Deletes expired 24h sample logs (rows go in SQL, independent of this route) and then removes the
+ * photo files that were queued for them.
+ */
+async function executeSamplePurge(db: SupabaseClient, orgId?: string) {
   const { data: counts, error: rpcErr } = await db.rpc('purge_expired_sample_records');
   if (rpcErr) {
     console.error(`[purge-samples] purge_expired_sample_records RPC failed: ${rpcErr.message}`);
-    if (filesRemoved === 0 && failedPaths.size === 0) return null;
-    return { filesRemoved, failedFiles: failedPaths.size };
   }
+  const drained = await drainSamplePhotoQueue(db, orgId);
   const row = (Array.isArray(counts) ? counts[0] : counts) as Record<string, unknown> | null | undefined;
-  return { ...(row ?? {}), filesRemoved, failedFiles: failedPaths.size };
+  return { ...(row ?? {}), ...drained, rpcError: Boolean(rpcErr) };
 }
 
 /**

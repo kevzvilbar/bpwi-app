@@ -66,8 +66,8 @@ async function setAuthUid(db: PGlite, uid: string | null) {
   await db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [uid ?? '']);
 }
 
-describe('PGlite SQL migrations 001–030 execution & security invariants', () => {
-  it('executes all 001–030 migrations cleanly and enforces sign-up, change-request, storage, org-seed, station-code, PM credit, PM locations, route store, and audit invariants', async () => {
+describe('PGlite SQL migrations (all) execution & security invariants', () => {
+  it('executes every migration cleanly and enforces sign-up, sample-log, department-head, change-request, storage, org-seed, station-code, PM credit, PM locations, route store, and audit invariants', async () => {
     const db = new PGlite({ extensions: { pgcrypto } });
     await initSupabaseShim(db);
 
@@ -1289,5 +1289,224 @@ describe('PGlite SQL migrations 001–030 execution & security invariants', () =
 
     // Re-running 034 migration is idempotent
     await db.exec(sql34);
+
+    // 18. 035 Department heads: sample-only edits, review exceptions, sample photo queue, storage policy, health
+    // Re-apply 035 because the 034 re-run above restored its older purge_expired_sample_records(); also proves idempotency.
+    const sql35 = fs.readFileSync(path.join(MIGRATIONS_DIR, '035_dept_head_sample_only_edits.sql'), 'utf8');
+    await db.exec(sql35);
+
+    const runAs = async <T,>(uid: string | null, fn: () => Promise<T>, commit = false): Promise<T> => {
+      await setAuthUid(db, uid);
+      await db.exec('begin; set local role authenticated;');
+      try {
+        const out = await fn();
+        await db.exec(commit ? 'commit;' : 'rollback;');
+        return out;
+      } catch (err) {
+        await db.exec('rollback;');
+        throw err;
+      }
+    };
+    const NOT_ALLOWED = /Department heads|read-only|row-level security/i;
+
+    // Admin creates one REAL row in each of the four tables.
+    const realIds = await runAs(adminId, async () => {
+      const act = await db.query<{ id: string }>(
+        `insert into daily_activities (organization_id, activity_type) values ($1, 'pump_monitoring') returning id`,
+        [orgId],
+      );
+      const jo = await db.query<{ id: string }>(
+        `insert into job_orders (organization_id, jo_number, title, created_by) values ($1, 'AUTO', 'Real JO 035', $2) returning id`,
+        [orgId, adminId],
+      );
+      const ho = await db.query<{ id: string }>(
+        `insert into shift_handovers (organization_id, summary, created_by) values ($1, 'Real handover 035', $2) returning id`,
+        [orgId, adminId],
+      );
+      const rep = await db.query<{ id: string }>(
+        `insert into accomplishment_reports (organization_id, report_date, submitted_by, assigned_head_id, status)
+         values ($1, '2026-11-25', $2, $3, 'submitted') returning id`,
+        [orgId, adminId, mgr1Id],
+      );
+      return { act: act.rows[0].id, jo: jo.rows[0].id, ho: ho.rows[0].id, rep: rep.rows[0].id };
+    }, true);
+
+    // A department head cannot edit or delete any real row.
+    const realEdits: Array<[string, string, unknown[]]> = [
+      [`update daily_activities set notes = 'tamper' where id = $1`, 'activity edit', [realIds.act]],
+      [`update job_orders set title = 'tamper' where id = $1`, 'job order edit', [realIds.jo]],
+      [`update job_orders set status = 'completed' where id = $1`, 'job order status', [realIds.jo]],
+      [`update shift_handovers set summary = 'tamper' where id = $1`, 'handover edit', [realIds.ho]],
+      [`update accomplishment_reports set summary_notes = 'tamper' where id = $1`, 'report edit', [realIds.rep]],
+      [`update accomplishment_reports set entries = '[{"x":1}]'::jsonb where id = $1`, 'report entries edit', [realIds.rep]],
+      [`delete from daily_activities where id = $1`, 'activity delete', [realIds.act]],
+      [`delete from job_orders where id = $1`, 'job order delete', [realIds.jo]],
+      [`delete from shift_handovers where id = $1`, 'handover delete', [realIds.ho]],
+      [`delete from accomplishment_reports where id = $1`, 'report delete', [realIds.rep]],
+    ];
+    for (const [sql, label, params] of realEdits) {
+      if (sql.startsWith('delete')) {
+        // RLS may hide the row (0 rows affected) or the 035 guard may raise; either way the row must survive.
+        let affected = 0;
+        try {
+          affected = await runAs(mgr1Id, async () => (await db.query(sql, params)).affectedRows ?? 0);
+        } catch (err) {
+          assert.match(String(err instanceof Error ? err.message : err), NOT_ALLOWED, `manager must not do: ${label}`);
+        }
+        assert.equal(affected, 0, `manager must not do: ${label}`);
+      } else {
+        await assert.rejects(() => runAs(mgr1Id, () => db.query(sql, params)), NOT_ALLOWED, `manager must not do: ${label}`);
+      }
+    }
+    for (const [table, id] of [
+      ['daily_activities', realIds.act],
+      ['job_orders', realIds.jo],
+      ['shift_handovers', realIds.ho],
+      ['accomplishment_reports', realIds.rep],
+    ] as const) {
+      await setAuthUid(db, null);
+      const still = await db.query<{ cnt: number }>(`select count(*)::int as cnt from ${table} where id = $1`, [id]);
+      assert.equal(still.rows[0].cnt, 1, `${table} real row must survive the department head delete attempts`);
+    }
+
+    // ...and cannot bypass the guard by flipping the sample flag or changing a verification payload alongside.
+    await assert.rejects(
+      () => runAs(mgr1Id, () => db.query(`update daily_activities set status = 'verified', notes = 'tamper' where id = $1`, [realIds.act])),
+      NOT_ALLOWED,
+    );
+    await assert.rejects(
+      () => runAs(mgr1Id, () => db.query(`update daily_activities set status = 'draft' where id = $1`, [realIds.act])),
+      /only verify or flag/i,
+    );
+    await assert.rejects(
+      () => runAs(mgr1Id, () => db.query(`update job_orders set is_sample = true where id = $1`, [realIds.jo])),
+      /Sample flag|Department heads/i,
+    );
+
+    // Review actions stay available to department heads.
+    await runAs(mgr1Id, async () => {
+      const v = await db.query(
+        `update daily_activities set status = 'verified', verified_by = $2, verified_at = now(), review_note = 'ok' where id = $1`,
+        [realIds.act, mgr1Id],
+      );
+      assert.equal(v.affectedRows, 1);
+      const c = await db.query(
+        `update accomplishment_reports set status = 'checked', checked_by = $2, checked_at = now(), head_remarks = 'good' where id = $1`,
+        [realIds.rep, mgr1Id],
+      );
+      assert.equal(c.affectedRows, 1);
+    });
+
+    // Admins (and service_role / SQL) are unaffected on real rows.
+    await runAs(adminId, async () => {
+      const u = await db.query(`update job_orders set title = 'Admin fixed' where id = $1`, [realIds.jo]);
+      assert.equal(u.affectedRows, 1);
+    });
+    await setAuthUid(db, null);
+    await db.query(`update shift_handovers set summary = 'service edit' where id = $1`, [realIds.ho]);
+
+    // Department head sandbox: full create / edit / delete on SAMPLE rows in all four tables.
+    await runAs(mgr1Id, async () => {
+      const act = await db.query<{ id: string }>(
+        `insert into daily_activities (organization_id, logged_by, activity_type, is_sample) values ($1, $2, 'pump_monitoring', true) returning id`,
+        [orgId, mgr1Id],
+      );
+      const jo = await db.query<{ id: string }>(
+        `insert into job_orders (organization_id, jo_number, title, created_by, is_sample) values ($1, 'AUTO', 'S', $2, true) returning id`,
+        [orgId, mgr1Id],
+      );
+      const ho = await db.query<{ id: string }>(
+        `insert into shift_handovers (organization_id, summary, created_by, is_sample) values ($1, 'S', $2, true) returning id`,
+        [orgId, mgr1Id],
+      );
+      const rep = await db.query<{ id: string }>(
+        `insert into accomplishment_reports (organization_id, report_date, submitted_by, status, is_sample) values ($1, '2026-11-25', $2, 'draft', true) returning id`,
+        [orgId, mgr1Id],
+      );
+      assert.equal((await db.query(`update daily_activities set notes = 'edited' where id = $1`, [act.rows[0].id])).affectedRows, 1);
+      assert.equal((await db.query(`update job_orders set title = 'edited' where id = $1`, [jo.rows[0].id])).affectedRows, 1);
+      assert.equal((await db.query(`update shift_handovers set summary = 'edited' where id = $1`, [ho.rows[0].id])).affectedRows, 1);
+      assert.equal((await db.query(`update accomplishment_reports set summary_notes = 'edited' where id = $1`, [rep.rows[0].id])).affectedRows, 1);
+      assert.equal((await db.query(`delete from daily_activities where id = $1`, [act.rows[0].id])).affectedRows, 1);
+      assert.equal((await db.query(`delete from job_orders where id = $1`, [jo.rows[0].id])).affectedRows, 1);
+      assert.equal((await db.query(`delete from shift_handovers where id = $1`, [ho.rows[0].id])).affectedRows, 1);
+      assert.equal((await db.query(`delete from accomplishment_reports where id = $1`, [rep.rows[0].id])).affectedRows, 1);
+    });
+
+    // 24h cleanup is self-sufficient: expired samples with photos are deleted in SQL and their files are queued.
+    const photoA = `${orgId}/2026-11-25/sample-aaa.webp`;
+    const photoB = `${orgId}/2026-11-25/sample-bbb.webp`;
+    const foreignPhoto = '99999999-9999-4999-8999-999999999999/2026-11-25/sample-ccc.webp';
+    const photoSampleId = await runAs(mgr1Id, async () => {
+      const r = await db.query<{ id: string }>(
+        `insert into daily_activities (organization_id, logged_by, activity_type, is_sample, photo_storage_paths, photo_urls)
+         values ($1, $2, 'pump_monitoring', true, $3::text[], $4::text[]) returning id`,
+        [orgId, mgr1Id, [photoA, foreignPhoto], [`/api/activities/photo?path=${encodeURIComponent(photoB)}`]],
+      );
+      return r.rows[0].id;
+    }, true);
+    await setAuthUid(db, null);
+    await db.exec(`
+      alter table daily_activities disable trigger trg_daily_activities_sample_lifecycle;
+      update daily_activities set sample_expires_at = now() - interval '1 minute' where id = '${photoSampleId}';
+      alter table daily_activities enable trigger trg_daily_activities_sample_lifecycle;
+    `);
+
+    const healthBefore = await runAs(adminId, async () => {
+      const h = await db.query<{ h: Record<string, unknown> }>(`select sample_cleanup_health() as h`);
+      return h.rows[0].h;
+    });
+    assert.equal(healthBefore.overdue_samples, 0, 'a sample expired a minute ago is not yet "overdue"');
+    assert.equal(healthBefore.pg_cron_scheduled, false);
+    await assert.rejects(
+      () => runAs(mgr1Id, () => db.query(`select sample_cleanup_health()`)),
+      /Only admins/i,
+    );
+
+    await setAuthUid(db, null);
+    await db.exec('begin; set local role service_role;');
+    const purge35 = await db.query<{ activities_deleted: number }>(`select * from purge_expired_sample_records()`);
+    await db.exec('commit;');
+    assert.equal(purge35.rows[0].activities_deleted, 1, 'expired sample with photos is deleted in SQL, not left behind');
+    const rowGone = await db.query<{ cnt: number }>(`select count(*)::int as cnt from daily_activities where id = $1`, [photoSampleId]);
+    assert.equal(rowGone.rows[0].cnt, 0);
+
+    const queued = await db.query<{ storage_path: string }>(`select storage_path from sample_photo_cleanup order by storage_path`);
+    assert.deepEqual(queued.rows.map((r) => r.storage_path), [photoA, photoB], 'own-org photo paths queued; foreign-org path ignored');
+
+    await db.exec('begin; set local role service_role;');
+    await db.query(`select * from purge_expired_sample_records()`);
+    await db.exec('commit;');
+    const queuedAgain = await db.query<{ cnt: number }>(`select count(*)::int as cnt from sample_photo_cleanup`);
+    assert.equal(queuedAgain.rows[0].cnt, 2, 're-running the purge never duplicates queue rows');
+
+    await assert.rejects(
+      () => runAs(adminId, () => db.query(`select * from sample_photo_cleanup`)),
+      /permission denied/i,
+    );
+
+    // Storage: department heads may handle sample-* objects only; operators/admins keep full access.
+    await db.exec(`grant usage on schema storage to authenticated; grant select, insert, delete on storage.objects to authenticated; grant select on public.user_profiles to authenticated;`);
+    const realObj = `${orgId}/2026-11-25/123-real.webp`;
+    const sampleObj = `${orgId}/2026-11-25/sample-123.webp`;
+    await assert.rejects(
+      () => runAs(mgr1Id, () => db.query(`insert into storage.objects (bucket_id, name) values ('activity-media', $1)`, [realObj])),
+      /row-level security/i,
+    );
+    await runAs(mgr1Id, async () => {
+      await db.query(`insert into storage.objects (bucket_id, name) values ('activity-media', $1)`, [sampleObj]);
+    }, true);
+    await runAs(adminId, async () => {
+      await db.query(`insert into storage.objects (bucket_id, name) values ('activity-media', $1)`, [realObj]);
+    }, true);
+    await runAs(mgr1Id, async () => {
+      const delReal = await db.query(`delete from storage.objects where bucket_id = 'activity-media' and name = $1`, [realObj]);
+      assert.equal(delReal.affectedRows, 0, 'department head cannot delete a real activity photo');
+      const delSample = await db.query(`delete from storage.objects where bucket_id = 'activity-media' and name = $1`, [sampleObj]);
+      assert.equal(delSample.affectedRows, 1, 'department head can delete a sample photo');
+    });
+
+    // 035 idempotent
+    await db.exec(sql35);
   });
 });
