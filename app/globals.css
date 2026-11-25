@@ -892,7 +892,7 @@ textarea:focus-visible {
 
 @media screen and (max-width: 640px) {
   .pm-day-cell {
-    min-height: 52px;
+    min-height: 50px;
   }
 
   .pm-desktop-pill {
@@ -906,6 +906,18 @@ textarea:focus-visible {
     gap: 3px;
     padding: 2px 0;
   }
+
+  .pm-toolbar-compact .btn,
+  .pm-toolbar-compact .input,
+  .pm-toolbar-compact select {
+    min-height: 36px;
+    padding: 4px 10px;
+  }
+
+  .pm-label-desktop {
+    display: none;
+  }
+
 
   .responsive-table-wrap,
   .call-sheet-table-wrap {
@@ -1530,3 +1542,60 @@ textarea:focus-visible {
 .rpt-lbl { background: #f1f5f9; font-weight: 700; color: #334155; }
 .rpt-sig-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 18px; }
 .rpt-sig-box { border-top: 1px solid #0f172a; padding-top: 4px; text-align: center; font-size: 10px; }
+
+/* PM Plan compact toolbar & chip strip */
+.pm-chip-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px 0;
+}
+.pm-chip-strip::-webkit-scrollbar { display: none; }
+@media (min-width: 769px) {
+  .pm-chip-strip {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+}
+.pm-chip-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 4px 9px;
+  min-height: 28px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s ease, border-color 0.15s ease;
+}
+.pm-progress-track {
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border-light);
+  overflow: hidden;
+}
+.pm-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--teal);
+  transition: width 0.25s ease;
+}
+.pm-calendar-legend {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 6px 10px;
+  background: var(--surface-muted);
+  font-size: 11px;
+  color: var(--text-secondary);
+}

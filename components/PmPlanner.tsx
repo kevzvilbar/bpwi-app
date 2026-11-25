@@ -25,33 +25,50 @@ export type { PmPlannerProps };
 
 export default function PmPlanner(p: PmPlannerProps) {
   const pm = usePmPlannerState(p);
+  const activeFilterCount = (pm.statusFilter ? 1 : 0) + (pm.areaFilter ? 1 : 0);
+  const completionPct = pm.counts.total > 0 ? Math.round((pm.counts.done / pm.counts.total) * 100) : 0;
+  const orderedChips = [...pm.activityChips].sort(
+    (a, b) => Number(b.count > 0) - Number(a.count > 0),
+  );
 
   return (
     <div className="card-pad w-full">
       {/* Top Toolbar */}
-      <div className="no-print card card-pad-sm stack-sm" style={{ marginBottom: 8 }}>
-        <div className="row-wrap">
-          <button className="btn" onClick={pm.goToday}>
-            {pm.isPending ? 'Loading…' : 'Today'}
-          </button>
-          <button className="btn" onClick={() => pm.go(-1)} title="Previous">
-            ‹
-          </button>
-          <button className="btn" onClick={() => pm.go(1)} title="Next">
-            ›
-          </button>
-          <h1 className="page-title desktop-only" style={{ fontSize: 16, margin: '0 4px' }}>
-            {pm.monthLabel}
-          </h1>
-          <input
-            type="month"
-            aria-label="Select month"
-            value={p.month}
-            onChange={(e) => pm.selectMonth(e.target.value)}
-            className="input text-sm font-bold"
-            style={{ width: 'auto', minHeight: 36, padding: '4px 6px' }}
-          />
+      <div className="no-print card card-pad-sm stack-sm pm-toolbar-compact" style={{ marginBottom: 8 }}>
+        {/* Row 1: Date navigation + Primary CTA */}
+        <div className="row-between-wrap">
+          <div className="row-xs" style={{ flexWrap: 'wrap', gap: 5 }}>
+            <button className="btn" onClick={() => pm.go(-1)} title="Previous" aria-label="Previous period">
+              ‹
+            </button>
+            <input
+              type="month"
+              aria-label="Select month"
+              value={p.month}
+              onChange={(e) => pm.selectMonth(e.target.value)}
+              className="input text-sm font-bold"
+              style={{ width: 'auto', padding: '4px 8px' }}
+            />
+            <button className="btn" onClick={() => pm.go(1)} title="Next" aria-label="Next period">
+              ›
+            </button>
+            <button className="btn" onClick={pm.goToday}>
+              {pm.isPending ? 'Loading…' : 'Today'}
+            </button>
+            <h1 className="page-title desktop-only" style={{ fontSize: 16, margin: '0 4px' }}>
+              {pm.monthLabel}
+            </h1>
+          </div>
 
+          {p.canEdit && (
+            <button className="btn btn-add" onClick={() => pm.openDraft(pm.blank(pm.selectedDate))}>
+              + Schedule<span className="pm-label-desktop"> PM</span>
+            </button>
+          )}
+        </div>
+
+        {/* Row 2: View Toggle + Compact Actions / Filters */}
+        <div className="row-between-wrap">
           <div className="segmented-tabs segmented-tabs-sm" role="tablist" aria-label="Calendar view">
             {(['month', 'week'] as const).map((v) => (
               <button
@@ -67,44 +84,13 @@ export default function PmPlanner(p: PmPlannerProps) {
             ))}
           </div>
 
-          {/* Activity Filter Pills */}
-          <div className="row-wrap">
-            {pm.activityChips.map((c) => {
-              const active = pm.typeFilter === c.type;
-              return (
-                <button
-                  key={c.type}
-                  onClick={() => pm.setTypeFilter(active ? '' : c.type)}
-                  className="badge"
-                  style={{
-                    border: active ? '2px solid var(--text)' : '1px solid transparent',
-                    background: c.color,
-                    color: '#ffffff',
-                    cursor: 'pointer',
-                    opacity: pm.typeFilter && !active ? 0.5 : 1,
-                  }}
-                >
-                  <span>{c.short}</span>
-                  <span style={{ background: 'rgba(255,255,255,0.25)', borderRadius: 999, padding: '0 6px', fontSize: 10.5 }}>
-                    {c.count}
-                  </span>
-                </button>
-              );
-            })}
-            {p.canEdit && (
-              <button className="btn" onClick={pm.openEditActivities} title="Edit activity names & colors">
-                ✎ Edit
-              </button>
-            )}
-          </div>
-
-          <div className="row-wrap" style={{ marginLeft: 'auto' }}>
+          <div className="row-xs" style={{ flexWrap: 'wrap', gap: 6 }}>
             <button
               className="btn mobile-only-block"
               onClick={() => pm.setFiltersOpen((o) => !o)}
               aria-expanded={pm.filtersOpen}
             >
-              {pm.filtersOpen ? 'Hide Filters' : 'Filters'}
+              {pm.filtersOpen ? 'Hide Filters' : `Filters${activeFilterCount ? ` (${activeFilterCount})` : ''}`}
             </button>
             <div className={pm.filtersOpen ? 'row-wrap' : 'row-wrap desktop-only'}>
               <select className="btn" value={pm.statusFilter} onChange={(e) => pm.setStatusFilter(e.target.value)}>
@@ -147,35 +133,86 @@ export default function PmPlanner(p: PmPlannerProps) {
               </button>
             )}
             {p.canEdit && (
-              <button className="btn btn-add" onClick={() => pm.openDraft(pm.blank(pm.selectedDate))}>
-                + Schedule PM
+              <button className="btn" onClick={pm.openEditActivities} title="Edit activity names & colors">
+                ✎<span className="pm-label-desktop"> Edit</span>
               </button>
             )}
           </div>
         </div>
 
-        {/* Summary Strip */}
-        <div className="row-wrap text-secondary-sm">
-          <span>
-            <strong style={{ color: 'var(--teal)' }}>●</strong> <b>{pm.counts.total}</b> scheduled this month
-          </span>
-          <span>
-            <strong style={{ color: 'var(--primary)' }}>●</strong> <b>{pm.counts.planned}</b> planned
-          </span>
-          <span>
-            <strong style={{ color: 'var(--ok-fg)' }}>●</strong> <b>{pm.counts.done}</b> done
-          </span>
-          {pm.nextTask && (
-            <span>
-              <strong style={{ color: 'var(--accent)' }}>●</strong> Next: <b>{formatShortDay(pm.nextTask.scheduled_date)}</b>{' '}
-              {PRESETS[pm.nextTask.activity_type]?.short ?? pm.nextTask.title}
-              {pm.nextTask.locations.length ? ` · ${pm.nextTask.locations.join(', ')}` : ''}
-            </span>
-          )}
+        {/* Row 3: Single-row Horizontal Category Chip Strip */}
+        <div className="pm-chip-strip" role="group" aria-label="Activity type filters">
+          <button
+            type="button"
+            className="pm-chip-pill"
+            onClick={() => pm.setTypeFilter('')}
+            style={{
+              background: !pm.typeFilter ? 'var(--text)' : 'var(--surface-muted)',
+              color: !pm.typeFilter ? 'var(--surface)' : 'var(--text)',
+              border: '1px solid transparent',
+            }}
+          >
+            <span>All</span>
+            <span style={{ opacity: 0.78, fontSize: 10.5 }}>· {pm.counts.total}</span>
+          </button>
+          {orderedChips.map((c) => {
+            const active = pm.typeFilter === c.type;
+            return (
+              <button
+                key={c.type}
+                type="button"
+                onClick={() => pm.setTypeFilter(active ? '' : c.type)}
+                className="pm-chip-pill"
+                style={{
+                  border: `1.5px solid ${active ? c.color : 'var(--border)'}`,
+                  background: active ? c.color : 'var(--surface)',
+                  color: active ? '#ffffff' : 'var(--text)',
+                  opacity: pm.typeFilter && !active ? 0.55 : c.count === 0 && !active ? 0.72 : 1,
+                }}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: '50%',
+                    background: active ? '#ffffff' : c.color,
+                    flexShrink: 0,
+                  }}
+                />
+                <span>{c.short}</span>
+                <span style={{ fontSize: 10.5, opacity: active ? 0.9 : 0.65 }}>{c.count}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Row 4: Completion Progress & Summary Strip */}
+        <div className="stack-xs">
+          <div className="pm-progress-track" aria-hidden="true">
+            <div className="pm-progress-fill" style={{ width: `${completionPct}%` }} />
+          </div>
+          <div className="row-between-wrap text-secondary-xs">
+            <div className="row-wrap" style={{ gap: 10 }}>
+              <span>
+                <strong style={{ color: 'var(--ok-fg)' }}>●</strong> <b>{pm.counts.done}/{pm.counts.total}</b> done
+              </span>
+              <span>
+                <strong style={{ color: 'var(--primary)' }}>●</strong> <b>{pm.counts.planned}</b> planned
+              </span>
+            </div>
+            {pm.nextTask && (
+              <span className="truncate" style={{ maxWidth: '100%' }}>
+                <strong style={{ color: 'var(--accent)' }}>Next:</strong> <b>{formatShortDay(pm.nextTask.scheduled_date)}</b>{' '}
+                {PRESETS[pm.nextTask.activity_type]?.short ?? pm.nextTask.title}
+                {pm.nextTask.locations.length ? ` · ${pm.nextTask.locations[0]}` : ''}
+              </span>
+            )}
+          </div>
           {pm.msg && (
-            <span role="alert" className="text-danger-sm font-bold">
+            <div role="alert" className="text-danger-sm font-bold">
               {pm.msg}
-            </span>
+            </div>
           )}
         </div>
       </div>
@@ -262,13 +299,13 @@ export default function PmPlanner(p: PmPlannerProps) {
                       alignItems: 'center',
                       justifyContent: 'center',
                       minWidth: 22,
-                      height: 20,
-                      padding: '0 5px',
+                      height: 22,
+                      padding: dayNum === 1 ? '0 6px' : '0 4px',
                       borderRadius: 999,
                       fontSize: 11,
                       fontWeight: 700,
-                      background: isToday ? '#0369a1' : hol ? '#be123c' : 'transparent',
-                      color: isToday || hol ? '#ffffff' : inMonth ? 'var(--text)' : 'var(--text-muted)',
+                      background: isToday ? '#0369a1' : hol ? 'var(--danger-bg)' : 'transparent',
+                      color: isToday ? '#ffffff' : hol ? 'var(--danger-fg)' : inMonth ? 'var(--text)' : 'var(--text-muted)',
                     }}
                     title={hol ? hol.name : undefined}
                   >
@@ -394,6 +431,18 @@ export default function PmPlanner(p: PmPlannerProps) {
               </div>
             );
           })}
+
+          <div className="pm-calendar-legend">
+            <span>
+              <strong style={{ color: 'var(--primary)' }}>●</strong> Planned
+            </span>
+            <span>
+              <strong style={{ color: 'var(--teal)' }}>○</strong> Completed
+            </span>
+            <span>
+              <strong style={{ color: 'var(--danger-fg)' }}>●</strong> Holiday
+            </span>
+          </div>
         </div>
 
         {/* Right-Hand Day Inspector Sidebar */}
