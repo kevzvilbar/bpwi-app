@@ -21,6 +21,7 @@ import {
 import { JOB_ORDER_COLUMNS } from '@/lib/query-columns';
 import { Badge, EmptyState, SegmentedTabs } from '@/components/ui';
 import { SampleBadge } from '@/components/SampleBadge';
+import { canEditLogRow } from '@/lib/sample-logs';
 
 type JoOp = { id: string; full_name: string };
 type JoArea = { id: string; code: string; name: string | null };
@@ -44,6 +45,8 @@ interface JobOrdersTabProps {
   canManageJo: boolean;
   canLogActivity: boolean;
   canLogSample?: boolean;
+  /** Viewer role; department heads ('manager') may change sample job orders only. */
+  role?: string;
   joFilter: 'open' | 'completed' | 'all';
   onChangeJoFilter: (f: 'open' | 'completed' | 'all') => void;
   filteredJobOrders: JobOrderRow[];
@@ -64,6 +67,7 @@ export default function JobOrdersTab({
   canManageJo,
   canLogActivity,
   canLogSample = false,
+  role,
   joFilter,
   onChangeJoFilter,
   filteredJobOrders,
@@ -170,6 +174,10 @@ export default function JobOrdersTab({
     nextStatus: JobOrderRow['status'],
     tatJustification?: string | null,
   ) {
+    if (!canEditLogRow(role, jo)) {
+      onBannerMsg('Department heads can only change sample job orders; real job orders are read-only.');
+      return;
+    }
     const sb = supabaseBrowser();
     const updates: Record<string, unknown> = {
       status: nextStatus,
@@ -252,7 +260,8 @@ export default function JobOrdersTab({
               jo.completed_at && jo.created_at
                 ? ((new Date(jo.completed_at).getTime() - new Date(jo.created_at).getTime()) / (1000 * 60 * 60)).toFixed(1)
                 : null;
-            const canCompleteJo = (canManageJo || canLogActivity) && (jo.status === 'pending' || jo.status === 'in_progress');
+            const canEditThisJo = canEditLogRow(role, jo);
+            const canCompleteJo = canEditThisJo && (canManageJo || canLogActivity) && (jo.status === 'pending' || jo.status === 'in_progress');
 
             return (
               <div
@@ -320,7 +329,7 @@ export default function JobOrdersTab({
                       Fulfill &amp; Log Activity
                     </button>
                   )}
-                  {jo.status === 'pending' && (
+                  {jo.status === 'pending' && canEditThisJo && (
                     <button type="button" className="btn" onClick={() => void updateJobOrderStatus(jo, 'in_progress')} style={{ fontSize: 12 }}>
                       Start Work
                     </button>

@@ -74,7 +74,9 @@ export async function middleware(req: NextRequest) {
       },
     });
 
-    // Fast local session check in middleware; Server Components & API routes verify via getUser().
+    // Fast, cookie-only session check (getSession() does NOT re-validate the JWT with Supabase). It only gates
+    // redirects; every Server Component and API route re-verifies the user with getUser() before touching data,
+    // and Row Level Security is the final authority.
     const {
       data: { session },
     } = await sb.auth.getSession();

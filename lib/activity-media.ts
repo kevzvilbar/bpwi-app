@@ -6,6 +6,22 @@ const STORAGE_PATH_RE =
 const LEGACY_STORAGE_PATH_RE =
   /^\/storage\/v1\/object\/(?:public|sign|authenticated)\/activity-media\/(.+)$/;
 
+/**
+ * Photos attached to sample logs are stored as `<orgId>/<date>/sample-<name>.<ext>`. The Storage RLS policy
+ * (migration 035) lets department heads upload/delete only objects with this file-name prefix, so they can
+ * never add or remove photos belonging to real activity logs.
+ */
+export const SAMPLE_PHOTO_PREFIX = 'sample-';
+
+export function samplePhotoStem(stem: string, sample: boolean | undefined): string {
+  return sample ? `${SAMPLE_PHOTO_PREFIX}${stem}` : stem;
+}
+
+export function isSamplePhotoPath(storagePath: string): boolean {
+  const fileName = storagePath.trim().split('/')[2] ?? '';
+  return fileName.startsWith(SAMPLE_PHOTO_PREFIX);
+}
+
 export function isValidActivityStoragePath(storagePath: string): boolean {
   const trimmed = storagePath.trim();
   if (!trimmed || trimmed.includes('..') || trimmed.includes('\\')) return false;

@@ -376,7 +376,7 @@ export default function ActivityLoggerModal(p: {
       const file = files[i];
       try {
         if (navigator.onLine) {
-          const res = await uploadActivityPhoto(sb, p.orgId, file);
+          const res = await uploadActivityPhoto(sb, p.orgId, file, { sample: Boolean(p.sampleOnly || isSample) });
           added.push({ url: res.url, storagePath: res.storagePath, preview: res.url });
           totalSaved += res.savedBytes;
         } else {

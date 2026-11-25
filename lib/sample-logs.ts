@@ -45,3 +45,37 @@ export function isMissingSampleColumnsError(
     /is_sample|sample_expires_at/i.test(msg)
   );
 }
+
+/**
+ * Department heads (role 'manager') may edit/delete only SAMPLE logs; real records are read-only for them
+ * (review actions such as verify/flag or check/return are separate and stay allowed). Mirrors the database
+ * guard in migration 035 so the UI never offers an action the server will refuse.
+ */
+export function canEditLogRow(role: string | null | undefined, row: SampleLogFields): boolean {
+  if (role === 'manager') return Boolean(row.is_sample);
+  return true;
+}
+
+export interface SampleCleanupHealth {
+  overdue_samples: number;
+  queued_photos: number;
+  oldest_queued_hours: number;
+  pg_cron_scheduled: boolean;
+}
+
+/** Admin-facing warning when the 24h sample cleanup is not keeping up; null when everything is healthy. */
+export function describeSampleCleanupHealth(h: Partial<SampleCleanupHealth> | null | undefined): string | null {
+  if (!h) return null;
+  const overdue = Number(h.overdue_samples ?? 0);
+  const queued = Number(h.queued_photos ?? 0);
+  const oldest = Number(h.oldest_queued_hours ?? 0);
+  if (overdue > 0) {
+    return h.pg_cron_scheduled
+      ? `${overdue} expired sample record(s) have not been deleted yet. Check the hourly Supabase pg_cron job (bpwi-purge-expired-samples).`
+      : `${overdue} expired sample record(s) are still stored: the hourly pg_cron cleanup is not scheduled. Enable pg_cron in Supabase, or make sure the daily /api/activities/purge-photos cron runs (CRON_SECRET and SUPABASE_SECRET_KEY must be set).`;
+  }
+  if (queued > 0 && oldest >= 48) {
+    return `${queued} sample photo file(s) have been waiting ${Math.round(oldest)}h for removal. Check that the daily /api/activities/purge-photos cron runs (CRON_SECRET and SUPABASE_SECRET_KEY must be set).`;
+  }
+  return null;
+}

@@ -25,6 +25,7 @@ import { AlertBanner, Badge, SegmentedTabs } from '@/components/ui';
 import { DEFAULT_STATION_CODE } from '@/lib/roster-helpers';
 import { SampleBadge } from '@/components/SampleBadge';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import SampleCleanupHealth from '@/components/SampleCleanupHealth';
 import { enqueueOfflineActivity, flushOfflineQueue, getOfflineQueue, type PendingOfflineActivity } from '@/lib/offline-queue';
 
 const ActivityLoggerModal = dynamic(() => import('@/components/ActivityLoggerModal'), { ssr: false });
@@ -454,6 +455,8 @@ export default function ActivitiesMonitor(p: {
         </div>
       </div>
 
+      {p.isAdmin && <SampleCleanupHealth />}
+
       {p.schemaWarning && (
         <AlertBanner tone="warn">
           <b>Setup Notice:</b> {p.schemaWarning}
@@ -868,7 +871,7 @@ export default function ActivitiesMonitor(p: {
 
       {tab === 'job-orders' && (
         <JobOrdersTab
-          orgId={p.orgId} userId={p.userId} canManageJo={canManageJo} canLogActivity={p.canLogActivity} canLogSample={p.canLogSampleActivity}
+          orgId={p.orgId} userId={p.userId} canManageJo={canManageJo} canLogActivity={p.canLogActivity} canLogSample={p.canLogSampleActivity} role={p.role}
           joFilter={joFilter} onChangeJoFilter={setJoFilter} filteredJobOrders={filteredJobOrders}
           operators={p.operators} stationAreas={stationAreas} opBy={opBy} areaBy={areaBy}
           onJobOrderCreated={(jo) => setJobOrders((prev) => [jo, ...prev])}

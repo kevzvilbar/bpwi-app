@@ -5,6 +5,9 @@ const REPORT_WINDOW_MS = 60_000;
 const MAX_REPORTS_PER_IP = 30;
 const MAX_TRACKED_IPS = 500;
 
+// Best-effort, per-serverless-instance throttle: buckets reset on cold start and are not shared across instances.
+// That is acceptable for this unauthenticated, log-only endpoint (it never writes to the database and every
+// report is size-capped); do not reuse this pattern to protect anything that mutates data.
 const ipBuckets = new Map<string, { windowStart: number; count: number }>();
 
 function getClientIp(req: Request): string {
