@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { enqueueOfflineReport } from '@/lib/offline-queue';
-import { getErrorMessage } from '@/lib/error-utils';
+import { newClientId } from '@/lib/offline-sync-core';
+import { getErrorMessage, isNetworkErrorMessage } from '@/lib/error-utils';
 import { buildOwnActivityOrFilter, DAILY_ACTIVITY_REPORT_COLUMNS } from '@/lib/query-columns';
 import type { DailyActivityRow } from '@/lib/activity-types';
 import {
@@ -257,6 +258,10 @@ export default function AccomplishmentReports(p: Props) {
     setEntries((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
   }
 
+  /** Primary key for a report that is being created, kept across attempts so a retry after a lost
+   *  response cannot create a second report. Cleared once the report is saved or queued. */
+  const newReportRef = useRef<{ key: string; id: string } | null>(null);
+
   async function saveReport(targetStatus: 'draft' | 'submitted') {
     if (targetStatus === 'submitted' && !assignedHeadId) {
       setMsg({ kind: 'err', text: 'Please select an Assigned Department Head before sending.' });
@@ -295,8 +300,20 @@ export default function AccomplishmentReports(p: Props) {
 
     const expectedUpdatedAt = editingId ? (existingForDate?.updated_at ?? null) : null;
 
+    const newReportKey = `${reportDate}|${payload.is_sample}`;
+    if (!editingId && newReportRef.current?.key !== newReportKey) {
+      newReportRef.current = { key: newReportKey, id: newClientId() };
+    }
+    const newReportId = editingId ? null : (newReportRef.current?.id ?? null);
+    const queueReport = async () => {
+      await enqueueOfflineReport(editingId, newReportId ? { ...payload, id: newReportId } : payload, p.userId, {
+        expectedUpdatedAt,
+      });
+      newReportRef.current = null;
+    };
+
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      await enqueueOfflineReport(editingId, payload, p.userId, { expectedUpdatedAt });
+      await queueReport();
       setBusy(false);
       setMsg({
         kind: 'ok',
@@ -306,15 +323,28 @@ export default function AccomplishmentReports(p: Props) {
     }
 
     try {
-      const res = editingId
+      let res = editingId
         ? await sb.from('accomplishment_reports').update(payload).eq('id', editingId).select('*').single()
-        : await sb.from('accomplishment_reports').insert(payload).select('*').single();
+        : await sb
+            .from('accomplishment_reports')
+            .insert({ ...payload, id: newReportId as string })
+            .select('*')
+            .single();
+      if (!editingId && res.error?.code === '23505') {
+        // An earlier attempt already created this report; apply the current values to it.
+        res = await sb
+          .from('accomplishment_reports')
+          .update(payload)
+          .eq('id', newReportId as string)
+          .select('*')
+          .single();
+      }
 
       setBusy(false);
       if (res.error || !res.data) {
         const errText = res.error?.message ?? 'Failed to save report.';
-        if (/fetch|network|failed to load/i.test(errText)) {
-          await enqueueOfflineReport(editingId, payload, p.userId, { expectedUpdatedAt });
+        if (isNetworkErrorMessage(errText)) {
+          await queueReport();
           setMsg({
             kind: 'ok',
             text: 'Weak signal — report saved offline and will auto-sync when connection returns.',
@@ -325,6 +355,7 @@ export default function AccomplishmentReports(p: Props) {
         return;
       }
       const saved = res.data as AccomplishmentReportRow;
+      newReportRef.current = null;
       setEditingId(saved.id);
       setReports((prev) => {
         const idx = prev.findIndex((r) => r.id === saved.id);
@@ -339,8 +370,8 @@ export default function AccomplishmentReports(p: Props) {
       });
     } catch (err: unknown) {
       const errText = getErrorMessage(err, 'Failed to save report.');
-      if (!navigator.onLine || /fetch|network|failed to load/i.test(errText)) {
-        await enqueueOfflineReport(editingId, payload, p.userId, { expectedUpdatedAt });
+      if (!navigator.onLine || isNetworkErrorMessage(errText)) {
+        await queueReport();
         setBusy(false);
         setMsg({
           kind: 'ok',

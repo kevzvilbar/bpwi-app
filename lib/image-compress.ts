@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ACTIVITY_MEDIA_BUCKET, buildActivityPhotoUrl, samplePhotoStem } from './activity-media.ts';
+import { getErrorMessage } from './error-utils.ts';
 
 export interface CompressedImageResult {
   blob: Blob;
@@ -78,21 +79,23 @@ export async function compressImageFile(
 
 /**
  * Compresses the image and uploads to Supabase Storage bucket 'activity-media'.
- * If the storage bucket is not yet provisioned or inaccessible, gracefully falls back
- * to a compact 480px JPEG dataUrl so offline/unconfigured environments keep working.
+ * If the upload fails, returns the compressed image as a dataUrl with `storagePath: null` and the reason in
+ * `uploadError`. That is a pending photo: it must be uploaded (or queued offline) before the log is saved,
+ * and must never be written into a database row.
  */
 export async function uploadActivityPhoto(
   sb: SupabaseClient,
   orgId: string,
   file: File,
   opts: { sample?: boolean } = {},
-): Promise<{ url: string; storagePath: string | null; savedBytes: number }> {
+): Promise<{ url: string; storagePath: string | null; savedBytes: number; uploadError?: string }> {
   const compressed = await compressImageFile(file, 1024, 0.72);
   const ext = compressed.mimeType === 'image/webp' ? 'webp' : 'jpg';
   const rand = Math.random().toString(36).slice(2, 8);
   const dateFolder = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
   const storagePath = `${orgId}/${dateFolder}/${samplePhotoStem(`${Date.now()}-${rand}`, opts.sample)}.${ext}`;
 
+  let uploadError = 'Photo upload failed';
   try {
     const { error } = await sb.storage
       .from(ACTIVITY_MEDIA_BUCKET)
@@ -109,15 +112,16 @@ export async function uploadActivityPhoto(
         savedBytes: compressed.savedBytes,
       };
     }
-  } catch {
-    /* Bucket missing or offline — use compact fallback */
+    uploadError = error.message || uploadError;
+  } catch (err: unknown) {
+    uploadError = getErrorMessage(err, uploadError);
   }
 
-  const fallback = await compressImageFile(file, 480, 0.65);
   return {
-    url: fallback.dataUrl,
+    url: compressed.dataUrl,
     storagePath: null,
-    savedBytes: Math.max(compressed.savedBytes, fallback.savedBytes),
+    savedBytes: compressed.savedBytes,
+    uploadError,
   };
 }
 

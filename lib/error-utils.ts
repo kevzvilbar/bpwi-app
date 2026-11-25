@@ -6,3 +6,13 @@ export function getErrorMessage(err: unknown, fallback = 'Unexpected error'): st
   }
   return fallback;
 }
+
+/**
+ * True when an error message means the request never completed (so it is safe to queue and retry).
+ * Browsers word this differently: Chrome "Failed to fetch", Firefox "NetworkError when attempting to
+ * fetch resource", Safari/iOS "Load failed" or "The network connection was lost".
+ * "load failed" is matched as whole words so that "Photo upload failed" is not treated as a network error.
+ */
+export function isNetworkErrorMessage(message: string): boolean {
+  return /fetch|network|failed to load|\bload failed\b/i.test(message);
+}

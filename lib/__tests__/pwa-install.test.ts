@@ -140,7 +140,7 @@ describe('PWA installability & manifest', () => {
   it('keeps sw.js OFFLINE_PAGE_ALLOWLIST restricted to /mobile while providing offline navigation fallback for /', async () => {
     const swPath = resolve(process.cwd(), 'public/sw.js');
     const source = readFileSync(swPath, 'utf8');
-    assert.match(source, /CACHE_NAME\s*=\s*'bpwi-ops-v5'/);
+    assert.match(source, /CACHE_NAME\s*=\s*'bpwi-ops-v6'/);
     assert.match(source, /OFFLINE_PAGE_ALLOWLIST\s*=\s*new Set\(\['\/mobile'\]\)/);
 
     // 1. Online navigation to '/' goes network-only and NEVER stores '/' in cache
@@ -191,5 +191,60 @@ describe('PWA installability & manifest', () => {
     assert.match(fallbackHtml, /href="\/mobile"/);
     assert.match(fallbackHtml, /Try again/);
     assert.match(fallbackHtml, /reload\(\)/);
+  });
+});
+
+describe('offline field logger warm-up', () => {
+  const html = '<html><script src="/_next/static/chunks/app.js"></script><link href="/_next/static/css/a.css"/>'
+    + '<script>self.__next_f.push([1,"[\\"/_next/static/chunks/page.js\\"]"])</script></html>';
+
+  function load(pageResponse: { ok: boolean; redirected: boolean }, onAsset?: (post: (data: string) => void) => void) {
+    const listeners = new Map<string, (event: { data: string; waitUntil(p: Promise<unknown>): void }) => void>();
+    const stored: string[] = [];
+    let pending: Promise<unknown> = Promise.resolve();
+    const post = (data: string) => {
+      listeners.get('message')!({ data, waitUntil: (p) => { if (data === 'CACHE_OFFLINE_PAGE') pending = p; } });
+    };
+    const response = (flags: { ok: boolean; redirected: boolean }) => ({ ...flags, clone: () => ({ text: async () => html }) });
+    vm.runInNewContext(readFileSync(resolve(process.cwd(), 'public/sw.js'), 'utf8'), {
+      URL,
+      Response,
+      Promise,
+      Set,
+      fetch: async (url: string) => {
+        if (url === '/mobile') return response(pageResponse);
+        onAsset?.(post);
+        return response({ ok: true, redirected: false });
+      },
+      caches: {
+        open: async () => ({ match: async () => undefined, put: async (key: string) => { stored.push(key); } }),
+        keys: async () => [],
+        delete: async () => true,
+      },
+      self: { location: { origin: 'https://ops.bpwi.local' }, addEventListener: (t: string, h: never) => listeners.set(t, h) },
+    });
+    return { stored, run: async () => { post('CACHE_OFFLINE_PAGE'); await pending; } };
+  }
+
+  it('stores the referenced build assets first and /mobile last', async () => {
+    const sw = load({ ok: true, redirected: false });
+    await sw.run();
+    assert.deepEqual(
+      sw.stored.slice(0, -1).sort(),
+      ['/_next/static/chunks/app.js', '/_next/static/chunks/page.js', '/_next/static/css/a.css'],
+    );
+    assert.equal(sw.stored.at(-1), '/mobile');
+  });
+
+  it('stores nothing when signed out (redirect)', async () => {
+    const sw = load({ ok: true, redirected: true });
+    await sw.run();
+    assert.deepEqual(sw.stored, []);
+  });
+
+  it('does not re-cache the page if the cache is cleared while downloading', async () => {
+    const sw = load({ ok: true, redirected: false }, (post) => post('CLEAR_CACHE'));
+    await sw.run();
+    assert.deepEqual(sw.stored, []);
   });
 });

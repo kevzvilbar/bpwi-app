@@ -397,6 +397,52 @@ describe('ActivityLoggerModal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  const loggerProps = {
+    open: true,
+    orgId: 'org-1',
+    userId: 'user-op',
+    role: 'operator',
+    operatorId: 'op-1',
+    date: '2026-04-10',
+    operators: OPERATORS,
+    areas: AREAS,
+    shifts: SHIFTS,
+    assignments: ASSIGNMENTS,
+    sampleOnly: false,
+  };
+
+  it.each(['TypeError: Failed to fetch', 'TypeError: Load failed'])(
+    'queues under the same id as the first attempt when the response is lost (%s)',
+    async (message) => {
+      const user = userEvent.setup();
+      const onQueuedOffline = vi.fn();
+      activityInsertSingleMock.mockResolvedValue({ data: null, error: { message } });
+
+      render(<ActivityLoggerModal {...loggerProps} onClose={vi.fn()} onSaved={vi.fn()} onQueuedOffline={onQueuedOffline} />);
+      await user.click(screen.getByRole('button', { name: 'Submit Activity Log' }));
+
+      await waitFor(() => expect(onQueuedOffline).toHaveBeenCalledTimes(1));
+      expect(activityInsertPayloads[0].id).toEqual(expect.any(String));
+      expect(onQueuedOffline.mock.calls[0][0].id).toBe(activityInsertPayloads[0].id);
+    },
+  );
+
+  it('reuses the id when the user submits again after an error', async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn();
+    activityInsertSingleMock
+      .mockResolvedValueOnce({ data: null, error: { message: 'Service unavailable' } })
+      .mockResolvedValueOnce({ data: makeSavedRow(), error: null });
+
+    render(<ActivityLoggerModal {...loggerProps} onClose={vi.fn()} onSaved={onSaved} />);
+    await user.click(screen.getByRole('button', { name: 'Submit Activity Log' }));
+    await screen.findByText(/Service unavailable/);
+    await user.click(screen.getByRole('button', { name: 'Submit Activity Log' }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(activityInsertPayloads[1].id).toBe(activityInsertPayloads[0].id);
+  });
+
   it('passes editingId and expectedUpdatedAt when queuing an edited activity offline', async () => {
     const user = userEvent.setup();
     const onQueuedOffline = vi.fn();

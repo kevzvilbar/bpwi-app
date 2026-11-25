@@ -54,7 +54,7 @@ function collectMediaRowsAndPaths(rows: ActivityPhotoRow[], logPrefix: string) {
     pathsByRow.set(row.id, [...pathSet]);
   }
 
-  return { rowsWithMedia, pathsByRow, allPaths: [...allPathSet] };
+  return { pathsByRow, allPaths: [...allPathSet] };
 }
 
 async function removeStoragePathsInChunks(db: SupabaseClient, allPaths: string[], logPrefix: string) {
@@ -73,70 +73,101 @@ async function removeStoragePathsInChunks(db: SupabaseClient, allPaths: string[]
   return { failedPaths, filesRemoved };
 }
 
+const PHOTO_PURGE_BATCH = 100;
+const PHOTO_PURGE_MAX_BATCHES = 50;
+
 async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
   const nowMs = Date.now();
   const nowIso = new Date(nowMs).toISOString();
   const cutoffIso = new Date(nowMs - 30 * 24 * 60 * 60 * 1000).toISOString();
-  let query = db
-    .from('daily_activities')
-    .select('id, organization_id, photo_storage_paths, photo_urls')
-    .is('photos_purged_at', null)
-    .or(`photos_expires_at.lt.${nowIso},and(photos_expires_at.is.null,created_at.lt.${cutoffIso})`);
 
-  if (orgId) {
-    query = query.eq('organization_id', orgId);
+  let purgedCount = 0;
+  let filesRemoved = 0;
+  // Rows whose Storage removal failed stay unpurged at the front of the ordering; page past them so they
+  // cannot block newer rows. They are retried on the next run.
+  let skippedRows = 0;
+  const allFailedPaths = new Set<string>();
+  let hasMore = true;
+
+  for (let batch = 0; hasMore && batch < PHOTO_PURGE_MAX_BATCHES; batch += 1) {
+    let query = db
+      .from('daily_activities')
+      .select('id, organization_id, photo_storage_paths, photo_urls')
+      .is('photos_purged_at', null)
+      .or(`photos_expires_at.lt.${nowIso},and(photos_expires_at.is.null,created_at.lt.${cutoffIso})`)
+      // Only rows that still hold media. Photo-less rows are never marked purged, so without this filter
+      // they accumulate, fill the response (PostgREST caps it) and hide the rows that do need purging.
+      .or('photo_storage_paths.neq.{},photo_urls.neq.{}');
+
+    if (orgId) {
+      query = query.eq('organization_id', orgId);
+    }
+
+    const { data: expiredRows, error: fetchErr } = await query
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(skippedRows, skippedRows + PHOTO_PURGE_BATCH - 1);
+    if (fetchErr) {
+      return { error: fetchErr.message, status: 500 as const };
+    }
+
+    const fetched = (expiredRows ?? []) as ActivityPhotoRow[];
+    // A server row cap below the batch size must not end the loop early, so stop only on an empty page.
+    hasMore = fetched.length > 0;
+    if (!hasMore) break;
+
+    const { pathsByRow, allPaths } = collectMediaRowsAndPaths(fetched, '[purge-photos]');
+
+    // Only rows whose files were really removed may be marked purged. If a storage call fails, the
+    // row keeps its paths so the next run retries; otherwise the files would be orphaned forever.
+    const removal = await removeStoragePathsInChunks(db, allPaths, '[purge-photos]');
+    filesRemoved += removal.filesRemoved;
+    removal.failedPaths.forEach((p) => allFailedPaths.add(p));
+
+    const idsToUpdate = [...pathsByRow.entries()]
+      .filter(([, paths]) => paths.every((p) => !removal.failedPaths.has(p)))
+      .map(([id]) => id);
+    skippedRows += fetched.length - idsToUpdate.length;
+
+    if (idsToUpdate.length === 0) continue;
+
+    let updQuery = db
+      .from('daily_activities')
+      .update({
+        photo_urls: [],
+        photo_storage_paths: [],
+        photos_purged_at: nowIso,
+      })
+      .in('id', idsToUpdate);
+
+    if (orgId) {
+      updQuery = updQuery.eq('organization_id', orgId);
+    }
+
+    // Count what the database really changed: an update filtered out by RLS succeeds with zero rows, and
+    // those rows must be paged past instead of being fetched again.
+    const { data: updated, error: updErr } = await updQuery.select('id');
+    if (updErr) {
+      return { error: updErr.message, status: 500 as const };
+    }
+    const updatedCount = updated?.length ?? 0;
+    purgedCount += updatedCount;
+    skippedRows += idsToUpdate.length - updatedCount;
   }
 
-  const { data: expiredRows, error: fetchErr } = await query;
-  if (fetchErr) {
-    return { error: fetchErr.message, status: 500 as const };
-  }
-
-  const { rowsWithMedia, pathsByRow, allPaths } = collectMediaRowsAndPaths(
-    (expiredRows ?? []) as ActivityPhotoRow[],
-    '[purge-photos]',
-  );
-
-  if (rowsWithMedia.length === 0) {
-    return { purgedCount: 0, filesRemoved: 0, status: 200 as const };
-  }
-
-  // Only rows whose files were really removed may be marked purged. If a storage call fails, the
-  // row keeps its paths so the next run retries; otherwise the files would be orphaned forever.
-  const { failedPaths, filesRemoved } = await removeStoragePathsInChunks(db, allPaths, '[purge-photos]');
-
-  const idsToUpdate = [...pathsByRow.entries()]
-    .filter(([, paths]) => paths.every((p) => !failedPaths.has(p)))
-    .map(([id]) => id);
-
-  if (idsToUpdate.length === 0) {
+  if (purgedCount === 0 && allFailedPaths.size > 0) {
     return {
-      error: `Storage removal failed for ${failedPaths.size} file(s); nothing marked purged`,
+      error: `Storage removal failed for ${allFailedPaths.size} file(s); nothing marked purged`,
       status: 500 as const,
     };
   }
 
-  let updQuery = db
-    .from('daily_activities')
-    .update({
-      photo_urls: [],
-      photo_storage_paths: [],
-      photos_purged_at: nowIso,
-    })
-    .in('id', idsToUpdate);
-
-  if (orgId) {
-    updQuery = updQuery.eq('organization_id', orgId);
-  }
-
-  const { error: updErr } = await updQuery;
-  if (updErr) {
-    return { error: updErr.message, status: 500 as const };
-  }
-
   return {
-    purgedCount: idsToUpdate.length,
+    purgedCount,
     filesRemoved,
+    skippedRows,
+    // True only when the per-run batch limit was reached with rows possibly still waiting.
+    hasMore,
     status: 200 as const,
   };
 }
@@ -240,7 +271,13 @@ export async function GET(req: Request) {
     if ('error' in res) {
       return NextResponse.json({ error: res.error }, { status: res.status });
     }
-    return NextResponse.json({ purgedCount: res.purgedCount, filesRemoved: res.filesRemoved, samplesPurged });
+    return NextResponse.json({
+      purgedCount: res.purgedCount,
+      filesRemoved: res.filesRemoved,
+      skippedRows: res.skippedRows,
+      hasMore: res.hasMore,
+      samplesPurged,
+    });
   } catch (err: unknown) {
     return NextResponse.json({ error: getErrorMessage(err, 'Cron purge failed') }, { status: 500 });
   }
@@ -290,7 +327,13 @@ export async function POST() {
     if ('error' in res) {
       return NextResponse.json({ error: res.error }, { status: res.status });
     }
-    return NextResponse.json({ purgedCount: res.purgedCount, filesRemoved: res.filesRemoved, samplesPurged });
+    return NextResponse.json({
+      purgedCount: res.purgedCount,
+      filesRemoved: res.filesRemoved,
+      skippedRows: res.skippedRows,
+      hasMore: res.hasMore,
+      samplesPurged,
+    });
   } catch (err: unknown) {
     return NextResponse.json({ error: getErrorMessage(err, 'Purge failed') }, { status: 500 });
   }

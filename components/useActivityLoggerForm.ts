@@ -11,7 +11,7 @@ import {
   type LinkedJobOrder,
   type LinkedPmTask,
 } from '@/lib/activity-types';
-import { getErrorMessage } from '@/lib/error-utils';
+import { getErrorMessage, isNetworkErrorMessage } from '@/lib/error-utils';
 import { resolveActivityPhotoUrl } from '@/lib/activity-media';
 import { extractGpsMetadata, type GpsSource } from '@/lib/gps-accuracy';
 import { buildPmActualPerformerIds, getDefaultPmPerformers, isMissingCompletedByColumnError } from '@/lib/pm-credit';
@@ -28,7 +28,8 @@ import {
   normalizePulloutDateYMD,
   normalizePulloutTimeHHMM,
 } from '@/lib/well-pullout-types';
-import { compressImageFile, uploadActivityPhoto } from '@/lib/image-compress';
+import { compressImageFile, uploadActivityPhoto, uploadDataUrlPhoto } from '@/lib/image-compress';
+import { newClientId } from '@/lib/offline-sync-core';
 import type { ActivityPhotoEntry } from '@/components/ActivityMediaCapture';
 
 export const MAX_ACTIVITY_PHOTOS = 4;
@@ -144,6 +145,9 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
   const [initialSnapshot, setInitialSnapshot] = useState('');
   const initPhaseRef = useRef<'closed' | 'init' | 'capture' | 'settled'>('closed');
   const lastParsedRef = useRef('');
+  /** Primary key for the log being created. Fixed for the whole modal session so that every attempt
+   *  (online, retried, or queued offline) refers to the same row and cannot create a duplicate. */
+  const newLogIdRef = useRef('');
   const initCtxRef = useRef({ p, asgByOp, stationAreas, stationIdSet });
   initCtxRef.current = { p, asgByOp, stationAreas, stationIdSet };
 
@@ -167,6 +171,7 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
   useEffect(() => {
     if (!p.open) return;
     initPhaseRef.current = 'init';
+    newLogIdRef.current = newClientId();
     setOpenSeq((n) => n + 1);
     const { p: props, asgByOp: asgMap, stationAreas: stAreas, stationIdSet: stIdSet } = initCtxRef.current;
     setErrMsg('');
@@ -433,6 +438,9 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
         if (navigator.onLine) {
           const res = await uploadActivityPhoto(sb, p.orgId, file, { sample: Boolean(p.sampleOnly || isSample) });
           added.push({ url: res.url, storagePath: res.storagePath, preview: res.url });
+          if (res.uploadError) {
+            setErrMsg(`Photo not uploaded yet (${res.uploadError}). It will be uploaded when you submit.`);
+          }
           totalSaved += res.savedBytes;
         } else {
           const compact = await compressImageFile(file, 480, 0.65);
@@ -543,8 +551,10 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
     };
 
     const trimmedTat = joTatJustification.trim() || null;
-    const offlinePayload: ActivitySubmitPayload = {
+    const newLogId = p.editingActivity ? null : newLogIdRef.current || (newLogIdRef.current = newClientId());
+    const offlinePayload: ActivitySubmitPayload & { id?: string } = {
       ...payload,
+      ...(newLogId ? { id: newLogId } : {}),
       ...(p.editingActivity
         ? { status: p.editingActivity.status === 'flagged' ? 'submitted' : p.editingActivity.status }
         : {}),
@@ -579,6 +589,42 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
 
     try {
       const sb = supabaseBrowser();
+
+      // Photos still held as data URLs failed to upload earlier. Upload them now; base64 image data must
+      // never be written into the database row.
+      if (payload.photo_urls.some((u) => u.startsWith('data:'))) {
+        const ready: ActivityPhotoEntry[] = [];
+        let uploadFailure = '';
+        for (const ph of photos) {
+          if (!ph.url.startsWith('data:') || uploadFailure) {
+            ready.push(ph);
+            continue;
+          }
+          try {
+            const up = await uploadDataUrlPhoto(sb, p.orgId, ph.url, { requireStorage: true, sample: effectiveIsSample });
+            ready.push({ url: up.url, storagePath: up.storagePath, preview: up.url });
+          } catch (err: unknown) {
+            uploadFailure = getErrorMessage(err, 'Photo upload failed');
+            ready.push(ph);
+          }
+        }
+        // Remember successful uploads so another attempt does not upload them twice.
+        setPhotos(ready);
+        const photoUrls = ready.map((ph) => ph.url);
+        const photoPaths = ready.map((ph) => ph.storagePath).filter((path): path is string => Boolean(path));
+        payload.photo_urls = photoUrls;
+        payload.photo_storage_paths = photoPaths;
+        offlinePayload.photo_urls = photoUrls;
+        offlinePayload.photo_storage_paths = photoPaths;
+        if (uploadFailure) {
+          // The offline queue keeps the photos on this device and retries; its banner shows any error.
+          if (await queueOffline()) return;
+          setSubmitting(false);
+          setErrMsg(`Photo upload failed: ${uploadFailure}. Try again, or remove the photo.`);
+          return;
+        }
+      }
+
       const { tat_justification: _omitTat, ...dbInsertPayload } = payload;
       if (p.editingActivity?.id) {
         const updatePayload: Omit<Partial<ActivitySubmitPayload>, 'tat_justification'> = {
@@ -618,7 +664,30 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
         return;
       }
 
-      const { data, error } = await sb.from('daily_activities').insert(dbInsertPayload).select(DAILY_ACTIVITY_LIST_COLUMNS).single();
+      let { data, error } = await sb
+        .from('daily_activities')
+        .insert({ ...dbInsertPayload, id: newLogId as string })
+        .select(DAILY_ACTIVITY_LIST_COLUMNS)
+        .single();
+      if (error?.code === '23505') {
+        // An earlier attempt reached the server but its response was lost. Apply the current form values
+        // to that row instead of creating a second one.
+        const {
+          organization_id: _org,
+          logged_by: _loggedBy,
+          is_sample: _isSample,
+          pm_task_id: _pmTaskId,
+          job_order_id: _jobOrderId,
+          signature_data: signature,
+          ...latest
+        } = dbInsertPayload;
+        ({ data, error } = await sb
+          .from('daily_activities')
+          .update({ ...latest, ...(signature !== null ? { signature_data: signature } : {}) })
+          .eq('id', newLogId as string)
+          .select(DAILY_ACTIVITY_LIST_COLUMNS)
+          .single());
+      }
       if (error) throw error;
 
       const pmPerformers =
@@ -667,7 +736,7 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
       p.onClose();
     } catch (err: unknown) {
       const message = getErrorMessage(err, 'Save failed');
-      const looksOffline = !navigator.onLine || /fetch|network|failed to load/i.test(message);
+      const looksOffline = !navigator.onLine || isNetworkErrorMessage(message);
       if (looksOffline && (await queueOffline())) return;
       setSubmitting(false);
       setErrMsg(message);

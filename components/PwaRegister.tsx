@@ -3,6 +3,19 @@
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
+// Each warm-up server-renders /mobile, so do not repeat it on every in-app navigation.
+const WARM_INTERVAL_MS = 10 * 60 * 1000;
+let lastWarmAt = 0;
+
+function warmOfflineLogger(force = false) {
+  if (!('serviceWorker' in navigator) || !navigator.onLine) return;
+  if (!force && Date.now() - lastWarmAt < WARM_INTERVAL_MS) return;
+  lastWarmAt = Date.now();
+  navigator.serviceWorker.ready
+    .then((registration) => registration.active?.postMessage('CACHE_OFFLINE_PAGE'))
+    .catch(() => {});
+}
+
 export default function PwaRegister() {
   const pathname = usePathname();
   const [offline, setOffline] = useState(false);
@@ -35,12 +48,18 @@ export default function PwaRegister() {
     const onOnline = () => {
       setOffline(false);
       syncStamp();
+      if (pathname !== '/login') warmOfflineLogger(true);
     };
     window.addEventListener('offline', onOffline);
     window.addEventListener('online', onOnline);
 
+    // Signing in again after /login must save a fresh copy straight away.
+    if (pathname === '/login') lastWarmAt = 0;
+
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
+      // Keep the offline field logger saved while online. Signed-out requests are redirected and ignored.
+      if (pathname !== '/login') warmOfflineLogger();
     }
 
     return () => {
