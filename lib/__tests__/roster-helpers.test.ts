@@ -1,11 +1,15 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildPasteShiftEntries,
   buildRosterCsv,
   DEFAULT_STATION_CODE,
+  extractCopiedBlock,
   findOffShift,
+  isCellInRect,
   isHolidayArea,
   isOffPartnerArea,
+  normalizeGridRect,
   normalizeLegacyStationCode,
   normalizeShiftForArea,
   resolveAreaSelection,
@@ -88,8 +92,8 @@ const shiftBy = new Map<string, Shift>([S_10_7, S_8_4, S_OFF].map((s) => [s.id, 
 const areaBy = new Map<string, Area>([A_PL, A_AL, A_RD, A_H].map((a) => [a.id, a]));
 
 describe('roster-helpers off-shift partnering', () => {
-  it('exposes DEFAULT_STATION_CODE PL and maps legacy 6 station codes down to PL, FD, WD', () => {
-    assert.equal(DEFAULT_STATION_CODE, 'PL');
+  it('exposes DEFAULT_STATION_CODE FD and maps legacy 6 station codes down to PL, FD, WD', () => {
+    assert.equal(DEFAULT_STATION_CODE, 'FD');
     assert.equal(normalizeLegacyStationCode('PW'), 'PL');
     assert.equal(normalizeLegacyStationCode(' pw '), 'PL');
     for (const legacyField of ['RM', 'LD', 'MR', 'WM', 'rm']) {
@@ -149,7 +153,7 @@ describe('roster-helpers off-shift partnering', () => {
       { shiftId: S_8_4.id, areaId: A_PL.id },
     );
 
-    // Selecting PL (default) -> null keeps OFF (White) so plain OFF cells can still be painted
+    // Selecting FD (default) -> null keeps OFF (White) so plain OFF cells can still be painted
     assert.deepEqual(
       resolveAreaSelection(null, S_OFF.id, S_8_4.id, shiftBy, areaBy, S_OFF),
       { shiftId: S_OFF.id, areaId: null },
@@ -207,7 +211,107 @@ describe('roster-helpers off-shift partnering', () => {
     });
     const rows = csv.split('\n');
     assert.equal(rows.length, 2);
-    // Unassigned duty area defaults to PL; AL -> Leaves=1 & Off=1, RD -> Off=2, H -> Off=3, Duty=1, Hours=8
-    assert.equal(rows[1], 'Operator One,Operator,10-7 PL,AL,RD,H,1,0,8,3,1');
+    // Unassigned duty area defaults to FD; AL -> Leaves=1 & Off=1, RD -> Off=2, H -> Off=3, Duty=1, Hours=8
+    assert.equal(rows[1], 'Operator One,Operator,10-7 FD,AL,RD,H,1,0,8,3,1');
+  });
+
+  it('normalizes grid selection rects, extracts single/multi-cell blocks, and builds clipped paste batches', () => {
+    assert.deepEqual(normalizeGridRect({ startR: 3, startC: 5, endR: 1, endC: 2 }), {
+      rMin: 1,
+      rMax: 3,
+      cMin: 2,
+      cMax: 5,
+    });
+    assert.equal(isCellInRect(2, 3, { startR: 3, startC: 5, endR: 1, endC: 2 }), true);
+    assert.equal(isCellInRect(0, 3, { startR: 3, startC: 5, endR: 1, endC: 2 }), false);
+    assert.equal(isCellInRect(1, 1, null), false);
+
+    const ops: Pick<Op, 'id'>[] = [{ id: 'op-1' }, { id: 'op-2' }];
+    const days: Pick<RosterDay, 'date'>[] = [
+      { date: '2026-11-01' },
+      { date: '2026-11-02' },
+      { date: '2026-11-03' },
+      { date: '2026-11-04' },
+    ];
+    const cell = new Map<string, Row>([
+      ['op-1:2026-11-01', { operator_id: 'op-1', schedule_date: '2026-11-01', shift_type_id: S_10_7.id, area_code_id: null }],
+      ['op-1:2026-11-02', { operator_id: 'op-1', schedule_date: '2026-11-02', shift_type_id: S_8_4.id, area_code_id: A_AL.id }],
+      ['op-2:2026-11-03', { operator_id: 'op-2', schedule_date: '2026-11-03', shift_type_id: S_10_7.id, area_code_id: A_PL.id }],
+    ]);
+
+    const singleDuty = extractCopiedBlock({
+      rect: { startR: 0, startC: 0, endR: 0, endC: 0 },
+      operators: ops,
+      days,
+      cell,
+      shiftBy,
+      areaBy,
+    });
+    assert.equal(singleDuty?.label, '10-7 · FD');
+    assert.equal(singleDuty?.rows, 1);
+    assert.equal(singleDuty?.cols, 1);
+
+    const singleEmpty = extractCopiedBlock({
+      rect: { startR: 1, startC: 0, endR: 1, endC: 0 },
+      operators: ops,
+      days,
+      cell,
+      shiftBy,
+      areaBy,
+    });
+    assert.equal(singleEmpty?.label, 'Empty cell');
+
+    // Reversed drag from col 1 -> col 0 across row 0
+    const rowSlice = extractCopiedBlock({
+      rect: { startR: 0, startC: 1, endR: 0, endC: 0 },
+      operators: ops,
+      days,
+      cell,
+      shiftBy,
+      areaBy,
+    });
+    assert.ok(rowSlice);
+    assert.equal(rowSlice.label, '1×2 (2 days)');
+    assert.equal(rowSlice.sourceKeys.has('op-1:2026-11-01'), true);
+    assert.equal(rowSlice.sourceKeys.has('op-1:2026-11-02'), true);
+
+    // Paste onto (op-2, 2026-11-03) -> overwrites existing (op-2, 2026-11-03) and adds normalized OFF+AL at (op-2, 2026-11-04)
+    const paste1 = buildPasteShiftEntries({
+      block: rowSlice,
+      originR: 1,
+      originC: 2,
+      operators: ops,
+      days,
+      cell,
+      areaBy,
+      offShift: S_OFF,
+    });
+    assert.equal(paste1.entries.length, 2);
+    assert.deepEqual(paste1.entries[0].next, {
+      operator_id: 'op-2',
+      schedule_date: '2026-11-03',
+      shift_type_id: S_10_7.id,
+      area_code_id: null,
+    });
+    assert.deepEqual(paste1.entries[1].next, {
+      operator_id: 'op-2',
+      schedule_date: '2026-11-04',
+      shift_type_id: S_OFF.id,
+      area_code_id: A_AL.id,
+    });
+
+    // Paste at final column clips cleanly to month bounds without crashing
+    const clipped = buildPasteShiftEntries({
+      block: rowSlice,
+      originR: 1,
+      originC: 3,
+      operators: ops,
+      days,
+      cell,
+      areaBy,
+      offShift: S_OFF,
+    });
+    assert.equal(clipped.entries.length, 1);
+    assert.equal(clipped.entries[0].date, '2026-11-04');
   });
 });

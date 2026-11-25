@@ -8,6 +8,7 @@ import {
   findOffShift,
   isOffPartnerArea,
   type Area,
+  type CopiedScheduleBlock,
   type Shift,
   type ToolMode,
 } from '@/lib/roster-helpers';
@@ -44,6 +45,10 @@ interface RosterToolbarProps {
   areas: Area[];
   mode: ToolMode;
   setMode: (m: ToolMode) => void;
+  copyStep: 'select' | 'paste';
+  copiedBlock: CopiedScheduleBlock | null;
+  onToggleCopyMode: () => void;
+  onResetCopySource: () => void;
   shiftId: string | null;
   setShiftId: (id: string | null) => void;
   areaId: string | null;
@@ -335,19 +340,52 @@ export default function RosterToolbar(p: RosterToolbarProps) {
             </span>
           ) : null}
 
+          <button
+            type="button"
+            aria-pressed={p.mode === 'copy'}
+            onClick={() => (p.mode === 'copy' ? p.setMode('paint') : p.onToggleCopyMode())}
+            title="Copy existing cell(s) or a multi-day block and paste onto any target date or operator"
+            style={{
+              padding: '3px 9px',
+              borderRadius: 5,
+              fontSize: 11.5,
+              fontWeight: 700,
+              cursor: 'pointer',
+              background: p.mode === 'copy' ? 'var(--primary)' : 'var(--surface-muted)',
+              color: p.mode === 'copy' ? 'var(--primary-fg)' : 'var(--text)',
+              border: p.mode === 'copy' ? '1px solid var(--primary)' : '1px solid var(--border)',
+              marginRight: 2,
+            }}
+          >
+            Copy &amp; Paste Mode
+          </button>
+
           <span
             style={{
               padding: '3px 9px',
               borderRadius: 999,
-              background: 'var(--primary)',
-              color: 'var(--primary-fg)',
+              background: p.mode === 'copy' ? 'var(--info-bg)' : 'var(--primary)',
+              color: p.mode === 'copy' ? 'var(--info-fg)' : 'var(--primary-fg)',
+              border: p.mode === 'copy' ? '1px solid var(--info-border)' : undefined,
               fontSize: 11.5,
               fontWeight: 700,
               marginRight: 4,
             }}
           >
-            Brush: {p.brushLabel}
+            {p.mode === 'copy'
+              ? (p.copiedBlock ? `Copied: ${p.copiedBlock.label}` : 'Select cells to copy')
+              : `Brush: ${p.brushLabel}`}
           </span>
+          {p.mode === 'copy' && p.copiedBlock && (
+            <button
+              type="button"
+              className="btn"
+              onClick={p.onResetCopySource}
+              style={{ padding: '2px 8px', minHeight: 24, fontSize: 11, fontWeight: 600, marginRight: 2 }}
+            >
+              Pick New Source
+            </button>
+          )}
 
           <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Shifts:</span>
           {p.shifts.map((s, i) => (
@@ -485,11 +523,15 @@ export default function RosterToolbar(p: RosterToolbarProps) {
             Redo
           </button>
           <div style={{ width: '100%', fontSize: 11.5, color: 'var(--text-secondary)', paddingTop: 2 }}>
-            {p.mode === 'paint'
-              ? `Paint mode: click or drag across cells to apply ${p.brushLabel}.`
-              : p.mode === 'standby'
-                ? `Standby mode: click a cell to toggle ${p.standbyType} standby status.`
-                : 'Erase mode: click or drag across cells to clear shift assignments.'}
+            {p.mode === 'copy'
+              ? p.copyStep === 'select' || !p.copiedBlock
+                ? 'Copy & Paste mode (Step 1 — Copy): click or drag across existing cells to copy a single shift or multi-day block.'
+                : `Copy & Paste mode (Step 2 — Paste): click any target cell to paste ${p.copiedBlock.label} (works across months, Ctrl+Z to undo), or click Pick New Source.`
+              : p.mode === 'paint'
+                ? `Paint mode: click or drag across cells to apply ${p.brushLabel}.`
+                : p.mode === 'standby'
+                  ? `Standby mode: click a cell to toggle ${p.standbyType} standby status.`
+                  : 'Erase mode: click or drag across cells to clear shift assignments.'}
           </div>
         </div>
       )}

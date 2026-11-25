@@ -86,7 +86,29 @@ export type StandbyHistoryItem = {
 
 export type HistoryEntry = (ShiftHistoryItem | StandbyHistoryItem)[];
 
-export type ToolMode = 'paint' | 'erase' | 'standby';
+export type ToolMode = 'paint' | 'erase' | 'standby' | 'copy';
+
+export type GridRect = {
+  startR: number;
+  startC: number;
+  endR: number;
+  endC: number;
+};
+
+export type CopiedScheduleCell = {
+  dRow: number;
+  dCol: number;
+  shift_type_id: string | null;
+  area_code_id: string | null;
+};
+
+export type CopiedScheduleBlock = {
+  rows: number;
+  cols: number;
+  cells: CopiedScheduleCell[];
+  label: string;
+  sourceKeys: ReadonlySet<string>;
+};
 
 export type RosterDragBatch = {
   active: boolean;
@@ -103,7 +125,7 @@ export const MONTHS_FULL = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-export const DEFAULT_STATION_CODE = 'PL';
+export const DEFAULT_STATION_CODE = 'FD';
 
 const LEGACY_STATION_MAP: Record<string, string> = {
   PW: 'PL',
@@ -455,4 +477,117 @@ export function computeHistoryTransition(
   }
 
   return { shiftUpserts, shiftDeletes, shiftAffected, shiftRollback, sbUpserts, sbDeletes, sbAffected, sbRollback, skippedConcurrent };
+}
+
+export function normalizeGridRect(rect: GridRect): { rMin: number; rMax: number; cMin: number; cMax: number } {
+  return {
+    rMin: Math.min(rect.startR, rect.endR),
+    rMax: Math.max(rect.startR, rect.endR),
+    cMin: Math.min(rect.startC, rect.endC),
+    cMax: Math.max(rect.startC, rect.endC),
+  };
+}
+
+export function isCellInRect(r: number, c: number, rect: GridRect | null): boolean {
+  if (!rect) return false;
+  const { rMin, rMax, cMin, cMax } = normalizeGridRect(rect);
+  return r >= rMin && r <= rMax && c >= cMin && c <= cMax;
+}
+
+export function extractCopiedBlock(params: {
+  rect: GridRect;
+  operators: Pick<Op, 'id'>[];
+  days: Pick<RosterDay, 'date'>[];
+  cell: ReadonlyMap<string, Row>;
+  shiftBy: ReadonlyMap<string, Pick<Shift, 'id' | 'code' | 'is_off'>>;
+  areaBy: ReadonlyMap<string, Pick<Area, 'id' | 'code' | 'category'>>;
+}): CopiedScheduleBlock | null {
+  const { rect, operators, days, cell, shiftBy, areaBy } = params;
+  if (operators.length === 0 || days.length === 0) return null;
+  const norm = normalizeGridRect(rect);
+  const rMin = Math.max(0, norm.rMin);
+  const rMax = Math.min(operators.length - 1, norm.rMax);
+  const cMin = Math.max(0, norm.cMin);
+  const cMax = Math.min(days.length - 1, norm.cMax);
+  if (rMin > rMax || cMin > cMax) return null;
+
+  const cells: CopiedScheduleCell[] = [];
+  const sourceKeys = new Set<string>();
+  for (let r = rMin; r <= rMax; r += 1) {
+    const op = operators[r];
+    for (let c = cMin; c <= cMax; c += 1) {
+      const day = days[c];
+      const k = cellKey(op.id, day.date);
+      sourceKeys.add(k);
+      const existing = cell.get(k);
+      cells.push({
+        dRow: r - rMin,
+        dCol: c - cMin,
+        shift_type_id: existing?.shift_type_id ?? null,
+        area_code_id: existing?.area_code_id ?? null,
+      });
+    }
+  }
+
+  const rows = rMax - rMin + 1;
+  const cols = cMax - cMin + 1;
+  let label: string;
+  if (rows === 1 && cols === 1) {
+    const only = cells[0];
+    const s = only.shift_type_id ? shiftBy.get(only.shift_type_id) : undefined;
+    const a = only.area_code_id ? areaBy.get(only.area_code_id) : undefined;
+    if (isOffPartnerArea(a)) label = a?.code ?? 'OFF';
+    else if (s && !s.is_off) label = `${s.code} · ${a?.code ?? DEFAULT_STATION_CODE}`;
+    else if (s?.is_off) label = a?.code ?? s.code;
+    else if (a) label = a.code;
+    else label = 'Empty cell';
+  } else if (rows === 1) {
+    label = `1×${cols} (${cols} days)`;
+  } else {
+    label = `${rows}×${cols} (${rows * cols} cells)`;
+  }
+
+  return { rows, cols, cells, label, sourceKeys };
+}
+
+export function buildPasteShiftEntries(params: {
+  block: CopiedScheduleBlock;
+  originR: number;
+  originC: number;
+  operators: Pick<Op, 'id'>[];
+  days: Pick<RosterDay, 'date'>[];
+  cell: ReadonlyMap<string, Row>;
+  areaBy: ReadonlyMap<string, Pick<Area, 'code' | 'category'>>;
+  offShift?: Pick<Shift, 'id'>;
+}): { entries: ShiftHistoryItem[]; nextRows: Map<string, Row | null> } {
+  const { block, originR, originC, operators, days, cell, areaBy, offShift } = params;
+  const entries: ShiftHistoryItem[] = [];
+  const nextRows = new Map<string, Row | null>();
+
+  for (const c of block.cells) {
+    const targetR = originR + c.dRow;
+    const targetC = originC + c.dCol;
+    if (targetR < 0 || targetR >= operators.length || targetC < 0 || targetC >= days.length) continue;
+
+    const opId = operators[targetR].id;
+    const date = days[targetC].date;
+    const k = cellKey(opId, date);
+    const prev = cell.get(k) ?? null;
+    const effShiftId = normalizeShiftForArea(c.shift_type_id, c.area_code_id, areaBy, offShift);
+    const next: Row | null = !effShiftId && !c.area_code_id
+      ? null
+      : { operator_id: opId, schedule_date: date, shift_type_id: effShiftId, area_code_id: c.area_code_id };
+
+    if (
+      (prev?.shift_type_id ?? null) === (next?.shift_type_id ?? null) &&
+      (prev?.area_code_id ?? null) === (next?.area_code_id ?? null)
+    ) {
+      continue;
+    }
+
+    entries.push({ kind: 'shift', opId, date, prev, next });
+    nextRows.set(k, next);
+  }
+
+  return { entries, nextRows };
 }

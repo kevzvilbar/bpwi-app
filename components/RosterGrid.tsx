@@ -5,10 +5,13 @@ import {
   cellKey,
   DEFAULT_STATION_CODE,
   findOffShift,
+  isCellInRect,
   isHolidayArea,
   isLeaveArea,
   isRestArea,
   type Area,
+  type CopiedScheduleBlock,
+  type GridRect,
   type HolidayItem,
   type Op,
   type PendingCellEntry,
@@ -30,6 +33,9 @@ interface RosterGridProps {
   canEdit: boolean;
   canOperate: boolean;
   mode: ToolMode;
+  copyStep: 'select' | 'paste';
+  copiedBlock: CopiedScheduleBlock | null;
+  copySelection: GridRect | null;
   cell: Map<string, Row>;
   pendingMap: Map<string, PendingCellEntry>;
   standbyMap: Map<string, Standby>;
@@ -41,6 +47,9 @@ interface RosterGridProps {
   dragRef: MutableRefObject<RosterDragBatch | null>;
   onApplyBrushLocal: (opId: string, date: string) => void;
   onActivateCell: (opId: string, date: string) => void;
+  onStartCopySelection: (rIdx: number, cIdx: number) => void;
+  onUpdateCopySelection: (rIdx: number, cIdx: number) => void;
+  onPasteBlockAt: (rIdx: number, cIdx: number) => void;
   onClearCell: (opId: string, date: string) => void;
   onCopyCell: (opId: string, date: string) => void;
   onPasteCell: (opId: string, date: string) => void;
@@ -49,9 +58,19 @@ interface RosterGridProps {
 
 export default function RosterGrid(p: RosterGridProps) {
   const [focused, setFocused] = useState<{ r: number; c: number }>({ r: 0, c: 0 });
+  const [pasteOrigin, setPasteOrigin] = useState<{ r: number; c: number } | null>(null);
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gridRef = useRef<HTMLTableElement | null>(null);
   const offShift = useMemo(() => findOffShift(Array.from(p.shiftBy.values())), [p.shiftBy]);
+  const pastePreviewRect: GridRect | null =
+    p.mode === 'copy' && p.copyStep === 'paste' && p.copiedBlock && pasteOrigin
+      ? {
+          startR: pasteOrigin.r,
+          startC: pasteOrigin.c,
+          endR: pasteOrigin.r + p.copiedBlock.rows - 1,
+          endC: pasteOrigin.c + p.copiedBlock.cols - 1,
+        }
+      : null;
 
   function handleCellKeyDown(e: React.KeyboardEvent<HTMLTableCellElement>, rIdx: number, cIdx: number, op: Op, date: string) {
     const maxR = p.operators.length - 1;
@@ -203,7 +222,7 @@ export default function RosterGrid(p: RosterGridProps) {
             </tr>
           </thead>
 
-          <tbody>
+          <tbody onPointerLeave={() => setPasteOrigin(null)}>
             {p.operators.length === 0 ? (
               <tr>
                 <td colSpan={p.days.length + 7} style={{ padding: 28, textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--surface)' }}>
@@ -277,6 +296,23 @@ export default function RosterGrid(p: RosterGridProps) {
                         pending ? 'cell-pending' : '',
                       ].filter(Boolean).join(' ');
                       const isFocused = focused.r === rIdx && focused.c === cIdx;
+                      const isInCopySelect = p.mode === 'copy' && isCellInRect(rIdx, cIdx, p.copySelection);
+                      const isPastePreview = p.mode === 'copy' && isCellInRect(rIdx, cIdx, pastePreviewRect);
+                      const isCopiedSource = p.mode === 'copy' && Boolean(p.copiedBlock?.sourceKeys.has(k));
+                      const copyOutline = isPastePreview
+                        ? '2px solid var(--ok-fg)'
+                        : isInCopySelect
+                          ? '2px dashed var(--primary)'
+                          : isCopiedSource
+                            ? '2px dashed var(--accent)'
+                            : d.date === p.today
+                              ? '1.5px solid var(--accent)'
+                              : undefined;
+                      const copyShadow = isPastePreview
+                        ? 'inset 0 0 0 999px rgba(22, 163, 74, 0.22)'
+                        : isInCopySelect
+                          ? 'inset 0 0 0 999px rgba(14, 165, 233, 0.22)'
+                          : undefined;
 
                       return (
                         <td
@@ -289,8 +325,16 @@ export default function RosterGrid(p: RosterGridProps) {
                           onFocus={() => setFocused({ r: rIdx, c: cIdx })}
                           onKeyDown={(e) => handleCellKeyDown(e, rIdx, cIdx, o, d.date)}
                           onPointerDown={(e) => {
-                            if (!p.canOperate || e.button !== 0) return;
+                            if (!p.canOperate || (typeof e.button === 'number' && e.button !== 0)) return;
                             setFocused({ r: rIdx, c: cIdx });
+                            if (p.mode === 'copy') {
+                              if (p.copyStep === 'select' || !p.copiedBlock) {
+                                p.onStartCopySelection(rIdx, cIdx);
+                              } else {
+                                p.onPasteBlockAt(rIdx, cIdx);
+                              }
+                              return;
+                            }
                             if (p.mode === 'standby') {
                               p.onActivateCell(o.id, d.date);
                               return;
@@ -299,7 +343,16 @@ export default function RosterGrid(p: RosterGridProps) {
                             p.onApplyBrushLocal(o.id, d.date);
                           }}
                           onPointerEnter={() => {
-                            if (p.dragRef.current?.active && p.canOperate && p.mode !== 'standby') {
+                            if (!p.canOperate) return;
+                            if (p.mode === 'copy') {
+                              if (p.copyStep === 'select' || !p.copiedBlock) {
+                                p.onUpdateCopySelection(rIdx, cIdx);
+                              } else {
+                                setPasteOrigin({ r: rIdx, c: cIdx });
+                              }
+                              return;
+                            }
+                            if (p.dragRef.current?.active && p.mode !== 'standby') {
                               p.onApplyBrushLocal(o.id, d.date);
                             }
                           }}
@@ -334,7 +387,13 @@ export default function RosterGrid(p: RosterGridProps) {
                           style={{
                             position: 'relative',
                             textAlign: 'center',
-                            cursor: p.canOperate ? 'pointer' : 'default',
+                            cursor: p.canOperate
+                              ? p.mode === 'copy'
+                                ? p.copyStep === 'paste' && p.copiedBlock
+                                  ? 'copy'
+                                  : 'crosshair'
+                                : 'pointer'
+                              : 'default',
                             height: 28,
                             padding: '0 4px',
                             whiteSpace: 'nowrap',
@@ -342,8 +401,9 @@ export default function RosterGrid(p: RosterGridProps) {
                             background: bg,
                             color: fg,
                             fontWeight: 800,
-                            outline: d.date === p.today ? '1.5px solid var(--accent)' : undefined,
-                            outlineOffset: -1.5,
+                            boxShadow: copyShadow,
+                            outline: copyOutline,
+                            outlineOffset: copyOutline ? -2 : undefined,
                           }}
                         >
                           {pending && <span className="pending-corner-mark" title="Pending proposed change" />}
@@ -445,9 +505,9 @@ export default function RosterGrid(p: RosterGridProps) {
           Teal / Rose dot = PM scheduled / overdue
         </span>
         <span>
-          <b>PL</b> Plant Ops · <b>FD</b> Field Ops · <b>WD</b> Water Delivery · <b>OC</b> On-Call · <b>DWP</b> Deep Well · <b>ERP</b> Electro-Mech · <b>Lvs</b> Leaves
+          <b>FD</b> Field Ops (default) · <b>PL</b> Plant Ops · <b>WD</b> Water Delivery · <b>OC</b> On-Call · <b>DWP</b> Deep Well · <b>ERP</b> Electro-Mech · <b>Lvs</b> Leaves
         </span>
-        {p.canEdit && <span>Tip: drag across cells to paint, arrow keys + Enter for keyboard, right-click or long-press for menu.</span>}
+        {p.canOperate && <span>Tip: drag across cells to paint, use Copy &amp; Paste Mode to duplicate a shift or multi-day block, arrow keys + Enter for keyboard, right-click or long-press for menu.</span>}
       </div>
     </>
   );

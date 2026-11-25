@@ -187,8 +187,8 @@ export default function CallSheet(p: {
       <details className="no-print card" style={{ padding: '7px 12px', marginBottom: 10, fontSize: 12, color: 'var(--text-secondary)' }}>
         <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Code Glossary (PL, FD, WD, OC, DWP, ERP, RD)</summary>
         <div style={{ marginTop: 6, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-          <span><b>PL</b> = Plant Operations (default station)</span>
-          <span><b>FD</b> = Field Operations</span>
+          <span><b>FD</b> = Field Operations (default station)</span>
+          <span><b>PL</b> = Plant Operations</span>
           <span><b>WD</b> = Water Delivery</span>
           <span><b>OC</b> = General On-Call</span>
           <span><b>DWP</b> = Deep Well Pull-out Standby</span>

@@ -369,4 +369,92 @@ describe('Roster', () => {
     expect(scheduleUpsertMock).not.toHaveBeenCalled();
     expect(scheduleDeleteEqFirstMock).not.toHaveBeenCalled();
   });
+
+  it('uses FD as the default station in toolbar and cells instead of PL', () => {
+    renderRoster({
+      role: 'admin',
+      canEdit: true,
+      rows: [
+        { operator_id: 'op-1', schedule_date: '2026-04-01', shift_type_id: 'shift-day', area_code_id: null },
+      ],
+    });
+
+    expect(screen.getByRole('button', { name: 'FD (default)' })).toBeInTheDocument();
+    expect(screen.getAllByText('Brush: D1 + FD').length).toBeGreaterThanOrEqual(1);
+
+    const grid = screen.getByRole('grid');
+    expect(within(grid).getByRole('gridcell', { name: /Alice Santos, 2026-04-01, D1, D1·FD/i })).toBeInTheDocument();
+  });
+
+  it('copies a multi-day block and pastes it onto target cells in one undoable batch via Copy & Paste Mode', async () => {
+    const user = userEvent.setup();
+    renderRoster({
+      role: 'admin',
+      canEdit: true,
+      rows: [
+        { operator_id: 'op-1', schedule_date: '2026-04-01', shift_type_id: 'shift-day', area_code_id: 'area-pl' },
+        { operator_id: 'op-1', schedule_date: '2026-04-02', shift_type_id: 'shift-off', area_code_id: null },
+      ],
+    });
+
+    const copyBtn = screen.getByRole('button', { name: /Copy & Paste Mode/i });
+    expect(copyBtn).toHaveAttribute('aria-pressed', 'false');
+    await user.click(copyBtn);
+    expect(copyBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(/Copy & Paste mode \(Step 1 — Copy\)/i)).toBeInTheDocument();
+
+    const grid = screen.getByRole('grid');
+    const srcStart = within(grid).getByRole('gridcell', { name: /Alice Santos, 2026-04-01/i });
+    const srcEnd = within(grid).getByRole('gridcell', { name: /Alice Santos, 2026-04-02/i });
+
+    await user.pointer([
+      { keys: '[MouseLeft>]', target: srcStart },
+      { target: srcEnd },
+      { keys: '[/MouseLeft]' },
+    ]);
+
+    expect(screen.getByText('Copied: 1×2 (2 days)')).toBeInTheDocument();
+    expect(screen.getByText(/Copy & Paste mode \(Step 2 — Paste\)/i)).toBeInTheDocument();
+    const pickNewBtn = screen.getByRole('button', { name: 'Pick New Source' });
+
+    const targetCell = within(grid).getByRole('gridcell', { name: /Bob Reyes, 2026-04-05, No shift/i });
+    await user.click(targetCell);
+
+    await waitFor(() => {
+      expect(scheduleUpsertMock).toHaveBeenCalledTimes(1);
+    });
+    expect(scheduleUpsertMock).toHaveBeenCalledWith(
+      [
+        {
+          operator_id: 'op-2',
+          schedule_date: '2026-04-05',
+          shift_type_id: 'shift-day',
+          area_code_id: 'area-pl',
+          organization_id: 'org-1',
+        },
+        {
+          operator_id: 'op-2',
+          schedule_date: '2026-04-06',
+          shift_type_id: 'shift-off',
+          area_code_id: null,
+          organization_id: 'org-1',
+        },
+      ],
+      { onConflict: 'operator_id,schedule_date' },
+    );
+    expect(within(grid).getByRole('gridcell', { name: /Bob Reyes, 2026-04-05, D1, D1·PL/i })).toBeInTheDocument();
+    expect(within(grid).getByRole('gridcell', { name: /Bob Reyes, 2026-04-06, OFF, OFF/i })).toBeInTheDocument();
+
+    // Single Ctrl+Z reverts both pasted cells atomically
+    await user.keyboard('{Control>}z{/Control}');
+    await waitFor(() => {
+      expect(scheduleDeleteEqSecondMock).toHaveBeenCalledWith('schedule_date', '2026-04-05');
+      expect(scheduleDeleteEqSecondMock).toHaveBeenCalledWith('schedule_date', '2026-04-06');
+    });
+    expect(within(grid).getByRole('gridcell', { name: /Bob Reyes, 2026-04-05, No shift/i })).toBeInTheDocument();
+    expect(within(grid).getByRole('gridcell', { name: /Bob Reyes, 2026-04-06, No shift/i })).toBeInTheDocument();
+
+    await user.click(pickNewBtn);
+    expect(screen.getByText('Select cells to copy')).toBeInTheDocument();
+  });
 });

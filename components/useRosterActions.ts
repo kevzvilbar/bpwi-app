@@ -8,11 +8,13 @@ import { getErrorMessage } from '@/lib/error-utils';
 import { canManagerDirectEditDate, isGrantActiveAt } from '@/lib/edit-grant';
 import { buildShiftProposalInput, useRosterDrafts } from '@/components/useRosterDrafts';
 import { useRosterRealtime } from '@/components/useRosterRealtime';
+import { useRosterClipboard } from '@/components/useRosterClipboard';
 import {
-  buildRosterCsv, buildRosterPendingMap, cellKey, computeHistoryTransition, DEFAULT_STATION_CODE,
-  findOffShift, friendlyError, isHolidayArea, isLeaveArea, isOffPartnerArea, isRestArea, MONTHS_FULL,
-  normalizeShiftForArea, persistDirectShiftChanges, persistDirectStandbyChanges, resolveAreaSelection,
-  resolveShiftSelection, WEEKDAYS, type Area, type HistoryEntry, type HolidayItem, type Op,
+  buildRosterCsv, buildRosterPendingMap, cellKey, computeHistoryTransition,
+  DEFAULT_STATION_CODE, findOffShift, friendlyError, isHolidayArea, isLeaveArea,
+  isOffPartnerArea, isRestArea, MONTHS_FULL, normalizeShiftForArea, persistDirectShiftChanges,
+  persistDirectStandbyChanges, resolveAreaSelection, resolveShiftSelection, WEEKDAYS,
+  type Area, type HistoryEntry, type HolidayItem, type Op,
   type PmMarkTask, type RosterDragBatch, type Row, type Shift, type ShiftHistoryItem, type Standby, type ToolMode,
 } from '@/lib/roster-helpers';
 
@@ -104,7 +106,6 @@ export function useRosterActions(p: RosterProps) {
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; opId: string; opName: string; date: string } | null>(null);
   const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
-  const [clipboard, setClipboard] = useState<{ shift_type_id: string | null; area_code_id: string | null } | null>(null);
   const dragRef = useRef<RosterDragBatch | null>(null);
 
   const grantExpired = useRosterRealtime({
@@ -324,6 +325,10 @@ export function useRosterActions(p: RosterProps) {
     if (importOpen || confirmFill || ctxMenu || document.querySelector('[role="dialog"]')) return;
     const tag = (e.target as HTMLElement)?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (e.key === 'Escape' && mode === 'copy') {
+      clip.handleCopyEscape();
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
       e.preventDefault();
       handleUndo();
@@ -478,8 +483,29 @@ export function useRosterActions(p: RosterProps) {
     await persistShiftEntries(batch.entries);
   }
 
+  const clip = useRosterClipboard({
+    canOperate,
+    filteredOperators,
+    days,
+    cell,
+    shiftBy,
+    areaBy,
+    offShift,
+    setMode,
+    setMsg,
+    setRows,
+    setUndoStack,
+    setRedoStack,
+    persistShiftEntries,
+    saveShiftCell,
+    clearCell,
+  });
+
   const pointerUpRef = useRef<() => void>(() => {});
-  pointerUpRef.current = () => { if (dragRef.current?.active) void commitDragBatch(); };
+  pointerUpRef.current = () => {
+    if (dragRef.current?.active) void commitDragBatch();
+    if (clip.hasActiveCopyDrag()) clip.commitCopySelection();
+  };
 
   useEffect(() => {
     const onPointerUp = () => pointerUpRef.current();
@@ -490,6 +516,10 @@ export function useRosterActions(p: RosterProps) {
   async function activateCell(opId: string, date: string) {
     if (!canOperate) return;
     setMsg('');
+    if (mode === 'copy') {
+      await clip.activateCopyCell(opId, date);
+      return;
+    }
     if (mode === 'standby') {
       const existing = standbyMap.get(cellKey(opId, date));
       await setStandbyValue(opId, date, existing?.standby_type === standbyType ? null : standbyType);
@@ -500,21 +530,6 @@ export function useRosterActions(p: RosterProps) {
     if (!effShiftId && !areaId) return;
     const prevCell = cell.get(cellKey(opId, date)) ?? null;
     await saveShiftCell(opId, date, { operator_id: opId, schedule_date: date, shift_type_id: effShiftId, area_code_id: areaId }, prevCell);
-  }
-
-  function copyCell(opId: string, date: string) {
-    const existing = cell.get(cellKey(opId, date));
-    setClipboard(
-      existing ? { shift_type_id: existing.shift_type_id, area_code_id: existing.area_code_id } : { shift_type_id: null, area_code_id: null },
-    );
-  }
-
-  function pasteCell(opId: string, date: string) {
-    if (!clipboard || !canOperate) return;
-    const effShiftId = normalizeShiftForArea(clipboard.shift_type_id, clipboard.area_code_id, areaBy, offShift);
-    if (!effShiftId && !clipboard.area_code_id) { void clearCell(opId, date); return; }
-    const prevCell = cell.get(cellKey(opId, date)) ?? null;
-    void saveShiftCell(opId, date, { operator_id: opId, schedule_date: date, shift_type_id: effShiftId, area_code_id: clipboard.area_code_id }, prevCell);
   }
 
   function exportCsv() {
@@ -581,7 +596,9 @@ export function useRosterActions(p: RosterProps) {
 
   const selectedShift = shiftId ? shiftBy.get(shiftId) : undefined;
   const selectedArea = areaId ? areaBy.get(areaId) : undefined;
-  const brushLabel = mode === 'erase' ? 'Clear Cell'
+  const brushLabel = mode === 'copy'
+    ? (clip.copiedBlock ? `Copied: ${clip.copiedBlock.label}` : 'Copy & Paste: Select cells')
+    : mode === 'erase' ? 'Clear Cell'
     : mode === 'standby' ? `Standby (${standbyType})`
     : `${selectedShift?.code ?? '—'} + ${selectedArea?.code ?? (selectedShift?.is_off ? 'none' : DEFAULT_STATION_CODE)}`;
 
@@ -592,6 +609,14 @@ export function useRosterActions(p: RosterProps) {
     submitNote: drafts.submitNote, setSubmitNote: drafts.setSubmitNote,
     isSubmittingDraft: drafts.isSubmittingDraft,
     pendingMap, onlyMe, setOnlyMe, mode, setMode, standbyType, setStandbyType,
+    copyStep: clip.copyStep,
+    copiedBlock: clip.copiedBlock,
+    copySelection: clip.copySelection,
+    enterCopyMode: clip.enterCopyMode,
+    resetCopySource: clip.resetCopySource,
+    startCopySelection: clip.startCopySelection,
+    updateCopySelection: clip.updateCopySelection,
+    pasteCopiedBlockAt: clip.pasteCopiedBlockAt,
     shiftId, areaId, search, setSearch, isPending, saveState, msg,
     showHint, setShowHint, mobileToolsOpen, setMobileToolsOpen,
     confirmFill, setConfirmFill, importOpen, setImportOpen, importing, importStatus, setImportStatus,
@@ -599,7 +624,9 @@ export function useRosterActions(p: RosterProps) {
     dragRef, monthLabel, days, cell, standbyMap, shiftBy, areaBy, pmByCell,
     hasLinkedOp, filteredOperators, dailyWorkingCounts, todayCoverage, brushLabel,
     go, selectMonth, goToday, handleSelectShift, handleSelectArea, handleUndo, handleRedo,
-    applyBrushLocal, activateCell, clearCell, setStandbyValue, fillRight, copyCell, pasteCell,
+    applyBrushLocal, activateCell, clearCell, setStandbyValue, fillRight,
+    copyCell: clip.copyCell,
+    pasteCell: clip.pasteCell,
     exportCsv, handleImportFile,
     submitDraftBatch: drafts.submitDraftBatch,
     discardDraftBatch: drafts.discardDraftBatch,

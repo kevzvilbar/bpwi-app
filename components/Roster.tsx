@@ -57,6 +57,10 @@ export default function Roster(p: RosterProps) {
         areas={p.areas}
         mode={r.mode}
         setMode={r.setMode}
+        copyStep={r.copyStep}
+        copiedBlock={r.copiedBlock}
+        onToggleCopyMode={() => r.enterCopyMode()}
+        onResetCopySource={r.resetCopySource}
         shiftId={r.shiftId}
         setShiftId={r.handleSelectShift}
         areaId={r.areaId}
@@ -104,6 +108,9 @@ export default function Roster(p: RosterProps) {
         canEdit={r.hasActiveEdit}
         canOperate={r.canOperate}
         mode={r.mode}
+        copyStep={r.copyStep}
+        copiedBlock={r.copiedBlock}
+        copySelection={r.copySelection}
         cell={r.cell}
         pendingMap={r.pendingMap}
         standbyMap={r.standbyMap}
@@ -115,6 +122,9 @@ export default function Roster(p: RosterProps) {
         dragRef={r.dragRef}
         onApplyBrushLocal={r.applyBrushLocal}
         onActivateCell={(opId, date) => void r.activateCell(opId, date)}
+        onStartCopySelection={r.startCopySelection}
+        onUpdateCopySelection={r.updateCopySelection}
+        onPasteBlockAt={(opIdIdx, dateIdx) => void r.pasteCopiedBlockAt(opIdIdx, dateIdx)}
         onClearCell={(opId, date) => void r.clearCell(opId, date)}
         onCopyCell={r.copyCell}
         onPasteCell={r.pasteCell}
