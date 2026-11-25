@@ -14,7 +14,7 @@ import {
 import AccomplishmentFormSheet from '@/components/AccomplishmentFormSheet';
 import AccomplishmentEntryEditor from '@/components/AccomplishmentEntryEditor';
 import { SampleBadge } from '@/components/SampleBadge';
-import { AlertBanner, SegmentedTabs } from '@/components/ui';
+import { AlertBanner, EmptyState, SegmentedTabs } from '@/components/ui';
 
 export interface HeadOption {
   id: string;
@@ -417,7 +417,7 @@ export default function AccomplishmentReports(p: Props) {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {/* Top Toolbar */}
-      <div className="no-print card" style={{ padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="no-print card mobile-toolbar-compact" style={{ padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <h1 className="page-title" style={{ fontSize: 15 }}>Daily Accomplishment Reports</h1>
           <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
@@ -438,7 +438,7 @@ export default function AccomplishmentReports(p: Props) {
           />
         )}
 
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="mobile-action-grid" style={{ marginLeft: 'auto' }}>
           {p.canVerify && (
             <a
               href="/api/reports/leave-export"
@@ -470,37 +470,55 @@ export default function AccomplishmentReports(p: Props) {
       {/* HEAD INBOX TAB */}
       {tab === 'inbox' && p.canVerify && (
         <div style={{ display: 'grid', gap: 12 }}>
-          <div className="no-print card" style={{ padding: 12, display: 'grid', gap: 10 }}>
+          <div className="no-print card mobile-toolbar-compact" style={{ padding: 12, display: 'grid', gap: 10 }}>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 12.5, fontWeight: 600 }}>Scope:</span>
-              <SegmentedTabs
-                ariaLabel="Report inbox scope"
-                size="sm"
-                value={inboxScope}
-                onChange={setInboxScope}
-                items={[
-                  { id: 'mine', label: 'Assigned to Me' },
-                  { id: 'org', label: 'All Org' },
-                ]}
-              />
-              <span style={{ fontSize: 12.5, fontWeight: 600 }}>Status:</span>
-              <SegmentedTabs
-                ariaLabel="Report status filter"
-                size="sm"
-                value={inboxFilter}
-                onChange={setInboxFilter}
-                items={[
-                  { id: 'pending', label: `Pending Review (${pendingCount})` },
-                  { id: 'checked', label: 'Checked' },
-                  { id: 'all', label: 'All Submitted' },
-                ]}
-              />
+              <div className="mobile-filter-pair">
+                <span className="section-eyebrow">Scope</span>
+                <SegmentedTabs
+                  ariaLabel="Report inbox scope"
+                  size="sm"
+                  value={inboxScope}
+                  onChange={setInboxScope}
+                  items={[
+                    { id: 'mine', label: 'Assigned to Me' },
+                    { id: 'org', label: 'All Org' },
+                  ]}
+                />
+              </div>
+              <div className="mobile-filter-pair">
+                <span className="section-eyebrow">Status</span>
+                <SegmentedTabs
+                  ariaLabel="Report status filter"
+                  size="sm"
+                  value={inboxFilter}
+                  onChange={setInboxFilter}
+                  items={[
+                    { id: 'pending', label: `Pending Review (${pendingCount})` },
+                    { id: 'checked', label: 'Checked' },
+                    { id: 'all', label: 'All Submitted' },
+                  ]}
+                />
+              </div>
             </div>
 
             {!inboxReports.length ? (
-              <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>
-                No accomplishment reports in this filter.
-              </p>
+              <EmptyState
+                minHeight={150}
+                title={inboxFilter === 'pending' ? 'No reports pending review' : 'No accomplishment reports in this filter'}
+                description="Switch to All Submitted to browse past shift reports or draft a BPEMS-F-002 report."
+                action={(
+                  <div className="row-wrap" style={{ justifyContent: 'center' }}>
+                    {inboxFilter !== 'all' && (
+                      <button type="button" className="btn btn-primary btn-sm" onClick={() => setInboxFilter('all')}>
+                        All Submitted
+                      </button>
+                    )}
+                    <button type="button" className="btn btn-sm" onClick={() => setTab('my')}>
+                      My Shift Report
+                    </button>
+                  </div>
+                )}
+              />
             ) : (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {inboxReports.map((r) => {

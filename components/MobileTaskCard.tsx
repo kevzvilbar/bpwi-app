@@ -74,10 +74,21 @@ export default function MobileTaskCard({
   return (
     <div
       className="card card-pad-sm stack-sm"
-      style={{ border: isOverdue ? '1.5px solid var(--danger)' : undefined }}
+      style={{ borderLeft: `4px solid ${isOverdue ? 'var(--danger)' : color}` }}
     >
-      <div className="row-between">
-        <span className="badge" style={{ background: color, color: '#ffffff' }}>
+      <div className="row-between" style={{ gap: 6 }}>
+        <span
+          className="badge"
+          style={{
+            background: 'var(--surface-muted)',
+            color: 'var(--text)',
+            border: '1px solid var(--border)',
+          }}
+        >
+          <span
+            aria-hidden="true"
+            style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }}
+          />
           {actTypeMeta?.label ?? t.title}
         </span>
         <Badge tone={isDone ? 'ok' : isOverdue ? 'danger' : isToday ? 'info' : 'neutral'} size="sm">
@@ -133,6 +144,7 @@ export default function MobileTaskCard({
             value={remarksValue}
             onChange={(e) => onRemarksChange(e.target.value)}
             disabled={busy}
+            style={{ minHeight: 36 }}
           />
           <div className="row-wrap" style={{ gap: 6 }}>
             {canLogActivity && !isDone && (
@@ -141,7 +153,7 @@ export default function MobileTaskCard({
                 className="btn btn-primary flex-1 font-bold"
                 disabled={busy}
                 onClick={() => onOpenLogger(t)}
-                style={{ minHeight: 42 }}
+                style={{ minHeight: 38 }}
               >
                 📋 Log &amp; Complete
               </button>
@@ -152,18 +164,18 @@ export default function MobileTaskCard({
                 className="btn flex-1 font-bold"
                 disabled={busy}
                 onClick={() => onOpenCompleteModal(t, 'edit')}
-                style={{ minHeight: 42 }}
+                style={{ minHeight: 38 }}
               >
                 Edit Crew
               </button>
             )}
             <button
               type="button"
-              className={isDone ? 'btn flex-1 font-bold' : 'btn btn-add flex-1 font-bold'}
+              className={isDone ? 'btn flex-1 font-bold' : 'btn btn-teal-soft flex-1 font-bold'}
               disabled={busy}
               onClick={() => (isDone ? onReopenTask(t) : onOpenCompleteModal(t, 'complete'))}
               style={{
-                minHeight: 42,
+                minHeight: 38,
                 ...(isDone ? { background: 'var(--surface-muted)', borderColor: 'var(--border)', color: 'var(--text)' } : {}),
               }}
             >

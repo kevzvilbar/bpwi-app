@@ -64,7 +64,7 @@ export default function RosterToolbar(p: RosterToolbarProps) {
       <h1 className="sr-only">Plant Operations Monthly Schedule</h1>
       {/* Action & Filter Bar */}
       <div
-        className="no-print card"
+        className="no-print card mobile-toolbar-compact"
         style={{
           display: 'flex',
           gap: 8,
@@ -135,6 +135,7 @@ export default function RosterToolbar(p: RosterToolbarProps) {
 
         <span
           aria-live="polite"
+          className={p.saveState === 'idle' ? 'mobile-hide-idle-spacer' : undefined}
           style={{
             minWidth: 96,
             fontSize: 12,

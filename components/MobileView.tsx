@@ -323,10 +323,11 @@ export default function MobileView(p: {
     <div className="tasks-shell stack-md">
       <h1 className="sr-only">Tasks, Field Logs and Schedule</h1>
 
-      <div className="card card-pad-sm row-between-wrap">
+      <div className="card card-pad-sm stack-sm mobile-toolbar-compact">
         <SegmentedTabs
           ariaLabel="Tasks and field views"
           fullWidth
+          size="sm"
           value={tab}
           onChange={setTab}
           items={[
@@ -336,30 +337,16 @@ export default function MobileView(p: {
           ]}
         />
 
-        <div className="row-wrap row-end" style={{ flex: '1 1 260px' }}>
+        <div className="row-wrap" style={{ gap: 6 }}>
           <input
             type="search"
             className="input"
             aria-label="Search tasks, logs, or operators"
-            placeholder="Search site, activity, operator…"
+            placeholder="Search site, activity, employee…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ flex: '1 1 160px', minWidth: 0 }}
           />
-          {(tab === 'tasks' || (tab === 'activities' && p.canVerifyActivity)) && (
-            <select
-              className="input"
-              aria-label="Filter by employee"
-              value={selectedOp}
-              onChange={(e) => setSelectedOp(e.target.value)}
-              style={{ flex: '1 1 140px', minWidth: 0 }}
-            >
-              <option value="">{tab === 'tasks' ? 'All employees (incl. substitute coverage)' : 'All employees'}</option>
-              {p.operators.map((o) => (
-                <option key={o.id} value={o.id}>{o.full_name}{o.id === p.operatorId ? ' (Me)' : ''}</option>
-              ))}
-            </select>
-          )}
           {(p.canLogActivity || p.canLogSampleActivity) && p.orgId && (
             <button
               type="button"
@@ -370,6 +357,21 @@ export default function MobileView(p: {
               {p.canLogActivity ? '+ Log Activity' : '+ Log Sample'}
             </button>
           )}
+          {(tab === 'tasks' || (tab === 'activities' && p.canVerifyActivity)) && (
+            <select
+              className="input"
+              aria-label="Filter by employee"
+              title={tab === 'tasks' ? 'All employees (incl. substitute coverage)' : 'All employees'}
+              value={selectedOp}
+              onChange={(e) => setSelectedOp(e.target.value)}
+              style={{ flex: '1 1 150px', minWidth: 0 }}
+            >
+              <option value="">All employees</option>
+              {p.operators.map((o) => (
+                <option key={o.id} value={o.id}>{o.full_name}{o.id === p.operatorId ? ' (Me)' : ''}</option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 
@@ -377,11 +379,11 @@ export default function MobileView(p: {
 
       {tab === 'tasks' && (
         <>
-          <div className="row-wrap text-sm font-bold">
-            <Badge tone="danger">Delayed: {delayedTasks.length}</Badge>
-            <Badge tone="info">Due Today: {dueTodayCount}</Badge>
-            <Badge tone="info">Upcoming: {upcomingTasks.length}</Badge>
-            <Badge tone="ok">Completed: {completedTasks.length}</Badge>
+          <div className="row-wrap text-xs font-bold" style={{ gap: 10 }}>
+            <span style={{ color: 'var(--danger-fg)' }}>● {delayedTasks.length} Delayed</span>
+            <span style={{ color: 'var(--info-fg)' }}>● {dueTodayCount} Today</span>
+            <span style={{ color: 'var(--text-secondary)' }}>{upcomingTasks.length} Upcoming</span>
+            <span style={{ color: 'var(--ok-fg)' }}>{completedTasks.length} Done</span>
           </div>
 
           {!p.canClosePm && (
@@ -410,19 +412,19 @@ export default function MobileView(p: {
             ))}
           </div>
 
-          <div className="mobile-only-block">
-            <div className="row-sm" style={{ gap: 6 }}>
-              {(['open', 'done', 'all'] as const).map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  className={taskFilter === f ? 'btn btn-primary flex-1 font-bold' : 'btn flex-1 font-bold'}
-                  onClick={() => setTaskFilter(f)}
-                >
-                  {f === 'open' ? 'Open' : f === 'done' ? 'Completed' : 'All'}
-                </button>
-              ))}
-            </div>
+          <div className="mobile-only-block stack-sm">
+            <SegmentedTabs
+              ariaLabel="Filter PM tasks"
+              fullWidth
+              size="sm"
+              value={taskFilter}
+              onChange={setTaskFilter}
+              items={[
+                { id: 'open', label: 'Open' },
+                { id: 'done', label: 'Completed' },
+                { id: 'all', label: 'All' },
+              ]}
+            />
             {mobileFilteredTasks.length === 0
               ? <div className="card card-pad-lg text-center text-secondary-sm">No PM tasks match the selected filter.</div>
               : mobileFilteredTasks.map(renderTaskCard)}

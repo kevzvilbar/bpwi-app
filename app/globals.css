@@ -909,9 +909,16 @@ textarea:focus-visible {
 
   .pm-toolbar-compact .btn,
   .pm-toolbar-compact .input,
-  .pm-toolbar-compact select {
+  .pm-toolbar-compact select,
+  .mobile-toolbar-compact .btn,
+  .mobile-toolbar-compact .input,
+  .mobile-toolbar-compact select {
     min-height: 36px;
     padding: 4px 10px;
+  }
+
+  .mobile-hide-idle-spacer {
+    display: none !important;
   }
 
   .pm-label-desktop {
@@ -1598,4 +1605,53 @@ textarea:focus-visible {
   background: var(--surface-muted);
   font-size: 11px;
   color: var(--text-secondary);
+}
+
+/* Mobile Suite Responsive Helpers (Reports, Tasks, Logs, Standby, Roster) */
+.mobile-action-grid {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.mobile-filter-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mobile-scroll-tabs {
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.mobile-scroll-tabs::-webkit-scrollbar { display: none; }
+.btn-teal-soft {
+  background: var(--ok-bg);
+  color: var(--teal);
+  border-color: var(--ok-border);
+  font-weight: 700;
+}
+@media screen and (max-width: 640px) {
+  .mobile-action-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    gap: 8px;
+  }
+  .mobile-action-grid > * {
+    justify-content: center;
+    text-align: center;
+  }
+  .mobile-filter-pair {
+    display: grid;
+    width: 100%;
+    gap: 4px;
+  }
+  .mobile-filter-pair > .segmented-tabs {
+    width: 100%;
+  }
+  .mobile-filter-pair > .segmented-tabs > .segmented-tab {
+    flex: 1 1 0%;
+  }
 }

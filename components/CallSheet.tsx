@@ -145,7 +145,7 @@ export default function CallSheet(p: {
   return (
     <div style={{ padding: 14, maxWidth: 1440, margin: '0 auto' }}>
       <div
-        className="no-print card"
+        className="no-print card mobile-toolbar-compact"
         style={{
           display: 'flex',
           gap: 10,

@@ -273,7 +273,7 @@ export default function ActivitiesMonitor(p: {
 
   return (
     <div className="stack-md" style={{ maxWidth: 1440, margin: '0 auto', padding: '12px 16px 40px' }}>
-      <div className="card card-pad-sm row-between-wrap">
+      <div className="card card-pad-sm row-between-wrap mobile-toolbar-compact">
         <div className="row-wrap">
           <div>
             <h1 className="page-title">Daily Employee Activity Monitor</h1>
@@ -314,18 +314,20 @@ export default function ActivitiesMonitor(p: {
       {p.schemaWarning && <AlertBanner tone="warn"><b>Setup Notice:</b> {p.schemaWarning}</AlertBanner>}
       {bannerMsg && <AlertBanner tone={bannerMsg.startsWith('✓') ? 'ok' : 'danger'} onDismiss={() => setBannerMsg('')}>{bannerMsg}</AlertBanner>}
 
-      <SegmentedTabs
-        ariaLabel="Activity monitoring sections"
-        value={tab}
-        onChange={setTab}
-        items={[
-          { id: 'monitor', label: `${p.canVerifyActivity ? 'Duty & Activity Feed' : 'My Activity Logs'} (${dateActivities.length})` },
-          { id: 'routes', label: `Routes & Distance (${dateActivities.filter((a) => isValidCoordinate(a.gps_lat, a.gps_lng)).length} GPS)` },
-          { id: 'job-orders', label: `Job Orders (${filteredJobOrders.filter((j) => !j.is_sample && (j.status === 'pending' || j.status === 'in_progress')).length} open)` },
-          { id: 'handovers', label: `Shift Handover & Huddle (${handovers.filter((h) => !h.is_sample && h.handover_date === p.date).length})` },
-          ...(p.canVerifyActivity ? [{ id: 'kpis' as const, label: 'Employee KPIs & Fuel' }] : []),
-        ]}
-      />
+      <div className="mobile-scroll-tabs">
+        <SegmentedTabs
+          ariaLabel="Activity monitoring sections"
+          value={tab}
+          onChange={setTab}
+          items={[
+            { id: 'monitor', label: `${p.canVerifyActivity ? 'Duty & Activity Feed' : 'My Activity Logs'} (${dateActivities.length})` },
+            { id: 'routes', label: `Routes & Distance (${dateActivities.filter((a) => isValidCoordinate(a.gps_lat, a.gps_lng)).length} GPS)` },
+            { id: 'job-orders', label: `Job Orders (${filteredJobOrders.filter((j) => !j.is_sample && (j.status === 'pending' || j.status === 'in_progress')).length} open)` },
+            { id: 'handovers', label: `Shift Handover & Huddle (${handovers.filter((h) => !h.is_sample && h.handover_date === p.date).length})` },
+            ...(p.canVerifyActivity ? [{ id: 'kpis' as const, label: 'Employee KPIs & Fuel' }] : []),
+          ]}
+        />
+      </div>
 
       {tab === 'monitor' && (
         <div className="stack-md">
