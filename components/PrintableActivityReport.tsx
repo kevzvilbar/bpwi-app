@@ -22,6 +22,7 @@ import {
   hasGensetChecklistDetails,
   hydrateGensetMonitoringDetails,
 } from '@/lib/genset-monitoring';
+import { describeChlorineRefill } from '@/lib/chlorine-refill';
 import { computeJobOrderSlaStatus, formatSlaDurationLabel } from '@/lib/job-order-sla';
 import WellPulloutReportSheet from '@/components/WellPulloutReportSheet';
 import TankCleaningReportSheet from '@/components/TankCleaningReportSheet';
@@ -172,7 +173,10 @@ export default function PrintableActivityReport(p: {
   const gensetGuidance = gensetChecklist
     ? evaluateGensetDurationGuidance(gensetChecklist.runMode, gensetChecklist.runDurationMin, gensetChecklist.unitFuelType)
     : null;
-  const telemetryEntries = act
+  const isChlorineRefill = act?.activity_type === 'chlorine_refill';
+  const telemetryEntries = isChlorineRefill
+    ? describeChlorineRefill(det).map((row) => ({ key: row.label, formattedVal: row.value }))
+    : act
     ? Object.entries(det)
         .filter(
           ([key]) =>
@@ -675,8 +679,8 @@ export default function PrintableActivityReport(p: {
                   <tbody>
                     {telemetryEntries.map(({ key, formattedVal }) => (
                       <tr key={key}>
-                        <td style={{ border: '1px solid #334155', padding: '5px 8px', fontWeight: 600, textTransform: 'capitalize' }}>
-                          {key.replace(/([A-Z])/g, ' $1')}
+                        <td style={{ border: '1px solid #334155', padding: '5px 8px', fontWeight: 600, textTransform: isChlorineRefill ? 'none' : 'capitalize' }}>
+                          {isChlorineRefill ? key : key.replace(/([A-Z])/g, ' $1')}
                         </td>
                         <td style={{ border: '1px solid #334155', padding: '5px 8px' }}>{formattedVal}</td>
                       </tr>

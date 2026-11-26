@@ -443,6 +443,30 @@ describe('ActivityLoggerModal', () => {
     expect(activityInsertPayloads[1].id).toBe(activityInsertPayloads[0].id);
   });
 
+  it('blocks an incomplete chlorine refill, then saves the drum and dosing readings', async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn();
+    activityInsertSingleMock.mockResolvedValue({ data: makeSavedRow({ activity_type: 'chlorine_refill' }), error: null });
+
+    render(<ActivityLoggerModal {...loggerProps} onClose={vi.fn()} onSaved={onSaved} />);
+    await user.selectOptions(screen.getByLabelText(/Activity Type/i), 'chlorine_refill');
+    await user.click(screen.getByRole('button', { name: 'Submit Activity Log' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/before refilling/);
+    expect(activityInsertSingleMock).not.toHaveBeenCalled();
+
+    await user.selectOptions(screen.getByLabelText(/Chlorine type/i), 'Sodium Hypochlorite 12.5% (liquid)');
+    await user.type(screen.getByLabelText(/Drum level before/i), '15');
+    await user.type(screen.getByLabelText(/Chlorine added/i), '4.25');
+    await user.type(screen.getByLabelText(/^Pump stroke/i), '55');
+    await user.click(screen.getByRole('button', { name: 'Submit Activity Log' }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(activityInsertPayloads[0]).toMatchObject({
+      activity_type: 'chlorine_refill',
+      details: { drumLevelBefore: 15, amountAdded: 4.25, amountUnit: 'L', pumpStrokePct: 55, newPumpStrokePct: null },
+    });
+  });
+
   it('passes editingId and expectedUpdatedAt when queuing an edited activity offline', async () => {
     const user = userEvent.setup();
     const onQueuedOffline = vi.fn();

@@ -5,6 +5,7 @@ import {
   evaluateTankWaterQuality,
   hydrateTankCleaningDetails,
 } from './tank-cleaning-types.ts';
+import { describeChlorineRefill } from './chlorine-refill.ts';
 import { computeLeakVolumeLoss, hydrateLeakLossDetails } from './leak-volume-loss.ts';
 import { formatFlushingMeterStatusLabel, hydrateFlushingSummaryFromDetails } from './flushing-volume.ts';
 import { computeTotalDistributedLiters, hydrateFuelActivitiesDetails, isFuelActivityType } from './fuel-activities.ts';
@@ -123,6 +124,10 @@ export function formatTelemetrySummary(act: DailyActivityRow): string[] {
     const totalVol = cycles.reduce((acc: number, c) => acc + (Number(c.volumeM3) || 0), 0);
     parts.push(`${cycles.length} trip(s) · ${totalVol} m³`);
     if (str('plateNumber')) parts.push(`Plate: ${str('plateNumber')}`);
+  }
+
+  if (act.activity_type === 'chlorine_refill') {
+    parts.push(...describeChlorineRefill(d).map((row) => `${row.label}: ${row.value}`));
   }
 
   if (act.activity_type === 'water_sampling') {

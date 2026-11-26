@@ -31,6 +31,13 @@ import {
   type FuelActivitiesFormState,
 } from './fuel-activities.ts';
 import {
+  CHLORINE_REFILL_ACTIVITY_TYPE,
+  INITIAL_CHLORINE_REFILL_STATE,
+  buildChlorineRefillPayload,
+  hydrateChlorineRefillDetails,
+  type ChlorineRefillFormState,
+} from './chlorine-refill.ts';
+import {
   INITIAL_GENSET_MONITORING_STATE,
   buildGensetMonitoringPayload,
   hydrateGensetMonitoringDetails,
@@ -155,6 +162,9 @@ export interface ActivityDetailFieldsState {
 
   // 11. Vehicle & Genset Fuel Operations
   fuel: FuelActivitiesFormState;
+
+  // 12. Chlorine Refilling (Dosing Drum); residual reuses `chlorineResidual`
+  chlorine: ChlorineRefillFormState;
 }
 
 export const INITIAL_ACTIVITY_DETAIL_FIELDS: ActivityDetailFieldsState = {
@@ -214,6 +224,7 @@ export const INITIAL_ACTIVITY_DETAIL_FIELDS: ActivityDetailFieldsState = {
   wellPullout: INITIAL_WELL_PULLOUT_DETAILS,
   tankCleaning: INITIAL_TANK_CLEANING_DETAILS,
   fuel: INITIAL_FUEL_ACTIVITIES_STATE,
+  chlorine: INITIAL_CHLORINE_REFILL_STATE,
 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -326,6 +337,7 @@ export function hydrateActivityDetailFields(
   next.wellPullout = hydrateWellPulloutDetails(d);
   next.tankCleaning = hydrateTankCleaningDetails(d);
   next.fuel = hydrateFuelActivitiesDetails(d);
+  next.chlorine = hydrateChlorineRefillDetails(d);
 
   return next;
 }
@@ -475,6 +487,9 @@ export function buildActivityDetailsPayload(
         (c) => c.sourceLocation.trim() || c.deliveryLocation.trim() || c.volumeM3.trim(),
       ),
     };
+  }
+  if (activityType === CHLORINE_REFILL_ACTIVITY_TYPE) {
+    return buildChlorineRefillPayload(f.chlorine, f.chlorineResidual);
   }
   if (activityType === 'water_sampling') {
     return {

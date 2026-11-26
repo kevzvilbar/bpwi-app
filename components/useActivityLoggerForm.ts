@@ -29,6 +29,7 @@ import {
   normalizePulloutTimeHHMM,
 } from '@/lib/well-pullout-types';
 import { compressImageFile, uploadActivityPhoto, uploadDataUrlPhoto } from '@/lib/image-compress';
+import { CHLORINE_REFILL_ACTIVITY_TYPE, validateChlorineRefill } from '@/lib/chlorine-refill';
 import { newClientId } from '@/lib/offline-sync-core';
 import type { ActivityPhotoEntry } from '@/components/ActivityMediaCapture';
 
@@ -464,6 +465,13 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
     if (!activityType) {
       setErrMsg('Please select an activity type.');
       return;
+    }
+    if (activityType === CHLORINE_REFILL_ACTIVITY_TYPE) {
+      const problem = validateChlorineRefill(details.chlorine, details.chlorineResidual);
+      if (problem) {
+        setErrMsg(problem);
+        return;
+      }
     }
 
     setSubmitting(true);

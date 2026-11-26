@@ -11,6 +11,7 @@ import TankCleaningFields from '@/components/TankCleaningFields';
 import LeakRepairFields from '@/components/LeakRepairFields';
 import FlushingFields from '@/components/FlushingFields';
 import FuelActivityFields from '@/components/FuelActivityFields';
+import ChlorineRefillFields from '@/components/ChlorineRefillFields';
 import GensetMonitoringFields from '@/components/GensetMonitoringFields';
 import { isFuelActivityType } from '@/lib/fuel-activities';
 
@@ -369,6 +370,8 @@ export default function ActivityCategoryFields({
           ))}
         </div>
       )}
+
+      {activityType === 'chlorine_refill' && <ChlorineRefillFields fields={fields} setFields={setFields} />}
 
       {activityType === 'water_sampling' && (
         <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: 'var(--teal)' }}>

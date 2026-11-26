@@ -1,3 +1,4 @@
+import { describeChlorineRefill } from './chlorine-refill.ts';
 import type { DailyActivityRow } from '@/lib/activity-types';
 
 export interface FormColumnDef {
@@ -105,6 +106,8 @@ export function mapActivityToFormColumn(activityType: string): {
       return { column_id: 'rec', others_specify: '' };
     case 'pump_monitoring':
       return { column_id: 'ps_mon', others_specify: '' };
+    case 'chlorine_refill':
+      return { column_id: null, others_specify: 'CHLORINE' };
     case 'water_sampling':
       return { column_id: 'wq_insp', others_specify: '' };
     case 'low_pressure':
@@ -198,6 +201,9 @@ export function buildActivityRemarks(a: DailyActivityRow): string {
   if (d.flow_lps != null && d.flow_lps !== '') readings.push(`Flow: ${d.flow_lps} LPS`);
   if (d.totalizer_m3 != null && d.totalizer_m3 !== '') readings.push(`FM: ${d.totalizer_m3} m³`);
   if (d.chlorine_mg_l != null && d.chlorine_mg_l !== '') readings.push(`Cl2: ${d.chlorine_mg_l} mg/L`);
+  if (a.activity_type === 'chlorine_refill') {
+    readings.push(...describeChlorineRefill(d).map((row) => `${row.label}: ${row.value}`));
+  }
   if (d.pipe_scope) readings.push(String(d.pipe_scope));
   if (d.pipe_size) readings.push(`Ø${d.pipe_size}`);
   if (d.fm_before != null && d.fm_before !== '') readings.push(`FM Before: ${d.fm_before}`);

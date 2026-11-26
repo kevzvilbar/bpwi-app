@@ -30,6 +30,7 @@ export const ACTIVITY_TYPES: ActivityTypeDef[] = [
   { id: 'tank_cleaning', label: 'Tank Cleaning', shortLabel: 'Tank Clean', category: 'plant', color: '#0d9488' },
   { id: 'tank_opening', label: 'Tank Opening & Closing', shortLabel: 'Tank Valve', category: 'plant', color: '#0f766e' },
   { id: 'water_sampling', label: 'Water Sampling / Chlorination', shortLabel: 'Sampling', category: 'plant', color: '#0891b2' },
+  { id: 'chlorine_refill', label: 'Chlorine Refilling (Dosing Drum)', shortLabel: 'Cl₂ Refill', category: 'plant', color: '#0e7490' },
   { id: 'well_pull_out', label: 'Deep Well Pump & Motor Pull-Out', shortLabel: 'Pull-Out', category: 'plant', color: '#db2777' },
 
   // Network & Distribution
@@ -76,10 +77,15 @@ const PM_CODE_TO_ACTIVITY: Record<string, string> = {
   GENSET: 'genset_monitoring',
   PUMP: 'pump_monitoring',
   CHLOR: 'water_sampling',
+  CHLREF: 'chlorine_refill',
   SAMPLING: 'water_sampling',
   LEAK: 'leak_repair',
   HYDRO: 'hydro_testing',
 };
+
+// "Chlorine refill", "Refill hypochlorite", "Dosing drum"... but not plain "Chlorination" or "Chlorine sampling".
+const CHLORINE_REFILL_PATTERN =
+  /(chlorin|hypochlor|\bcl2\b).*(re-?fill|replenish|drum)|(re-?fill|replenish).*(chlorin|hypochlor|\bcl2\b)|dosing\s*(drum|tank)/;
 
 /**
  * Reconciles a PM task (its preset/custom `activity_type`, `title`, and optional `pm_activity_types` label)
@@ -93,10 +99,13 @@ export function resolveActivityTypeFromPm(
   const upperCode = rawCode.toUpperCase();
 
   if (rawCode && ACTIVITY_BY_ID[rawCode]) return rawCode;
-  if (upperCode && PM_CODE_TO_ACTIVITY[upperCode]) return PM_CODE_TO_ACTIVITY[upperCode];
 
   const customMeta = pmActivityTypes?.find((a) => a.code === rawCode || a.code.toUpperCase() === upperCode);
   const combined = `${pm.title ?? ''} ${customMeta?.label ?? ''} ${customMeta?.short_label ?? ''} ${rawCode}`.toLowerCase();
+
+  // Checked before the code map: a refill task filed under the CHLOR code is not a water sampling task.
+  if (CHLORINE_REFILL_PATTERN.test(combined)) return 'chlorine_refill';
+  if (upperCode && PM_CODE_TO_ACTIVITY[upperCode]) return PM_CODE_TO_ACTIVITY[upperCode];
 
   if (/mmf|backwash/.test(combined)) return 'backwash';
   if (/flush/.test(combined)) return 'flushing';
