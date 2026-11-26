@@ -397,10 +397,10 @@ describe('Roster', () => {
       ],
     });
 
-    const copyBtn = screen.getByRole('button', { name: /Copy & Paste Mode/i });
-    expect(copyBtn).toHaveAttribute('aria-pressed', 'false');
-    await user.click(copyBtn);
-    expect(copyBtn).toHaveAttribute('aria-pressed', 'true');
+    const modeSelect = screen.getByLabelText(/Roster edit mode/i);
+    expect(modeSelect).toHaveValue('direct');
+    await user.selectOptions(modeSelect, 'copy');
+    expect(modeSelect).toHaveValue('copy');
     expect(screen.getByText(/Copy & Paste mode \(Step 1 — Copy\)/i)).toBeInTheDocument();
 
     const grid = screen.getByRole('grid');

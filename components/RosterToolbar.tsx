@@ -290,75 +290,67 @@ export default function RosterToolbar(p: RosterToolbarProps) {
             padding: '7px 12px',
           }}
         >
-          {p.isPropose ? (
-            <span
-              style={{
-                padding: '3px 8px',
-                borderRadius: 4,
-                background: 'var(--warn-bg)',
-                color: 'var(--warn-fg)',
-                fontSize: 11,
-                fontWeight: 700,
-                border: '1px solid var(--warn-border)',
-                marginRight: 2,
-              }}
-              title="Edits save as draft change requests for admin approval"
-            >
-              Propose Mode · Draft → Approval
-            </span>
-          ) : p.canEdit && p.role === 'manager' ? (
-            <span
-              style={{
-                padding: '3px 8px',
-                borderRadius: 4,
-                background: 'var(--ok-bg)',
-                color: 'var(--ok-fg)',
-                fontSize: 11,
-                fontWeight: 700,
-                border: '1px solid var(--ok-border)',
-                marginRight: 2,
-              }}
-              title="Admin edit window is active — changes save directly to the live schedule"
-            >
-              Direct Edit Mode · Live Window
-            </span>
-          ) : p.canEdit ? (
-            <span
-              style={{
-                padding: '3px 8px',
-                borderRadius: 4,
-                background: 'var(--info-bg)',
-                color: 'var(--info-fg)',
-                fontSize: 11,
-                fontWeight: 700,
-                border: '1px solid var(--info-border)',
-                marginRight: 2,
-              }}
-              title="Changes save directly to the live schedule"
-            >
-              Direct Edit Mode
-            </span>
-          ) : null}
-
-          <button
-            type="button"
-            aria-pressed={p.mode === 'copy'}
-            onClick={() => (p.mode === 'copy' ? p.setMode('paint') : p.onToggleCopyMode())}
-            title="Copy existing cell(s) or a multi-day block and paste onto any target date or operator"
-            style={{
-              padding: '3px 9px',
-              borderRadius: 5,
-              fontSize: 11.5,
-              fontWeight: 700,
-              cursor: 'pointer',
-              background: p.mode === 'copy' ? 'var(--primary)' : 'var(--surface-muted)',
-              color: p.mode === 'copy' ? 'var(--primary-fg)' : 'var(--text)',
-              border: p.mode === 'copy' ? '1px solid var(--primary)' : '1px solid var(--border)',
-              marginRight: 2,
-            }}
-          >
-            Copy &amp; Paste Mode
-          </button>
+          {(() => {
+            const primaryModeLabel = p.isPropose
+              ? 'Propose Mode · Draft → Approval'
+              : p.canEdit && p.role === 'manager'
+                ? 'Direct Edit Mode · Live Window'
+                : 'Direct Edit Mode';
+            const modeSelectBg = p.mode === 'copy'
+              ? 'var(--primary)'
+              : p.isPropose
+                ? 'var(--warn-bg)'
+                : p.canEdit && p.role === 'manager'
+                  ? 'var(--ok-bg)'
+                  : 'var(--info-bg)';
+            const modeSelectFg = p.mode === 'copy'
+              ? 'var(--primary-fg)'
+              : p.isPropose
+                ? 'var(--warn-fg)'
+                : p.canEdit && p.role === 'manager'
+                  ? 'var(--ok-fg)'
+                  : 'var(--info-fg)';
+            const modeSelectBorder = p.mode === 'copy'
+              ? 'var(--primary)'
+              : p.isPropose
+                ? 'var(--warn-border)'
+                : p.canEdit && p.role === 'manager'
+                  ? 'var(--ok-border)'
+                  : 'var(--info-border)';
+            const modeTitle = p.mode === 'copy'
+              ? 'Copy existing cell(s) or a multi-day block and paste onto any target date or operator'
+              : p.isPropose
+                ? 'Edits save as draft change requests for admin approval'
+                : p.canEdit && p.role === 'manager'
+                  ? 'Admin edit window is active — changes save directly to the live schedule'
+                  : 'Changes save directly to the live schedule';
+            return (
+              <select
+                aria-label="Roster edit mode"
+                title={modeTitle}
+                value={p.mode === 'copy' ? 'copy' : 'direct'}
+                onChange={(e) => (e.target.value === 'copy' ? p.onToggleCopyMode() : p.setMode('paint'))}
+                style={{
+                  padding: '3px 8px',
+                  borderRadius: 5,
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  background: modeSelectBg,
+                  color: modeSelectFg,
+                  border: `1px solid ${modeSelectBorder}`,
+                  marginRight: 2,
+                }}
+              >
+                <option value="direct" style={{ background: 'var(--surface)', color: 'var(--text)' }}>
+                  {primaryModeLabel}
+                </option>
+                <option value="copy" style={{ background: 'var(--surface)', color: 'var(--text)' }}>
+                  Copy &amp; Paste Mode
+                </option>
+              </select>
+            );
+          })()}
 
           <span
             style={{
