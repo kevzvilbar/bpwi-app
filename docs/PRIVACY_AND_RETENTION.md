@@ -13,7 +13,7 @@
 | **Employee Accounts & Directory** | `auth.users`, `user_profiles`, `operators`, `org_positions` | Full name, work email, role, active flag, position/title, station assignment, contact phone number (for Call Sheet / escalation) | Employment & operational dispatch; access control & accountability |
 | **Schedules, Leave & Approvals** | `schedule_assignments`, `standby_assignments`, `leave_records`, `edit_grants`, `change_requests` | Shift/area assignments, on-call standby, leave codes/dates, approval notes | Workforce scheduling & service continuity |
 | **Field Activity & Handover Logs** | `daily_activities`, `accomplishment_reports`, `shift_handovers`, `pm_tasks` | Activity type, station/site/block-lot, crew tags, operational readings (`details` JSONB), verification/check timestamps | Water utility operations, preventive maintenance, and `BPEMS-F-002` reporting |
-| **Optional Field GPS Check-Ins** | `daily_activities` (`gps_lat`, `gps_lng`, `details.gpsSource`, `details.gpsAccuracyM`) | Coordinates & accuracy metadata captured **only when explicitly triggered** by an operator (`Attach GPS` or `Pick on Map`) | Verifying field service/site location for dispatch & route footprints (never continuous background tracking) |
+| **Field Activity GPS Location** (required on new logs) | `daily_activities` (`gps_lat`, `gps_lng`, `details.gpsSource`, `details.gpsAccuracyM`) | Coordinates & accuracy metadata captured **only when explicitly triggered** by an operator (`Attach GPS` or `Pin on Map`; one of the two is required to save a new log) | Verifying field service/site location for dispatch & route footprints (never continuous background tracking) |
 | **Field Evidence Photos** | Supabase Storage (`activity-media` private bucket), `daily_activities.photo_storage_paths` / `photo_urls` | Client-compressed field photos (`sample-*` prefix for sample sandboxes) | Visual verification of repairs, flushing, tank cleaning, and meter tests |
 | **Witness / Customer Signatures** | `daily_activities.signature_data` | Base64 signature canvas capture (e.g., 3-trial volumetric Meter Test certificates) | Field test attestation |
 | **Customer Job Orders** | `job_orders` | 12-digit utility `account_number`, `account_name`, `contact_number`, `site_or_well`, `block_lot`, SLA/TAT notes | Customer service dispatch & turnaround tracking |
@@ -36,8 +36,8 @@
 ## 3. Operational Controls & Transparency Notices
 
 ### 3.1 Built-In User Notices
-- **Sign-In / Sign-Up (`app/login/page.tsx`):** Displays a concise RA 10173 notice stating that account details, shift/activity logs, and optional field GPS check-ins are processed for utility dispatch and audit, and that field photos expire after 30 days.
-- **Media & GPS Capture (`components/ActivityMediaCapture.tsx`):** Displays an inline reminder alongside capture controls that GPS check-in is optional and operator-initiated, photos auto-delete after 30 days, and telemetry is governed by BPWI RA 10173 retention policy.
+- **Sign-In / Sign-Up (`app/login/page.tsx`):** Displays a concise RA 10173 notice stating that account details, shift/activity logs, and the GPS location of field activity logs are processed for utility dispatch and audit, and that field photos expire after 30 days.
+- **Media & GPS Capture (`components/ActivityMediaCapture.tsx`):** Displays an inline reminder alongside capture controls that GPS location is required to save a new log and is captured only when the operator taps a location button, photos auto-delete after 30 days, and telemetry is governed by BPWI RA 10173 retention policy.
 - **Fail-Closed Access:** Unapproved sign-ups remain inactive (`is_active = false`, `role = 'viewer'`) until verified by an organization administrator; `audit_logs` are readable only by `admin` users within the same organization (`031`).
 
 ### 3.2 Administrator Retention Execution & Health Checks

@@ -53,6 +53,19 @@ vi.mock('@/lib/supabase/client', () => ({
   }),
 }));
 
+vi.mock('@/components/ActivityMediaCapture', () => ({
+  default: ({ onGpsChange }: { onGpsChange: (fix: Record<string, unknown>) => void }) => (
+    <>
+      <button type="button" onClick={() => onGpsChange({ lat: 14.5995, lng: 120.9842, accuracyM: 5, source: 'gps' })}>
+        Test attach GPS
+      </button>
+      <button type="button" onClick={() => onGpsChange({ lat: null, lng: null, accuracyM: null, source: null })}>
+        Test clear GPS
+      </button>
+    </>
+  ),
+}));
+
 const OPERATORS: LoggerOperator[] = [
   { id: 'op-1', full_name: 'Alice Santos', position: 'Senior Operator' },
   { id: 'op-2', full_name: 'Bob Reyes', position: 'Operator' },
@@ -175,6 +188,7 @@ describe('ActivityLoggerModal', () => {
     expect(screen.queryByRole('checkbox', { name: /Log as sample/i })).not.toBeInTheDocument();
 
     await user.type(screen.getByLabelText(/Field Notes \/ Observations/i), 'Routine pump check');
+    await user.click(screen.getByRole('button', { name: 'Test attach GPS' }));
     await user.click(screen.getByRole('button', { name: 'Submit Activity Log' }));
 
     await waitFor(() => {
@@ -226,6 +240,7 @@ describe('ActivityLoggerModal', () => {
     expect(sampleCheckbox).toBeChecked();
     expect(sampleCheckbox).toBeDisabled();
 
+    await user.click(screen.getByRole('button', { name: 'Test attach GPS' }));
     await user.click(screen.getByRole('button', { name: /Log Activity & Complete PM/i }));
 
     await waitFor(() => {
@@ -274,6 +289,7 @@ describe('ActivityLoggerModal', () => {
       />,
     );
 
+    await user.click(screen.getByRole('button', { name: 'Test attach GPS' }));
     await user.click(screen.getByRole('button', { name: 'Submit Activity Log' }));
 
     await waitFor(() => {
@@ -382,6 +398,7 @@ describe('ActivityLoggerModal', () => {
       />,
     );
 
+    await user.click(screen.getByRole('button', { name: 'Test attach GPS' }));
     await user.click(screen.getByRole('button', { name: /Log Activity & Complete PM/i }));
 
     await waitFor(() => {
@@ -419,6 +436,7 @@ describe('ActivityLoggerModal', () => {
       activityInsertSingleMock.mockResolvedValue({ data: null, error: { message } });
 
       render(<ActivityLoggerModal {...loggerProps} onClose={vi.fn()} onSaved={vi.fn()} onQueuedOffline={onQueuedOffline} />);
+      await user.click(screen.getByRole('button', { name: 'Test attach GPS' }));
       await user.click(screen.getByRole('button', { name: 'Submit Activity Log' }));
 
       await waitFor(() => expect(onQueuedOffline).toHaveBeenCalledTimes(1));
@@ -435,6 +453,7 @@ describe('ActivityLoggerModal', () => {
       .mockResolvedValueOnce({ data: makeSavedRow(), error: null });
 
     render(<ActivityLoggerModal {...loggerProps} onClose={vi.fn()} onSaved={onSaved} />);
+    await user.click(screen.getByRole('button', { name: 'Test attach GPS' }));
     await user.click(screen.getByRole('button', { name: 'Submit Activity Log' }));
     await screen.findByText(/Service unavailable/);
     await user.click(screen.getByRole('button', { name: 'Submit Activity Log' }));
@@ -450,6 +469,7 @@ describe('ActivityLoggerModal', () => {
 
     render(<ActivityLoggerModal {...loggerProps} onClose={vi.fn()} onSaved={onSaved} />);
     await user.selectOptions(screen.getByLabelText(/Activity Type/i), 'chlorine_refill');
+    await user.click(screen.getByRole('button', { name: 'Test attach GPS' }));
     await user.click(screen.getByRole('button', { name: 'Submit Activity Log' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/before refilling/);
     expect(activityInsertSingleMock).not.toHaveBeenCalled();
@@ -465,6 +485,22 @@ describe('ActivityLoggerModal', () => {
       activity_type: 'chlorine_refill',
       details: { drumLevelBefore: 15, amountAdded: 4.25, amountUnit: 'L', pumpStrokePct: 55, newPumpStrokePct: null },
     });
+  });
+
+  it('requires GPS before a new log can be saved or queued offline', async () => {
+    const user = userEvent.setup();
+    const onQueuedOffline = vi.fn();
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+
+    render(<ActivityLoggerModal {...loggerProps} onClose={vi.fn()} onSaved={vi.fn()} onQueuedOffline={onQueuedOffline} />);
+    await user.click(screen.getByRole('button', { name: 'Submit Activity Log' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/GPS location is required/);
+    expect(onQueuedOffline).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Test attach GPS' }));
+    await user.click(screen.getByRole('button', { name: 'Submit Activity Log' }));
+    await waitFor(() => expect(onQueuedOffline).toHaveBeenCalledTimes(1));
+    expect(onQueuedOffline.mock.calls[0][0]).toMatchObject({ gps_lat: 14.5995, gps_lng: 120.9842 });
   });
 
   it('passes editingId and expectedUpdatedAt when queuing an edited activity offline', async () => {

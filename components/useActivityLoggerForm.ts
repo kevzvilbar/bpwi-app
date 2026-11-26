@@ -13,7 +13,7 @@ import {
 } from '@/lib/activity-types';
 import { getErrorMessage, isNetworkErrorMessage } from '@/lib/error-utils';
 import { resolveActivityPhotoUrl } from '@/lib/activity-media';
-import { extractGpsMetadata, type GpsSource } from '@/lib/gps-accuracy';
+import { extractGpsMetadata, validateRequiredGps, type GpsSource } from '@/lib/gps-accuracy';
 import { buildPmActualPerformerIds, getDefaultPmPerformers, isMissingCompletedByColumnError } from '@/lib/pm-credit';
 import { DAILY_ACTIVITY_LIST_COLUMNS } from '@/lib/query-columns';
 import {
@@ -472,6 +472,11 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
         setErrMsg(problem);
         return;
       }
+    }
+    const gpsProblem = validateRequiredGps(gpsLat, gpsLng, p.editingActivity);
+    if (gpsProblem) {
+      setErrMsg(gpsProblem);
+      return;
     }
 
     setSubmitting(true);

@@ -1,3 +1,4 @@
+import { GPS_REQUIRED_MESSAGE, validateRequiredGps } from '../gps-accuracy.ts';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -84,5 +85,19 @@ describe('high-accuracy GPS filtering & weighted averaging', () => {
 
     assert.equal(GPS_INTERNAL_DETAIL_KEYS.has('gpsSource'), true);
     assert.equal(GPS_INTERNAL_DETAIL_KEYS.has('gpsAccuracyM'), true);
+  });
+});
+
+describe('validateRequiredGps', () => {
+  it('requires valid coordinates on a new log', () => {
+    assert.equal(validateRequiredGps(14.5995, 120.9842), null);
+    assert.equal(validateRequiredGps(null, null), GPS_REQUIRED_MESSAGE);
+    assert.equal(validateRequiredGps(14.5995, null), GPS_REQUIRED_MESSAGE);
+    assert.equal(validateRequiredGps(999, 120.9842), GPS_REQUIRED_MESSAGE);
+  });
+
+  it('allows editing an older log saved without GPS, but not removing an existing one', () => {
+    assert.equal(validateRequiredGps(null, null, { gps_lat: null, gps_lng: null }), null);
+    assert.equal(validateRequiredGps(null, null, { gps_lat: 14.5, gps_lng: 121 }), GPS_REQUIRED_MESSAGE);
   });
 });

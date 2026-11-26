@@ -119,6 +119,23 @@ export function computeWeightedGpsFix(
   };
 }
 
+export const GPS_REQUIRED_MESSAGE =
+  'GPS location is required. Tap "Attach GPS" and wait for it to lock, or use "Pin on Map" if the signal is too weak.';
+
+/**
+ * Every activity log needs a position (GPS fix or manual map pin). The one exception is editing a
+ * log that was saved without one, so the editor is not forced to record wherever they are now.
+ */
+export function validateRequiredGps(
+  lat: number | null,
+  lng: number | null,
+  editing?: { gps_lat: number | null; gps_lng: number | null } | null,
+): string | null {
+  if (lat !== null && lng !== null && isValidCoordinate(lat, lng)) return null;
+  if (editing && (editing.gps_lat == null || editing.gps_lng == null)) return null;
+  return GPS_REQUIRED_MESSAGE;
+}
+
 export function extractGpsMetadata(details: Record<string, unknown> | null | undefined): GpsMetadata {
   if (!details || typeof details !== 'object') {
     return { gpsAccuracyM: null, gpsSource: null };
