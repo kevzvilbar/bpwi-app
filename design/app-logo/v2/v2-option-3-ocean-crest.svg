@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="linear-gradient-1" x1="170" y1="64" x2="348" y2="256" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7dd3fc"/>
+      <stop offset="0.5" stop-color="#0ea5e9"/>
+      <stop offset="1" stop-color="#0369a1"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-2" x1="110" y1="276" x2="396" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#14b8a6"/>
+      <stop offset="0.55" stop-color="#0284c7"/>
+      <stop offset="1" stop-color="#0c4a6e"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-3" x1="132" y1="396" x2="380" y2="456" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0369a1"/>
+      <stop offset="0.55" stop-color="#0f2e6e"/>
+      <stop offset="1" stop-color="#081b44"/>
+    </linearGradient>
+  </defs>
+  <title>Artboard 1</title>
+  <g id="Layer_1" data-name="Layer 1">
+    <path id="Upper_Ocean_Crest" data-name="Upper Ocean Crest" d="M256 36 C210 98 146 176 118 250 C166 210 224 202 266 232 C306 260 344 274 392 246 C362 172 302 98 256 36 Z" fill="url(#linear-gradient-1)"/>
+    <path id="Upper_Crest_Glass_Sheen" data-name="Upper Crest Glass Sheen" d="M256 54 C224 102 184 152 158 202 C188 186 224 184 256 202 C254 148 256 98 256 54 Z" fill="#e0f2fe" opacity="0.32"/>
+    <path id="Middle_Hydraulic_Swell" data-name="Middle Hydraulic Swell" d="M110 278 C102 308 100 338 108 368 C160 332 226 332 276 362 C324 390 372 386 404 358 C412 330 412 302 402 274 C350 302 306 288 260 258 C214 228 158 238 110 278 Z" fill="url(#linear-gradient-2)"/>
+    <path id="Lower_Deep_Base" data-name="Lower Deep Base" d="M118 394 C144 446 196 476 256 476 C318 476 372 444 396 388 C360 412 314 414 268 388 C222 362 166 360 118 394 Z" fill="url(#linear-gradient-3)"/>
+  </g>
+</svg>

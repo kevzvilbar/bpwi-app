@@ -22,10 +22,10 @@ export const metadata = {
   },
   icons: {
     icon: [
-      { url: '/bpwi-logo.svg', type: 'image/svg+xml' },
-      { url: '/bpwi-logo.png', type: 'image/png' },
+      { url: '/app-icon.svg', type: 'image/svg+xml' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
     ],
-    apple: '/icon-192.png',
+    apple: '/apple-touch-icon.png',
   },
 };
 

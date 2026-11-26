@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="linear-gradient-1" x1="32" y1="32" x2="480" y2="480" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="0.5" stop-color="#0b2545"/>
+      <stop offset="1" stop-color="#0c4a6e"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-2" x1="256" y1="154" x2="256" y2="348" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e0f2fe"/>
+    </linearGradient>
+  </defs>
+  <title>Artboard 1</title>
+  <g id="Layer_1" data-name="Layer 1">
+    <path id="Tile_Base" data-name="Tile Base" d="M112 0 L400 0 C461.856 0 512 50.144 512 112 L512 400 C512 461.856 461.856 512 400 512 L112 512 C50.144 512 0 461.856 0 400 L0 112 C0 50.144 50.144 0 112 0 Z" fill="url(#linear-gradient-1)"/>
+    <path id="Inner_Border_Highlight" data-name="Inner Border Highlight" d="M114 12 L398 12 C454.333 12 500 57.667 500 114 L500 398 C500 454.333 454.333 500 398 500 L114 500 C57.667 500 12 454.333 12 398 L12 114 C12 57.667 57.667 12 114 12 Z" fill="none" stroke="#7dd3fc" stroke-width="3" stroke-miterlimit="10" opacity="0.22"/>
+    <circle id="Track_Ring_Subtle" data-name="Track Ring Subtle" cx="256" cy="256" r="152" fill="none" stroke="#94a3b8" stroke-width="28" stroke-miterlimit="10" opacity="0.14"/>
+    <path id="Shift_Arc_Morning_Cyan" data-name="Shift Arc Morning Cyan" d="M290.19 107.9 C331.264 117.382 366.556 143.495 387.634 180.001 C408.712 216.507 413.683 260.127 401.36 300.44" fill="none" stroke="#38bdf8" stroke-width="28" stroke-linecap="round" stroke-miterlimit="10"/>
+    <path id="Shift_Arc_Swing_Teal" data-name="Shift Arc Swing Teal" d="M367.17 359.66 C338.42 390.493 298.157 408.001 256 408.001 C213.843 408.001 173.58 390.493 144.83 359.66" fill="none" stroke="#2dd4bf" stroke-width="28" stroke-linecap="round" stroke-miterlimit="10"/>
+    <path id="Shift_Arc_Night_Cobalt" data-name="Shift Arc Night Cobalt" d="M110.64 300.44 C98.317 260.127 103.288 216.507 124.366 180.001 C145.444 143.495 180.736 117.382 221.81 107.9" fill="none" stroke="#0284c7" stroke-width="28" stroke-linecap="round" stroke-miterlimit="10"/>
+    <path id="Droplet_Shadow" data-name="Droplet Shadow" d="M256 160 C256 160 326 238 326 284 C326 324 295 354 256 354 C217 354 186 324 186 284 C186 238 256 160 256 160 Z" fill="#020617" opacity="0.35"/>
+    <path id="Droplet_Core" data-name="Droplet Core" d="M256 154 C256 154 326 232 326 278 C326 318 295 348 256 348 C217 348 186 318 186 278 C186 232 256 154 256 154 Z" fill="url(#linear-gradient-2)"/>
+    <circle id="Pulse_Core_Outer" data-name="Pulse Core Outer" cx="256" cy="282" r="27" fill="#0369a1"/>
+    <circle id="Pulse_Core_Inner" data-name="Pulse Core Inner" cx="256" cy="282" r="13" fill="#2dd4bf"/>
+  </g>
+</svg>

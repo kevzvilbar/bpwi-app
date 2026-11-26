@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="linear-gradient-1" x1="32" y1="32" x2="480" y2="480" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0b2545"/>
+      <stop offset="0.55" stop-color="#0369a1"/>
+      <stop offset="1" stop-color="#0284c7"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-2" x1="256" y1="76" x2="256" y2="440" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.65" stop-color="#f0f9ff"/>
+      <stop offset="1" stop-color="#bae6fd"/>
+    </linearGradient>
+  </defs>
+  <title>Artboard 1</title>
+  <g id="Layer_1" data-name="Layer 1">
+    <path id="Tile_Base" data-name="Tile Base" d="M112 0 L400 0 C461.856 0 512 50.144 512 112 L512 400 C512 461.856 461.856 512 400 512 L112 512 C50.144 512 0 461.856 0 400 L0 112 C0 50.144 50.144 0 112 0 Z" fill="url(#linear-gradient-1)"/>
+    <path id="Inner_Border_Highlight" data-name="Inner Border Highlight" d="M114 12 L398 12 C454.333 12 500 57.667 500 114 L500 398 C500 454.333 454.333 500 398 500 L114 500 C57.667 500 12 454.333 12 398 L12 114 C12 57.667 57.667 12 114 12 Z" fill="none" stroke="#bae6fd" stroke-width="3" stroke-miterlimit="10" opacity="0.24"/>
+    <path id="Droplet_Shadow" data-name="Droplet Shadow" d="M256 84 C256 84 392 230 392 320 C392 396 331 448 256 448 C181 448 120 396 120 320 C120 230 256 84 256 84 Z" fill="#061428" opacity="0.3"/>
+    <path id="Droplet_Body" data-name="Droplet Body" d="M256 76 C256 76 392 222 392 312 C392 388 331 440 256 440 C181 440 120 388 120 312 C120 222 256 76 256 76 Z" fill="url(#linear-gradient-2)"/>
+    <path id="Droplet_Glint" data-name="Droplet Glint" d="M244 128 C216 174 164 238 158 292 C156 306 168 308 174 294 C184 250 218 190 250 140 C254 132 249 122 244 128 Z" fill="#38bdf8" opacity="0.32"/>
+    <path id="Shift_Tile_1" data-name="Shift Tile 1" d="M203 250 L239 250 C245.075 250 250 254.925 250 261 L250 281 C250 287.075 245.075 292 239 292 L203 292 C196.925 292 192 287.075 192 281 L192 261 C192 254.925 196.925 250 203 250 Z" fill="#0369a1"/>
+    <path id="Shift_Tile_2" data-name="Shift Tile 2" d="M273 250 L309 250 C315.075 250 320 254.925 320 261 L320 281 C320 287.075 315.075 292 309 292 L273 292 C266.925 292 262 287.075 262 281 L262 261 C262 254.925 266.925 250 273 250 Z" fill="#0284c7"/>
+    <path id="Shift_Tile_3" data-name="Shift Tile 3" d="M203 304 L239 304 C245.075 304 250 308.925 250 315 L250 335 C250 341.075 245.075 346 239 346 L203 346 C196.925 346 192 341.075 192 335 L192 315 C192 308.925 196.925 304 203 304 Z" fill="#0f766e"/>
+    <path id="Shift_Tile_4" data-name="Shift Tile 4" d="M273 304 L309 304 C315.075 304 320 308.925 320 315 L320 335 C320 341.075 315.075 346 309 346 L273 346 C266.925 346 262 341.075 262 335 L262 315 C262 308.925 266.925 304 273 304 Z" fill="#2dd4bf"/>
+  </g>
+</svg>

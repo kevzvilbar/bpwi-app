@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="linear-gradient-1" x1="126" y1="156" x2="360" y2="456" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#091e4a"/>
+      <stop offset="0.55" stop-color="#0369a1"/>
+      <stop offset="1" stop-color="#0ea5e9"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-2" x1="256" y1="36" x2="368" y2="396" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7dd3fc"/>
+      <stop offset="0.5" stop-color="#0284c7"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-3" x1="252" y1="96" x2="258" y2="196" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e0f2fe"/>
+      <stop offset="0.6" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#0284c7"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-4" x1="260" y1="268" x2="288" y2="352" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5eead4"/>
+      <stop offset="0.55" stop-color="#06b6d4"/>
+      <stop offset="1" stop-color="#0369a1"/>
+    </linearGradient>
+  </defs>
+  <title>Artboard 1</title>
+  <g id="Layer_1" data-name="Layer 1">
+    <path id="Sapphire_Outer_Helix" data-name="Sapphire Outer Helix" d="M188 144 C132 212 104 282 108 344 C114 424 182 476 266 476 C316 476 360 450 380 412 C328 446 252 440 206 398 C164 360 158 294 178 232 C188 198 194 170 188 144 Z" fill="url(#linear-gradient-1)"/>
+    <path id="Apex_Cyan_Stream" data-name="Apex Cyan Stream" d="M212 124 C226 92 240 62 256 36 C316 106 404 202 404 304 C404 344 388 380 360 404 C368 358 358 300 320 264 C282 228 226 248 212 296 C202 330 214 364 242 374 C204 370 184 332 192 284 C202 226 260 192 316 208 C334 176 304 114 256 76 C240 94 226 108 212 124 Z" fill="url(#linear-gradient-2)"/>
+    <path id="Upper_Crest_Drop" data-name="Upper Crest Drop" d="M252 96 C272 126 290 152 284 176 C278 194 256 200 238 190 C224 182 220 158 230 134 C236 116 246 104 252 96 Z" fill="url(#linear-gradient-3)"/>
+    <path id="Vortex_Core_Drop" data-name="Vortex Core Drop" d="M278 268 C300 282 312 308 302 332 C292 356 264 362 244 348 C230 338 228 316 240 296 C250 278 266 268 278 268 Z" fill="url(#linear-gradient-4)"/>
+    <path id="Specular_Crest_Sheen" data-name="Specular Crest Sheen" d="M256 48 C302 104 360 176 376 240 C366 186 306 114 256 60 Z" fill="#ffffff" opacity="0.36"/>
+  </g>
+</svg>

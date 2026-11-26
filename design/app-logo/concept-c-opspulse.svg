@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="linear-gradient-1" x1="32" y1="32" x2="480" y2="480" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0f766e"/>
+      <stop offset="0.55" stop-color="#0369a1"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-2" x1="256" y1="112" x2="256" y2="406" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f0f9ff"/>
+    </linearGradient>
+  </defs>
+  <title>Artboard 1</title>
+  <g id="Layer_1" data-name="Layer 1">
+    <path id="Tile_Base" data-name="Tile Base" d="M112 0 L400 0 C461.856 0 512 50.144 512 112 L512 400 C512 461.856 461.856 512 400 512 L112 512 C50.144 512 0 461.856 0 400 L0 112 C0 50.144 50.144 0 112 0 Z" fill="url(#linear-gradient-1)"/>
+    <path id="Inner_Border_Highlight" data-name="Inner Border Highlight" d="M114 12 L398 12 C454.333 12 500 57.667 500 114 L500 398 C500 454.333 454.333 500 398 500 L114 500 C57.667 500 12 454.333 12 398 L12 114 C12 57.667 57.667 12 114 12 Z" fill="none" stroke="#99f6e4" stroke-width="3" stroke-miterlimit="10" opacity="0.22"/>
+    <path id="Frame_Shadow" data-name="Frame Shadow" d="M142 120 L370 120 C394.301 120 414 139.699 414 164 L414 372 C414 396.301 394.301 416 370 416 L142 416 C117.699 416 98 396.301 98 372 L98 164 C98 139.699 117.699 120 142 120 Z" fill="#042f2e" opacity="0.35"/>
+    <path id="Binder_Tab_Left" data-name="Binder Tab Left" d="M177 84 L177 84 C184.18 84 190 89.82 190 97 L190 125 C190 132.18 184.18 138 177 138 L177 138 C169.82 138 164 132.18 164 125 L164 97 C164 89.82 169.82 84 177 84 Z" fill="#ffffff"/>
+    <path id="Binder_Tab_Right" data-name="Binder Tab Right" d="M335 84 L335 84 C342.18 84 348 89.82 348 97 L348 125 C348 132.18 342.18 138 335 138 L335 138 C327.82 138 322 132.18 322 125 L322 97 C322 89.82 327.82 84 335 84 Z" fill="#ffffff"/>
+    <path id="Schedule_Frame" data-name="Schedule Frame" d="M142 112 L370 112 C394.301 112 414 131.699 414 156 L414 362 C414 386.301 394.301 406 370 406 L142 406 C117.699 406 98 386.301 98 362 L98 156 C98 131.699 117.699 112 142 112 Z" fill="url(#linear-gradient-2)"/>
+    <path id="Header_Bar" data-name="Header Bar" d="M140 136 L372 136 C381.941 136 390 144.059 390 154 L390 166 C390 175.941 381.941 184 372 184 L140 184 C130.059 184 122 175.941 122 166 L122 154 C122 144.059 130.059 136 140 136 Z" fill="#0f172a"/>
+    <path id="Header_Pill_1" data-name="Header Pill 1" d="M151 153 L199 153 C202.866 153 206 156.134 206 160 L206 160 C206 163.866 202.866 167 199 167 L151 167 C147.134 167 144 163.866 144 160 L144 160 C144 156.134 147.134 153 151 153 Z" fill="#38bdf8"/>
+    <path id="Header_Pill_2" data-name="Header Pill 2" d="M223 153 L247 153 C250.866 153 254 156.134 254 160 L254 160 C254 163.866 250.866 167 247 167 L223 167 C219.134 167 216 163.866 216 160 L216 160 C216 156.134 219.134 153 223 153 Z" fill="#2dd4bf"/>
+    <circle id="Live_Status_Dot" data-name="Live Status Dot" cx="361" cy="160" r="11" fill="#34d399"/>
+    <path id="Telemetry_Well" data-name="Telemetry Well" d="M146 202 L366 202 C379.255 202 390 212.745 390 226 L390 356 C390 369.255 379.255 380 366 380 L146 380 C132.745 380 122 369.255 122 356 L122 226 C122 212.745 132.745 202 146 202 Z" fill="#e0f2fe"/>
+    <path id="Water_Wave_Backing" data-name="Water Wave Backing" d="M122 322 C174 294 226 346 278 320 C324 298 360 334 390 314 L390 356 C390 369.25 379.25 380 366 380 L146 380 C132.75 380 122 369.25 122 356 Z" fill="#0284c7" opacity="0.2"/>
+    <polyline id="Ops_Pulse_Line" data-name="Ops Pulse Line" points="144,300 188,300 214,248 246,342 280,236 310,300 368,300" fill="none" stroke="#0369a1" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
