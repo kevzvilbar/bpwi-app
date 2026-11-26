@@ -2323,5 +2323,199 @@ describe('PGlite SQL migrations (all) execution & security invariants', () => {
 
     // Re-running 039 migration is idempotent
     await db.exec(sql39);
+
+    // 23. 040 Field Integrity & Inventory Hardening
+    const sql40 = fs.readFileSync(path.join(MIGRATIONS_DIR, '040_field_integrity_and_inventory_hardening.sql'), 'utf8');
+    await db.exec(sql40);
+
+    // 23a. Operator cannot delete verified or flagged logs, while submitted & admin deletes work
+    let opFuelActId = '';
+    let opFlaggedActId = '';
+    let opSubmittedActId = '';
+    await runAs(assignedUserId, async () => {
+      const rFuel = await db.query<{ id: string }>(
+        `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, site_or_well, details, is_sample)
+         values ($1, $2, 'genset_fuel_refill', '2026-11-26', 'Well 4 BAR', $3::jsonb, false) returning id`,
+        [orgId, assignedUserId, JSON.stringify({ fuelType: 'Diesel', fuelSource: 'Stock Drum / Container', litersAdded: 50 })],
+      );
+      opFuelActId = rFuel.rows[0].id;
+
+      const rFlagged = await db.query<{ id: string }>(
+        `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, site_or_well, details, is_sample)
+         values ($1, $2, 'chlorine_refill', '2026-11-26', 'Well 4 BAR', $3::jsonb, false) returning id`,
+        [orgId, assignedUserId, JSON.stringify({ chemicalType: 'Calcium Hypochlorite 70% (granules)', amountAdded: 2, amountUnit: 'kg' })],
+      );
+      opFlaggedActId = rFlagged.rows[0].id;
+
+      const rDraft = await db.query<{ id: string }>(
+        `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, site_or_well, status, is_sample)
+         values ($1, $2, 'pump_inspection', '2026-11-26', 'Well 4 BAR', 'submitted', false) returning id`,
+        [orgId, assignedUserId],
+      );
+      opSubmittedActId = rDraft.rows[0].id;
+    }, true);
+
+    // Capture movement id before verifying so we also assert zero stock churn on status update
+    const preVerifyMove = await db.query<{ id: string }>(
+      `select id from consumable_movements where activity_id = $1`,
+      [opFuelActId],
+    );
+    assert.equal(preVerifyMove.rowCount, 1);
+    const fuelMoveId = preVerifyMove.rows[0].id;
+
+    // Admin verifies opFuelActId & flags opFlaggedActId
+    await runAs(adminId, async () => {
+      await db.query(
+        `update daily_activities set status = 'verified', verified_by = $2, verified_at = now() where id = $1`,
+        [opFuelActId, adminId],
+      );
+      await db.query(
+        `update daily_activities set status = 'flagged', verified_by = $2, verified_at = now(), review_note = 'Check reading' where id = $1`,
+        [opFlaggedActId, adminId],
+      );
+    }, true);
+
+    const postVerifyMove = await db.query<{ id: string }>(
+      `select id from consumable_movements where activity_id = $1`,
+      [opFuelActId],
+    );
+    assert.equal(postVerifyMove.rows[0]?.id, fuelMoveId, 'Verifying must not delete and recreate stock movements');
+
+    // Operator DELETE on verified or flagged log deletes 0 rows; submitted log still deletes
+    await runAs(assignedUserId, async () => {
+      const delVerified = await db.query(`delete from daily_activities where id = $1`, [opFuelActId]);
+      assert.equal(delVerified.rowCount, 0);
+
+      const delFlagged = await db.query(`delete from daily_activities where id = $1`, [opFlaggedActId]);
+      assert.equal(delFlagged.rowCount, 0);
+
+      const delSubmitted = await db.query(`delete from daily_activities where id = $1`, [opSubmittedActId]);
+      assert.equal(delSubmitted.rowCount, 1);
+    }, true);
+
+    // Verified 50L deduction & flagged row remain intact
+    await setAuthUid(db, null);
+    const intactMove = await db.query<{ cnt: number }>(
+      `select count(*)::int as cnt from consumable_movements where activity_id = $1`,
+      [opFuelActId],
+    );
+    assert.equal(intactMove.rows[0].cnt, 1);
+
+    // Admin can still delete verified/flagged rows (clean up test rows so cumulative balances match)
+    await runAs(adminId, async () => {
+      const adminDel1 = await db.query(`delete from daily_activities where id = $1`, [opFuelActId]);
+      const adminDel2 = await db.query(`delete from daily_activities where id = $1`, [opFlaggedActId]);
+      assert.equal(adminDel1.rowCount, 1);
+      assert.equal(adminDel2.rowCount, 1);
+    }, true);
+
+    // 23b. Server-controlled received_at resists backdating while preserving device created_at
+    await setAuthUid(db, null);
+    let backdatedId = '';
+    await runAs(assignedUserId, async () => {
+      const backRes = await db.query<{ id: string; created_at: string; received_at: string; diff_days: number }>(
+        `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, site_or_well, created_at, received_at, is_sample)
+         values ($1, $2, 'pump_inspection', '2026-08-01', 'Well 4 BAR', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z', false)
+         returning id, created_at::text, received_at::text, extract(epoch from (received_at - created_at)) / 86400.0 as diff_days`,
+        [orgId, assignedUserId],
+      );
+      backdatedId = backRes.rows[0].id;
+      assert.ok(backRes.rows[0].created_at.startsWith('2026-08-01'));
+      assert.ok(backRes.rows[0].diff_days > 30, 'Server received_at must ignore backdated client value');
+
+      const updRes = await db.query<{ same_receipt: boolean }>(
+        `update daily_activities set notes = 'edited', received_at = '2020-01-01T00:00:00Z'
+         where id = $1 returning received_at > '2026-09-01T00:00:00Z'::timestamptz as same_receipt`,
+        [backdatedId],
+      );
+      assert.equal(updRes.rows[0].same_receipt, true);
+    }, true);
+
+    // 23c. seed_default_consumables(uuid) locked down from public/anon/authenticated, triggers still work
+    await setAuthUid(db, null);
+    const seedPriv = await db.query<{ pub: boolean; anon: boolean; auth: boolean; svc: boolean }>(
+      `select
+         has_function_privilege('public', 'seed_default_consumables(uuid)', 'EXECUTE') as pub,
+         has_function_privilege('anon', 'seed_default_consumables(uuid)', 'EXECUTE') as anon,
+         has_function_privilege('authenticated', 'seed_default_consumables(uuid)', 'EXECUTE') as auth,
+         has_function_privilege('service_role', 'seed_default_consumables(uuid)', 'EXECUTE') as svc`,
+    );
+    assert.deepEqual(seedPriv.rows[0], { pub: false, anon: false, auth: false, svc: true });
+
+    await db.exec('begin; set local role anon;');
+    await assert.rejects(() => db.query(`select seed_default_consumables($1)`, [orgId]), /permission denied/i);
+    await db.exec('rollback;');
+
+    await setAuthUid(db, assignedUserId);
+    await db.exec('begin; set local role authenticated;');
+    await assert.rejects(() => db.query(`select seed_default_consumables($1)`, [orgId]), /permission denied/i);
+    await db.exec('rollback;');
+
+    await setAuthUid(db, null);
+    const seededOrgRes = await db.query<{ id: string }>(
+      `insert into organizations (name) values ('Triggered Org Test') returning id`,
+    );
+    const triggeredSeedCount = await db.query<{ cnt: number }>(
+      `select count(*)::int as cnt from consumable_items where organization_id = $1`,
+      [seededOrgRes.rows[0].id],
+    );
+    assert.equal(triggeredSeedCount.rows[0].cnt, 4);
+
+    // 23d. Reject comma quantities, ambiguous chlorine types, and unrecognized fuel types
+    await assert.rejects(
+      () =>
+        runAs(assignedUserId, () =>
+          db.query(
+            `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, site_or_well, details, is_sample)
+             values ($1, $2, 'genset_fuel_refill', '2026-11-26', 'Well 4 BAR', $3::jsonb, false)`,
+            [orgId, assignedUserId, JSON.stringify({ fuelType: 'Diesel', fuelSource: 'Stock Drum / Container', litersAdded: '1,000' })],
+          ),
+        ),
+      /Invalid consumable quantity/i,
+    );
+    await assert.rejects(
+      () =>
+        runAs(assignedUserId, () =>
+          db.query(
+            `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, site_or_well, details, is_sample)
+             values ($1, $2, 'genset_fuel_refill', '2026-11-26', 'Well 4 BAR', $3::jsonb, false)`,
+            [orgId, assignedUserId, JSON.stringify({ fuelType: 'Kerosene', fuelSource: 'Stock Drum / Container', litersAdded: 10 })],
+          ),
+        ),
+      /Unrecognized fuelType/i,
+    );
+    await assert.rejects(
+      () =>
+        runAs(assignedUserId, () =>
+          db.query(
+            `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, site_or_well, details, is_sample)
+             values ($1, $2, 'chlorine_refill', '2026-11-26', 'Well 4 BAR', $3::jsonb, false)`,
+            [orgId, assignedUserId, JSON.stringify({ chemicalType: 'Unclear Chemical', amountAdded: 5, amountUnit: 'kg' })],
+          ),
+        ),
+      /Unrecognized chlorine chemicalType/i,
+    );
+
+    // 23e. DB balance aggregation RPC returns accurate org-scoped balances for authenticated users
+    await setAuthUid(db, null);
+    const rpcPriv = await db.query<{ anon: boolean; auth: boolean }>(
+      `select
+         has_function_privilege('anon', 'get_consumable_site_balances()', 'EXECUTE') as anon,
+         has_function_privilege('authenticated', 'get_consumable_site_balances()', 'EXECUTE') as auth`,
+    );
+    assert.deepEqual(rpcPriv.rows[0], { anon: false, auth: true });
+
+    await runAs(assignedUserId, async () => {
+      const balRows = await db.query<{ site_key: string; item_id: string; balance: string }>(
+        `select site_key, item_id::text, balance::text from get_consumable_site_balances()`,
+      );
+      const byCell = new Map(balRows.rows.map((r) => [`${r.site_key}::${r.item_id}`, Number(r.balance)]));
+      assert.equal(byCell.get(`well 4 bar::${clGranId}`), 44);
+      assert.equal(byCell.get(`well 4 bar::${dieselId}`), -15); // distActId (+40) deleted above, leaving refillActId (-15)
+      assert.equal(byCell.get(`pavia plant::${gasId}`), 25);
+    });
+
+    // Re-running 040 migration is idempotent
+    await db.exec(sql40);
   });
 });

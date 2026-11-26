@@ -1,15 +1,18 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  applyMovementsToBalances,
   buildInventoryCsv,
   classifyStockStatus,
   computeCountAdjustmentDelta,
   computeInventorySummaries,
+  computeInventorySummariesFromBalances,
   formatInventoryQty,
   isMissingInventoryTableError,
   normalizeInventorySiteKey,
   type ConsumableItemRow,
   type ConsumableMovementRow,
+  type DbSiteBalanceRow,
 } from '../inventory.ts';
 
 const ITEMS: ConsumableItemRow[] = [
@@ -161,5 +164,63 @@ describe('consumables inventory helpers', () => {
     assert.equal(isMissingInventoryTableError({ message: 'relation "consumable_items" does not exist' }), true);
     assert.equal(isMissingInventoryTableError({ message: 'permission denied' }), false);
     assert.equal(isMissingInventoryTableError(null), false);
+  });
+
+  it('aggregates balances directly from DB summary rows and incrementally applies newly saved movements', () => {
+    const dbBalances: DbSiteBalanceRow[] = [
+      {
+        site_key: 'well 4 bar',
+        site_name: 'Well 4 BAR',
+        item_id: 'item-cl-gran',
+        balance: 20,
+        movement_count: 2,
+        last_movement_date: '2026-11-24',
+      },
+      {
+        site_key: 'pavia plant',
+        site_name: 'Pavia Plant',
+        item_id: 'item-gas',
+        balance: 0,
+        movement_count: 2,
+        last_movement_date: '2026-11-25',
+      },
+    ];
+
+    const summary = computeInventorySummariesFromBalances({
+      items: ITEMS,
+      balances: dbBalances,
+      savedSiteNames: ['Well 4 BAR', 'Empty Well 9'],
+    });
+    assert.equal(summary.stats.totalSites, 3);
+    assert.equal(summary.stats.sitesWithStock, 2);
+    assert.equal(summary.stats.lowCount, 1);
+    assert.equal(summary.stats.outCount, 1);
+
+    const updatedBalances = applyMovementsToBalances(dbBalances, [
+      {
+        id: 'm-new-1',
+        organization_id: 'org-1',
+        item_id: 'item-gas',
+        site_name: 'Pavia Plant',
+        movement_type: 'delivery',
+        quantity_delta: 35,
+        movement_date: '2026-11-27',
+        activity_id: null,
+        reference_no: 'DR-500',
+        notes: null,
+        created_by: 'u-1',
+        created_at: '2026-11-27T08:00:00Z',
+      },
+    ]);
+    const postSummary = computeInventorySummariesFromBalances({
+      items: ITEMS,
+      balances: updatedBalances,
+      savedSiteNames: ['Well 4 BAR', 'Empty Well 9'],
+    });
+    const pavia = postSummary.sites.find((s) => s.siteName === 'Pavia Plant');
+    assert.equal(pavia?.balances[0].balance, 35);
+    assert.equal(pavia?.balances[0].status, 'ok');
+    assert.equal(pavia?.balances[0].movementCount, 3);
+    assert.equal(pavia?.balances[0].lastMovementDate, '2026-11-27');
   });
 });

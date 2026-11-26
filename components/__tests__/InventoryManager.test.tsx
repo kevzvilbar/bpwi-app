@@ -9,10 +9,14 @@ type QueryResult<T = unknown> = Promise<{ data: T; error: { message: string } | 
 const movementInsertPayloads: Array<Array<Record<string, unknown>>> = [];
 const itemInsertPayloads: Array<Record<string, unknown>> = [];
 
-const movementSelectMock = vi.fn<() => QueryResult<Record<string, unknown>[]>>();
+const rangeMock = vi.fn<() => QueryResult<Record<string, unknown>[]> & { count?: number }>();
+const movementSelectMock = vi.fn(() => ({
+  order: () => ({ order: () => ({ range: rangeMock }) }),
+}));
+const movementInsertSelectMock = vi.fn<() => QueryResult<Record<string, unknown>[]>>();
 const movementInsertMock = vi.fn((payload: Array<Record<string, unknown>>) => {
   movementInsertPayloads.push(payload);
-  return { select: movementSelectMock };
+  return { select: movementInsertSelectMock };
 });
 
 const itemSingleMock = vi.fn<() => QueryResult<Record<string, unknown>>>();
@@ -25,7 +29,7 @@ vi.mock('@/lib/supabase/client', () => ({
   supabaseBrowser: () => ({
     from: (table: string) => {
       if (table === 'consumable_movements') {
-        return { insert: movementInsertMock };
+        return { select: movementSelectMock, insert: movementInsertMock };
       }
       if (table === 'consumable_items') {
         return {
@@ -100,7 +104,7 @@ describe('InventoryManager', () => {
     movementInsertPayloads.length = 0;
     itemInsertPayloads.length = 0;
 
-    movementSelectMock.mockImplementation(async () => {
+    movementInsertSelectMock.mockImplementation(async () => {
       const latest = movementInsertPayloads[movementInsertPayloads.length - 1] ?? [];
       return {
         data: latest.map((row, idx) => ({
@@ -112,6 +116,8 @@ describe('InventoryManager', () => {
         error: null,
       };
     });
+
+    rangeMock.mockResolvedValue({ data: [], error: null });
 
     itemSingleMock.mockImplementation(async () => {
       const latest = itemInsertPayloads[itemInsertPayloads.length - 1] ?? {};
@@ -216,5 +222,64 @@ describe('InventoryManager', () => {
       }),
     );
     expect(screen.getByRole('tab', { name: /Catalog \(3\)/i })).toBeInTheDocument();
+  });
+
+  it('uses DB-aggregated balances when supplied and paginates the movement ledger', async () => {
+    const user = userEvent.setup();
+    rangeMock.mockResolvedValueOnce({
+      data: [
+        {
+          id: 'mv-3',
+          organization_id: 'org-1',
+          item_id: 'item-gas',
+          site_name: 'Well 4 BAR',
+          movement_type: 'manual_usage',
+          quantity_delta: -5,
+          movement_date: '2026-11-19',
+          activity_id: null,
+          reference_no: null,
+          notes: 'Older generator run',
+          created_by: 'u-mgr',
+          created_at: '2026-11-19T00:00:00Z',
+        },
+      ],
+      error: null,
+      count: 3,
+    } as never);
+
+    render(
+      <InventoryManager
+        orgId="org-1"
+        userId="u-op"
+        today="2026-11-26"
+        canManage={false}
+        inventoryTableReady={true}
+        initialItems={ITEMS}
+        initialBalances={[
+          {
+            site_key: 'well 4 bar',
+            site_name: 'Well 4 BAR',
+            item_id: 'item-cl',
+            balance: 77,
+            movement_count: 5,
+            last_movement_date: '2026-11-26',
+          },
+        ]}
+        initialMovements={MOVEMENTS}
+        initialTotalMovements={3}
+        ledgerPageSize={2}
+        savedSiteNames={['Well 4 BAR']}
+        userNameById={{ 'u-mgr': 'Kevin Vilbar' }}
+      />,
+    );
+
+    expect(screen.getByText('77 kg')).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: /Movement Ledger \(3\)/i }));
+    expect(screen.getByText('Showing 2 of 3 movements')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Load more movements' }));
+    await waitFor(() => {
+      expect(screen.getAllByText('Older generator run').length).toBeGreaterThan(0);
+    });
   });
 });

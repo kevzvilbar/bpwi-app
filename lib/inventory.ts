@@ -47,6 +47,17 @@ export interface ConsumableMovementRow {
   created_at: string;
 }
 
+export const INVENTORY_LEDGER_PAGE_SIZE = 50;
+
+export interface DbSiteBalanceRow {
+  site_key: string;
+  site_name: string;
+  item_id: string;
+  balance: number;
+  movement_count: number;
+  last_movement_date: string | null;
+}
+
 export type StockStatus = 'ok' | 'low' | 'out';
 
 export interface SiteItemBalance {
@@ -128,54 +139,21 @@ export function classifyStockStatus(balance: number, threshold: number): StockSt
   return 'ok';
 }
 
-export function computeInventorySummaries(params: {
+type SiteCellAggregate = { balance: number; count: number; lastDate: string | null };
+
+function assembleInventorySummaries(params: {
   items: ConsumableItemRow[];
-  movements: ConsumableMovementRow[];
-  savedSiteNames: string[];
+  siteNameByKey: Map<string, string>;
+  cellAgg: Map<string, SiteCellAggregate>;
+  siteHasMovements: Set<string>;
+  siteTrackedItemIds: Map<string, Set<string>>;
 }): {
   sites: SiteInventorySummary[];
   itemSummaries: ItemOrgSummary[];
   stats: InventoryStats;
 } {
-  const { items, movements, savedSiteNames } = params;
+  const { items, siteNameByKey, cellAgg, siteHasMovements, siteTrackedItemIds } = params;
   const activeItems = items.filter((it) => it.is_active);
-  const itemById = new Map(items.map((it) => [it.id, it]));
-
-  // Canonical site directory preserving saved casing first, then any extra logged site names
-  const siteNameByKey = new Map<string, string>();
-  for (const raw of savedSiteNames) {
-    const cleaned = raw.trim().replace(/\s+/g, ' ');
-    if (!cleaned) continue;
-    const key = normalizeInventorySiteKey(cleaned);
-    if (!siteNameByKey.has(key)) siteNameByKey.set(key, cleaned);
-  }
-  for (const m of movements) {
-    const cleaned = m.site_name.trim().replace(/\s+/g, ' ');
-    if (!cleaned) continue;
-    const key = normalizeInventorySiteKey(cleaned);
-    if (!siteNameByKey.has(key)) siteNameByKey.set(key, cleaned);
-  }
-
-  // Aggregate per (siteKey, itemId)
-  const cellAgg = new Map<string, { balance: number; count: number; lastDate: string | null }>();
-  const siteHasMovements = new Set<string>();
-  const siteTrackedItemIds = new Map<string, Set<string>>();
-
-  for (const m of movements) {
-    const sKey = normalizeInventorySiteKey(m.site_name);
-    if (!sKey || !itemById.has(m.item_id)) continue;
-    siteHasMovements.add(sKey);
-    if (!siteTrackedItemIds.has(sKey)) siteTrackedItemIds.set(sKey, new Set());
-    siteTrackedItemIds.get(sKey)!.add(m.item_id);
-
-    const aggKey = `${sKey}::${m.item_id}`;
-    const cur = cellAgg.get(aggKey) ?? { balance: 0, count: 0, lastDate: null };
-    cur.balance = roundQty3(cur.balance + Number(m.quantity_delta));
-    cur.count += 1;
-    if (!cur.lastDate || m.movement_date > cur.lastDate) cur.lastDate = m.movement_date;
-    cellAgg.set(aggKey, cur);
-  }
-
   const sites: SiteInventorySummary[] = [];
   let lowCount = 0;
   let outCount = 0;
@@ -241,6 +219,144 @@ export function computeInventorySummaries(params: {
       outCount,
     },
   };
+}
+
+function registerSavedSiteNames(savedSiteNames: string[]): Map<string, string> {
+  const siteNameByKey = new Map<string, string>();
+  for (const raw of savedSiteNames) {
+    const cleaned = raw.trim().replace(/\s+/g, ' ');
+    if (!cleaned) continue;
+    const key = normalizeInventorySiteKey(cleaned);
+    if (!siteNameByKey.has(key)) siteNameByKey.set(key, cleaned);
+  }
+  return siteNameByKey;
+}
+
+export function computeInventorySummariesFromBalances(params: {
+  items: ConsumableItemRow[];
+  balances: DbSiteBalanceRow[];
+  savedSiteNames: string[];
+}): {
+  sites: SiteInventorySummary[];
+  itemSummaries: ItemOrgSummary[];
+  stats: InventoryStats;
+} {
+  const { items, balances, savedSiteNames } = params;
+  const itemById = new Map(items.map((it) => [it.id, it]));
+  const siteNameByKey = registerSavedSiteNames(savedSiteNames);
+  const cellAgg = new Map<string, SiteCellAggregate>();
+  const siteHasMovements = new Set<string>();
+  const siteTrackedItemIds = new Map<string, Set<string>>();
+
+  for (const row of balances) {
+    const cleaned = row.site_name.trim().replace(/\s+/g, ' ');
+    const sKey = normalizeInventorySiteKey(row.site_key || cleaned);
+    if (!sKey || !itemById.has(row.item_id)) continue;
+    if (cleaned && !siteNameByKey.has(sKey)) siteNameByKey.set(sKey, cleaned);
+    siteHasMovements.add(sKey);
+    if (!siteTrackedItemIds.has(sKey)) siteTrackedItemIds.set(sKey, new Set());
+    siteTrackedItemIds.get(sKey)!.add(row.item_id);
+
+    cellAgg.set(`${sKey}::${row.item_id}`, {
+      balance: roundQty3(Number(row.balance)),
+      count: Number(row.movement_count ?? 0),
+      lastDate: row.last_movement_date ?? null,
+    });
+  }
+
+  return assembleInventorySummaries({
+    items,
+    siteNameByKey,
+    cellAgg,
+    siteHasMovements,
+    siteTrackedItemIds,
+  });
+}
+
+export function applyMovementsToBalances(
+  balances: DbSiteBalanceRow[],
+  inserted: ConsumableMovementRow[],
+): DbSiteBalanceRow[] {
+  if (inserted.length === 0) return balances;
+  const next = balances.map((b) => ({ ...b }));
+  const byKey = new Map<string, number>();
+  for (let i = 0; i < next.length; i += 1) {
+    const sKey = normalizeInventorySiteKey(next[i].site_key || next[i].site_name);
+    byKey.set(`${sKey}::${next[i].item_id}`, i);
+  }
+  for (const m of inserted) {
+    const cleaned = m.site_name.trim().replace(/\s+/g, ' ');
+    const sKey = normalizeInventorySiteKey(cleaned);
+    if (!sKey) continue;
+    const cellKey = `${sKey}::${m.item_id}`;
+    const idx = byKey.get(cellKey);
+    if (idx === undefined) {
+      byKey.set(cellKey, next.length);
+      next.push({
+        site_key: sKey,
+        site_name: cleaned,
+        item_id: m.item_id,
+        balance: roundQty3(Number(m.quantity_delta)),
+        movement_count: 1,
+        last_movement_date: m.movement_date,
+      });
+    } else {
+      const existing = next[idx];
+      existing.balance = roundQty3(Number(existing.balance) + Number(m.quantity_delta));
+      existing.movement_count = Number(existing.movement_count ?? 0) + 1;
+      if (!existing.last_movement_date || m.movement_date > existing.last_movement_date) {
+        existing.last_movement_date = m.movement_date;
+      }
+    }
+  }
+  return next;
+}
+
+export function computeInventorySummaries(params: {
+  items: ConsumableItemRow[];
+  movements: ConsumableMovementRow[];
+  savedSiteNames: string[];
+}): {
+  sites: SiteInventorySummary[];
+  itemSummaries: ItemOrgSummary[];
+  stats: InventoryStats;
+} {
+  const { items, movements, savedSiteNames } = params;
+  const itemById = new Map(items.map((it) => [it.id, it]));
+  const siteNameByKey = registerSavedSiteNames(savedSiteNames);
+  for (const m of movements) {
+    const cleaned = m.site_name.trim().replace(/\s+/g, ' ');
+    if (!cleaned) continue;
+    const key = normalizeInventorySiteKey(cleaned);
+    if (!siteNameByKey.has(key)) siteNameByKey.set(key, cleaned);
+  }
+
+  const cellAgg = new Map<string, SiteCellAggregate>();
+  const siteHasMovements = new Set<string>();
+  const siteTrackedItemIds = new Map<string, Set<string>>();
+
+  for (const m of movements) {
+    const sKey = normalizeInventorySiteKey(m.site_name);
+    if (!sKey || !itemById.has(m.item_id)) continue;
+    siteHasMovements.add(sKey);
+    if (!siteTrackedItemIds.has(sKey)) siteTrackedItemIds.set(sKey, new Set());
+    siteTrackedItemIds.get(sKey)!.add(m.item_id);
+
+    const aggKey = `${sKey}::${m.item_id}`;
+    const cur = cellAgg.get(aggKey) ?? { balance: 0, count: 0, lastDate: null };
+    cur.balance = roundQty3(cur.balance + Number(m.quantity_delta));
+    cur.count += 1;
+    if (!cur.lastDate || m.movement_date > cur.lastDate) cur.lastDate = m.movement_date;
+    cellAgg.set(aggKey, cur);
+  }
+
+  return assembleInventorySummaries({
+    items,
+    siteNameByKey,
+    cellAgg,
+    siteHasMovements,
+    siteTrackedItemIds,
+  });
 }
 
 export function buildInventoryCsv(sites: SiteInventorySummary[]): string {

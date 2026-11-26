@@ -828,6 +828,7 @@ export type Database = {
           review_note: string | null;
           is_sample: boolean;
           sample_expires_at: string | null;
+          received_at: string;
           created_at: string;
           updated_at: string;
         };
@@ -862,6 +863,7 @@ export type Database = {
           review_note?: string | null;
           is_sample?: boolean;
           sample_expires_at?: string | null;
+          received_at?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -896,6 +898,7 @@ export type Database = {
           review_note?: string | null;
           is_sample?: boolean;
           sample_expires_at?: string | null;
+          received_at?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -1397,6 +1400,17 @@ export type Database = {
       sample_cleanup_health: {
         Args: Record<PropertyKey, never>;
         Returns: Json;
+      };
+      get_consumable_site_balances: {
+        Args: Record<PropertyKey, never>;
+        Returns: Array<{
+          site_key: string;
+          site_name: string;
+          item_id: string;
+          balance: number;
+          movement_count: number;
+          last_movement_date: string | null;
+        }>;
       };
       purge_expired_sample_records: {
         Args: Record<PropertyKey, never>;

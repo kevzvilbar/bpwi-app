@@ -274,4 +274,24 @@ describe('Supabase SQL migrations integrity', () => {
       assert.ok(sql39.includes(required), `039_consumables_inventory.sql missing required construct: ${required}`);
     }
   });
+
+  it('hardens daily_activities delete/received_at, seed permissions, and inventory accuracy/RPC in 040_field_integrity_and_inventory_hardening.sql', () => {
+    const sql40 = fs.readFileSync(path.join(MIGRATIONS_DIR, '040_field_integrity_and_inventory_hardening.sql'), 'utf8');
+    for (const required of [
+      'daily_activities delete',
+      "status not in ('verified', 'flagged')",
+      'add column if not exists received_at timestamptz',
+      'new.received_at := now()',
+      'revoke all on function seed_default_consumables(uuid) from public, anon, authenticated',
+      'get_consumable_site_balances',
+      'revoke all on function get_consumable_site_balances() from public, anon',
+    ]) {
+      assert.ok(sql40.includes(required), `040_field_integrity_and_inventory_hardening.sql missing required construct: ${required}`);
+    }
+
+    const rootReadme = fs.readFileSync(path.resolve(process.cwd(), 'README.md'), 'utf8');
+    const migrationsReadme = fs.readFileSync(path.join(MIGRATIONS_DIR, 'README.md'), 'utf8');
+    assert.match(rootReadme, /040_field_integrity_and_inventory_hardening\.sql/);
+    assert.match(migrationsReadme, /\b040\b/);
+  });
 });

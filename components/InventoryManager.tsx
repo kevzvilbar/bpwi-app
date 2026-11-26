@@ -17,13 +17,17 @@ import {
   type MovementActionKind,
 } from '@/components/InventoryModals';
 import {
+  applyMovementsToBalances,
   buildInventoryCsv,
   computeInventorySummaries,
+  computeInventorySummariesFromBalances,
   CONSUMABLE_CATEGORY_LABELS,
   formatInventoryQty,
+  INVENTORY_LEDGER_PAGE_SIZE,
   MOVEMENT_TYPE_LABELS,
   type ConsumableItemRow,
   type ConsumableMovementRow,
+  type DbSiteBalanceRow,
   type StockStatus,
 } from '@/lib/inventory';
 
@@ -36,7 +40,10 @@ export interface InventoryManagerProps {
   canManage: boolean;
   inventoryTableReady: boolean;
   initialItems: ConsumableItemRow[];
+  initialBalances?: DbSiteBalanceRow[];
   initialMovements: ConsumableMovementRow[];
+  initialTotalMovements?: number;
+  ledgerPageSize?: number;
   savedSiteNames: string[];
   userNameById: Record<string, string>;
   initialError?: string;
@@ -56,7 +63,10 @@ const STATUS_LABEL: Record<StockStatus, string> = {
 
 export default function InventoryManager(p: InventoryManagerProps) {
   const [items, setItems] = useState<ConsumableItemRow[]>(p.initialItems);
+  const [balances, setBalances] = useState<DbSiteBalanceRow[] | null>(p.initialBalances ?? null);
   const [movements, setMovements] = useState<ConsumableMovementRow[]>(p.initialMovements);
+  const [totalMovements, setTotalMovements] = useState<number>(p.initialTotalMovements ?? p.initialMovements.length);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [tab, setTab] = useState<InventoryTab>('sites');
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'chlorine' | 'fuel' | 'other'>('all');
@@ -79,12 +89,18 @@ export default function InventoryManager(p: InventoryManagerProps) {
 
   const { sites, itemSummaries, stats } = useMemo(
     () =>
-      computeInventorySummaries({
-        items,
-        movements,
-        savedSiteNames: p.savedSiteNames,
-      }),
-    [items, movements, p.savedSiteNames],
+      balances !== null
+        ? computeInventorySummariesFromBalances({
+            items,
+            balances,
+            savedSiteNames: p.savedSiteNames,
+          })
+        : computeInventorySummaries({
+            items,
+            movements,
+            savedSiteNames: p.savedSiteNames,
+          }),
+    [items, balances, movements, p.savedSiteNames],
   );
 
   const allSiteNames = useMemo(() => sites.map((s) => s.siteName), [sites]);
@@ -161,6 +177,41 @@ export default function InventoryManager(p: InventoryManagerProps) {
     }
   }
 
+  async function loadMoreMovements() {
+    if (loadingMore) return;
+    setLoadingMore(true);
+    setBannerErr('');
+    try {
+      const pageSize = p.ledgerPageSize ?? INVENTORY_LEDGER_PAGE_SIZE;
+      const from = movements.length;
+      const to = from + pageSize - 1;
+      const { data, error, count } = await supabaseBrowser()
+        .from('consumable_movements')
+        .select(
+          'id, organization_id, item_id, site_name, movement_type, quantity_delta, movement_date, activity_id, reference_no, notes, created_by, created_at',
+          { count: 'exact' },
+        )
+        .order('movement_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .range(from, to);
+      if (error) {
+        setBannerErr(error.message);
+        return;
+      }
+      const rows = (data ?? []) as ConsumableMovementRow[];
+      setMovements((prev) => {
+        const seen = new Set(prev.map((m) => m.id));
+        const fresh = rows.filter((r) => !seen.has(r.id));
+        return [...prev, ...fresh];
+      });
+      if (typeof count === 'number') setTotalMovements(count);
+    } catch (ex: unknown) {
+      setBannerErr(getErrorMessage(ex, 'Failed to load more movements'));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
   function exportCsv() {
     const csv = buildInventoryCsv(filteredSites);
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
@@ -234,7 +285,7 @@ export default function InventoryManager(p: InventoryManagerProps) {
             items={[
               { id: 'sites', label: `Stock by Site (${filteredSites.length})` },
               { id: 'items', label: `By Consumable (${itemSummaries.length})` },
-              { id: 'ledger', label: `Movement Ledger (${filteredLedger.length})` },
+              { id: 'ledger', label: `Movement Ledger (${search.trim() || ledgerSource !== 'all' || ledgerItemId !== 'all' ? filteredLedger.length : totalMovements})` },
               { id: 'catalog', label: `Catalog (${items.length})` },
             ]}
           />
@@ -452,7 +503,7 @@ export default function InventoryManager(p: InventoryManagerProps) {
           ) : (
             <>
               <div className="responsive-cards">
-                {filteredLedger.slice(0, 250).map((m) => {
+                {filteredLedger.map((m) => {
                   const it = itemById.get(m.item_id);
                   const unit = it?.unit ?? '';
                   const isPositive = Number(m.quantity_delta) > 0;
@@ -525,7 +576,7 @@ export default function InventoryManager(p: InventoryManagerProps) {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredLedger.slice(0, 250).map((m) => {
+                    {filteredLedger.map((m) => {
                       const it = itemById.get(m.item_id);
                       const unit = it?.unit ?? '';
                       const isPositive = Number(m.quantity_delta) > 0;
@@ -562,6 +613,17 @@ export default function InventoryManager(p: InventoryManagerProps) {
                   </tbody>
                 </table>
               </div>
+
+              {movements.length < totalMovements && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, paddingTop: 4 }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                    Showing {movements.length} of {totalMovements} movements
+                  </span>
+                  <button type="button" className="btn btn-sm" onClick={() => void loadMoreMovements()} disabled={loadingMore}>
+                    {loadingMore ? 'Loading…' : 'Load more movements'}
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -689,6 +751,8 @@ export default function InventoryManager(p: InventoryManagerProps) {
         onClose={() => setMoveModal((prev) => ({ ...prev, open: false }))}
         onSaved={(inserted) => {
           setMovements((prev) => [...inserted, ...prev]);
+          setTotalMovements((prev) => prev + inserted.length);
+          setBalances((prev) => (prev !== null ? applyMovementsToBalances(prev, inserted) : null));
         }}
       />
 
