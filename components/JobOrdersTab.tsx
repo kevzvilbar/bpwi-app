@@ -235,7 +235,7 @@ export default function JobOrdersTab({
       {filteredJobOrders.length === 0 ? (
         <EmptyState minHeight={180} title="No job orders in this filter." description="Switch filters or dispatch a new job order above." />
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 330px), 1fr))', gap: 12 }}>
           {filteredJobOrders.map((jo) => {
             const area = jo.area_code_id ? areaBy.get(jo.area_code_id) : undefined;
             const crew = (jo.assigned_operator_ids ?? []).map((id) => opBy.get(id)?.full_name).filter(Boolean);
@@ -433,7 +433,7 @@ export default function JobOrdersTab({
                 placeholder={activeSla ? `e.g. ${activeSla.label} at Block 4 Lot 9` : 'Describe the job order task…'}
               />
             </label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
               <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
                 Linked Activity Type
                 <select className="input" value={joActivityType} onChange={(e) => setJoActivityType(e.target.value)}>
@@ -455,7 +455,7 @@ export default function JobOrdersTab({
                 </select>
               </label>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
               <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
                 Account # (12-char auto-parse)
                 <input
@@ -507,6 +507,7 @@ export default function JobOrdersTab({
                     <button
                       key={op.id}
                       type="button"
+                      className="chip-btn"
                       onClick={() => setJoAssignedOps((prev) => (sel ? prev.filter((x) => x !== op.id) : [...prev, op.id]))}
                       style={{
                         padding: '3px 9px',

@@ -19,10 +19,10 @@ export default function RoutesTeamOverview(p: {
           </div>
         </div>
       </div>
-      <div style={{ overflowX: 'auto' }}>
+      <div className="responsive-table-wrap scroll-x">
         <table className="data-table">
           <thead>
-            <tr style={{ textAlign: 'left' }}>
+            <tr style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>
               <th style={{ padding: '7px 8px' }}>Operator</th>
               <th style={{ padding: '7px 8px', textAlign: 'right' }}>GPS Stops</th>
               <th style={{ padding: '7px 8px', textAlign: 'right' }}>No-GPS Logs</th>
@@ -74,12 +74,11 @@ export default function RoutesTeamOverview(p: {
                   <td style={{ padding: '7px 8px', textAlign: 'right' }}>
                     <button
                       type="button"
-                      className={`btn ${isCurrent ? 'btn-primary' : ''}`}
+                      className={`btn btn-sm ${isCurrent ? 'btn-primary' : ''}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         p.onSelectOperator(row.operatorId);
                       }}
-                      style={{ minHeight: 28, padding: '2px 10px', fontSize: 11.5 }}
                     >
                       {isCurrent ? 'Viewing' : 'Inspect Route'}
                     </button>
@@ -89,6 +88,67 @@ export default function RoutesTeamOverview(p: {
             })}
           </tbody>
         </table>
+      </div>
+      <div className="responsive-cards">
+        {p.teamSummary.map((row) => {
+          const isCurrent = row.operatorId === p.selectedOpId;
+          return (
+            <div
+              key={row.operatorId}
+              className="card"
+              onClick={() => p.onSelectOperator(row.operatorId)}
+              style={{
+                padding: 10,
+                display: 'grid',
+                gap: 8,
+                background: isCurrent ? 'var(--info-bg)' : 'var(--surface-muted)',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{row.fullName}</div>
+                  {row.position && (
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{row.position}</div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${isCurrent ? 'btn-primary' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    p.onSelectOperator(row.operatorId);
+                  }}
+                >
+                  {isCurrent ? 'Viewing' : 'Inspect Route'}
+                </button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 6, fontSize: 11.5 }}>
+                <div>
+                  <div className="text-secondary-xs">GPS Stops / No-GPS</div>
+                  <div className="font-bold tabular-nums">
+                    {row.mappedCount} stops
+                    {row.unmappedCount > 0 && (
+                      <span style={{ color: 'var(--warn-fg)', marginLeft: 4 }}>({row.unmappedCount} unmapped)</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-secondary-xs">Active Window</div>
+                  <div className="tabular-nums">
+                    {row.firstTimestamp && row.lastTimestamp
+                      ? `${fmtTimeManila(row.firstTimestamp)} → ${fmtTimeManila(row.lastTimestamp)}`
+                      : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-secondary-xs">Straight-Line Est.</div>
+                  <div className="font-bold tabular-nums">{formatDistanceKm(row.straightLineMeters)}</div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -341,7 +341,7 @@ export default function FreeRouteMap(p: {
       ref={containerRef}
       className="bpwi-leaflet-container"
       aria-label="Daily field activity route map"
-      style={{ width: '100%', height: 460 }}
+      style={{ width: '100%', height: '100%' }}
     />
   );
 }

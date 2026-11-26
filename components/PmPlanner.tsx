@@ -34,6 +34,13 @@ export default function PmPlanner(p: PmPlannerProps) {
 
   return (
     <div className="card-pad w-full">
+      <style>{`
+        @media screen and (min-width: 641px) {
+          .pm-day-cell.pm-day-cell-week {
+            min-height: 320px;
+          }
+        }
+      `}</style>
       {/* Top Toolbar */}
       <div className="no-print card card-pad-sm stack-sm pm-toolbar-compact" style={{ marginBottom: 8 }}>
         {/* Row 1: Date navigation + Primary CTA */}
@@ -86,14 +93,14 @@ export default function PmPlanner(p: PmPlannerProps) {
             >
               {pm.filtersOpen ? 'Hide Filters' : `Filters${activeFilterCount ? ` (${activeFilterCount})` : ''}`}
             </button>
-            <div className={pm.filtersOpen ? 'row-wrap' : 'row-wrap desktop-only'}>
-              <select className="btn" value={pm.statusFilter} onChange={(e) => pm.setStatusFilter(e.target.value)}>
+            <div className={pm.filtersOpen ? 'row-wrap' : 'row-wrap desktop-only'} style={{ maxWidth: '100%', minWidth: 0 }}>
+              <select className="btn" style={{ minWidth: 0, maxWidth: '100%' }} value={pm.statusFilter} onChange={(e) => pm.setStatusFilter(e.target.value)}>
                 <option value="">All statuses</option>
                 <option value="planned">Planned</option>
                 <option value="done">Done</option>
                 <option value="postponed">Postponed</option>
               </select>
-              <select className="btn" value={pm.areaFilter} onChange={(e) => pm.setAreaFilter(e.target.value)}>
+              <select className="btn" style={{ minWidth: 0, maxWidth: '100%' }} value={pm.areaFilter} onChange={(e) => pm.setAreaFilter(e.target.value)}>
                 <option value="">All areas</option>
                 {pm.allLocations.map((l) => (
                   <option key={l} value={l}>
@@ -246,7 +253,7 @@ export default function PmPlanner(p: PmPlannerProps) {
             return (
               <div
                 key={d}
-                className="pm-day-cell"
+                className={pm.view === 'week' ? 'pm-day-cell pm-day-cell-week' : 'pm-day-cell'}
                 role="button"
                 tabIndex={0}
                 aria-label={`${d}${hol ? `, Holiday: ${hol.name}` : ''}, ${list.length} PM ${list.length === 1 ? 'task' : 'tasks'}${isToday ? ', Today' : ''}`}
@@ -278,7 +285,6 @@ export default function PmPlanner(p: PmPlannerProps) {
                       : inMonth
                         ? 'var(--surface)'
                         : 'var(--bg)',
-                  minHeight: pm.view === 'week' ? 320 : undefined,
                   padding: 4,
                   cursor: 'pointer',
                   outline: isSelected ? '2px solid var(--teal)' : 'none',
@@ -294,10 +300,11 @@ export default function PmPlanner(p: PmPlannerProps) {
                       justifyContent: 'center',
                       minWidth: 22,
                       height: 22,
-                      padding: dayNum === 1 ? '0 6px' : '0 4px',
+                      padding: dayNum === 1 ? '0 5px' : '0 4px',
                       borderRadius: 999,
-                      fontSize: 11,
+                      fontSize: dayNum === 1 ? 10 : 11,
                       fontWeight: 700,
+                      whiteSpace: 'nowrap',
                       background: isToday ? '#0369a1' : hol ? 'var(--danger-bg)' : 'transparent',
                       color: isToday ? '#ffffff' : hol ? 'var(--danger-fg)' : inMonth ? 'var(--text)' : 'var(--text-muted)',
                     }}

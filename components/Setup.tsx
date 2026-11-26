@@ -375,29 +375,29 @@ export default function Setup(p: {
                     Order
                     <input className="input" type="number" value={o.sort_order} onChange={(e) => upd(setOps, i, { sort_order: +e.target.value })} />
                   </label>
-                  <label style={{ fontSize: 12, flex: 1 }}>
+                  <label style={{ fontSize: 12, flex: 1, minWidth: 0 }}>
                     Full name
                     <input className="input" value={o.full_name} onChange={(e) => upd(setOps, i, { full_name: e.target.value })} />
                   </label>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  <label style={{ fontSize: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+                  <label style={{ fontSize: 12, minWidth: 0 }}>
                     Position
                     <input className="input" value={o.position ?? ''} onChange={(e) => upd(setOps, i, { position: e.target.value })} />
                   </label>
-                  <label style={{ fontSize: 12 }}>
+                  <label style={{ fontSize: 12, minWidth: 0 }}>
                     Default station
                     <input className="input" value={o.default_station ?? ''} onChange={(e) => upd(setOps, i, { default_station: e.target.value })} />
                   </label>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  <label style={{ fontSize: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+                  <label style={{ fontSize: 12, minWidth: 0 }}>
                     Phone
                     <input className="input" value={o.phone_number ?? ''} onChange={(e) => upd(setOps, i, { phone_number: e.target.value })} />
                   </label>
-                  <label style={{ fontSize: 12 }}>
+                  <label style={{ fontSize: 12, minWidth: 0 }}>
                     Assigned Head
-                    <select className="input" value={o.department_head_id ?? ''} onChange={(e) => upd(setOps, i, { department_head_id: e.target.value || null })}>
+                    <select className="input" style={{ minWidth: 0 }} value={o.department_head_id ?? ''} onChange={(e) => upd(setOps, i, { department_head_id: e.target.value || null })}>
                       <option value="">— Unassigned —</option>
                       {headOptions.map((h) => (
                         <option key={h.id} value={h.id}>{h.full_name ?? h.id}{h.job_title ? ` (${h.job_title})` : ''}</option>
@@ -405,12 +405,12 @@ export default function Setup(p: {
                     </select>
                   </label>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, paddingTop: 4 }}>
                   <label style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <input type="checkbox" checked={o.is_active} onChange={(e) => upd(setOps, i, { is_active: e.target.checked })} />
                     Active
                   </label>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     <button className="btn btn-primary" disabled={!o.full_name.trim() || busy === `o${i}`} onClick={() => saveRow('operators', o, i, `o${i}`, setOps)}>
                       {saveLabel(`o${i}`)}
                     </button>

@@ -449,7 +449,7 @@ export default function MobileView(p: {
           aria-live="polite"
           className="row-md"
           style={{
-            position: 'fixed', bottom: 'max(72px, calc(16px + env(safe-area-inset-bottom)))', left: '50%', transform: 'translateX(-50%)', zIndex: 60,
+            position: 'fixed', bottom: 'calc(76px + env(safe-area-inset-bottom))', left: '50%', transform: 'translateX(-50%)', zIndex: 75,
             background: 'var(--header-bg)', color: 'var(--header-fg)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px',
             boxShadow: '0 10px 28px rgba(0, 0, 0, 0.28)', maxWidth: 'calc(100vw - 24px)', fontSize: 13,
           }}
@@ -466,7 +466,20 @@ export default function MobileView(p: {
             type="button"
             aria-label="Dismiss"
             onClick={() => setUndoToast(null)}
-            style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: '2px 4px' }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'inherit',
+              cursor: 'pointer',
+              fontSize: 15,
+              lineHeight: 1,
+              minWidth: 36,
+              minHeight: 36,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 0,
+            }}
           >
             ✕
           </button>

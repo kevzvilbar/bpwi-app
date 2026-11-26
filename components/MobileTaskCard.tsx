@@ -76,7 +76,7 @@ export default function MobileTaskCard({
       className="card card-pad-sm stack-sm"
       style={{ borderLeft: `4px solid ${isOverdue ? 'var(--danger)' : color}` }}
     >
-      <div className="row-between" style={{ gap: 6 }}>
+      <div className="row-between-wrap" style={{ gap: 6 }}>
         <span
           className="badge"
           style={{
@@ -144,7 +144,6 @@ export default function MobileTaskCard({
             value={remarksValue}
             onChange={(e) => onRemarksChange(e.target.value)}
             disabled={busy}
-            style={{ minHeight: 36 }}
           />
           <div className="row-wrap" style={{ gap: 6 }}>
             {canLogActivity && !isDone && (
@@ -153,7 +152,6 @@ export default function MobileTaskCard({
                 className="btn btn-primary flex-1 font-bold"
                 disabled={busy}
                 onClick={() => onOpenLogger(t)}
-                style={{ minHeight: 38 }}
               >
                 📋 Log &amp; Complete
               </button>
@@ -164,7 +162,6 @@ export default function MobileTaskCard({
                 className="btn flex-1 font-bold"
                 disabled={busy}
                 onClick={() => onOpenCompleteModal(t, 'edit')}
-                style={{ minHeight: 38 }}
               >
                 Edit Crew
               </button>
@@ -174,10 +171,7 @@ export default function MobileTaskCard({
               className={isDone ? 'btn flex-1 font-bold' : 'btn btn-teal-soft flex-1 font-bold'}
               disabled={busy}
               onClick={() => (isDone ? onReopenTask(t) : onOpenCompleteModal(t, 'complete'))}
-              style={{
-                minHeight: 38,
-                ...(isDone ? { background: 'var(--surface-muted)', borderColor: 'var(--border)', color: 'var(--text)' } : {}),
-              }}
+              style={isDone ? { background: 'var(--surface-muted)', borderColor: 'var(--border)', color: 'var(--text)' } : undefined}
             >
               {busy ? 'Updating…' : isDone ? 'Reopen Task' : '✓ Quick Done'}
             </button>

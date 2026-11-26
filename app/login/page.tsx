@@ -198,7 +198,10 @@ function LoginForm() {
             style={{
               background: 'transparent',
               border: 'none',
-              padding: 0,
+              minHeight: 38,
+              padding: '6px 4px',
+              display: 'inline-flex',
+              alignItems: 'center',
               marginBottom: 14,
               fontSize: 12.5,
               fontWeight: 600,
@@ -279,7 +282,10 @@ function LoginForm() {
                     style={{
                       background: 'transparent',
                       border: 'none',
-                      padding: 0,
+                      minHeight: 38,
+                      padding: '6px 4px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
                       fontSize: 12,
                       fontWeight: 600,
                       color: 'var(--accent)',

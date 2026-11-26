@@ -97,12 +97,12 @@ export default function ShiftHandoversTab({
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14, alignItems: 'start' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 14, alignItems: 'start' }}>
       <div style={{ display: 'grid', gap: 12 }}>
         {/* Daily Huddle Brief Card */}
         <div className="card" style={{ padding: 14, display: 'grid', gap: 10 }}>
           <strong style={{ fontSize: 15 }}>Daily Operations Huddle Brief ({date})</strong>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
             <StatCard
               label="Field Activities Today"
               value={realDateActivities.length}
@@ -121,7 +121,7 @@ export default function ShiftHandoversTab({
         {canLogHandover && (
           <form className="card" onSubmit={handleSaveHandover} style={{ padding: 14, display: 'grid', gap: 10 }}>
             <strong style={{ fontSize: 14.5 }}>Log Shift Handover Note</strong>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 8 }}>
               <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
                 Station / Area
                 <select className="input" value={hoAreaId} onChange={(e) => setHoAreaId(e.target.value)}>

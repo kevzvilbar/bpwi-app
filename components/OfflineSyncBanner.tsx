@@ -202,7 +202,7 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
               type="button"
               className="btn"
               aria-expanded={detailsOpen}
-              style={{ padding: '3px 10px', minHeight: 30, fontSize: 12 }}
+              style={{ padding: '3px 10px', minHeight: 36, fontSize: 12 }}
               onClick={() => setDetailsOpen((o) => !o)}
             >
               {detailsOpen ? 'Hide Queue' : `Inspect Queue (${totalQueued})`}
@@ -213,7 +213,7 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
               type="button"
               className="btn btn-primary"
               disabled={syncing}
-              style={{ padding: '3px 10px', minHeight: 30, fontSize: 12 }}
+              style={{ padding: '3px 10px', minHeight: 36, fontSize: 12 }}
               onClick={() => void syncAll()}
             >
               {syncing ? 'Syncing…' : `Sync Now (${totalQueued})`}
@@ -263,13 +263,13 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
                   )}
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                   {online && (
                     <button
                       type="button"
                       className="btn"
                       disabled={busy}
-                      style={{ minHeight: 30, padding: '3px 9px', fontSize: 12 }}
+                      style={{ minHeight: 36, padding: '3px 9px', fontSize: 12 }}
                       onClick={() => void retryActivity(item)}
                     >
                       {busyItemId === item.queueId ? 'Retrying…' : 'Retry'}
@@ -282,7 +282,7 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
                         className="btn"
                         disabled={busy}
                         style={{
-                          minHeight: 30,
+                          minHeight: 36,
                           padding: '3px 9px',
                           fontSize: 12,
                           color: 'var(--danger-fg)',
@@ -297,7 +297,7 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
                         type="button"
                         className="btn"
                         disabled={busy}
-                        style={{ minHeight: 30, padding: '3px 9px', fontSize: 12 }}
+                        style={{ minHeight: 36, padding: '3px 9px', fontSize: 12 }}
                         onClick={() => setConfirmDiscardId(null)}
                       >
                         Cancel
@@ -308,7 +308,7 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
                       type="button"
                       className="btn"
                       disabled={busy}
-                      style={{ minHeight: 30, padding: '3px 9px', fontSize: 12, color: 'var(--danger)' }}
+                      style={{ minHeight: 36, padding: '3px 9px', fontSize: 12, color: 'var(--danger)' }}
                       onClick={() => setConfirmDiscardId(item.queueId)}
                     >
                       Discard
@@ -348,13 +348,13 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
                   )}
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                   {online && (
                     <button
                       type="button"
                       className="btn"
                       disabled={busy}
-                      style={{ minHeight: 30, padding: '3px 9px', fontSize: 12 }}
+                      style={{ minHeight: 36, padding: '3px 9px', fontSize: 12 }}
                       onClick={() => void retryReport(item)}
                     >
                       {busyItemId === item.queueId ? 'Retrying…' : 'Retry'}
@@ -367,7 +367,7 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
                         className="btn"
                         disabled={busy}
                         style={{
-                          minHeight: 30,
+                          minHeight: 36,
                           padding: '3px 9px',
                           fontSize: 12,
                           color: 'var(--danger-fg)',
@@ -382,7 +382,7 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
                         type="button"
                         className="btn"
                         disabled={busy}
-                        style={{ minHeight: 30, padding: '3px 9px', fontSize: 12 }}
+                        style={{ minHeight: 36, padding: '3px 9px', fontSize: 12 }}
                         onClick={() => setConfirmDiscardId(null)}
                       >
                         Cancel
@@ -393,7 +393,7 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
                       type="button"
                       className="btn"
                       disabled={busy}
-                      style={{ minHeight: 30, padding: '3px 9px', fontSize: 12, color: 'var(--danger)' }}
+                      style={{ minHeight: 36, padding: '3px 9px', fontSize: 12, color: 'var(--danger)' }}
                       onClick={() => setConfirmDiscardId(item.queueId)}
                     >
                       Discard

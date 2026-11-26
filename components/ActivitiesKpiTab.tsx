@@ -510,64 +510,121 @@ export default function ActivitiesKpiTab(p: {
       </div>
 
       {/* Employee Performance Scorecard Table */}
-      <div className="card scroll-x">
+      <div className="card">
         <div className="card-pad-sm" style={CARD_HEADER_BORDER}>
           <strong style={{ fontSize: 14 }}>Employee Performance Leaderboard ({periodDays}-Day Window)</strong>
         </div>
-        <table className="data-table">
-          <thead>
-            <tr style={{ textAlign: 'left' }}>
-              <th>Operator</th>
-              <th className="text-right">Duty Days / Hrs</th>
-              <th className="text-right">Activities (Verified)</th>
-              <th className="text-right">PM Done / Compliance</th>
-              <th className="text-right">JOs Closed</th>
-              <th className="text-right">Avg JO TAT / On-Time</th>
-            </tr>
-          </thead>
-          <tbody>
-            {operatorRows.map((r) => (
-              <tr key={r.op.id}>
-                <td>
-                  <div className="font-bold">{r.op.full_name}</div>
-                  {r.op.position && <div className="text-secondary-xs">{r.op.position}</div>}
-                </td>
-                <td className="tabular-nums text-right">{r.dutyDays}d / {r.dutyHours}h</td>
-                <td className="tabular-nums text-right font-bold">
-                  {r.actCount} <span className="text-secondary-xs" style={{ fontWeight: 400 }}>({r.verifiedActs} ✓)</span>
-                </td>
-                <td
-                  className="tabular-nums text-right"
-                  title={`Planned & Done: ${r.plannedDonePms} · Unlisted Substitute Done: ${r.substituteDonePms} · Assigned Not Participating: ${r.missedAssignedPms}`}
-                >
-                  {r.donePms}/{r.assignedPms}{' '}
-                  {r.pmCompliance !== null && (
-                    <span className="font-bold" style={{ marginLeft: 4, fontSize: 11, color: r.pmCompliance >= 80 ? 'var(--ok-fg)' : 'var(--warn-fg)' }}>
-                      ({r.pmCompliance}%)
-                    </span>
-                  )}
-                  {r.substituteDonePms > 0 && (
-                    <span style={{ marginLeft: 4 }}><Badge tone="warn" size="sm">+{r.substituteDonePms} sub</Badge></span>
-                  )}
-                </td>
-                <td className="tabular-nums text-right">{r.doneJos}/{r.assignedJos}</td>
-                <td className="tabular-nums text-right">
-                  {r.avgTatHours !== null ? `${r.avgTatHours}h` : '—'}
-                  {r.onTimePct !== null && (
-                    <span className="font-bold" style={{ marginLeft: 4, fontSize: 11, color: r.onTimePct >= 80 ? 'var(--ok-fg)' : 'var(--danger)' }}>
-                      ({r.onTimePct}%)
-                    </span>
-                  )}
-                </td>
+        <div className="responsive-table-wrap scroll-x">
+          <table className="data-table">
+            <thead>
+              <tr style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>
+                <th>Operator</th>
+                <th className="text-right">Duty Days / Hrs</th>
+                <th className="text-right">Activities (Verified)</th>
+                <th className="text-right">PM Done / Compliance</th>
+                <th className="text-right">JOs Closed</th>
+                <th className="text-right">Avg JO TAT / On-Time</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {operatorRows.map((r) => (
+                <tr key={r.op.id}>
+                  <td>
+                    <div className="font-bold">{r.op.full_name}</div>
+                    {r.op.position && <div className="text-secondary-xs">{r.op.position}</div>}
+                  </td>
+                  <td className="tabular-nums text-right">{r.dutyDays}d / {r.dutyHours}h</td>
+                  <td className="tabular-nums text-right font-bold">
+                    {r.actCount} <span className="text-secondary-xs" style={{ fontWeight: 400 }}>({r.verifiedActs} ✓)</span>
+                  </td>
+                  <td
+                    className="tabular-nums text-right"
+                    title={`Planned & Done: ${r.plannedDonePms} · Unlisted Substitute Done: ${r.substituteDonePms} · Assigned Not Participating: ${r.missedAssignedPms}`}
+                  >
+                    {r.donePms}/{r.assignedPms}{' '}
+                    {r.pmCompliance !== null && (
+                      <span className="font-bold" style={{ marginLeft: 4, fontSize: 11, color: r.pmCompliance >= 80 ? 'var(--ok-fg)' : 'var(--warn-fg)' }}>
+                        ({r.pmCompliance}%)
+                      </span>
+                    )}
+                    {r.substituteDonePms > 0 && (
+                      <span style={{ marginLeft: 4 }}><Badge tone="warn" size="sm">+{r.substituteDonePms} sub</Badge></span>
+                    )}
+                  </td>
+                  <td className="tabular-nums text-right">{r.doneJos}/{r.assignedJos}</td>
+                  <td className="tabular-nums text-right">
+                    {r.avgTatHours !== null ? `${r.avgTatHours}h` : '—'}
+                    {r.onTimePct !== null && (
+                      <span className="font-bold" style={{ marginLeft: 4, fontSize: 11, color: r.onTimePct >= 80 ? 'var(--ok-fg)' : 'var(--danger)' }}>
+                        ({r.onTimePct}%)
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="responsive-cards" style={{ padding: 12 }}>
+          {operatorRows.map((r) => (
+            <div
+              key={r.op.id}
+              className="card"
+              style={{ padding: 10, display: 'grid', gap: 6, background: 'var(--surface-muted)' }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8 }}>
+                <div>
+                  <div className="font-bold" style={{ fontSize: 13.5 }}>{r.op.full_name}</div>
+                  {r.op.position && <div className="text-secondary-xs">{r.op.position}</div>}
+                </div>
+                <div className="tabular-nums text-right" style={{ fontSize: 12.5 }}>
+                  <span className="font-bold">{r.actCount}</span>{' '}
+                  <span className="text-secondary-xs">({r.verifiedActs} ✓)</span>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(125px, 1fr))', gap: 6, fontSize: 12 }}>
+                <div>
+                  <div className="text-secondary-xs">Duty Days / Hrs</div>
+                  <div className="font-bold tabular-nums">{r.dutyDays}d / {r.dutyHours}h</div>
+                </div>
+                <div>
+                  <div className="text-secondary-xs">PM Done / Compliance</div>
+                  <div className="font-bold tabular-nums">
+                    {r.donePms}/{r.assignedPms}
+                    {r.pmCompliance !== null && (
+                      <span style={{ marginLeft: 4, fontSize: 11, color: r.pmCompliance >= 80 ? 'var(--ok-fg)' : 'var(--warn-fg)' }}>
+                        ({r.pmCompliance}%)
+                      </span>
+                    )}
+                    {r.substituteDonePms > 0 && (
+                      <span style={{ marginLeft: 4 }}><Badge tone="warn" size="sm">+{r.substituteDonePms} sub</Badge></span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-secondary-xs">JOs Closed</div>
+                  <div className="font-bold tabular-nums">{r.doneJos}/{r.assignedJos}</div>
+                </div>
+                <div>
+                  <div className="text-secondary-xs">Avg JO TAT / On-Time</div>
+                  <div className="font-bold tabular-nums">
+                    {r.avgTatHours !== null ? `${r.avgTatHours}h` : '—'}
+                    {r.onTimePct !== null && (
+                      <span style={{ marginLeft: 4, fontSize: 11, color: r.onTimePct >= 80 ? 'var(--ok-fg)' : 'var(--danger)' }}>
+                        ({r.onTimePct}%)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Genset Fuel & Weekly PMS Health Table */}
       {gensetLogs.length > 0 && (
-        <div className="card scroll-x">
+        <div className="card">
           <div className="card-pad-sm row-between-wrap" style={CARD_HEADER_BORDER}>
             <strong style={{ fontSize: 14 }}>Recent Genset Fuel &amp; PMS Logs</strong>
             {gensetHealthCounts.totalChecklist > 0 && (
@@ -578,62 +635,126 @@ export default function ActivitiesKpiTab(p: {
               </div>
             )}
           </div>
-          <table className="data-table">
-            <thead>
-              <tr style={{ textAlign: 'left' }}>
-                <th>Date</th>
-                <th>Station / Unit</th>
-                <th>Cause / Mode</th>
-                <th className="text-right">Initial Fuel</th>
-                <th className="text-right">Refilled (L)</th>
-                <th className="text-right">Final Fuel</th>
-                <th>Run / Oil</th>
-                <th className="text-right">Hr Meter</th>
-                <th>Standby Health</th>
-              </tr>
-            </thead>
-            <tbody>
-              {gensetLogs.map((g) => (
-                <tr key={g.id}>
-                  <td>{g.date}</td>
-                  <td style={{ fontWeight: 600 }}>{g.station} · {g.site}</td>
-                  <td>{g.cause}</td>
-                  <td className="tabular-nums text-right">{g.initialFuel ?? '—'}</td>
-                  <td
-                    className="tabular-nums text-right"
-                    style={{ color: g.refilledLiters !== null ? 'var(--ok-fg)' : undefined, fontWeight: g.refilledLiters !== null ? 700 : undefined }}
-                  >
-                    {g.refilledLiters !== null ? `+${g.refilledLiters}` : '—'}
-                  </td>
-                  <td className="tabular-nums text-right font-bold">{g.finalFuel ?? '—'}</td>
-                  <td className="text-xs">
-                    {g.runSummary || g.oilLevel ? (
-                      <>
-                        {g.runSummary && <span>{g.runSummary}</span>}
-                        {g.runSummary && g.oilLevel && <span> · </span>}
-                        {g.oilLevel && (
-                          <span
-                            style={{
-                              color: g.oilLevel === 'Critical / Empty' ? 'var(--danger-fg)' : g.oilLevel !== 'Normal / Full' ? 'var(--warn-fg)' : undefined,
-                              fontWeight: g.oilLevel !== 'Normal / Full' ? 700 : undefined,
-                            }}
-                          >
-                            {g.oilLevel}
-                          </span>
-                        )}
-                      </>
-                    ) : '—'}
-                  </td>
-                  <td className="tabular-nums text-right">{g.runningHours ?? '—'}</td>
-                  <td title={g.findingsText || undefined}>
-                    {g.standbyLabel && g.standbyVerdict ? (
-                      <Badge tone={STANDBY_TONES[g.standbyVerdict]} size="sm">{g.standbyLabel}</Badge>
-                    ) : <span className="text-muted-xs">—</span>}
-                  </td>
+          <div className="responsive-table-wrap scroll-x">
+            <table className="data-table">
+              <thead>
+                <tr style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>
+                  <th>Date</th>
+                  <th>Station / Unit</th>
+                  <th>Cause / Mode</th>
+                  <th className="text-right">Initial Fuel</th>
+                  <th className="text-right">Refilled (L)</th>
+                  <th className="text-right">Final Fuel</th>
+                  <th>Run / Oil</th>
+                  <th className="text-right">Hr Meter</th>
+                  <th>Standby Health</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {gensetLogs.map((g) => (
+                  <tr key={g.id}>
+                    <td>{g.date}</td>
+                    <td style={{ fontWeight: 600 }}>{g.station} · {g.site}</td>
+                    <td>{g.cause}</td>
+                    <td className="tabular-nums text-right">{g.initialFuel ?? '—'}</td>
+                    <td
+                      className="tabular-nums text-right"
+                      style={{ color: g.refilledLiters !== null ? 'var(--ok-fg)' : undefined, fontWeight: g.refilledLiters !== null ? 700 : undefined }}
+                    >
+                      {g.refilledLiters !== null ? `+${g.refilledLiters}` : '—'}
+                    </td>
+                    <td className="tabular-nums text-right font-bold">{g.finalFuel ?? '—'}</td>
+                    <td className="text-xs">
+                      {g.runSummary || g.oilLevel ? (
+                        <>
+                          {g.runSummary && <span>{g.runSummary}</span>}
+                          {g.runSummary && g.oilLevel && <span> · </span>}
+                          {g.oilLevel && (
+                            <span
+                              style={{
+                                color: g.oilLevel === 'Critical / Empty' ? 'var(--danger-fg)' : g.oilLevel !== 'Normal / Full' ? 'var(--warn-fg)' : undefined,
+                                fontWeight: g.oilLevel !== 'Normal / Full' ? 700 : undefined,
+                              }}
+                            >
+                              {g.oilLevel}
+                            </span>
+                          )}
+                        </>
+                      ) : '—'}
+                    </td>
+                    <td className="tabular-nums text-right">{g.runningHours ?? '—'}</td>
+                    <td title={g.findingsText || undefined}>
+                      {g.standbyLabel && g.standbyVerdict ? (
+                        <Badge tone={STANDBY_TONES[g.standbyVerdict]} size="sm">{g.standbyLabel}</Badge>
+                      ) : <span className="text-muted-xs">—</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="responsive-cards" style={{ padding: 12 }}>
+            {gensetLogs.map((g) => (
+              <div
+                key={g.id}
+                className="card"
+                style={{ padding: 10, display: 'grid', gap: 6, background: 'var(--surface-muted)' }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8 }}>
+                  <div>
+                    <div className="font-bold" style={{ fontSize: 13 }}>{g.station} · {g.site}</div>
+                    <div className="text-secondary-xs">{g.date} · {g.cause}</div>
+                  </div>
+                  {g.standbyLabel && g.standbyVerdict && (
+                    <Badge tone={STANDBY_TONES[g.standbyVerdict]} size="sm">{g.standbyLabel}</Badge>
+                  )}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 6, fontSize: 12 }}>
+                  <div>
+                    <div className="text-secondary-xs">Fuel (Init → Final)</div>
+                    <div className="font-bold tabular-nums">{g.initialFuel ?? '—'} → {g.finalFuel ?? '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-secondary-xs">Refilled (L)</div>
+                    <div
+                      className="font-bold tabular-nums"
+                      style={{ color: g.refilledLiters !== null ? 'var(--ok-fg)' : undefined }}
+                    >
+                      {g.refilledLiters !== null ? `+${g.refilledLiters}` : '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-secondary-xs">Hr Meter</div>
+                    <div className="font-bold tabular-nums">{g.runningHours ?? '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-secondary-xs">Run / Oil</div>
+                    <div>
+                      {g.runSummary || g.oilLevel ? (
+                        <>
+                          {g.runSummary && <span>{g.runSummary}</span>}
+                          {g.runSummary && g.oilLevel && <span> · </span>}
+                          {g.oilLevel && (
+                            <span
+                              style={{
+                                color: g.oilLevel === 'Critical / Empty' ? 'var(--danger-fg)' : g.oilLevel !== 'Normal / Full' ? 'var(--warn-fg)' : undefined,
+                                fontWeight: g.oilLevel !== 'Normal / Full' ? 700 : undefined,
+                              }}
+                            >
+                              {g.oilLevel}
+                            </span>
+                          )}
+                        </>
+                      ) : '—'}
+                    </div>
+                  </div>
+                </div>
+                {g.findingsText && (
+                  <div className="text-secondary-xs">{g.findingsText}</div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

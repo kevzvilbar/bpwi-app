@@ -246,7 +246,7 @@ export default function Nav(p: {
   return (
     <>
       <header className="app-topbar no-print">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: '1 1 auto', overflow: 'hidden' }}>
           <Image
             src="/bpwi-logo.svg"
             alt="BP Waterworks, Inc."
@@ -258,9 +258,9 @@ export default function Nav(p: {
               flexShrink: 0,
             }}
           />
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 14, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.2 }}>{appTitle}</span>
+          <div style={{ minWidth: 0, flex: '1 1 auto', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+              <span style={{ fontSize: 14, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{appTitle}</span>
               {p.isAdmin && p.orgId && (
                 <button
                   type="button"
@@ -279,6 +279,10 @@ export default function Nav(p: {
                     borderRadius: 4,
                     display: 'inline-flex',
                     alignItems: 'center',
+                    justifyContent: 'center',
+                    minWidth: 36,
+                    minHeight: 36,
+                    flexShrink: 0,
                   }}
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -288,7 +292,7 @@ export default function Nav(p: {
                 </button>
               )}
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.2 }}>{orgName}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{orgName}</div>
           </div>
         </div>
 
@@ -445,7 +449,7 @@ export default function Nav(p: {
                   style={{
                     position: 'absolute',
                     top: 4,
-                    right: '20%',
+                    right: '14%',
                     background: 'var(--status-pending)',
                     color: 'var(--badge-fg)',
                     borderRadius: 999,

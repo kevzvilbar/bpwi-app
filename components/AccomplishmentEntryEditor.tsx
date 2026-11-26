@@ -41,11 +41,12 @@ export default function AccomplishmentEntryEditor({ entries, isLocked, onUpdate,
                 </button>
               )}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: 8 }}>
-              <label style={{ fontSize: 11.5 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 90px', gap: 8 }}>
+              <label style={{ fontSize: 11.5, minWidth: 0 }}>
                 Form Column
                 <select
                   className="input"
+                  style={{ minWidth: 0 }}
                   disabled={isLocked}
                   value={row.column_id ?? '__others__'}
                   onChange={(e) => {
@@ -69,7 +70,7 @@ export default function AccomplishmentEntryEditor({ entries, isLocked, onUpdate,
                   </optgroup>
                 </select>
               </label>
-              <label style={{ fontSize: 11.5 }}>
+              <label style={{ fontSize: 11.5, minWidth: 0 }}>
                 Others
                 <input
                   className="input"
@@ -98,12 +99,12 @@ export default function AccomplishmentEntryEditor({ entries, isLocked, onUpdate,
                 <input className="input" disabled={isLocked} value={row.location_lot} onChange={(e) => onUpdate(idx, { location_lot: e.target.value })} />
               </label>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <label style={{ fontSize: 11.5 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+              <label style={{ fontSize: 11.5, minWidth: 0 }}>
                 Time Started
                 <input className="input" disabled={isLocked} placeholder="3:10 PM" value={row.time_started} onChange={(e) => onUpdate(idx, { time_started: e.target.value })} />
               </label>
-              <label style={{ fontSize: 11.5 }}>
+              <label style={{ fontSize: 11.5, minWidth: 0 }}>
                 Time Finished
                 <input className="input" disabled={isLocked} placeholder="3:54 PM" value={row.time_finished} onChange={(e) => onUpdate(idx, { time_finished: e.target.value })} />
               </label>

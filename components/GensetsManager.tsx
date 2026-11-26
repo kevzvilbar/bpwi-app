@@ -292,7 +292,7 @@ export default function GensetsManager({
           style={{ padding: 10, display: 'grid', gap: 8, background: 'var(--surface-muted)' }}
         >
           <div style={{ fontSize: 12.5, fontWeight: 700 }}>Register Genset</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 6 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 6 }}>
             <input
               className="input"
               aria-label="Genset Control #"
@@ -412,7 +412,7 @@ export default function GensetsManager({
                   </div>
                 ) : (
                   <div style={{ display: 'grid', gap: 8 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 6 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 6 }}>
                       <input className="input" aria-label="Edit Control #" value={editControlNo} onChange={(e) => setEditControlNo(e.target.value)} disabled={busy} />
                       <input className="input" aria-label="Edit kVA" placeholder="kVA" value={editKva} onChange={(e) => setEditKva(e.target.value)} disabled={busy} />
                       <input className="input" aria-label="Edit Brand" placeholder="Brand / Model" value={editBrand} onChange={(e) => setEditBrand(e.target.value)} disabled={busy} />
@@ -427,7 +427,7 @@ export default function GensetsManager({
                         {renderLocationOptions(g.id, editLocation, editStatus)}
                       </select>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: locChanged ? '1fr 1fr' : '1fr', gap: 6 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: locChanged ? 'repeat(auto-fit, minmax(180px, 1fr))' : '1fr', gap: 6 }}>
                       {locChanged && (
                         <input
                           className="input"

@@ -196,6 +196,7 @@ export default function Generator(p: {
                 color: s.text_color,
                 border: '1px solid var(--border)',
                 borderRadius: 6,
+                minHeight: 38,
                 padding: '5px 10px',
                 fontWeight: 700,
                 cursor: 'pointer',
@@ -244,7 +245,7 @@ export default function Generator(p: {
           </button>
           <div style={{ marginTop: 8, maxHeight: 160, overflow: 'auto', display: 'flex', flexWrap: 'wrap', gap: '6px 14px' }}>
             {p.operators.map((o) => (
-              <label key={o.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <label key={o.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minHeight: 38 }}>
                 <input
                   type="checkbox"
                   checked={sel.has(o.id)}
@@ -270,7 +271,7 @@ export default function Generator(p: {
               <b>{holidayDateSet.size}</b> organization holiday{holidayDateSet.size === 1 ? '' : 's'} fall within {start} – {end}.
             </span>
             {holidayArea && (
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600, minHeight: 38 }}>
                 <input type="checkbox" checked={markHolidays} onChange={(e) => setMarkHolidays(e.target.checked)} />
                 Mark holidays as {holidayArea.code} (off/admin)
               </label>

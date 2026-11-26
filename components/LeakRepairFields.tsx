@@ -459,8 +459,8 @@ export default function LeakRepairFields({
           </span>
           <button
             type="button"
-            className="btn btn-add"
-            style={{ minHeight: 30, padding: '3px 10px', fontSize: 12 }}
+            className="btn btn-add btn-sm"
+            style={{ minHeight: 36 }}
             onClick={() =>
               setFields((prev) => ({
                 ...prev,
@@ -478,9 +478,22 @@ export default function LeakRepairFields({
             unitVal && !LEAK_MATERIAL_UNITS.includes(unitVal as (typeof LEAK_MATERIAL_UNITS)[number]),
           );
           return (
-            <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 72px 88px auto', gap: 6 }}>
+            <div
+              key={idx}
+              style={{
+                padding: 8,
+                borderRadius: 8,
+                border: '1px solid var(--border-light)',
+                background: 'var(--surface-muted)',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                gap: 6,
+                alignItems: 'center',
+              }}
+            >
               <input
                 className="input"
+                style={{ gridColumn: '1 / -1' }}
                 placeholder="Material description (e.g. 2&quot; GI Coupling)"
                 value={m.item}
                 onChange={(e) =>
@@ -527,8 +540,9 @@ export default function LeakRepairFields({
               </select>
               <button
                 type="button"
-                className="btn"
-                style={{ minHeight: 38, padding: '0 8px', color: 'var(--danger)' }}
+                className="btn btn-sm btn-danger-soft"
+                aria-label={`Remove material ${idx + 1}`}
+                style={{ minHeight: 36 }}
                 onClick={() =>
                   setFields((prev) => ({
                     ...prev,
@@ -536,7 +550,7 @@ export default function LeakRepairFields({
                   }))
                 }
               >
-                ✕
+                Remove
               </button>
             </div>
           );

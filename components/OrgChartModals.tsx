@@ -31,7 +31,7 @@ export function OrgHeaderModal({
 }) {
   return (
     <div className="modal-overlay no-print" role="dialog" aria-modal="true" onClick={() => !busy && onCancel()}>
-      <div className="card" style={{ maxWidth: 480, width: '95vw', padding: 16, display: 'grid', gap: 10 }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-sheet" style={{ display: 'grid', gap: 10 }} onClick={(e) => e.stopPropagation()}>
         <strong style={{ fontSize: 15 }}>Edit Chart Header &amp; Shift Legends</strong>
         <label style={{ fontSize: 12 }}>
           Organization / Office Title
@@ -41,17 +41,17 @@ export function OrgHeaderModal({
           Chart Subtitle
           <input className="input" value={draftMeta.subtitle} onChange={(e) => onChange({ ...draftMeta, subtitle: e.target.value })} />
         </label>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <label style={{ fontSize: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+          <label style={{ fontSize: 12, minWidth: 0 }}>
             Shift Legend 1 (Blue)
             <input className="input" value={draftMeta.legend1} onChange={(e) => onChange({ ...draftMeta, legend1: e.target.value })} />
           </label>
-          <label style={{ fontSize: 12 }}>
+          <label style={{ fontSize: 12, minWidth: 0 }}>
             Shift Legend 2 (Amber)
             <input className="input" value={draftMeta.legend2} onChange={(e) => onChange({ ...draftMeta, legend2: e.target.value })} />
           </label>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap', paddingTop: 4 }}>
           <button type="button" className="btn" disabled={busy} onClick={onCancel}>Cancel</button>
           <button type="button" className="btn btn-primary" disabled={busy} onClick={onSave}>Save Header</button>
         </div>
@@ -87,11 +87,11 @@ export function OrgPositionModal({
 }) {
   return (
     <div className="modal-overlay no-print" role="dialog" aria-modal="true" onClick={() => !busy && onCancel()}>
-      <div className="card" style={{ maxWidth: 520, width: '95vw', padding: 16, display: 'grid', gap: 10 }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-sheet" style={{ display: 'grid', gap: 10 }} onClick={(e) => e.stopPropagation()}>
         <strong style={{ fontSize: 15 }}>{editingPos.id ? 'Edit Org Position' : 'Add Org Position'}</strong>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <label style={{ fontSize: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+          <label style={{ fontSize: 12, minWidth: 0 }}>
             Position Title *
             <input
               className="input"
@@ -99,7 +99,7 @@ export function OrgPositionModal({
               onChange={(e) => onChange({ ...editingPos, title: e.target.value })}
             />
           </label>
-          <label style={{ fontSize: 12 }}>
+          <label style={{ fontSize: 12, minWidth: 0 }}>
             Department / Team Group
             <input
               className="input"
@@ -109,8 +109,8 @@ export function OrgPositionModal({
           </label>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <label style={{ fontSize: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+          <label style={{ fontSize: 12, minWidth: 0 }}>
             Tier
             <select
               className="input"
@@ -124,7 +124,7 @@ export function OrgPositionModal({
               <option value="staff">Staff / Specialist</option>
             </select>
           </label>
-          <label style={{ fontSize: 12 }}>
+          <label style={{ fontSize: 12, minWidth: 0 }}>
             Reports To (Parent Node)
             <select
               className="input"
@@ -143,8 +143,8 @@ export function OrgPositionModal({
           </label>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-          <label style={{ fontSize: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+          <label style={{ fontSize: 12, minWidth: 0 }}>
             Shift Badge
             <input
               className="input"
@@ -153,7 +153,7 @@ export function OrgPositionModal({
               onChange={(e) => onChange({ ...editingPos, shift_badge: e.target.value })}
             />
           </label>
-          <label style={{ fontSize: 12 }}>
+          <label style={{ fontSize: 12, minWidth: 0 }}>
             Color Theme
             <select
               className="input"
@@ -168,7 +168,7 @@ export function OrgPositionModal({
               <option value="slate">White / Slate</option>
             </select>
           </label>
-          <label style={{ fontSize: 12 }}>
+          <label style={{ fontSize: 12, minWidth: 0 }}>
             Sort Order
             <input
               type="number"
@@ -209,8 +209,8 @@ export function OrgPositionModal({
                 </select>
               </label>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <label style={{ fontSize: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+                <label style={{ fontSize: 12, minWidth: 0 }}>
                   Linked Operator (Roster)
                   <select
                     className="input"
@@ -225,7 +225,7 @@ export function OrgPositionModal({
                     ))}
                   </select>
                 </label>
-                <label style={{ fontSize: 12 }}>
+                <label style={{ fontSize: 12, minWidth: 0 }}>
                   Directory Name (if no account)
                   <input
                     className="input"
@@ -248,7 +248,7 @@ export function OrgPositionModal({
           </label>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, paddingTop: 6 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, paddingTop: 6 }}>
           {editingPos.id ? (
             <button
               type="button"
@@ -262,7 +262,7 @@ export function OrgPositionModal({
           ) : (
             <span />
           )}
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" className="btn" disabled={busy} onClick={onCancel}>
               Cancel
             </button>
@@ -305,7 +305,7 @@ export function OrgAbsorbModal({
 }) {
   return (
     <div className="modal-overlay no-print" role="dialog" aria-modal="true" onClick={() => !busy && onCancel()}>
-      <div className="card" style={{ maxWidth: 460, width: '95vw', padding: 16, display: 'grid', gap: 10 }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-sheet" style={{ display: 'grid', gap: 10 }} onClick={(e) => e.stopPropagation()}>
         <strong style={{ fontSize: 15 }}>Restructure / Absorb Department</strong>
         <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-secondary)' }}>
           Move all teams and staff under one Department Head to another Head (for example, if a department is omitted and absorbed).
@@ -338,7 +338,7 @@ export function OrgAbsorbModal({
           <input type="checkbox" checked={archiveSource} onChange={(e) => onArchiveChange(e.target.checked)} />
           Archive the omitted source department head position
         </label>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap', paddingTop: 4 }}>
           <button type="button" className="btn" disabled={busy} onClick={onCancel}>
             Cancel
           </button>

@@ -206,7 +206,7 @@ export default function MobileActivitiesAndSchedule({
                       <button
                         type="button"
                         className="btn"
-                        style={{ minHeight: 32, padding: '2px 10px', fontSize: 12 }}
+                        style={{ padding: '2px 10px', fontSize: 12 }}
                         onClick={() => onEditActivity(act)}
                       >
                         Edit
@@ -214,7 +214,7 @@ export default function MobileActivitiesAndSchedule({
                       <button
                         type="button"
                         className="btn"
-                        style={{ minHeight: 32, padding: '2px 10px', fontSize: 12, color: 'var(--danger)' }}
+                        style={{ padding: '2px 10px', fontSize: 12, color: 'var(--danger)' }}
                         onClick={() => setPendingDeleteAct(act)}
                       >
                         Delete
@@ -243,7 +243,7 @@ export default function MobileActivitiesAndSchedule({
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      <div className="card" style={{ padding: 8, display: 'flex', gap: 6, alignItems: 'center', maxWidth: 420 }}>
+      <div className="card" style={{ padding: 8, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', maxWidth: 420 }}>
         <button className="btn" onClick={() => onNavigateDate(addDays(date, -1))}>
           ‹
         </button>
@@ -252,7 +252,7 @@ export default function MobileActivitiesAndSchedule({
           className="input"
           value={date}
           onChange={(e) => e.target.value && onNavigateDate(e.target.value)}
-          style={{ flex: 1 }}
+          style={{ flex: '1 1 140px', minWidth: 0 }}
         />
         <button className="btn" onClick={() => onNavigateDate(addDays(date, 1))}>
           ›
@@ -326,6 +326,10 @@ export default function MobileActivitiesAndSchedule({
                   <a
                     href={`tel:${op.phone_number}`}
                     style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minHeight: 44,
                       padding: '6px 12px',
                       borderRadius: 8,
                       background: '#0369a1',

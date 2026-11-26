@@ -162,30 +162,23 @@ export default function NotificationBell({ hasUser }: { hasUser: boolean }) {
       </button>
 
       {open && (
-        <div
-          className="card"
-          style={{
-            position: 'absolute',
-            right: 0,
-            top: 'calc(100% + 6px)',
-            width: 310,
-            maxWidth: '90vw',
-            maxHeight: 380,
-            overflowY: 'auto',
-            zIndex: 60,
-            padding: 10,
-            boxShadow: '0 10px 25px rgba(15,23,42,0.2)',
-            display: 'grid',
-            gap: 6,
-          }}
-        >
+        <div className="card notif-dropdown">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-light)', paddingBottom: 6 }}>
             <strong style={{ fontSize: 13 }}>Notifications</strong>
             {unreadCount > 0 && (
               <button
                 type="button"
                 onClick={() => void markAllRead()}
-                style={{ border: 'none', background: 'transparent', color: 'var(--primary)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--primary)',
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  minHeight: 36,
+                  padding: '4px 10px',
+                }}
               >
                 Mark all read
               </button>

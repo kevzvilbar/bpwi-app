@@ -43,10 +43,10 @@ export function RosterContextMenu({
       onClick={(e) => e.stopPropagation()}
       style={{
         position: 'fixed',
-        top: Math.min(ctxMenu.y, typeof window !== 'undefined' ? window.innerHeight - 250 : ctxMenu.y),
-        left: Math.min(ctxMenu.x, typeof window !== 'undefined' ? window.innerWidth - 240 : ctxMenu.x),
-        zIndex: 60,
-        width: 230,
+        top: typeof window !== 'undefined' ? Math.max(8, Math.min(ctxMenu.y, window.innerHeight - 310)) : ctxMenu.y,
+        left: typeof window !== 'undefined' ? Math.max(8, Math.min(ctxMenu.x, window.innerWidth - 228)) : ctxMenu.x,
+        zIndex: 85,
+        width: 220,
         background: 'var(--surface)',
         color: 'var(--text)',
         border: '1px solid var(--border)',
@@ -74,7 +74,8 @@ export function RosterContextMenu({
             display: 'block',
             width: '100%',
             textAlign: 'left',
-            padding: '7px 12px',
+            minHeight: 40,
+            padding: '8px 12px',
             border: 'none',
             background: 'transparent',
             color: item.color,
@@ -254,7 +255,7 @@ export function RosterSubmitProposalModal({
             placeholder="e.g. Schedule adjustments for pump maintenance coverage"
             value={submitNote}
             onChange={(e) => onChangeNote(e.target.value)}
-            style={{ width: '100%', fontSize: 12.5 }}
+            style={{ width: '100%' }}
           />
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>

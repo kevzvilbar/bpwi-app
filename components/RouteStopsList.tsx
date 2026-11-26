@@ -37,10 +37,10 @@ export default function RouteStopsList({
       {stops.length > 0 && (
         <div className="card card-pad stack-md">
           <strong style={{ fontSize: 14 }}>Chronological Stop Itinerary &amp; Leg Distances</strong>
-          <div className="scroll-x">
+          <div className="responsive-table-wrap scroll-x">
             <table className="data-table">
               <thead>
-                <tr style={{ textAlign: 'left' }}>
+                <tr style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>
                   <th>#</th>
                   <th>Time</th>
                   <th>Stop / Activity</th>
@@ -131,6 +131,106 @@ export default function RouteStopsList({
                 })}
               </tbody>
             </table>
+          </div>
+          <div className="responsive-cards">
+            {stops.map((stop, idx) => {
+              const legIdx = idx - 1;
+              const roadLeg = legIdx >= 0 ? computedRoute?.legs?.[legIdx] : undefined;
+              const straightLeg = legIdx >= 0 ? straightLineLegsMeters[legIdx] : undefined;
+              const isFocused = selectedStopId === stop.id;
+              return (
+                <div
+                  key={stop.id}
+                  onClick={() => onSelectStop(stop.id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onSelectStop(stop.id);
+                    }
+                  }}
+                  className="card"
+                  style={{
+                    padding: 10,
+                    display: 'grid',
+                    gap: 6,
+                    background: isFocused ? 'var(--info-bg)' : 'var(--surface-muted)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                      <span
+                        className="text-center font-bold"
+                        style={{
+                          display: 'inline-block',
+                          minWidth: 26,
+                          padding: '2px 6px',
+                          borderRadius: 6,
+                          background: stop.kind === 'activity' ? stop.color : '#0f172a',
+                          color: '#ffffff',
+                          fontSize: 11,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {stop.kind === 'activity' ? stop.sequence : 'HQ'}
+                      </span>
+                      <div style={{ minWidth: 0 }}>
+                        <div className="font-bold" style={{ fontSize: 13 }}>{stop.label}</div>
+                        {stop.sublabel && <div className="text-secondary-xs">{stop.sublabel}</div>}
+                      </div>
+                    </div>
+                    <div className="text-right" style={{ flexShrink: 0, fontSize: 11.5 }}>
+                      <div className="font-bold">
+                        {stop.timestamp ? fmtTimeManila(stop.timestamp) : stop.kind === 'base_start' ? 'Depart' : 'Return'}
+                      </div>
+                      <div className="text-secondary-xs">
+                        {stop.kind !== 'activity' ? 'Base HQ' : stop.roleInActivity === 'lead' ? 'Lead' : 'Crew'}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6, fontSize: 11.5 }}>
+                    <div>
+                      <div className="text-secondary-xs">Road Dist.</div>
+                      <div className="font-bold tabular-nums">{idx === 0 ? 'Start' : roadLeg ? formatDistanceKm(roadLeg.distanceMeters) : '—'}</div>
+                    </div>
+                    <div>
+                      <div className="text-secondary-xs">Est. Time</div>
+                      <div className="tabular-nums">
+                        {idx === 0 ? '—' : roadLeg && computedRoute?.source === 'osrm' ? formatDuration(roadLeg.durationSeconds) : '—'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-secondary-xs">Straight-Line</div>
+                      <div className="tabular-nums text-secondary-sm">{idx === 0 ? '—' : formatDistanceKm(straightLeg)}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <a
+                      href={`https://www.openstreetmap.org/?mlat=${stop.lat}&mlon=${stop.lng}#map=17/${stop.lat}/${stop.lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="btn btn-sm mono-xs"
+                      style={{ textDecoration: 'none' }}
+                    >
+                      OSM {stop.lat.toFixed(4)}, {stop.lng.toFixed(4)} ↗
+                    </a>
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${stop.lat},${stop.lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="btn btn-sm"
+                      style={{ textDecoration: 'none' }}
+                    >
+                      Open GMaps ↗
+                    </a>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

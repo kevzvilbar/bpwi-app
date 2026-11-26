@@ -135,7 +135,7 @@ export default function GensetMonitoringFields({ fields, setFields }: GensetMoni
             <option value="Power Outage">Power Outage</option>
           </select>
         </label>
-        <label style={{ display: 'grid', gap: 3, fontSize: 12, gridColumn: 'span 2' }}>
+        <label style={{ display: 'grid', gap: 3, fontSize: 12, gridColumn: '1 / -1' }}>
           Exercise / Run Mode
           <select
             className="input"
@@ -153,18 +153,19 @@ export default function GensetMonitoringFields({ fields, setFields }: GensetMoni
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, alignItems: 'end' }}>
         <div style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
             <span>Run Duration (mins)</span>
             {!isSkippedRun && (
-              <span style={{ display: 'inline-flex', gap: 3 }}>
+              <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 4 }}>
                 {GENSET_DURATION_PRESETS_MIN.map((m) => (
                   <button
                     key={m}
                     type="button"
                     onClick={() => patchGenset({ runDurationMin: String(m) })}
                     style={{
-                      padding: '1px 6px',
-                      fontSize: 10.5,
+                      minHeight: 32,
+                      padding: '4px 8px',
+                      fontSize: 11,
                       fontWeight: 700,
                       borderRadius: 4,
                       cursor: 'pointer',

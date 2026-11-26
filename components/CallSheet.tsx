@@ -168,9 +168,9 @@ export default function CallSheet(p: {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="input"
-          style={{ flex: '1 1 180px', minWidth: 0, minHeight: 36, padding: '6px 10px', fontSize: 13 }}
+          style={{ flex: '1 1 180px', minWidth: 0 }}
         />
-        <label style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        <label style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 5, minHeight: 40 }}>
           <input type="checkbox" checked={onlyStandby} onChange={(e) => setOnlyStandby(e.target.checked)} />
           On-Call / Standby only ({p.standby.length})
         </label>
@@ -185,7 +185,7 @@ export default function CallSheet(p: {
       </div>
 
       <details className="no-print card" style={{ padding: '7px 12px', marginBottom: 10, fontSize: 12, color: 'var(--text-secondary)' }}>
-        <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Code Glossary (PL, FD, WD, OC, DWP, ERP, RD)</summary>
+        <summary style={{ cursor: 'pointer', fontWeight: 600, minHeight: 40, display: 'inline-flex', alignItems: 'center' }}>Code Glossary (PL, FD, WD, OC, DWP, ERP, RD)</summary>
         <div style={{ marginTop: 6, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
           <span><b>FD</b> = Field Operations (default station)</span>
           <span><b>PL</b> = Plant Operations</span>
@@ -398,87 +398,93 @@ export default function CallSheet(p: {
 
       {/* Mobile Card List (<= 640px) */}
       <div className="call-sheet-cards">
-        {sortedAndFiltered.map(({ op, shift, area, standbyType, isLeave, isRestDay, isOnDuty }) => (
-          <div
-            key={op.id}
-            className="card"
-            style={{
-              background: standbyType ? 'var(--violet-bg)' : 'var(--surface)',
-              border: standbyType ? '1.5px solid var(--violet-border)' : '1px solid var(--border)',
-              padding: 14,
-              display: 'grid',
-              gap: 8,
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8 }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>{op.full_name}</div>
-                {op.position && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{op.position}</div>}
-              </div>
-              {standbyType && <Badge tone="violet" size="sm">STANDBY · {standbyType}</Badge>}
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--text-secondary)' }}>
-              <span>
-                Status:{' '}
-                <b>
-                  {isLeave
-                    ? `LEAVE (${area?.code})`
-                    : isRestDay
-                      ? `REST DAY (${area?.code})`
-                      : isOnDuty && shift
-                        ? `ON DUTY (${shift.code})`
-                        : shift?.is_off
-                          ? `OFF (${shift.code})`
-                          : 'Unassigned'}
-                </b>
-              </span>
-              <span>·</span>
-              <span>
-                Station: <b>{area?.code ?? (isOnDuty ? DEFAULT_STATION_CODE : op.default_station ?? '—')}</b>
-              </span>
-            </div>
-
-            {op.phone_number ? (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
-                <a
-                  href={`tel:${op.phone_number}`}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    minHeight: 44,
-                    padding: '10px 14px',
-                    borderRadius: 8,
-                    background: 'var(--primary)',
-                    color: 'var(--primary-fg)',
-                    textDecoration: 'none',
-                    fontWeight: 700,
-                    fontSize: 14,
-                    fontFamily: 'ui-monospace, monospace',
-                  }}
-                >
-                  Call · {op.phone_number}
-                </a>
-                <a
-                  href={`sms:${op.phone_number}`}
-                  className="btn"
-                  style={{
-                    minHeight: 44,
-                    padding: '10px 16px',
-                    textDecoration: 'none',
-                    fontWeight: 700,
-                    fontSize: 14,
-                  }}
-                >
-                  SMS
-                </a>
-              </div>
-            ) : (
-              <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>No phone number on file</div>
-            )}
+        {sortedAndFiltered.length === 0 ? (
+          <div className="card" style={{ padding: 24, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13.5 }}>
+            No operators match the current filter.
           </div>
-        ))}
+        ) : (
+          sortedAndFiltered.map(({ op, shift, area, standbyType, isLeave, isRestDay, isOnDuty }) => (
+            <div
+              key={op.id}
+              className="card"
+              style={{
+                background: standbyType ? 'var(--violet-bg)' : 'var(--surface)',
+                border: standbyType ? '1.5px solid var(--violet-border)' : '1px solid var(--border)',
+                padding: 14,
+                display: 'grid',
+                gap: 8,
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8 }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>{op.full_name}</div>
+                  {op.position && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{op.position}</div>}
+                </div>
+                {standbyType && <Badge tone="violet" size="sm">STANDBY · {standbyType}</Badge>}
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                <span>
+                  Status:{' '}
+                  <b>
+                    {isLeave
+                      ? `LEAVE (${area?.code})`
+                      : isRestDay
+                        ? `REST DAY (${area?.code})`
+                        : isOnDuty && shift
+                          ? `ON DUTY (${shift.code})`
+                          : shift?.is_off
+                            ? `OFF (${shift.code})`
+                            : 'Unassigned'}
+                  </b>
+                </span>
+                <span>·</span>
+                <span>
+                  Station: <b>{area?.code ?? (isOnDuty ? DEFAULT_STATION_CODE : op.default_station ?? '—')}</b>
+                </span>
+              </div>
+
+              {op.phone_number ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
+                  <a
+                    href={`tel:${op.phone_number}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minHeight: 44,
+                      padding: '10px 14px',
+                      borderRadius: 8,
+                      background: 'var(--primary)',
+                      color: 'var(--primary-fg)',
+                      textDecoration: 'none',
+                      fontWeight: 700,
+                      fontSize: 14,
+                      fontFamily: 'ui-monospace, monospace',
+                    }}
+                  >
+                    Call · {op.phone_number}
+                  </a>
+                  <a
+                    href={`sms:${op.phone_number}`}
+                    className="btn"
+                    style={{
+                      minHeight: 44,
+                      padding: '10px 16px',
+                      textDecoration: 'none',
+                      fontWeight: 700,
+                      fontSize: 14,
+                    }}
+                  >
+                    SMS
+                  </a>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>No phone number on file</div>
+              )}
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

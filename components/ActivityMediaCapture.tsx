@@ -210,7 +210,7 @@ export default function ActivityMediaCapture({
           <button
             type="button"
             className="btn"
-            style={{ fontSize: 11.5, minHeight: 28, padding: '2px 8px', fontWeight: 700 }}
+            style={{ fontSize: 11.5, minHeight: 36, padding: '4px 10px', fontWeight: 700 }}
             onClick={() => setPinModalOpen(true)}
           >
             Pin on Satellite Map
@@ -242,15 +242,19 @@ export default function ActivityMediaCapture({
                 onClick={() => onRemovePhoto(idx)}
                 style={{
                   position: 'absolute',
-                  top: -5,
-                  right: -5,
-                  width: 20,
-                  height: 20,
+                  top: -8,
+                  right: -8,
+                  minWidth: 32,
+                  minHeight: 32,
+                  width: 32,
+                  height: 32,
+                  display: 'grid',
+                  placeItems: 'center',
                   borderRadius: '50%',
                   border: 'none',
                   background: 'var(--danger)',
                   color: 'var(--primary-fg)',
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: 700,
                   cursor: 'pointer',
                 }}

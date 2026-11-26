@@ -226,17 +226,19 @@ export default function InventoryManager(p: InventoryManagerProps) {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-        <SegmentedTabs
-          ariaLabel="Inventory views"
-          value={tab}
-          onChange={setTab}
-          items={[
-            { id: 'sites', label: `Stock by Site (${filteredSites.length})` },
-            { id: 'items', label: `By Consumable (${itemSummaries.length})` },
-            { id: 'ledger', label: `Movement Ledger (${filteredLedger.length})` },
-            { id: 'catalog', label: `Catalog (${items.length})` },
-          ]}
-        />
+        <div className="mobile-scroll-tabs" style={{ maxWidth: '100%' }}>
+          <SegmentedTabs
+            ariaLabel="Inventory views"
+            value={tab}
+            onChange={setTab}
+            items={[
+              { id: 'sites', label: `Stock by Site (${filteredSites.length})` },
+              { id: 'items', label: `By Consumable (${itemSummaries.length})` },
+              { id: 'ledger', label: `Movement Ledger (${filteredLedger.length})` },
+              { id: 'catalog', label: `Catalog (${items.length})` },
+            ]}
+          />
+        </div>
         {(tab === 'sites' || tab === 'ledger') && (
           <input
             type="search"
@@ -245,7 +247,7 @@ export default function InventoryManager(p: InventoryManagerProps) {
             placeholder="Search site or item…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ width: 230, minHeight: 34 }}
+            style={{ flex: '1 1 200px', maxWidth: '100%' }}
           />
         )}
       </div>
@@ -292,7 +294,7 @@ export default function InventoryManager(p: InventoryManagerProps) {
               }
             />
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: 12 }}>
               {filteredSites.map((site) => (
                 <section key={site.siteKey} className="card" style={{ padding: 14, display: 'grid', gap: 10, alignContent: 'start' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
@@ -311,8 +313,7 @@ export default function InventoryManager(p: InventoryManagerProps) {
                         <div style={{ marginTop: 8 }}>
                           <button
                             type="button"
-                            className="btn"
-                            style={{ fontSize: 12, padding: '3px 10px' }}
+                            className="btn btn-sm"
                             onClick={() => setMoveModal({ open: true, action: 'opening_stock', site: site.siteName })}
                           >
                             + Add Opening Stock
@@ -354,24 +355,21 @@ export default function InventoryManager(p: InventoryManagerProps) {
                             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                               <button
                                 type="button"
-                                className="btn"
-                                style={{ fontSize: 11, padding: '2px 8px', minHeight: 26 }}
+                                className="btn btn-sm"
                                 onClick={() => setMoveModal({ open: true, action: 'delivery', site: site.siteName, itemId: b.item.id })}
                               >
                                 + Deliver
                               </button>
                               <button
                                 type="button"
-                                className="btn"
-                                style={{ fontSize: 11, padding: '2px 8px', minHeight: 26 }}
+                                className="btn btn-sm"
                                 onClick={() => setMoveModal({ open: true, action: 'adjustment', site: site.siteName, itemId: b.item.id })}
                               >
                                 Count
                               </button>
                               <button
                                 type="button"
-                                className="btn"
-                                style={{ fontSize: 11, padding: '2px 8px', minHeight: 26 }}
+                                className="btn btn-sm"
                                 onClick={() => setMoveModal({ open: true, action: 'manual_usage', site: site.siteName, itemId: b.item.id })}
                               >
                                 − Use
@@ -440,7 +438,7 @@ export default function InventoryManager(p: InventoryManagerProps) {
               aria-label="Filter ledger by item"
               value={ledgerItemId}
               onChange={(e) => setLedgerItemId(e.target.value)}
-              style={{ width: 240, minHeight: 32 }}
+              style={{ flex: '1 1 200px', maxWidth: '100%' }}
             >
               <option value="all">All Consumables</option>
               {items.map((it) => (
@@ -452,58 +450,119 @@ export default function InventoryManager(p: InventoryManagerProps) {
           {filteredLedger.length === 0 ? (
             <EmptyState title="No movements match these filters" />
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-                <thead>
-                  <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
-                    <th style={{ padding: '8px 6px' }}>Date</th>
-                    <th style={{ padding: '8px 6px' }}>Site / Well</th>
-                    <th style={{ padding: '8px 6px' }}>Consumable</th>
-                    <th style={{ padding: '8px 6px' }}>Type</th>
-                    <th style={{ padding: '8px 6px', textAlign: 'right' }}>Change</th>
-                    <th style={{ padding: '8px 6px' }}>Ref / By</th>
-                    <th style={{ padding: '8px 6px' }}>Notes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredLedger.slice(0, 250).map((m) => {
-                    const it = itemById.get(m.item_id);
-                    const unit = it?.unit ?? '';
-                    const isPositive = Number(m.quantity_delta) > 0;
-                    const isAuto = m.movement_type === 'activity_usage' || m.movement_type === 'activity_delivery';
-                    const who = m.created_by ? (p.userNameById[m.created_by] ?? 'Staff') : '';
-                    return (
-                      <tr key={m.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                        <td className="tabular-nums" style={{ padding: '7px 6px', whiteSpace: 'nowrap' }}>{m.movement_date}</td>
-                        <td style={{ padding: '7px 6px', fontWeight: 600 }}>{m.site_name}</td>
-                        <td style={{ padding: '7px 6px' }}>{it?.name ?? 'Unknown item'}</td>
-                        <td style={{ padding: '7px 6px' }}>
-                          <Badge tone={isAuto ? 'info' : isPositive ? 'ok' : 'warn'} size="sm">
-                            {MOVEMENT_TYPE_LABELS[m.movement_type]}
-                          </Badge>
-                        </td>
-                        <td
+            <>
+              <div className="responsive-cards">
+                {filteredLedger.slice(0, 250).map((m) => {
+                  const it = itemById.get(m.item_id);
+                  const unit = it?.unit ?? '';
+                  const isPositive = Number(m.quantity_delta) > 0;
+                  const isAuto = m.movement_type === 'activity_usage' || m.movement_type === 'activity_delivery';
+                  const who = m.created_by ? (p.userNameById[m.created_by] ?? 'Staff') : '';
+                  const refWho = [m.reference_no, who].filter(Boolean).join(' · ');
+                  return (
+                    <div
+                      key={`card-${m.id}`}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: 8,
+                        border: '1px solid var(--border-light)',
+                        background: 'var(--surface-muted)',
+                        display: 'grid',
+                        gap: 6,
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700 }}>{m.site_name}</div>
+                          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{it?.name ?? 'Unknown item'}</div>
+                        </div>
+                        <div
                           className="tabular-nums"
                           style={{
-                            padding: '7px 6px',
-                            textAlign: 'right',
-                            fontWeight: 700,
+                            fontWeight: 800,
+                            fontSize: 14,
                             color: isPositive ? 'var(--ok-fg)' : 'var(--danger)',
                             whiteSpace: 'nowrap',
                           }}
                         >
                           {isPositive ? '+' : ''}{formatInventoryQty(Number(m.quantity_delta), unit)}
-                        </td>
-                        <td style={{ padding: '7px 6px', color: 'var(--text-secondary)' }}>
-                          {[m.reference_no, who].filter(Boolean).join(' · ') || '—'}
-                        </td>
-                        <td style={{ padding: '7px 6px', color: 'var(--text-secondary)' }}>{m.notes ?? '—'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <Badge tone={isAuto ? 'info' : isPositive ? 'ok' : 'warn'} size="sm">
+                          {MOVEMENT_TYPE_LABELS[m.movement_type]}
+                        </Badge>
+                        <span className="tabular-nums" style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                          {m.movement_date}
+                        </span>
+                      </div>
+                      {refWho && (
+                        <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                          Ref / By: {refWho}
+                        </div>
+                      )}
+                      {m.notes && (
+                        <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                          {m.notes}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="responsive-table-wrap scroll-x">
+                <table className="data-table">
+                  <thead>
+                    <tr style={{ textAlign: 'left' }}>
+                      <th>Date</th>
+                      <th>Site / Well</th>
+                      <th>Consumable</th>
+                      <th>Type</th>
+                      <th style={{ textAlign: 'right' }}>Change</th>
+                      <th>Ref / By</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredLedger.slice(0, 250).map((m) => {
+                      const it = itemById.get(m.item_id);
+                      const unit = it?.unit ?? '';
+                      const isPositive = Number(m.quantity_delta) > 0;
+                      const isAuto = m.movement_type === 'activity_usage' || m.movement_type === 'activity_delivery';
+                      const who = m.created_by ? (p.userNameById[m.created_by] ?? 'Staff') : '';
+                      return (
+                        <tr key={m.id}>
+                          <td className="tabular-nums" style={{ whiteSpace: 'nowrap' }}>{m.movement_date}</td>
+                          <td style={{ fontWeight: 600 }}>{m.site_name}</td>
+                          <td>{it?.name ?? 'Unknown item'}</td>
+                          <td>
+                            <Badge tone={isAuto ? 'info' : isPositive ? 'ok' : 'warn'} size="sm">
+                              {MOVEMENT_TYPE_LABELS[m.movement_type]}
+                            </Badge>
+                          </td>
+                          <td
+                            className="tabular-nums"
+                            style={{
+                              textAlign: 'right',
+                              fontWeight: 700,
+                              color: isPositive ? 'var(--ok-fg)' : 'var(--danger)',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {isPositive ? '+' : ''}{formatInventoryQty(Number(m.quantity_delta), unit)}
+                          </td>
+                          <td style={{ color: 'var(--text-secondary)' }}>
+                            {[m.reference_no, who].filter(Boolean).join(' · ') || '—'}
+                          </td>
+                          <td style={{ color: 'var(--text-secondary)' }}>{m.notes ?? '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       )}
@@ -513,59 +572,105 @@ export default function InventoryManager(p: InventoryManagerProps) {
           {items.length === 0 ? (
             <EmptyState title="No consumables defined yet" />
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
-                    <th style={{ padding: '8px 6px' }}>Consumable</th>
-                    <th style={{ padding: '8px 6px' }}>Category</th>
-                    <th style={{ padding: '8px 6px' }}>Unit</th>
-                    <th style={{ padding: '8px 6px' }}>Low Threshold / Site</th>
-                    <th style={{ padding: '8px 6px' }}>Status</th>
-                    {p.canManage && <th style={{ padding: '8px 6px', textAlign: 'right' }}>Actions</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((it) => (
-                    <tr key={it.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                      <td style={{ padding: '8px 6px', fontWeight: 700 }}>{it.name}</td>
-                      <td style={{ padding: '8px 6px' }}>{CONSUMABLE_CATEGORY_LABELS[it.category]}</td>
-                      <td style={{ padding: '8px 6px' }}>{it.unit}</td>
-                      <td className="tabular-nums" style={{ padding: '8px 6px' }}>
-                        {formatInventoryQty(Number(it.low_stock_threshold), it.unit)}
-                      </td>
-                      <td style={{ padding: '8px 6px' }}>
-                        <Badge tone={it.is_active ? 'ok' : 'neutral'} size="sm">
-                          {it.is_active ? 'Active' : 'Archived'}
-                        </Badge>
-                      </td>
-                      {p.canManage && (
-                        <td style={{ padding: '8px 6px', textAlign: 'right' }}>
-                          <div style={{ display: 'inline-flex', gap: 6 }}>
-                            <button
-                              type="button"
-                              className="btn"
-                              style={{ fontSize: 11.5, padding: '2px 8px', minHeight: 28 }}
-                              onClick={() => setItemModal({ open: true, editing: it })}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              className="btn"
-                              style={{ fontSize: 11.5, padding: '2px 8px', minHeight: 28 }}
-                              onClick={() => void toggleItemActive(it)}
-                            >
-                              {it.is_active ? 'Archive' : 'Restore'}
-                            </button>
-                          </div>
-                        </td>
-                      )}
+            <>
+              <div className="responsive-cards">
+                {items.map((it) => (
+                  <div
+                    key={`card-${it.id}`}
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: 8,
+                      border: '1px solid var(--border-light)',
+                      background: 'var(--surface-muted)',
+                      display: 'grid',
+                      gap: 8,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 700 }}>{it.name}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                          {CONSUMABLE_CATEGORY_LABELS[it.category]} · Unit: {it.unit} · Min {formatInventoryQty(Number(it.low_stock_threshold), it.unit)}
+                        </div>
+                      </div>
+                      <Badge tone={it.is_active ? 'ok' : 'neutral'} size="sm">
+                        {it.is_active ? 'Active' : 'Archived'}
+                      </Badge>
+                    </div>
+                    {p.canManage && (
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          onClick={() => setItemModal({ open: true, editing: it })}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          onClick={() => void toggleItemActive(it)}
+                        >
+                          {it.is_active ? 'Archive' : 'Restore'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="responsive-table-wrap scroll-x">
+                <table className="data-table">
+                  <thead>
+                    <tr style={{ textAlign: 'left' }}>
+                      <th>Consumable</th>
+                      <th>Category</th>
+                      <th>Unit</th>
+                      <th>Low Threshold / Site</th>
+                      <th>Status</th>
+                      {p.canManage && <th style={{ textAlign: 'right' }}>Actions</th>}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {items.map((it) => (
+                      <tr key={it.id}>
+                        <td style={{ fontWeight: 700 }}>{it.name}</td>
+                        <td>{CONSUMABLE_CATEGORY_LABELS[it.category]}</td>
+                        <td>{it.unit}</td>
+                        <td className="tabular-nums">
+                          {formatInventoryQty(Number(it.low_stock_threshold), it.unit)}
+                        </td>
+                        <td>
+                          <Badge tone={it.is_active ? 'ok' : 'neutral'} size="sm">
+                            {it.is_active ? 'Active' : 'Archived'}
+                          </Badge>
+                        </td>
+                        {p.canManage && (
+                          <td style={{ textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', gap: 6 }}>
+                              <button
+                                type="button"
+                                className="btn btn-sm"
+                                onClick={() => setItemModal({ open: true, editing: it })}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-sm"
+                                onClick={() => void toggleItemActive(it)}
+                              >
+                                {it.is_active ? 'Archive' : 'Restore'}
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       )}

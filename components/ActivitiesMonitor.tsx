@@ -477,7 +477,7 @@ export default function ActivitiesMonitor(p: {
               }
             />
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 340px), 1fr))', gap: 12 }}>
               {filteredActivities.map((act) => (
                 <ActivityFeedCard
                   key={act.id} act={act}

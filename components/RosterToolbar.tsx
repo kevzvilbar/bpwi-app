@@ -101,7 +101,7 @@ export default function RosterToolbar(p: RosterToolbarProps) {
           value={p.search}
           onChange={(e) => p.onSearchChange(e.target.value)}
           className="input"
-          style={{ width: 170, minHeight: 36, padding: '5px 10px', fontSize: 12.5 }}
+          style={{ flex: '1 1 160px', maxWidth: 220, minWidth: 0 }}
         />
 
         {p.hasLinkedOp && (
@@ -234,7 +234,7 @@ export default function RosterToolbar(p: RosterToolbarProps) {
           <span>
             <b>Quick tips:</b> Click or drag across cells to paint. Use arrow keys + Enter for keyboard editing, <code>Ctrl+Z</code> to undo, and right-click (or long-press on mobile) for standby &amp; bulk fill actions.
           </span>
-          <button className="btn" style={{ padding: '3px 10px', minHeight: 30, fontSize: 12 }} onClick={p.onDismissHint}>
+          <button className="btn" style={{ padding: '3px 10px', fontSize: 12 }} onClick={p.onDismissHint}>
             Got it
           </button>
         </div>
@@ -373,7 +373,7 @@ export default function RosterToolbar(p: RosterToolbarProps) {
               type="button"
               className="btn"
               onClick={p.onResetCopySource}
-              style={{ padding: '2px 8px', minHeight: 24, fontSize: 11, fontWeight: 600, marginRight: 2 }}
+              style={{ padding: '2px 8px', fontSize: 11, fontWeight: 600, marginRight: 2 }}
             >
               Pick New Source
             </button>
@@ -383,6 +383,7 @@ export default function RosterToolbar(p: RosterToolbarProps) {
           {p.shifts.map((s, i) => (
             <button
               key={s.id}
+              className="chip-btn"
               onClick={() => {
                 p.setMode('paint');
                 p.setShiftId(s.id);
@@ -406,6 +407,7 @@ export default function RosterToolbar(p: RosterToolbarProps) {
           <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 3px' }} />
           <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Area / Leave:</span>
           <button
+            className="chip-btn"
             onClick={() => {
               p.setMode('paint');
               p.setAreaId(null);
@@ -437,7 +439,7 @@ export default function RosterToolbar(p: RosterToolbarProps) {
                     ? `${a.name ?? a.code} (auto-paired with ${offShift?.code ?? 'OFF'})`
                     : (a.name ?? '')
                 }
-                className={isOffPartner ? 'cell-leave' : undefined}
+                className={isOffPartner ? 'cell-leave chip-btn' : 'chip-btn'}
                 style={{
                   padding: '3px 7px',
                   borderRadius: 5,
@@ -551,13 +553,13 @@ export default function RosterToolbar(p: RosterToolbarProps) {
             <b>{p.draftItems.length}</b> unsubmitted draft proposal item{p.draftItems.length === 1 ? '' : 's'} saved from before this window.
           </span>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <Link href="/requests" className="btn" style={{ padding: '3px 10px', minHeight: 30, fontSize: 12, textDecoration: 'none' }}>
+            <Link href="/requests" className="btn" style={{ padding: '3px 10px', fontSize: 12, textDecoration: 'none' }}>
               View Requests
             </Link>
             <button
               type="button"
               className="btn"
-              style={{ padding: '3px 10px', minHeight: 30, fontSize: 12, color: 'var(--danger)' }}
+              style={{ padding: '3px 10px', fontSize: 12, color: 'var(--danger)' }}
               onClick={p.onDiscardDrafts}
             >
               Discard Drafts

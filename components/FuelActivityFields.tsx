@@ -91,8 +91,8 @@ export default function FuelActivityFields({
             )}
             <button
               type="button"
-              className="btn btn-add"
-              style={{ minHeight: 30, padding: '3px 10px', fontSize: 12 }}
+              className="btn btn-add btn-sm"
+              style={{ minHeight: 36 }}
               onClick={() =>
                 patchFuel({
                   fuelDistributions: [
@@ -330,47 +330,64 @@ export default function FuelActivityFields({
               <div
                 key={idx}
                 style={{
+                  padding: 8,
+                  borderRadius: 8,
+                  border: '1px solid var(--border-light)',
+                  background: 'var(--surface-muted)',
                   display: 'grid',
-                  gridTemplateColumns: '1.3fr 90px 1fr auto',
                   gap: 6,
-                  alignItems: 'center',
                 }}
               >
-                <input
-                  className="input"
-                  placeholder="Area / Genset site (e.g. Well 2 Genset)"
-                  value={stop.destinationSite}
-                  onChange={(e) => patchStop(idx, { destinationSite: e.target.value })}
-                />
-                <input
-                  className="input"
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  placeholder="Liters"
-                  value={stop.liters}
-                  onChange={(e) => patchStop(idx, { liters: e.target.value })}
-                />
-                <input
-                  className="input"
-                  placeholder="Container / Received by (opt.)"
-                  value={stop.containerNote}
-                  onChange={(e) => patchStop(idx, { containerNote: e.target.value })}
-                />
                 {fuel.fuelDistributions.length > 1 && (
-                  <button
-                    type="button"
-                    className="btn"
-                    style={{ minHeight: 38, padding: '0 8px', color: 'var(--danger)' }}
-                    onClick={() =>
-                      patchFuel({
-                        fuelDistributions: fuel.fuelDistributions.filter((_, i) => i !== idx),
-                      })
-                    }
-                  >
-                    ✕
-                  </button>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>
+                      Drop #{idx + 1}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-danger-soft"
+                      aria-label={`Remove drop ${idx + 1}`}
+                      style={{ minHeight: 36 }}
+                      onClick={() =>
+                        patchFuel({
+                          fuelDistributions: fuel.fuelDistributions.filter((_, i) => i !== idx),
+                        })
+                      }
+                    >
+                      Remove
+                    </button>
+                  </div>
                 )}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                    gap: 6,
+                    alignItems: 'center',
+                  }}
+                >
+                  <input
+                    className="input"
+                    placeholder="Area / Genset site (e.g. Well 2 Genset)"
+                    value={stop.destinationSite}
+                    onChange={(e) => patchStop(idx, { destinationSite: e.target.value })}
+                  />
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    placeholder="Liters"
+                    value={stop.liters}
+                    onChange={(e) => patchStop(idx, { liters: e.target.value })}
+                  />
+                  <input
+                    className="input"
+                    placeholder="Container / Received by (opt.)"
+                    value={stop.containerNote}
+                    onChange={(e) => patchStop(idx, { containerNote: e.target.value })}
+                  />
+                </div>
               </div>
             ))}
           </div>

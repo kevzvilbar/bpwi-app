@@ -284,7 +284,7 @@ export default function DepartmentHeads(p: { people: Person[]; grants: Grant[]; 
             Note (optional)
             <input className="input" placeholder="e.g. Covering December roster while scheduler is on leave" value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} />
           </label>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button className="btn btn-primary" disabled={busy === 'grant'} onClick={submitDraft}>
               {busy === 'grant' ? 'Creating…' : 'Create edit window'}
             </button>
@@ -298,45 +298,92 @@ export default function DepartmentHeads(p: { people: Person[]; grants: Grant[]; 
         {grants.length === 0 ? (
           <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)' }}>No edit windows yet.</p>
         ) : (
-          <div style={{ overflow: 'auto' }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  {['Department head', 'Window (Manila)', 'Editable dates', 'Note', 'Status', ''].map((h) => (
-                    <th key={h} style={{ textAlign: 'left', padding: '6px 8px', background: 'var(--surface-muted)', borderBottom: '1px solid var(--border)' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {grants.map((g) => {
-                  const st = grantStatus(g, nowMs);
-                  const live = st === 'Active' || st === 'Upcoming';
-                  return (
-                    <tr key={g.id}>
-                      <td style={{ padding: '6px 8px' }}>{nameOf.get(g.user_id)}</td>
-                      <td style={{ padding: '6px 8px' }}>
-                        {formatManila(g.starts_at)} → {formatManila(g.ends_at)}
-                      </td>
-                      <td style={{ padding: '6px 8px' }}>{rangeText(g)}</td>
-                      <td style={{ padding: '6px 8px' }}>{g.note ?? '—'}</td>
-                      <td style={{ padding: '6px 8px' }}>
-                        <Badge size="sm" tone={st === 'Active' ? 'ok' : st === 'Upcoming' ? 'info' : 'neutral'}>
-                          {st}
-                        </Badge>
-                      </td>
-                      <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-light)' }}>
-                        {live && (
-                          <button className="btn" disabled={busy === `r${g.id}`} onClick={() => revoke(g)}>
-                            {busy === `r${g.id}` ? 'Revoking…' : 'Revoke'}
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <div className="responsive-table-wrap scroll-x">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    {['Department head', 'Window (Manila)', 'Editable dates', 'Note', 'Status', ''].map((h) => (
+                      <th key={h} style={{ textAlign: 'left', padding: '6px 8px', background: 'var(--surface-muted)', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {grants.map((g) => {
+                    const st = grantStatus(g, nowMs);
+                    const live = st === 'Active' || st === 'Upcoming';
+                    return (
+                      <tr key={g.id}>
+                        <td style={{ padding: '6px 8px' }}>{nameOf.get(g.user_id)}</td>
+                        <td style={{ padding: '6px 8px' }}>
+                          {formatManila(g.starts_at)} → {formatManila(g.ends_at)}
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>{rangeText(g)}</td>
+                        <td style={{ padding: '6px 8px' }}>{g.note ?? '—'}</td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <Badge size="sm" tone={st === 'Active' ? 'ok' : st === 'Upcoming' ? 'info' : 'neutral'}>
+                            {st}
+                          </Badge>
+                        </td>
+                        <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-light)' }}>
+                          {live && (
+                            <button className="btn" disabled={busy === `r${g.id}`} onClick={() => revoke(g)}>
+                              {busy === `r${g.id}` ? 'Revoking…' : 'Revoke'}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="responsive-cards">
+              {grants.map((g) => {
+                const st = grantStatus(g, nowMs);
+                const live = st === 'Active' || st === 'Upcoming';
+                return (
+                  <div
+                    key={`m-${g.id}`}
+                    style={{
+                      border: '1px solid var(--border)',
+                      borderRadius: 10,
+                      padding: 12,
+                      display: 'grid',
+                      gap: 6,
+                      background: 'var(--surface-muted)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <strong style={{ fontSize: 13.5 }}>{nameOf.get(g.user_id)}</strong>
+                      <Badge size="sm" tone={st === 'Active' ? 'ok' : st === 'Upcoming' ? 'info' : 'neutral'}>
+                        {st}
+                      </Badge>
+                    </div>
+                    <div style={{ fontSize: 12.5, color: 'var(--text)' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Window (Manila): </span>
+                      {formatManila(g.starts_at)} → {formatManila(g.ends_at)}
+                    </div>
+                    <div style={{ fontSize: 12.5, color: 'var(--text)' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Editable dates: </span>
+                      {rangeText(g)}
+                    </div>
+                    <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                      Note: {g.note ?? '—'}
+                    </div>
+                    {live && (
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 2 }}>
+                        <button type="button" className="btn" disabled={busy === `r${g.id}`} onClick={() => revoke(g)}>
+                          {busy === `r${g.id}` ? 'Revoking…' : 'Revoke'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
         <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)' }}>
           Everything a department head changes is recorded in the Activity log under their name.

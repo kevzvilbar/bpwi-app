@@ -139,7 +139,7 @@ export default function HolidaysManager(p: {
               Holidays highlight on the Roster &amp; PM Planner and automatically track Holiday Shifts Worked in Reports without overwriting 24/7 plant shifts.
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             <select
               className="input"
               aria-label="Filter holidays by year"
@@ -162,17 +162,17 @@ export default function HolidaysManager(p: {
 
         {p.isAdmin && (
           <form onSubmit={handleAdd} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end', borderTop: '1px solid var(--border-light)', paddingTop: 10 }}>
-            <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
+            <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600, flex: '1 1 140px', minWidth: 0 }}>
               Date
-              <input className="input" type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} required style={{ width: 155 }} />
+              <input className="input" type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} required />
             </label>
-            <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600, flex: '1 1 200px' }}>
+            <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600, flex: '1 1 180px', minWidth: 0 }}>
               Holiday Name
               <input className="input" placeholder="e.g. Maundy Thursday, Iloilo Charter Day" value={newName} onChange={(e) => setNewName(e.target.value)} required />
             </label>
-            <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
+            <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600, flex: '1 1 140px', minWidth: 0 }}>
               Type
-              <select className="input" value={newType} onChange={(e) => setNewType(e.target.value as HolidayRow['holiday_type'])} style={{ width: 175 }}>
+              <select className="input" value={newType} onChange={(e) => setNewType(e.target.value as HolidayRow['holiday_type'])}>
                 <option value="regular">Regular Holiday</option>
                 <option value="special_non_working">Special Non-Working</option>
                 <option value="company">Company / Local</option>
@@ -187,7 +187,7 @@ export default function HolidaysManager(p: {
         {msg && <AlertBanner tone={msg.startsWith('✓') ? 'ok' : 'danger'}>{msg}</AlertBanner>}
       </div>
 
-      <div className="card" style={{ overflow: 'auto' }}>
+      <div className="card responsive-table-wrap scroll-x">
         <table className="data-table">
           <thead>
             <tr style={{ background: 'var(--header-bg)', color: 'var(--header-fg)', textAlign: 'left', fontSize: 12 }}>
@@ -223,7 +223,7 @@ export default function HolidaysManager(p: {
                           className="btn"
                           disabled={busy}
                           onClick={() => void handleDelete(h.id)}
-                          style={{ minHeight: 28, padding: '2px 8px', fontSize: 11.5, color: 'var(--danger)' }}
+                          style={{ padding: '4px 10px', fontSize: 12, color: 'var(--danger)' }}
                         >
                           Remove
                         </button>
@@ -235,6 +235,44 @@ export default function HolidaysManager(p: {
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="responsive-cards">
+        {visible.length === 0 ? (
+          <div className="card" style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>
+            No holidays configured for this selection.
+          </div>
+        ) : (
+          visible.map((h) => {
+            const tm = TYPE_META[h.holiday_type] ?? TYPE_META.regular;
+            return (
+              <div key={`m-${h.id}`} className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="tabular-nums" style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>
+                      {h.holiday_date} ({formatDateOnly(h.holiday_date)})
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>{h.name}</div>
+                  </div>
+                  <Badge tone={tm.tone} size="sm">{tm.label}</Badge>
+                </div>
+                {p.isAdmin && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={busy}
+                      onClick={() => void handleDelete(h.id)}
+                      style={{ color: 'var(--danger)' }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

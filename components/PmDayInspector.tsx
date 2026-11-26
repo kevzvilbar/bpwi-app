@@ -113,6 +113,8 @@ export default function PmDayInspector({
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 6,
                   background: 'var(--violet-bg)',
                   border: '1px solid var(--violet-border)',
                   borderRadius: 6,
@@ -219,7 +221,12 @@ export default function PmDayInspector({
                               background: 'transparent',
                               color: chipFg,
                               cursor: 'pointer',
-                              padding: 0,
+                              padding: '4px 6px',
+                              minWidth: 28,
+                              minHeight: 28,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
                               fontWeight: 800,
                             }}
                           >
@@ -288,7 +295,7 @@ export default function PmDayInspector({
                     </select>
                     <select
                       className="btn"
-                      style={{ padding: '3px 6px', fontSize: 11, flex: 1 }}
+                      style={{ padding: '3px 6px', fontSize: 11, flex: 1, minWidth: 0, maxWidth: '100%' }}
                       value=""
                       onChange={(e) => {
                         if (e.target.value) {

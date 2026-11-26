@@ -157,8 +157,6 @@ export default function PrintableActivityReport(p: {
   const showFlushingVolumeSheet = Boolean(
     act && (p.mode === 'flushing_volume' || (isFlushingEligible && sheetView === 'form')),
   );
-  const hideGenericHeader =
-    showPulloutSheet || showTankCleaningSheet || showLeakVolumeSheet || showFlushingVolumeSheet;
   const areaLabel = areaObj ? `${areaObj.code}${areaObj.name ? ` · ${areaObj.name}` : ''}` : '';
   const gpsInfo = act ? formatTaggedGpsPosition(act.gps_lat, act.gps_lng, det) : null;
   const leakLossState = isLeakRepairEligible && act ? hydrateLeakLossDetails(det) : null;
@@ -238,8 +236,6 @@ export default function PrintableActivityReport(p: {
           width: '100%',
           background: '#ffffff',
           color: '#0f172a',
-          padding: showPulloutSheet ? 20 : 28,
-          borderRadius: 12,
         }}
       >
         {(act?.is_sample || jo?.is_sample) && <SamplePrintWatermark />}
@@ -336,18 +332,6 @@ export default function PrintableActivityReport(p: {
           </div>
         </div>
 
-        {/* Official Document Header (standard reports / meter certificate) */}
-        {!hideGenericHeader && (
-          <ReportLetterhead
-            orgName={p.orgName}
-            eyebrow={p.orgName || 'BP Waterworks, Inc.'}
-            title={p.mode === 'meter_test' ? 'Water Meter Volumetric Test Certificate' : 'Field Activity & Job Order Report'}
-            refCode={refCode}
-            dateLabel={`Date: ${act?.activity_date ?? (jo?.created_at ? jo.created_at.slice(0, 10) : 'N/A')}`}
-            printedTs={fmtTs(new Date().toISOString())}
-          />
-        )}
-
         {showPulloutSheet && act ? (
           <ReportViewport>
             <WellPulloutReportSheet
@@ -388,326 +372,342 @@ export default function PrintableActivityReport(p: {
               crewNames={crewOps}
             />
           </ReportViewport>
-        ) : p.mode === 'meter_test' ? (
-          /* Official Water Meter Volumetric Test Certificate Layout */
-          <div style={{ display: 'grid', gap: 16, fontSize: 12.5 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, border: '1px solid #334155', padding: 12 }}>
-              <div><b>Customer Account #:</b> {detPrim('accountNumber') ?? jo?.account_number ?? 'N/A'}</div>
-              <div><b>Account Name:</b> {detPrim('accountName') ?? jo?.account_name ?? 'N/A'}</div>
-              <div><b>Area / Station:</b> {areaObj ? `${areaObj.code}${areaObj.name ? ` (${areaObj.name})` : ''}` : 'N/A'}</div>
-              <div><b>Block &amp; Lot / Site:</b> {act?.block_lot ?? jo?.block_lot ?? act?.site_or_well ?? 'N/A'}</div>
-              <div><b>Meter Brand:</b> {detPrim('meterBrand') ?? 'N/A'}</div>
-              <div><b>Meter Serial #:</b> {detPrim('meterSerialNumber') ?? 'N/A'}</div>
-              <div><b>Meter Size:</b> {detPrim('meterSize') ?? '1/2"'} ({detPrim('meterNature') ?? 'Old'})</div>
-              <div><b>Test Type:</b> {detPrim('testNature') ?? 'Re-testing'} (Ref: {detPrim('refVolumeM3') ?? 0.01} m³)</div>
-              {gpsInfo && (
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <b>GPS Position:</b>{' '}
-                  <a href={gpsInfo.mapUrl} target="_blank" rel="noreferrer" style={{ color: '#0f172a', textDecoration: 'underline' }}>
-                    {gpsInfo.coords}
-                  </a>{' '}
-                  ({gpsInfo.sourceLabel})
-                </div>
-              )}
-            </div>
-
-            <table style={{ ...REPORT_TABLE_STYLE, fontSize: 12 }}>
-              <thead>
-                <tr style={{ background: '#f1f5f9' }}>
-                  <th style={{ border: '1px solid #334155', padding: '7px 8px', textAlign: 'left' }}>Test Stage</th>
-                  <th style={{ border: '1px solid #334155', padding: '7px 8px', textAlign: 'right' }}>Reading (m³)</th>
-                  <th style={{ border: '1px solid #334155', padding: '7px 8px', textAlign: 'right' }}>% Error (Allowed: ±5.00%)</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px' }}>Initial Reading</td>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right' }}>{detPrim('initialReading') ?? '—'}</td>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right' }}>—</td>
-                </tr>
-                <tr>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px' }}>Trial 1 ({detPrim('refVolumeM3') ?? 0.01} m³)</td>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right' }}>{detPrim('reading1') ?? '—'}</td>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>{detPrim('err1') !== null ? `${detPrim('err1')}%` : '—'}</td>
-                </tr>
-                <tr>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px' }}>Trial 2 ({detPrim('refVolumeM3') ?? 0.01} m³)</td>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right' }}>{detPrim('reading2') ?? '—'}</td>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>{detPrim('err2') !== null ? `${detPrim('err2')}%` : '—'}</td>
-                </tr>
-                <tr>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px' }}>Trial 3 ({detPrim('refVolumeM3') ?? 0.01} m³)</td>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right' }}>{detPrim('reading3') ?? '—'}</td>
-                  <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>{detPrim('err3') !== null ? `${detPrim('err3')}%` : '—'}</td>
-                </tr>
-                <tr style={{ background: '#f8fafc', fontWeight: 800 }}>
-                  <td colSpan={2} style={{ border: '1px solid #334155', padding: '8px' }}>Average Volumetric Error &amp; Verdict</td>
-                  <td style={{ border: '1px solid #334155', padding: '8px', textAlign: 'right' }}>
-                    {detPrim('avgErr') !== null ? `${detPrim('avgErr')}% — ${detStr('verdict').toUpperCase()} (${detStr('recommendation').toUpperCase()})` : 'Incomplete'}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-
-            {act?.notes && (
-              <div style={{ border: '1px solid #cbd5e1', padding: 10, fontSize: 12 }}>
-                <b>Remarks:</b> {act.notes}
-              </div>
-            )}
-
-            <ReportSignatureGrid
-              entries={[
-                {
-                  printedName: leadOp?.full_name ?? '',
-                  roleTitle: 'Tested By',
-                  subtitle: 'Field Technician / Operator',
-                },
-                {
-                  signatureUrl:
-                    act?.signature_data !== undefined
-                      ? act.signature_data
-                      : fetchedSig && act && fetchedSig.id === act.id
-                        ? fetchedSig.data
-                        : null,
-                  signatureAlt: 'Witness signature',
-                  emptySignatureText: 'No signature captured',
-                  roleTitle: `Witnessed By: ${detStr('witnessedBy', 'Customer Representative')}`,
-                  subtitle: 'Signature over Printed Name',
-                },
-                {
-                  roleTitle: 'Verified / Noted By',
-                  subtitle: 'Supervisor / Operations Head',
-                },
-              ]}
-              lineHeight={52}
-              gap={18}
-              marginTop={28}
-              fontSize={12}
-            />
-          </div>
         ) : (
-          /* Standard Field Activity / Job Order Report Layout */
-          <div style={{ display: 'grid', gap: 16, fontSize: 12.5 }}>
-            <div style={{ border: '1px solid #334155', padding: 12, background: '#f8fafc', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <div><b>Activity / Job:</b> {actDef?.label ?? jo?.title ?? act?.activity_type}</div>
-              <div><b>Status:</b> {(act?.status ?? jo?.status ?? 'submitted').toUpperCase()}</div>
-              <div><b>Area / Station:</b> {areaObj ? `${areaObj.code}${areaObj.name ? ` · ${areaObj.name}` : ''}` : 'N/A'}</div>
-              <div><b>Site / Well / Location:</b> {[act?.site_or_well ?? jo?.site_or_well, act?.block_lot ?? jo?.block_lot].filter(Boolean).join(' · ') || 'N/A'}</div>
-              <div><b>Lead Operator:</b> {leadOp?.full_name ?? 'Unspecified'}</div>
-              <div><b>Crew Tagged:</b> {crewOps.length > 0 ? crewOps.join(', ') : 'None'}</div>
-              <div><b>Shift:</b> {shiftObj ? `${shiftObj.code}${shiftObj.description ? ` (${shiftObj.description})` : ''}` : 'N/A'}</div>
-              <div><b>Turnaround Time:</b> {calcTatHours(jo?.created_at ?? act?.started_at, jo?.completed_at ?? act?.completed_at) ?? 'N/A'}</div>
-              <div><b>Started / Created:</b> {fmtTs(jo?.created_at ?? act?.started_at ?? act?.created_at)}</div>
-              <div><b>Completed:</b> {fmtTs(jo?.completed_at ?? act?.completed_at)}</div>
-              {act && (
-                <>
-                  <div>
-                    <b>GPS Position:</b>{' '}
-                    {gpsInfo ? (
-                      <a href={gpsInfo.mapUrl} target="_blank" rel="noreferrer" style={{ color: '#0f172a', textDecoration: 'underline' }}>
-                        {gpsInfo.coords}
-                      </a>
-                    ) : (
-                      'Not tagged'
+          <ReportViewport>
+            <div style={{ padding: 10 }}>
+              {/* Official Document Header (standard reports / meter certificate) */}
+              <ReportLetterhead
+                orgName={p.orgName}
+                eyebrow={p.orgName || 'BP Waterworks, Inc.'}
+                title={p.mode === 'meter_test' ? 'Water Meter Volumetric Test Certificate' : 'Field Activity & Job Order Report'}
+                refCode={refCode}
+                dateLabel={`Date: ${act?.activity_date ?? (jo?.created_at ? jo.created_at.slice(0, 10) : 'N/A')}`}
+                printedTs={fmtTs(new Date().toISOString())}
+              />
+
+              {p.mode === 'meter_test' ? (
+                /* Official Water Meter Volumetric Test Certificate Layout */
+                <div style={{ display: 'grid', gap: 16, fontSize: 12.5 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, border: '1px solid #334155', padding: 12 }}>
+                    <div><b>Customer Account #:</b> {detPrim('accountNumber') ?? jo?.account_number ?? 'N/A'}</div>
+                    <div><b>Account Name:</b> {detPrim('accountName') ?? jo?.account_name ?? 'N/A'}</div>
+                    <div><b>Area / Station:</b> {areaObj ? `${areaObj.code}${areaObj.name ? ` (${areaObj.name})` : ''}` : 'N/A'}</div>
+                    <div><b>Block &amp; Lot / Site:</b> {act?.block_lot ?? jo?.block_lot ?? act?.site_or_well ?? 'N/A'}</div>
+                    <div><b>Meter Brand:</b> {detPrim('meterBrand') ?? 'N/A'}</div>
+                    <div><b>Meter Serial #:</b> {detPrim('meterSerialNumber') ?? 'N/A'}</div>
+                    <div><b>Meter Size:</b> {detPrim('meterSize') ?? '1/2"'} ({detPrim('meterNature') ?? 'Old'})</div>
+                    <div><b>Test Type:</b> {detPrim('testNature') ?? 'Re-testing'} (Ref: {detPrim('refVolumeM3') ?? 0.01} m³)</div>
+                    {gpsInfo && (
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <b>GPS Position:</b>{' '}
+                        <a href={gpsInfo.mapUrl} target="_blank" rel="noreferrer" style={{ color: '#0f172a', textDecoration: 'underline' }}>
+                          {gpsInfo.coords}
+                        </a>{' '}
+                        ({gpsInfo.sourceLabel})
+                      </div>
                     )}
                   </div>
-                  <div><b>GPS Tag Method:</b> {gpsInfo ? gpsInfo.sourceLabel : 'N/A'}</div>
-                </>
-              )}
-              {jo && (
-                <>
-                  <div><b>SLA Target:</b> {formatSlaDurationLabel(jo.estimated_hours)}</div>
-                  <div><b>Deadline / Status:</b> {jo.deadline ? `${fmtTs(jo.deadline)} (${computeJobOrderSlaStatus(jo).badgeLabel})` : 'None'}</div>
-                </>
+
+                  <table style={{ ...REPORT_TABLE_STYLE, fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ background: '#f1f5f9' }}>
+                        <th style={{ border: '1px solid #334155', padding: '7px 8px', textAlign: 'left' }}>Test Stage</th>
+                        <th style={{ border: '1px solid #334155', padding: '7px 8px', textAlign: 'right' }}>Reading (m³)</th>
+                        <th style={{ border: '1px solid #334155', padding: '7px 8px', textAlign: 'right' }}>% Error (Allowed: ±5.00%)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td style={{ border: '1px solid #334155', padding: '6px 8px' }}>Initial Reading</td>
+                        <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right' }}>{detPrim('initialReading') ?? '—'}</td>
+                        <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right' }}>—</td>
+                      </tr>
+                      <tr>
+                        <td style={{ border: '1px solid #334155', padding: '6px 8px' }}>Trial 1 ({detPrim('refVolumeM3') ?? 0.01} m³)</td>
+                        <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right' }}>{detPrim('reading1') ?? '—'}</td>
+                        <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>{detPrim('err1') !== null ? `${detPrim('err1')}%` : '—'}</td>
+                      </tr>
+                      <tr>
+                        <td style={{ border: '1px solid #334155', padding: '6px 8px' }}>Trial 2 ({detPrim('refVolumeM3') ?? 0.01} m³)</td>
+                        <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right' }}>{detPrim('reading2') ?? '—'}</td>
+                        <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>{detPrim('err2') !== null ? `${detPrim('err2')}%` : '—'}</td>
+                      </tr>
+                      <tr>
+                        <td style={{ border: '1px solid #334155', padding: '6px 8px' }}>Trial 3 ({detPrim('refVolumeM3') ?? 0.01} m³)</td>
+                        <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right' }}>{detPrim('reading3') ?? '—'}</td>
+                        <td style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>{detPrim('err3') !== null ? `${detPrim('err3')}%` : '—'}</td>
+                      </tr>
+                      <tr style={{ background: '#f8fafc', fontWeight: 800 }}>
+                        <td colSpan={2} style={{ border: '1px solid #334155', padding: '8px' }}>Average Volumetric Error &amp; Verdict</td>
+                        <td style={{ border: '1px solid #334155', padding: '8px', textAlign: 'right' }}>
+                          {detPrim('avgErr') !== null ? `${detPrim('avgErr')}% — ${detStr('verdict').toUpperCase()} (${detStr('recommendation').toUpperCase()})` : 'Incomplete'}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  {act?.notes && (
+                    <div style={{ border: '1px solid #cbd5e1', padding: 10, fontSize: 12 }}>
+                      <b>Remarks:</b> {act.notes}
+                    </div>
+                  )}
+
+                  <ReportSignatureGrid
+                    entries={[
+                      {
+                        printedName: leadOp?.full_name ?? '',
+                        roleTitle: 'Tested By',
+                        subtitle: 'Field Technician / Operator',
+                      },
+                      {
+                        signatureUrl:
+                          act?.signature_data !== undefined
+                            ? act.signature_data
+                            : fetchedSig && act && fetchedSig.id === act.id
+                              ? fetchedSig.data
+                              : null,
+                        signatureAlt: 'Witness signature',
+                        emptySignatureText: 'No signature captured',
+                        roleTitle: `Witnessed By: ${detStr('witnessedBy', 'Customer Representative')}`,
+                        subtitle: 'Signature over Printed Name',
+                      },
+                      {
+                        roleTitle: 'Verified / Noted By',
+                        subtitle: 'Supervisor / Operations Head',
+                      },
+                    ]}
+                    lineHeight={52}
+                    gap={18}
+                    marginTop={28}
+                    fontSize={12}
+                  />
+                </div>
+              ) : (
+                /* Standard Field Activity / Job Order Report Layout */
+                <div style={{ display: 'grid', gap: 16, fontSize: 12.5 }}>
+                  <div style={{ border: '1px solid #334155', padding: 12, background: '#f8fafc', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <div><b>Activity / Job:</b> {actDef?.label ?? jo?.title ?? act?.activity_type}</div>
+                    <div><b>Status:</b> {(act?.status ?? jo?.status ?? 'submitted').toUpperCase()}</div>
+                    <div><b>Area / Station:</b> {areaObj ? `${areaObj.code}${areaObj.name ? ` · ${areaObj.name}` : ''}` : 'N/A'}</div>
+                    <div><b>Site / Well / Location:</b> {[act?.site_or_well ?? jo?.site_or_well, act?.block_lot ?? jo?.block_lot].filter(Boolean).join(' · ') || 'N/A'}</div>
+                    <div><b>Lead Operator:</b> {leadOp?.full_name ?? 'Unspecified'}</div>
+                    <div><b>Crew Tagged:</b> {crewOps.length > 0 ? crewOps.join(', ') : 'None'}</div>
+                    <div><b>Shift:</b> {shiftObj ? `${shiftObj.code}${shiftObj.description ? ` (${shiftObj.description})` : ''}` : 'N/A'}</div>
+                    <div><b>Turnaround Time:</b> {calcTatHours(jo?.created_at ?? act?.started_at, jo?.completed_at ?? act?.completed_at) ?? 'N/A'}</div>
+                    <div><b>Started / Created:</b> {fmtTs(jo?.created_at ?? act?.started_at ?? act?.created_at)}</div>
+                    <div><b>Completed:</b> {fmtTs(jo?.completed_at ?? act?.completed_at)}</div>
+                    {act && (
+                      <>
+                        <div>
+                          <b>GPS Position:</b>{' '}
+                          {gpsInfo ? (
+                            <a href={gpsInfo.mapUrl} target="_blank" rel="noreferrer" style={{ color: '#0f172a', textDecoration: 'underline' }}>
+                              {gpsInfo.coords}
+                            </a>
+                          ) : (
+                            'Not tagged'
+                          )}
+                        </div>
+                        <div><b>GPS Tag Method:</b> {gpsInfo ? gpsInfo.sourceLabel : 'N/A'}</div>
+                      </>
+                    )}
+                    {jo && (
+                      <>
+                        <div><b>SLA Target:</b> {formatSlaDurationLabel(jo.estimated_hours)}</div>
+                        <div><b>Deadline / Status:</b> {jo.deadline ? `${fmtTs(jo.deadline)} (${computeJobOrderSlaStatus(jo).badgeLabel})` : 'None'}</div>
+                      </>
+                    )}
+                  </div>
+
+                  {(jo?.description || jo?.tat_justification || act?.notes) && (
+                    <div style={{ border: '1px solid #334155', padding: 12 }}>
+                      <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: 11, marginBottom: 4, color: '#334155' }}>
+                        Work Description &amp; Field Observations
+                      </div>
+                      {jo?.description && <div style={{ marginBottom: 6 }}>{jo.description}</div>}
+                      {jo?.tat_justification && (
+                        <div style={{ marginBottom: 6 }}>
+                          <b>TAT / SLA Justification:</b> {jo.tat_justification}
+                        </div>
+                      )}
+                      {act?.notes && <div><i>&ldquo;{act.notes}&rdquo;</i></div>}
+                    </div>
+                  )}
+
+                  {act && isLeakRepairEligible && (leakLossCalc || leakLossState?.faultAttribution === 'third_party') && (
+                    <div style={{ border: '1px solid #334155', padding: 12, background: '#f8fafc', display: 'grid', gap: 4 }}>
+                      <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: 11, color: '#334155' }}>
+                        Theoretical Water Wastage &amp; Fault Attribution
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                        <div>
+                          <b>Fault Attribution:</b>{' '}
+                          {leakLossState?.faultAttribution === 'third_party'
+                            ? 'Customer / 3rd-Party Fault (Chargeable)'
+                            : 'Natural / Wear & Tear (Company NRW)'}
+                        </div>
+                        <div>
+                          <b>Est. Water Loss:</b>{' '}
+                          {leakLossCalc
+                            ? `${leakLossCalc.totalVolumeM3.toFixed(2)} m³ (${leakLossCalc.durationMinutes} min @ ${leakLossCalc.pressurePsi} PSI, Q=${leakLossCalc.flowM3PerSec.toFixed(4)} m³/s)`
+                            : 'Not computed'}
+                        </div>
+                        {leakLossState?.faultAttribution === 'third_party' && (
+                          <>
+                            <div><b>Responsible Party:</b> {leakLossState.responsibleParty || '—'}</div>
+                            <div><b>Account / Plate / Ref:</b> {leakLossState.responsibleAccountNo || '—'}</div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {act && isFlushingEligible && flushingSummary && (flushingSummary.meterStatus !== 'metered' || flushingSummary.totalVolumeM3 !== null) && (
+                    <div style={{ border: '1px solid #334155', padding: 12, background: '#f8fafc', display: 'grid', gap: 4 }}>
+                      <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: 11, color: '#334155' }}>
+                        Flushing Volume Summary
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                        <div><b>Mother Meter Status:</b> {formatFlushingMeterStatusLabel(flushingSummary.meterStatus)}</div>
+                        <div>
+                          <b>{flushingSummary.meterStatus === 'metered' ? 'Total Flushed Volume:' : 'Est. Theoretical Volume:'}</b>{' '}
+                          {flushingSummary.totalVolumeM3 !== null ? `${flushingSummary.totalVolumeM3.toFixed(2)} m³` : 'Not computed'}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {act && gensetChecklist && gensetHealth && (
+                    <div style={{ border: '1px solid #334155', padding: 12, background: '#f8fafc', display: 'grid', gap: 6 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: 11, color: '#334155' }}>
+                          Genset Weekly PMS Inspection Checklist
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 10.5,
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: 4,
+                            background:
+                              gensetHealth.verdict === 'READY'
+                                ? '#dcfce7'
+                                : gensetHealth.verdict === 'NEEDS_ATTENTION'
+                                  ? '#fef3c7'
+                                  : '#fee2e2',
+                            color:
+                              gensetHealth.verdict === 'READY'
+                                ? '#166534'
+                                : gensetHealth.verdict === 'NEEDS_ATTENTION'
+                                  ? '#92400e'
+                                  : '#991b1b',
+                            border: '1px solid #cbd5e1',
+                          }}
+                        >
+                          {gensetHealth.verdictLabel}
+                        </span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                        <div><b>Unit Type:</b> {gensetChecklist.unitFuelType}</div>
+                        <div><b>Run Mode:</b> {formatGensetRunModeLabel(gensetChecklist.runMode)}</div>
+                        <div>
+                          <b>Run Duration:</b>{' '}
+                          {gensetChecklist.runMode === 'skipped_ran_outage'
+                            ? 'Skipped (Already Ran on Outage)'
+                            : gensetChecklist.runDurationMin
+                              ? `${gensetChecklist.runDurationMin} mins`
+                              : '—'}
+                        </div>
+                        <div>
+                          <b>Hour Meter:</b>{' '}
+                          {det.runningHours != null && String(det.runningHours).trim() !== '' ? `${String(det.runningHours)} hrs` : '—'}
+                        </div>
+                        <div>
+                          <b>Fuel Level (Init → Final):</b>{' '}
+                          {det.gensetInitialFuel != null && String(det.gensetInitialFuel).trim() !== '' ? String(det.gensetInitialFuel) : '—'} →{' '}
+                          {det.gensetFinalFuel != null && String(det.gensetFinalFuel).trim() !== '' ? String(det.gensetFinalFuel) : '—'}
+                        </div>
+                        <div><b>Engine Oil Level:</b> {gensetChecklist.oilLevel}</div>
+                        <div><b>Coolant Level:</b> {gensetChecklist.coolantLevel}</div>
+                        <div>
+                          <b>Battery &amp; Cranking:</b> {gensetChecklist.batteryStatus}
+                          {gensetChecklist.batteryVoltageV ? ` (${gensetChecklist.batteryVoltageV} V)` : ''}
+                        </div>
+                        <div><b>Leaks Observed:</b> {gensetChecklist.leaksObserved}</div>
+                        <div><b>Noise / Vibration:</b> {gensetChecklist.noiseVibration}</div>
+                        <div><b>Exhaust Smoke:</b> {gensetChecklist.exhaustSmoke}</div>
+                        <div>
+                          <b>Output Voltage / Freq:</b>{' '}
+                          {gensetChecklist.outputVoltageV || gensetChecklist.frequencyHz
+                            ? `${gensetChecklist.outputVoltageV || '—'} V / ${gensetChecklist.frequencyHz || '—'} Hz`
+                            : '—'}
+                        </div>
+                      </div>
+                      {gensetGuidance && (
+                        <div style={{ fontSize: 11, color: '#475569' }}>
+                          <b>Exercise Standard Check:</b> {gensetGuidance.message}
+                        </div>
+                      )}
+                      {gensetHealth.findings.length > 0 && (
+                        <div style={{ fontSize: 11, color: gensetHealth.verdict === 'CRITICAL' ? '#991b1b' : '#92400e' }}>
+                          <b>Flagged Findings:</b> {gensetHealth.findings.join(' · ')}
+                        </div>
+                      )}
+                      {gensetChecklist.standbyNote && (
+                        <div style={{ fontSize: 11 }}>
+                          <b>Standby Observation Notes:</b> {gensetChecklist.standbyNote}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {act && telemetryEntries.length > 0 && (
+                    <div>
+                      <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: 11, marginBottom: 6, color: '#334155' }}>
+                        Recorded Field Telemetry &amp; Parameters
+                      </div>
+                      <table style={{ ...REPORT_TABLE_STYLE, fontSize: 12 }}>
+                        <thead>
+                          <tr style={{ background: '#f1f5f9' }}>
+                            <th style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'left', width: '35%' }}>Parameter</th>
+                            <th style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'left' }}>Recorded Value</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {telemetryEntries.map(({ key, formattedVal }) => (
+                            <tr key={key}>
+                              <td style={{ border: '1px solid #334155', padding: '5px 8px', fontWeight: 600, textTransform: isChlorineRefill ? 'none' : 'capitalize' }}>
+                                {isChlorineRefill ? key : key.replace(/([A-Z])/g, ' $1')}
+                              </td>
+                              <td style={{ border: '1px solid #334155', padding: '5px 8px' }}>{formattedVal}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  <ReportSignatureGrid
+                    entries={[
+                      {
+                        printedName: leadOp?.full_name ?? '',
+                        roleTitle: 'Prepared By',
+                        subtitle: 'Assigned Operator / Personnel',
+                      },
+                      {
+                        roleTitle: 'Checked / Verified By',
+                        subtitle: 'Signature over Printed Name',
+                      },
+                    ]}
+                    lineHeight={38}
+                    gap={36}
+                    marginTop={32}
+                    fontSize={12}
+                  />
+                </div>
               )}
             </div>
-
-            {(jo?.description || jo?.tat_justification || act?.notes) && (
-              <div style={{ border: '1px solid #334155', padding: 12 }}>
-                <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: 11, marginBottom: 4, color: '#334155' }}>
-                  Work Description &amp; Field Observations
-                </div>
-                {jo?.description && <div style={{ marginBottom: 6 }}>{jo.description}</div>}
-                {jo?.tat_justification && (
-                  <div style={{ marginBottom: 6 }}>
-                    <b>TAT / SLA Justification:</b> {jo.tat_justification}
-                  </div>
-                )}
-                {act?.notes && <div><i>&ldquo;{act.notes}&rdquo;</i></div>}
-              </div>
-            )}
-
-            {act && isLeakRepairEligible && (leakLossCalc || leakLossState?.faultAttribution === 'third_party') && (
-              <div style={{ border: '1px solid #334155', padding: 12, background: '#f8fafc', display: 'grid', gap: 4 }}>
-                <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: 11, color: '#334155' }}>
-                  Theoretical Water Wastage &amp; Fault Attribution
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                  <div>
-                    <b>Fault Attribution:</b>{' '}
-                    {leakLossState?.faultAttribution === 'third_party'
-                      ? 'Customer / 3rd-Party Fault (Chargeable)'
-                      : 'Natural / Wear & Tear (Company NRW)'}
-                  </div>
-                  <div>
-                    <b>Est. Water Loss:</b>{' '}
-                    {leakLossCalc
-                      ? `${leakLossCalc.totalVolumeM3.toFixed(2)} m³ (${leakLossCalc.durationMinutes} min @ ${leakLossCalc.pressurePsi} PSI, Q=${leakLossCalc.flowM3PerSec.toFixed(4)} m³/s)`
-                      : 'Not computed'}
-                  </div>
-                  {leakLossState?.faultAttribution === 'third_party' && (
-                    <>
-                      <div><b>Responsible Party:</b> {leakLossState.responsibleParty || '—'}</div>
-                      <div><b>Account / Plate / Ref:</b> {leakLossState.responsibleAccountNo || '—'}</div>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {act && isFlushingEligible && flushingSummary && (flushingSummary.meterStatus !== 'metered' || flushingSummary.totalVolumeM3 !== null) && (
-              <div style={{ border: '1px solid #334155', padding: 12, background: '#f8fafc', display: 'grid', gap: 4 }}>
-                <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: 11, color: '#334155' }}>
-                  Flushing Volume Summary
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                  <div><b>Mother Meter Status:</b> {formatFlushingMeterStatusLabel(flushingSummary.meterStatus)}</div>
-                  <div>
-                    <b>{flushingSummary.meterStatus === 'metered' ? 'Total Flushed Volume:' : 'Est. Theoretical Volume:'}</b>{' '}
-                    {flushingSummary.totalVolumeM3 !== null ? `${flushingSummary.totalVolumeM3.toFixed(2)} m³` : 'Not computed'}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {act && gensetChecklist && gensetHealth && (
-              <div style={{ border: '1px solid #334155', padding: 12, background: '#f8fafc', display: 'grid', gap: 6 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: 11, color: '#334155' }}>
-                    Genset Weekly PMS Inspection Checklist
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 10.5,
-                      fontWeight: 700,
-                      padding: '2px 8px',
-                      borderRadius: 4,
-                      background:
-                        gensetHealth.verdict === 'READY'
-                          ? '#dcfce7'
-                          : gensetHealth.verdict === 'NEEDS_ATTENTION'
-                            ? '#fef3c7'
-                            : '#fee2e2',
-                      color:
-                        gensetHealth.verdict === 'READY'
-                          ? '#166534'
-                          : gensetHealth.verdict === 'NEEDS_ATTENTION'
-                            ? '#92400e'
-                            : '#991b1b',
-                      border: '1px solid #cbd5e1',
-                    }}
-                  >
-                    {gensetHealth.verdictLabel}
-                  </span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                  <div><b>Unit Type:</b> {gensetChecklist.unitFuelType}</div>
-                  <div><b>Run Mode:</b> {formatGensetRunModeLabel(gensetChecklist.runMode)}</div>
-                  <div>
-                    <b>Run Duration:</b>{' '}
-                    {gensetChecklist.runMode === 'skipped_ran_outage'
-                      ? 'Skipped (Already Ran on Outage)'
-                      : gensetChecklist.runDurationMin
-                        ? `${gensetChecklist.runDurationMin} mins`
-                        : '—'}
-                  </div>
-                  <div>
-                    <b>Hour Meter:</b>{' '}
-                    {det.runningHours != null && String(det.runningHours).trim() !== '' ? `${String(det.runningHours)} hrs` : '—'}
-                  </div>
-                  <div>
-                    <b>Fuel Level (Init → Final):</b>{' '}
-                    {det.gensetInitialFuel != null && String(det.gensetInitialFuel).trim() !== '' ? String(det.gensetInitialFuel) : '—'} →{' '}
-                    {det.gensetFinalFuel != null && String(det.gensetFinalFuel).trim() !== '' ? String(det.gensetFinalFuel) : '—'}
-                  </div>
-                  <div><b>Engine Oil Level:</b> {gensetChecklist.oilLevel}</div>
-                  <div><b>Coolant Level:</b> {gensetChecklist.coolantLevel}</div>
-                  <div>
-                    <b>Battery &amp; Cranking:</b> {gensetChecklist.batteryStatus}
-                    {gensetChecklist.batteryVoltageV ? ` (${gensetChecklist.batteryVoltageV} V)` : ''}
-                  </div>
-                  <div><b>Leaks Observed:</b> {gensetChecklist.leaksObserved}</div>
-                  <div><b>Noise / Vibration:</b> {gensetChecklist.noiseVibration}</div>
-                  <div><b>Exhaust Smoke:</b> {gensetChecklist.exhaustSmoke}</div>
-                  <div>
-                    <b>Output Voltage / Freq:</b>{' '}
-                    {gensetChecklist.outputVoltageV || gensetChecklist.frequencyHz
-                      ? `${gensetChecklist.outputVoltageV || '—'} V / ${gensetChecklist.frequencyHz || '—'} Hz`
-                      : '—'}
-                  </div>
-                </div>
-                {gensetGuidance && (
-                  <div style={{ fontSize: 11, color: '#475569' }}>
-                    <b>Exercise Standard Check:</b> {gensetGuidance.message}
-                  </div>
-                )}
-                {gensetHealth.findings.length > 0 && (
-                  <div style={{ fontSize: 11, color: gensetHealth.verdict === 'CRITICAL' ? '#991b1b' : '#92400e' }}>
-                    <b>Flagged Findings:</b> {gensetHealth.findings.join(' · ')}
-                  </div>
-                )}
-                {gensetChecklist.standbyNote && (
-                  <div style={{ fontSize: 11 }}>
-                    <b>Standby Observation Notes:</b> {gensetChecklist.standbyNote}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {act && telemetryEntries.length > 0 && (
-              <div>
-                <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: 11, marginBottom: 6, color: '#334155' }}>
-                  Recorded Field Telemetry &amp; Parameters
-                </div>
-                <table style={{ ...REPORT_TABLE_STYLE, fontSize: 12 }}>
-                  <thead>
-                    <tr style={{ background: '#f1f5f9' }}>
-                      <th style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'left', width: '35%' }}>Parameter</th>
-                      <th style={{ border: '1px solid #334155', padding: '6px 8px', textAlign: 'left' }}>Recorded Value</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {telemetryEntries.map(({ key, formattedVal }) => (
-                      <tr key={key}>
-                        <td style={{ border: '1px solid #334155', padding: '5px 8px', fontWeight: 600, textTransform: isChlorineRefill ? 'none' : 'capitalize' }}>
-                          {isChlorineRefill ? key : key.replace(/([A-Z])/g, ' $1')}
-                        </td>
-                        <td style={{ border: '1px solid #334155', padding: '5px 8px' }}>{formattedVal}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            <ReportSignatureGrid
-              entries={[
-                {
-                  printedName: leadOp?.full_name ?? '',
-                  roleTitle: 'Prepared By',
-                  subtitle: 'Assigned Operator / Personnel',
-                },
-                {
-                  roleTitle: 'Checked / Verified By',
-                  subtitle: 'Signature over Printed Name',
-                },
-              ]}
-              lineHeight={38}
-              gap={36}
-              marginTop={32}
-              fontSize={12}
-            />
-          </div>
+          </ReportViewport>
         )}
       </div>
     </div>

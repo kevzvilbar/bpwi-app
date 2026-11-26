@@ -237,7 +237,7 @@ export default function GpsPinPickerModal(p: {
           ref={containerRef}
           style={{
             width: '100%',
-            height: 340,
+            height: 'clamp(220px, 42vh, 340px)',
             borderRadius: 8,
             overflow: 'hidden',
             border: '1px solid var(--border)',

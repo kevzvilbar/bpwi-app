@@ -125,7 +125,7 @@ export default function ActivityCategoryFields({
               <input className="input" type="number" step="0.001" value={fields.refVolumeM3} onChange={(e) => patch({ refVolumeM3: e.target.value })} />
             </label>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: 6 }}>
             <label style={{ display: 'grid', gap: 2, fontSize: 11.5 }}>
               Initial
               <input className="input" type="number" step="0.0001" value={fields.initialReading} onChange={(e) => patch({ initialReading: e.target.value })} />
@@ -162,17 +162,17 @@ export default function ActivityCategoryFields({
               <span>Recommendation: {meterCalc.recommendation}</span>
             </div>
           )}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
               Witnessed By
               <input className="input" value={fields.witnessedBy} onChange={(e) => patch({ witnessedBy: e.target.value })} placeholder="Customer / rep name" />
             </label>
             <div style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>Witness Signature</span>
                 <button
                   type="button"
-                  style={{ background: 'transparent', border: 'none', color: 'var(--accent)', fontSize: 11, cursor: 'pointer', padding: 0 }}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--accent)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', minHeight: 34, padding: '4px 8px' }}
                   onClick={() => {
                     const cv = sigCanvasRef.current;
                     if (cv) cv.getContext('2d')?.clearRect(0, 0, cv.width, cv.height);
@@ -322,7 +322,7 @@ export default function ActivityCategoryFields({
               + Trip Cycle
             </button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
             <input className="input" placeholder="Vehicle Type" value={fields.vehicleType} onChange={(e) => patch({ vehicleType: e.target.value })} />
             <input className="input" placeholder="Plate #" value={fields.plateNumber} onChange={(e) => patch({ plateNumber: e.target.value })} />
           </div>
@@ -330,7 +330,7 @@ export default function ActivityCategoryFields({
             Driver: <strong>{leadOpName || 'Auto-filled from Lead Operator above'}</strong>
           </div>
           {fields.haulingCycles.map((c, idx) => (
-            <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px', gap: 6 }}>
+            <div key={idx} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 6 }}>
               <input
                 className="input"
                 placeholder="Source"
@@ -443,7 +443,7 @@ export default function ActivityCategoryFields({
       {activityType === 'water_level_monitoring' && (
         <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: 'var(--warn-border)' }}>
           <strong style={{ fontSize: 12.5, color: 'var(--warn-fg)' }}>Well Water Level (SWL &amp; PWL)</strong>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
               Static Water Level — SWL (m)
               <input className="input" type="number" step="0.01" value={fields.swlMeters} onChange={(e) => patch({ swlMeters: e.target.value })} />

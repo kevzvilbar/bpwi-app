@@ -164,7 +164,7 @@ export default function WellPulloutFields({
   ) => (
     <div style={{ display: 'grid', gap: 4 }}>
       <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-primary)' }}>{title}</span>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(105px, 1fr))', gap: 6 }}>
         {keys.map((k, idx) => (
           <label key={k} style={LABEL_STYLE}>
             {labels[idx]}
@@ -303,7 +303,7 @@ export default function WellPulloutFields({
         <strong style={{ fontSize: 12, color: 'var(--text-primary)' }}>
           3. After Pull Out of Pump and Motor
         </strong>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 8 }}>
           {renderInputs([
             { key: 'afterPulloutTime', label: 'Time Completed (Pull-Out)', type: 'time' },
             { key: 'afterPulloutRemarks', label: 'Remarks', placeholder: 'e.g. MOTOR IN GOOD CONDITION. PUMP FOR REPLACEMENT.' },
@@ -463,7 +463,7 @@ export default function WellPulloutFields({
       {/* Section 5 */}
       <div className="card" style={SECTION_STYLE}>
         <strong style={{ fontSize: 12, color: 'var(--text-primary)' }}>5. After Installation</strong>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 8 }}>
           {renderInputs([
             { key: 'afterInstallTime', label: 'Time Tested (Post-Install)', type: 'time' },
             { key: 'afterInstallRemarks', label: 'Remarks', placeholder: 'e.g. ALL GOOD. NO LEAKS AFTER ACTIVITY COMPLETION.' },

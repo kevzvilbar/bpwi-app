@@ -59,12 +59,20 @@ export default function ActivityLoggerModal(p: ActivityLoggerModalProps) {
         onClick={handleAttemptClose}
       >
       <form
-        className="modal-sheet stack-md"
+        className="modal-sheet"
         onClick={(e) => e.stopPropagation()}
         onSubmit={f.handleSubmit}
-        style={{ maxWidth: 640 }}
+        style={{ maxWidth: 640, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 0 }}
       >
-        <div className="row-between">
+        <div
+          className="row-between"
+          style={{
+            flexShrink: 0,
+            padding: '16px 18px 12px',
+            borderBottom: '1px solid var(--border-light)',
+            background: 'var(--surface)',
+          }}
+        >
           <div>
             <h2 id="activity-logger-title" style={{ margin: 0, fontSize: 17 }}>
               {p.editingActivity
@@ -83,6 +91,8 @@ export default function ActivityLoggerModal(p: ActivityLoggerModalProps) {
             ✕
           </button>
         </div>
+
+        <div className="stack-md" style={{ flex: '1 1 auto', overflowY: 'auto', minHeight: 0, padding: '14px 18px' }}>
 
         {/* Core Fields */}
         <div className="grid-auto-md">
@@ -225,7 +235,7 @@ export default function ActivityLoggerModal(p: ActivityLoggerModalProps) {
                   type="button"
                   onClick={() => f.setShowAllOps((v) => !v)}
                   className="text-xs font-bold"
-                  style={{ background: 'transparent', border: 'none', color: 'var(--accent)', cursor: 'pointer', padding: 0 }}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--accent)', cursor: 'pointer', minHeight: 36, padding: '4px 8px' }}
                 >
                   {f.showAllOps ? 'Hide off-shift ops' : `+ Show all (${f.otherOps.length} more)`}
                 </button>
@@ -278,7 +288,7 @@ export default function ActivityLoggerModal(p: ActivityLoggerModalProps) {
         {/* Times + Notes (Pull-Out and Tank Cleaning collect start/finish & notes inside their structured forms) */}
         {f.activityType !== 'well_pull_out' && f.activityType !== 'tank_cleaning' && (
           <>
-            <div className="grid-2">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: 10 }}>
               <label className="field-label">
                 Start Time (optional)
                 <input
@@ -376,27 +386,40 @@ export default function ActivityLoggerModal(p: ActivityLoggerModalProps) {
           </label>
         )}
 
-        {f.errMsg && (
-          <p role="alert" className="text-danger-sm font-bold" style={{ margin: 0 }}>
-            {f.errMsg}
-          </p>
-        )}
+        </div>
 
-        <div className="row-end">
-          <button type="button" className="btn" onClick={handleAttemptClose} disabled={f.submitting}>
-            Cancel
-          </button>
-          <button type="submit" className="btn btn-primary" disabled={f.submitting || f.uploadingPhoto}>
-            {f.submitting
-              ? 'Saving Activity…'
-              : p.editingActivity
-                ? 'Save Changes'
-                : p.linkedPmTask
-                  ? 'Log Activity & Complete PM'
-                  : p.linkedJobOrder
-                    ? 'Log Activity & Close JO'
-                    : 'Submit Activity Log'}
-          </button>
+        <div
+          style={{
+            flexShrink: 0,
+            padding: '12px 18px calc(12px + env(safe-area-inset-bottom))',
+            borderTop: '1px solid var(--border-light)',
+            background: 'var(--surface)',
+            display: 'grid',
+            gap: 8,
+          }}
+        >
+          {f.errMsg && (
+            <p role="alert" className="text-danger-sm font-bold" style={{ margin: 0 }}>
+              {f.errMsg}
+            </p>
+          )}
+
+          <div className="row-end">
+            <button type="button" className="btn" onClick={handleAttemptClose} disabled={f.submitting}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={f.submitting || f.uploadingPhoto}>
+              {f.submitting
+                ? 'Saving Activity…'
+                : p.editingActivity
+                  ? 'Save Changes'
+                  : p.linkedPmTask
+                    ? 'Log Activity & Complete PM'
+                    : p.linkedJobOrder
+                      ? 'Log Activity & Close JO'
+                      : 'Submit Activity Log'}
+            </button>
+          </div>
         </div>
       </form>
       </div>

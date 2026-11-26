@@ -372,8 +372,8 @@ export default function PmPlannerModals({
                 onChange={(e) => setDraft({ ...draft, asset: e.target.value })}
               />
             </label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <label style={{ fontSize: 13, flex: 1 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 13, flex: '1 1 160px', minWidth: 0 }}>
                 Date{' '}
                 <input
                   type="date"
@@ -391,7 +391,7 @@ export default function PmPlannerModals({
                   }}
                 />
               </label>
-              <label style={{ fontSize: 13, flex: 1 }}>
+              <label style={{ fontSize: 13, flex: '1 1 160px', minWidth: 0 }}>
                 Status
                 <select
                   className="input"
@@ -618,7 +618,7 @@ export default function PmPlannerModals({
           onClick={() => !savingActs && setEditActsOpen(false)}
         >
           <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640, display: 'grid', gap: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
               <h2 id="edit-acts-title" style={{ margin: 0, fontSize: 17 }}>
                 Edit PM Activity Names &amp; Colors
               </h2>
@@ -647,58 +647,63 @@ export default function PmPlannerModals({
                   key={`${a.code}-${i}`}
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '40px 1fr 1fr 110px',
                     gap: 8,
-                    alignItems: 'center',
-                    padding: '6px 8px',
+                    padding: '8px 10px',
                     background: 'var(--surface-muted)',
                     borderRadius: 8,
                     border: '1px solid var(--border-light)',
                   }}
                 >
-                  <input
-                    type="color"
-                    aria-label={`Color for ${a.label}`}
-                    value={a.color}
-                    onChange={(e) =>
-                      setActDraft((list) => list.map((x, j) => (j === i ? { ...x, color: e.target.value } : x)))
-                    }
-                    style={{ width: 36, height: 30, padding: 0, border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
-                  />
-                  <input
-                    className="input"
-                    aria-label="Full activity name"
-                    placeholder="Full name (e.g. Line Flushing)"
-                    value={a.label}
-                    onChange={(e) =>
-                      setActDraft((list) => list.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))
-                    }
-                  />
-                  <input
-                    className="input"
-                    aria-label="Short pill label"
-                    placeholder="Pill label (e.g. Flushing)"
-                    value={a.short_label}
-                    onChange={(e) =>
-                      setActDraft((list) => list.map((x, j) => (j === i ? { ...x, short_label: e.target.value } : x)))
-                    }
-                  />
-                  <span
-                    style={{
-                      background: a.color,
-                      color: '#ffffff',
-                      borderRadius: 999,
-                      padding: '4px 10px',
-                      fontSize: 11.5,
-                      fontWeight: 700,
-                      textAlign: 'center',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {a.short_label || a.label || a.code}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <input
+                      type="color"
+                      aria-label={`Color for ${a.label}`}
+                      value={a.color}
+                      onChange={(e) =>
+                        setActDraft((list) => list.map((x, j) => (j === i ? { ...x, color: e.target.value } : x)))
+                      }
+                      style={{ width: 36, height: 30, padding: 0, border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', flexShrink: 0 }}
+                    />
+                    <span
+                      style={{
+                        background: a.color,
+                        color: '#ffffff',
+                        borderRadius: 999,
+                        padding: '4px 10px',
+                        fontSize: 11.5,
+                        fontWeight: 700,
+                        textAlign: 'center',
+                        maxWidth: '100%',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {a.short_label || a.label || a.code}
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
+                    <input
+                      className="input"
+                      style={{ minWidth: 0 }}
+                      aria-label="Full activity name"
+                      placeholder="Full name (e.g. Line Flushing)"
+                      value={a.label}
+                      onChange={(e) =>
+                        setActDraft((list) => list.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))
+                      }
+                    />
+                    <input
+                      className="input"
+                      style={{ minWidth: 0 }}
+                      aria-label="Short pill label"
+                      placeholder="Pill label (e.g. Flushing)"
+                      value={a.short_label}
+                      onChange={(e) =>
+                        setActDraft((list) => list.map((x, j) => (j === i ? { ...x, short_label: e.target.value } : x)))
+                      }
+                    />
+                  </div>
                 </div>
               ))}
             </div>

@@ -42,7 +42,7 @@ function ColorSwatchInput({ v, on }: { v: string; on: (c: string) => void }) {
       type="color"
       value={v}
       onChange={(e) => on(e.target.value)}
-      style={{ width: 34, height: 28, padding: 0, border: '1px solid var(--border)', borderRadius: 4 }}
+      style={{ width: 40, height: 36, padding: 0, border: '1px solid var(--border)', borderRadius: 4 }}
     />
   );
 }
@@ -103,7 +103,7 @@ export default function SetupReferenceTabs({
                   Code
                   <input className="input" value={s.code} onChange={(e) => updShift(i, { code: e.target.value })} />
                 </label>
-                <label style={{ fontSize: 12, flex: 1 }}>
+                <label style={{ fontSize: 12, flex: 1, minWidth: 0 }}>
                   Description
                   <input className="input" value={s.description ?? ''} onChange={(e) => updShift(i, { description: e.target.value })} />
                 </label>
@@ -111,16 +111,16 @@ export default function SetupReferenceTabs({
                   {s.code || '?'}
                 </span>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 76px', gap: 8 }}>
-                <label style={{ fontSize: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(125px, 1fr))', gap: 8 }}>
+                <label style={{ fontSize: 12, minWidth: 0 }}>
                   Start
                   <input className="input" type="time" value={s.start_time?.slice(0, 5) ?? ''} onChange={(e) => updShift(i, { start_time: e.target.value || null })} />
                 </label>
-                <label style={{ fontSize: 12 }}>
+                <label style={{ fontSize: 12, minWidth: 0 }}>
                   End
                   <input className="input" type="time" value={s.end_time?.slice(0, 5) ?? ''} onChange={(e) => updShift(i, { end_time: e.target.value || null })} />
                 </label>
-                <label style={{ fontSize: 12 }}>
+                <label style={{ fontSize: 12, minWidth: 0 }}>
                   Hrs
                   <input className="input" type="number" step="0.5" value={s.duration_hours} onChange={(e) => updShift(i, { duration_hours: +e.target.value })} />
                 </label>
@@ -164,7 +164,7 @@ export default function SetupReferenceTabs({
                 Code
                 <input className="input" value={a.code} onChange={(e) => updArea(i, { code: e.target.value })} />
               </label>
-              <label style={{ fontSize: 12, flex: 1 }}>
+              <label style={{ fontSize: 12, flex: 1, minWidth: 0 }}>
                 Name
                 <input className="input" value={a.name ?? ''} onChange={(e) => updArea(i, { name: e.target.value })} />
               </label>
@@ -173,15 +173,19 @@ export default function SetupReferenceTabs({
               </span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <select className="input" style={{ width: 'auto' }} value={a.category} onChange={(e) => updArea(i, { category: e.target.value })}>
                   <option value="station">Station</option>
                   <option value="leave">Leave</option>
                   <option value="rest">Rest</option>
                   <option value="holiday">Holiday</option>
                 </select>
-                <ColorSwatchInput v={a.background_color} on={(c) => updArea(i, { background_color: c })} />
-                <ColorSwatchInput v={a.text_color} on={(c) => updArea(i, { text_color: c })} />
+                <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  BG <ColorSwatchInput v={a.background_color} on={(c) => updArea(i, { background_color: c })} />
+                </label>
+                <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  Text <ColorSwatchInput v={a.text_color} on={(c) => updArea(i, { text_color: c })} />
+                </label>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <button className="btn btn-primary" disabled={!a.code.trim() || busy === `a${i}`} onClick={() => saveRow('area_codes', a, i, `a${i}`, setAreas)}>

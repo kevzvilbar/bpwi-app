@@ -135,16 +135,14 @@ export default function PwaInstallPrompt() {
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <button
               type="button"
-              className="btn btn-primary"
-              style={{ minHeight: 30, padding: '3px 10px', fontSize: 12 }}
+              className="btn btn-primary btn-sm"
               onClick={() => void triggerInstall(deferredPrompt)}
             >
               {deferredPrompt ? 'Install App' : 'How to Install'}
             </button>
             <button
               type="button"
-              className="btn"
-              style={{ minHeight: 30, padding: '3px 9px', fontSize: 12 }}
+              className="btn btn-sm"
               onClick={dismissBanner}
             >
               Later

@@ -257,7 +257,7 @@ export default function RosterMobileViews(p: {
                   borderLeft: sb ? '4px solid var(--violet)' : undefined,
                 }}
               >
-                <div style={{ minWidth: 0 }}>
+                <div style={{ minWidth: 0, flex: '1 1 120px' }}>
                   <div style={{ fontWeight: 700, fontSize: 14 }}>
                     {op.full_name}
                     {op.id === p.operatorId && (
@@ -325,7 +325,7 @@ export default function RosterMobileViews(p: {
             else if (dx < -55) stepWeek(1);
           }}
         >
-          <div className="card" style={{ padding: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+          <div className="card" style={{ padding: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
             <button className="btn" onClick={() => stepWeek(-1)}>
               ‹ Prev Week
             </button>
@@ -546,7 +546,11 @@ export default function RosterMobileViews(p: {
                         {effShift ? `${effShift.code} · ${a?.code ?? (effShift.is_off ? 'OFF' : DEFAULT_STATION_CODE)}` : a?.code ?? 'Assign'}
                       </button>
                       {p.canEdit && op && (
-                        <button className="btn" onClick={(e) => p.onCellMenu(op, d.date, { clientX: e.clientX, clientY: e.clientY })}>
+                        <button
+                          className="btn"
+                          aria-label={`Actions for ${op.full_name} on ${d.date}`}
+                          onClick={(e) => p.onCellMenu(op, d.date, { clientX: e.clientX, clientY: e.clientY })}
+                        >
                           ⋯
                         </button>
                       )}

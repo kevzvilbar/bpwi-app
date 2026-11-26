@@ -55,8 +55,13 @@ export default function AccomplishmentFormSheet({
   const emptyRows = Array.from({ length: paddedCount });
 
   return (
-    <div className="bpems-sheet-wrap" style={{ overflowX: 'auto' }}>
-      {isSample && <SamplePrintWatermark />}
+    <>
+      <p className="report-scroll-hint no-print">Swipe horizontally to inspect the full BPEMS-F-002 form.</p>
+      <div
+        className="bpems-sheet-wrap"
+        style={{ overflowX: 'auto', minWidth: 0, maxWidth: '100%', WebkitOverflowScrolling: 'touch' }}
+      >
+        {isSample && <SamplePrintWatermark />}
       <style>{`
         @media print {
           @page { size: landscape; margin: 8mm; }
@@ -246,6 +251,7 @@ export default function AccomplishmentFormSheet({
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

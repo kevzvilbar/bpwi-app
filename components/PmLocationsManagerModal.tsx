@@ -196,10 +196,11 @@ export default function PmLocationsManagerModal({
               e.preventDefault();
               void addLocation();
             }}
-            style={{ display: 'flex', gap: 8 }}
+            style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}
           >
             <input
               className="input"
+              style={{ flex: '1 1 160px', minWidth: 0 }}
               placeholder="Add saved area / site name…"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
@@ -208,6 +209,7 @@ export default function PmLocationsManagerModal({
             <button
               type="submit"
               className="btn btn-add"
+              style={{ flexShrink: 0 }}
               disabled={busy || !newName.trim()}
             >
               + Add
@@ -225,9 +227,10 @@ export default function PmLocationsManagerModal({
               const draftName = edits[row.id] ?? row.name;
               const isDirty = draftName.trim() !== row.name;
               return (
-                <div key={row.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <div key={row.id} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                   <input
                     className="input"
+                    style={{ flex: '1 1 160px', minWidth: 0 }}
                     value={draftName}
                     disabled={!canEdit || !tableReady || busy}
                     onChange={(e) => setEdits((prev) => ({ ...prev, [row.id]: e.target.value }))}
@@ -236,6 +239,7 @@ export default function PmLocationsManagerModal({
                     <button
                       type="button"
                       className="btn btn-primary"
+                      style={{ flexShrink: 0 }}
                       disabled={busy}
                       onClick={() => void renameLocation(row)}
                     >
@@ -246,7 +250,7 @@ export default function PmLocationsManagerModal({
                     <button
                       type="button"
                       className="btn"
-                      style={{ color: 'var(--danger)' }}
+                      style={{ color: 'var(--danger)', flexShrink: 0 }}
                       disabled={busy}
                       onClick={() => void deleteLocation(row)}
                     >

@@ -194,7 +194,7 @@ export default function ActivityFeedCard({
         {canVerifyActivity && !act.is_sample && act.status !== 'verified' && (
           <button
             type="button"
-            className="btn btn-xs font-bold"
+            className="btn btn-sm font-bold"
             onClick={onVerify}
             style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)', borderColor: 'var(--ok-border)' }}
           >
@@ -204,19 +204,19 @@ export default function ActivityFeedCard({
         {canVerifyActivity && !act.is_sample && act.status !== 'flagged' && (
           <button
             type="button"
-            className="btn btn-xs btn-danger-soft"
+            className="btn btn-sm btn-danger-soft"
             onClick={onToggleFlag}
           >
             ⚠ Flag
           </button>
         )}
-        <button type="button" className="btn btn-xs" onClick={() => onPrint('activity')}>
+        <button type="button" className="btn btn-sm" onClick={() => onPrint('activity')}>
           🖨 Print Report
         </button>
         {specialPrint && (
           <button
             type="button"
-            className="btn btn-xs font-bold"
+            className="btn btn-sm font-bold"
             onClick={() => onPrint(specialPrint.mode)}
             style={{ color: specialPrint.color }}
           >
@@ -225,10 +225,10 @@ export default function ActivityFeedCard({
         )}
         {canEditOrDelete && (
           <>
-            <button type="button" className="btn btn-xs" onClick={onEdit}>
+            <button type="button" className="btn btn-sm" onClick={onEdit}>
               Edit
             </button>
-            <button type="button" className="btn btn-xs btn-danger-soft" onClick={onDelete}>
+            <button type="button" className="btn btn-sm btn-danger-soft" onClick={onDelete}>
               Delete
             </button>
           </>
@@ -236,13 +236,13 @@ export default function ActivityFeedCard({
       </div>
 
       {isFlagging && (
-        <div className="row-xs" style={{ gap: 6, marginTop: 4 }}>
+        <div className="row-wrap" style={{ gap: 6, marginTop: 4 }}>
           <input
             className="input flex-1"
             placeholder="Reason for flagging…"
             value={flagReason}
             onChange={(e) => onFlagReasonChange(e.target.value)}
-            style={{ minHeight: 34, fontSize: 12 }}
+            style={{ fontSize: 12, minWidth: 160 }}
           />
           <button
             type="button"

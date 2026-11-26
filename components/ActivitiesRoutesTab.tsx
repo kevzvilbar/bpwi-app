@@ -329,9 +329,9 @@ export default function ActivitiesRoutesTab(p: {
   const publicTileNotice = p.isAdmin ? getPublicTileAdminNotice(mapStyle, tileConfig) : null;
 
   const hqInputs = [
-    { label: 'HQ Label', value: baseHqLabel, onChange: setBaseHqLabel, placeholder: 'Main Plant / Base HQ', width: 180, decimal: false },
-    { label: 'Latitude', value: baseHqLatStr, onChange: setBaseHqLatStr, placeholder: 'e.g. 10.775100', width: 140, decimal: true },
-    { label: 'Longitude', value: baseHqLngStr, onChange: setBaseHqLngStr, placeholder: 'e.g. 122.543200', width: 140, decimal: true },
+    { label: 'HQ Label', value: baseHqLabel, onChange: setBaseHqLabel, placeholder: 'Main Plant / Base HQ', decimal: false },
+    { label: 'Latitude', value: baseHqLatStr, onChange: setBaseHqLatStr, placeholder: 'e.g. 10.775100', decimal: true },
+    { label: 'Longitude', value: baseHqLngStr, onChange: setBaseHqLngStr, placeholder: 'e.g. 122.543200', decimal: true },
   ];
 
   const roadDistValue =
@@ -384,7 +384,7 @@ export default function ActivitiesRoutesTab(p: {
 
         <div className="row-wrap" style={{ alignItems: 'end', gap: 10 }}>
           {p.canVerifyActivity ? (
-            <label className="field-label" style={{ minWidth: 220 }}>
+            <label className="field-label" style={{ flex: '1 1 200px', minWidth: 0 }}>
               <span>Operator / Field Staff</span>
               <select value={selectedOpId} onChange={(e) => setSelectedOpId(e.target.value)}>
                 {p.operators.map((op) => {
@@ -450,7 +450,7 @@ export default function ActivitiesRoutesTab(p: {
             <div className="text-sm font-bold">Plant / Base HQ Coordinates (saved in this browser)</div>
             <div className="row-wrap" style={{ alignItems: 'end' }}>
               {hqInputs.map((f) => (
-                <label key={f.label} className="field-label" style={{ width: f.width }}>
+                <label key={f.label} className="field-label" style={{ flex: '1 1 140px', minWidth: 0 }}>
                   <span>{f.label}</span>
                   <input
                     type="text"
@@ -595,7 +595,7 @@ export default function ActivitiesRoutesTab(p: {
               }
             />
           ) : (
-            <div style={{ width: '100%', height: 460, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
+            <div style={{ width: '100%', height: 'clamp(260px, 46vh, 460px)', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
               <FreeRouteMap
                 stops={footprint.stops}
                 routePaths={computedRoute?.paths ?? []}

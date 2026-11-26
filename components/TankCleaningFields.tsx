@@ -136,7 +136,7 @@ export default function TankCleaningFields({
         <strong style={{ fontSize: 12.5, color: 'var(--text-primary)' }}>
           Tank Cleaning &amp; Sanitation Details
         </strong>
-        <div style={GRID_STYLE}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
           <label style={LABEL_STYLE}>
             Tank Type
             <select
@@ -152,7 +152,7 @@ export default function TankCleaningFields({
           </label>
           <div style={LABEL_STYLE}>
             <span>Tank Capacity</span>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 86px', gap: 6 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 86px', gap: 6 }}>
               <input
                 className="input"
                 value={value.tankCapacity}
@@ -282,7 +282,7 @@ export default function TankCleaningFields({
               <span>Disinfection &amp; Sanitization</span>
             </label>
             {value.scopeDisinfection && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, paddingLeft: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, paddingLeft: 12 }}>
                 <label style={LABEL_STYLE}>
                   Contact Time
                   <input
@@ -338,40 +338,56 @@ export default function TankCleaningFields({
         </div>
 
         <div style={{ display: 'grid', gap: 8 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1.3fr repeat(3, minmax(0, 1fr)) auto', gap: 6, alignItems: 'center', fontSize: 11 }}>
-            <strong style={{ color: 'var(--text-primary)' }}>Free Cl₂ (0.30–1.50 mg/L)</strong>
-            <input className="input" placeholder="Pre" value={value.chlorinePre} onChange={(e) => patch({ chlorinePre: e.target.value })} />
-            <input className="input" placeholder="Disinfect" value={value.chlorineDisinfection} onChange={(e) => patch({ chlorineDisinfection: e.target.value })} />
-            <input className="input" placeholder="Post" value={value.chlorinePost} onChange={(e) => patch({ chlorinePost: e.target.value })} />
-            <span style={verdictBadgeStyle(evalRes.chlorine)}>{evalRes.chlorine}</span>
+          <div style={{ padding: 8, borderRadius: 8, border: '1px solid var(--border-light)', background: 'var(--surface-muted)', display: 'grid', gap: 6, fontSize: 11 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+              <strong style={{ color: 'var(--text-primary)', fontSize: 12 }}>Free Cl₂ (0.30–1.50 mg/L)</strong>
+              <span style={verdictBadgeStyle(evalRes.chlorine)}>{evalRes.chlorine}</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
+              <input className="input" placeholder="Pre" value={value.chlorinePre} onChange={(e) => patch({ chlorinePre: e.target.value })} />
+              <input className="input" placeholder="Disinfect" value={value.chlorineDisinfection} onChange={(e) => patch({ chlorineDisinfection: e.target.value })} />
+              <input className="input" placeholder="Post" value={value.chlorinePost} onChange={(e) => patch({ chlorinePost: e.target.value })} />
+            </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1.3fr repeat(3, minmax(0, 1fr)) auto', gap: 6, alignItems: 'center', fontSize: 11 }}>
-            <strong style={{ color: 'var(--text-primary)' }}>Turbidity (≤ 5.0 NTU)</strong>
-            <input className="input" placeholder="Pre" value={value.turbidityPre} onChange={(e) => patch({ turbidityPre: e.target.value })} />
-            <span style={{ textAlign: 'center', color: 'var(--text-muted)' }}>N/A</span>
-            <input className="input" placeholder="Post (e.g. 0.4)" value={value.turbidityPost} onChange={(e) => patch({ turbidityPost: e.target.value })} />
-            <span style={verdictBadgeStyle(evalRes.turbidity)}>{evalRes.turbidity}</span>
+          <div style={{ padding: 8, borderRadius: 8, border: '1px solid var(--border-light)', background: 'var(--surface-muted)', display: 'grid', gap: 6, fontSize: 11 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+              <strong style={{ color: 'var(--text-primary)', fontSize: 12 }}>Turbidity (≤ 5.0 NTU)</strong>
+              <span style={verdictBadgeStyle(evalRes.turbidity)}>{evalRes.turbidity}</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6, alignItems: 'center' }}>
+              <input className="input" placeholder="Pre" value={value.turbidityPre} onChange={(e) => patch({ turbidityPre: e.target.value })} />
+              <span style={{ textAlign: 'center', color: 'var(--text-muted)' }}>N/A</span>
+              <input className="input" placeholder="Post (e.g. 0.4)" value={value.turbidityPost} onChange={(e) => patch({ turbidityPost: e.target.value })} />
+            </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1.3fr repeat(3, minmax(0, 1fr)) auto', gap: 6, alignItems: 'center', fontSize: 11 }}>
-            <strong style={{ color: 'var(--text-primary)' }}>pH Level (6.5–8.5)</strong>
-            <input className="input" placeholder="Pre" value={value.phPre} onChange={(e) => patch({ phPre: e.target.value })} />
-            <input className="input" placeholder="Disinfect" value={value.phDisinfection} onChange={(e) => patch({ phDisinfection: e.target.value })} />
-            <input className="input" placeholder="Post (e.g. 7.2)" value={value.phPost} onChange={(e) => patch({ phPost: e.target.value })} />
-            <span style={verdictBadgeStyle(evalRes.ph)}>{evalRes.ph}</span>
+          <div style={{ padding: 8, borderRadius: 8, border: '1px solid var(--border-light)', background: 'var(--surface-muted)', display: 'grid', gap: 6, fontSize: 11 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+              <strong style={{ color: 'var(--text-primary)', fontSize: 12 }}>pH Level (6.5–8.5)</strong>
+              <span style={verdictBadgeStyle(evalRes.ph)}>{evalRes.ph}</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
+              <input className="input" placeholder="Pre" value={value.phPre} onChange={(e) => patch({ phPre: e.target.value })} />
+              <input className="input" placeholder="Disinfect" value={value.phDisinfection} onChange={(e) => patch({ phDisinfection: e.target.value })} />
+              <input className="input" placeholder="Post (e.g. 7.2)" value={value.phPost} onChange={(e) => patch({ phPost: e.target.value })} />
+            </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1.3fr repeat(3, minmax(0, 1fr)) auto', gap: 6, alignItems: 'center', fontSize: 11 }}>
-            <strong style={{ color: 'var(--text-primary)' }}>Odor &amp; Appearance</strong>
-            <input className="input" placeholder="Pre (e.g. Silt)" value={value.odorPre} onChange={(e) => patch({ odorPre: e.target.value })} />
-            <span style={{ textAlign: 'center', color: 'var(--text-muted)' }}>N/A</span>
-            <input className="input" placeholder="Post (Clear / Odorless)" value={value.odorPost} onChange={(e) => patch({ odorPost: e.target.value })} />
-            <span style={verdictBadgeStyle(evalRes.odor)}>{evalRes.odor}</span>
+          <div style={{ padding: 8, borderRadius: 8, border: '1px solid var(--border-light)', background: 'var(--surface-muted)', display: 'grid', gap: 6, fontSize: 11 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+              <strong style={{ color: 'var(--text-primary)', fontSize: 12 }}>Odor &amp; Appearance</strong>
+              <span style={verdictBadgeStyle(evalRes.odor)}>{evalRes.odor}</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6, alignItems: 'center' }}>
+              <input className="input" placeholder="Pre (e.g. Silt)" value={value.odorPre} onChange={(e) => patch({ odorPre: e.target.value })} />
+              <span style={{ textAlign: 'center', color: 'var(--text-muted)' }}>N/A</span>
+              <input className="input" placeholder="Post (Clear / Odorless)" value={value.odorPost} onChange={(e) => patch({ odorPost: e.target.value })} />
+            </div>
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, paddingTop: 4 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, paddingTop: 4 }}>
           <label style={LABEL_STYLE}>
             Disinfectant Used
             <input
@@ -403,9 +419,22 @@ export default function TankCleaningFields({
         <strong style={{ fontSize: 12, color: 'var(--text-primary)' }}>
           4. Physical Inspection &amp; Observations
         </strong>
-        <div style={{ display: 'grid', gap: 6 }}>
+        <div style={{ display: 'grid', gap: 8 }}>
           {inspectionItems.map((item) => (
-            <div key={item.condKey} style={{ display: 'grid', gridTemplateColumns: '1.2fr 115px 1.6fr', gap: 6, alignItems: 'center', fontSize: 11.5 }}>
+            <div
+              key={item.condKey}
+              style={{
+                padding: 8,
+                borderRadius: 8,
+                border: '1px solid var(--border-light)',
+                background: 'var(--surface-muted)',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                gap: 6,
+                alignItems: 'center',
+                fontSize: 11.5,
+              }}
+            >
               <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.title}</span>
               <select
                 className="input"

@@ -299,8 +299,8 @@ export default function SetupUsersAndAudit({
                   )}
                   <input className="input" value={u.full_name ?? ''} placeholder="Full name" onChange={(e) => updUser(i, { full_name: e.target.value })} />
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  <label style={{ fontSize: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 8 }}>
+                  <label style={{ fontSize: 12, minWidth: 0 }}>
                     Role
                     <select
                       className="input"
@@ -316,7 +316,7 @@ export default function SetupUsersAndAudit({
                       <option value="viewer">viewer</option>
                     </select>
                   </label>
-                  <label style={{ fontSize: 12 }}>
+                  <label style={{ fontSize: 12, minWidth: 0 }}>
                     Linked Operator
                     <select className="input" value={u.operator_id ?? ''} onChange={(e) => updUser(i, { operator_id: e.target.value || null })}>
                       <option value="">(unlinked)</option>
@@ -332,12 +332,29 @@ export default function SetupUsersAndAudit({
                     </select>
                   </label>
                 </div>
+                <label style={{ fontSize: 12, minWidth: 0 }}>
+                  Org Position (Auto-Chart)
+                  <select
+                    className="input"
+                    value={orgPositions.find((pos) => pos.holder_user_id === u.id)?.id ?? ''}
+                    onChange={(e) => assignUserToOrgPosition(u.id, e.target.value)}
+                    title="Assigning a Head position auto-updates the Org Chart & subordinate routing"
+                  >
+                    <option value="">— None —</option>
+                    {orgPositions.map((pos) => (
+                      <option key={pos.id} value={pos.id}>
+                        {pos.title}{pos.is_vacant ? ' (Vacant)' : pos.holder_user_id && pos.holder_user_id !== u.id ? ' (Occupied)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 {suggested && (
                   <div
                     style={{
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
+                      flexWrap: 'wrap',
                       gap: 8,
                       padding: '6px 10px',
                       borderRadius: 8,
@@ -349,7 +366,7 @@ export default function SetupUsersAndAudit({
                     <span>
                       Suggested match: <b>{suggested.full_name}</b>
                     </span>
-                    <button type="button" className="btn" style={{ minHeight: 30, padding: '3px 9px', fontSize: 12, fontWeight: 700 }} onClick={applySuggested}>
+                    <button type="button" className="btn" style={{ padding: '4px 10px', fontSize: 12, fontWeight: 700 }} onClick={applySuggested}>
                       {!u.is_active ? 'Link & approve' : 'Link match'}
                     </button>
                   </div>
@@ -385,7 +402,7 @@ export default function SetupUsersAndAudit({
             {auditLoading ? 'Loading recent changes…' : `Showing latest ${auditLogs.length} audit entries`}
           </span>
           {onRefreshAudit && (
-            <button type="button" className="btn" style={{ minHeight: 30, padding: '3px 10px', fontSize: 12 }} disabled={auditLoading} onClick={onRefreshAudit}>
+            <button type="button" className="btn" style={{ padding: '4px 10px', fontSize: 12 }} disabled={auditLoading} onClick={onRefreshAudit}>
               {auditLoading ? 'Loading…' : '↻ Refresh'}
             </button>
           )}
@@ -422,7 +439,7 @@ export default function SetupUsersAndAudit({
                 </span>
                 <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{log.table_name}</span>
               </div>
-              <div style={{ color: 'var(--text)' }}>{summarizeAudit(log, opNameMap, shiftCodeMap, areaCodeMap)}</div>
+              <div style={{ color: 'var(--text)', overflowWrap: 'anywhere' }}>{summarizeAudit(log, opNameMap, shiftCodeMap, areaCodeMap)}</div>
             </div>
           ))
         )}

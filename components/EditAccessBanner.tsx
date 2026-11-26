@@ -122,6 +122,9 @@ export default function EditAccessBanner(p: { active: Grant | null; next: Grant 
               textDecoration: 'underline',
               fontWeight: 700,
               fontSize: 12,
+              display: 'inline-flex',
+              alignItems: 'center',
+              minHeight: 36,
             }}
           >
             View Change Requests →

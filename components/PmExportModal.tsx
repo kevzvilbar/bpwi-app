@@ -74,8 +74,8 @@ export default function PmExportModal({ currentMonth, typeFilter, statusFilter, 
   return (
     <div className="modal-overlay no-print" role="dialog" aria-modal="true" onClick={onClose}>
       <div
-        className="card"
-        style={{ maxWidth: 460, width: '95vw', padding: 16, display: 'grid', gap: 12 }}
+        className="modal-sheet"
+        style={{ maxWidth: 460, display: 'grid', gap: 12 }}
         onClick={(e) => e.stopPropagation()}
       >
         <div>
@@ -85,8 +85,8 @@ export default function PmExportModal({ currentMonth, typeFilter, statusFilter, 
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 8 }}>
-          <label style={{ fontSize: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
+          <label style={{ fontSize: 12, minWidth: 0 }}>
             Timeframe
             <select
               className="input"
@@ -106,7 +106,7 @@ export default function PmExportModal({ currentMonth, typeFilter, statusFilter, 
           </label>
 
           {preset !== 'month' && preset !== 'custom' && (
-            <label style={{ fontSize: 12 }}>
+            <label style={{ fontSize: 12, minWidth: 0 }}>
               Year
               <select className="input" value={year} onChange={(e) => setYear(Number(e.target.value))}>
                 {yearOptions.map((y) => (
@@ -118,12 +118,12 @@ export default function PmExportModal({ currentMonth, typeFilter, statusFilter, 
         </div>
 
         {preset === 'custom' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <label style={{ fontSize: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
+            <label style={{ fontSize: 12, minWidth: 0 }}>
               From Date
               <input type="date" className="input" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
             </label>
-            <label style={{ fontSize: 12 }}>
+            <label style={{ fontSize: 12, minWidth: 0 }}>
               To Date
               <input type="date" className="input" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
             </label>
@@ -145,7 +145,7 @@ export default function PmExportModal({ currentMonth, typeFilter, statusFilter, 
             <>
               Export range: <strong>{resolved.from}</strong> to <strong>{resolved.to}</strong>
               <br />
-              File: <code>bpwi-pm-schedule-{resolved.label}.csv</code>
+              File: <code style={{ overflowWrap: 'anywhere', wordBreak: 'break-all' }}>bpwi-pm-schedule-{resolved.label}.csv</code>
             </>
           )}
         </div>
