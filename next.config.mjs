@@ -12,10 +12,24 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: '/(bpwi-logo\\.png|bpwi-logo\\.svg|icon-192\\.png|icon-512\\.png)',
+        source: '/(bpwi-logo\\.png|bpwi-logo\\.svg)',
         headers: [
           ...securityHeaders,
           { key: 'Cache-Control', value: 'public, max-age=604800, immutable' },
+        ],
+      },
+      {
+        source: '/(app-icon\\.svg|app-icon-192\\.png|app-icon-512\\.png|apple-touch-icon\\.png|icon-192\\.png|icon-512\\.png)',
+        headers: [
+          ...securityHeaders,
+          { key: 'Cache-Control', value: 'public, max-age=3600, must-revalidate' },
+        ],
+      },
+      {
+        source: '/manifest.webmanifest',
+        headers: [
+          ...securityHeaders,
+          { key: 'Cache-Control', value: 'no-cache, must-revalidate' },
         ],
       },
       {

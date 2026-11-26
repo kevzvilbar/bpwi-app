@@ -1,5 +1,5 @@
-const CACHE_NAME = 'bpwi-ops-v7';
-const PRECACHE = ['/app-icon.svg', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/manifest.webmanifest'];
+const CACHE_NAME = 'bpwi-ops-v8';
+const PRECACHE = ['/app-icon.svg', '/apple-touch-icon.png', '/app-icon-192.png', '/app-icon-512.png', '/manifest.webmanifest'];
 // Strict allow-list: only cache HTML for the offline field-logger view, never phone lists, user roles, or admin reports.
 const OFFLINE_PAGE_ALLOWLIST = new Set(['/mobile']);
 
@@ -100,8 +100,8 @@ self.addEventListener('fetch', (event) => {
   // Cache-first for static Next.js build assets and app icons
   if (
     url.pathname.startsWith('/_next/static/') ||
+    url.pathname.startsWith('/app-icon') ||
     url.pathname.startsWith('/icon-') ||
-    url.pathname === '/app-icon.svg' ||
     url.pathname === '/apple-touch-icon.png'
   ) {
     event.respondWith(
