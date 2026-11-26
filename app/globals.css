@@ -1327,16 +1327,11 @@ textarea:focus-visible {
   }
 }
 
-/* Leaflet map & custom stop pins */
-.bpwi-leaflet-container {
+/* MapLibre map & custom stop pins */
+.bpwi-map-container {
   position: relative;
   z-index: 1;
   isolation: isolate;
-}
-
-.bpwi-map-pin-icon {
-  background: transparent;
-  border: 0;
 }
 
 .bpwi-map-pin {
@@ -1349,6 +1344,7 @@ textarea:focus-visible {
   font-weight: 800;
   display: grid;
   place-items: center;
+  cursor: pointer;
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.35);
   transition: transform 0.12s ease, border-color 0.12s ease;
 }
@@ -1358,15 +1354,35 @@ textarea:focus-visible {
   transform: scale(1.2);
 }
 
-.bpwi-leaflet-container .leaflet-popup-content-wrapper,
-.bpwi-leaflet-container .leaflet-popup-tip {
+.bpwi-map-container .maplibregl-popup-content {
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: var(--shadow-md);
 }
 
-.bpwi-leaflet-container .leaflet-popup-close-button {
+.bpwi-map-container .maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+  border-top-color: var(--surface);
+}
+
+.bpwi-map-container .maplibregl-popup-anchor-top .maplibregl-popup-tip {
+  border-bottom-color: var(--surface);
+}
+
+.bpwi-map-container .maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--surface);
+}
+
+.bpwi-map-container .maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--surface);
+}
+
+.bpwi-map-container .maplibregl-popup-close-button {
   color: var(--text-secondary);
+  padding: 4px 7px;
+  font-size: 15px;
 }
 
 /* FigCraft Design-System UI Primitives */

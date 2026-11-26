@@ -15,7 +15,7 @@ export default function RoutesTeamOverview(p: {
         <div>
           <strong style={{ fontSize: 14 }}>Team Daily Footprint Overview ({p.date})</strong>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            Click any staff member to inspect their OpenStreetMap route and leg breakdown on the map above.
+            Click any staff member to inspect their route and leg breakdown on the map above.
           </div>
         </div>
       </div>

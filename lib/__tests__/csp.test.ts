@@ -34,12 +34,13 @@ describe('CSP header & nonce helpers', () => {
     assert.ok(csp.includes("connect-src 'self' https://demo.supabase.co wss://demo.supabase.co"));
     assert.ok(!csp.includes("connect-src 'self' https: wss:"));
     assert.ok(csp.includes('https://demo.supabase.co'));
-    assert.ok(csp.includes('https://tile.openstreetmap.org'));
+    assert.ok(csp.includes('https://tiles.openfreemap.org'));
     assert.ok(csp.includes('https://server.arcgisonline.com'));
+    assert.ok(!csp.includes('tile.openstreetmap.org'));
     assert.ok(csp.includes('report-uri /api/csp-report'));
   });
 
-  it('uses custom {s} tile server origins instead of default OSM/Esri when configured', () => {
+  it('uses custom {s} tile server origins instead of default OpenFreeMap/Esri when configured', () => {
     const csp = buildCspHeader({
       nonce: 'n1',
       isDev: true,
@@ -51,6 +52,7 @@ describe('CSP header & nonce helpers', () => {
     assert.ok(csp.includes("'unsafe-eval'"));
     assert.ok(csp.includes('https://*.street.internal.org'));
     assert.ok(csp.includes('https://sat.internal.org'));
+    assert.ok(!csp.includes('tiles.openfreemap.org'));
     assert.ok(!csp.includes('tile.openstreetmap.org'));
     assert.ok(!csp.includes('server.arcgisonline.com'));
   });

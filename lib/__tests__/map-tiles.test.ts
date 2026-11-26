@@ -36,19 +36,21 @@ describe('resolveMapTileConfig', () => {
     assert.equal(sat.isPublicDefault, false);
   });
 
-  it('safely falls back to default tiles when overrides are unset or malformed', () => {
+  it('uses OpenFreeMap vector tiles with no rate-limit banner by default for street and Esri fallback for satellite', () => {
     const street = resolveMapTileConfig('street', { streetUrl: 'invalid-url' });
-    assert.ok(street.url.includes('openstreetmap.org'));
-    assert.equal(street.isPublicDefault, true);
+    assert.equal(street.kind, 'vector-style');
+    assert.ok(street.url.includes('tiles.openfreemap.org'));
+    assert.equal(street.isPublicDefault, false);
 
     const sat = resolveMapTileConfig('satellite', {});
+    assert.equal(sat.kind, 'raster-xyz');
     assert.ok(sat.url.includes('arcgisonline.com'));
     assert.equal(sat.isPublicDefault, true);
   });
 });
 
 describe('getPublicTileAdminNotice', () => {
-  it('returns null for custom street/satellite providers and returns env var guidance for public defaults', () => {
+  it('returns null for OpenFreeMap street default and custom providers, and returns notice for public satellite fallback', () => {
     const customStreet = resolveMapTileConfig('street', {
       streetUrl: 'https://maps.bpwi.internal/street/{z}/{x}/{y}.png',
     });
@@ -59,9 +61,8 @@ describe('getPublicTileAdminNotice', () => {
     });
     assert.equal(getPublicTileAdminNotice('satellite', customSat), null);
 
-    const publicStreet = resolveMapTileConfig('street', {});
-    const streetNotice = getPublicTileAdminNotice('street', publicStreet);
-    assert.ok(streetNotice && streetNotice.includes('NEXT_PUBLIC_MAP_STREET_TILE_URL'));
+    const defaultStreet = resolveMapTileConfig('street', {});
+    assert.equal(getPublicTileAdminNotice('street', defaultStreet), null);
 
     const publicSat = resolveMapTileConfig('satellite', {});
     const satNotice = getPublicTileAdminNotice('satellite', publicSat);

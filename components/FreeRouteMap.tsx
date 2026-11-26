@@ -1,35 +1,39 @@
 'use client';
 
-import 'leaflet/dist/leaflet.css';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type * as LeafletNS from 'leaflet';
+import type * as MapLibreGL from 'maplibre-gl';
 import { fmtTimeManila } from '@/lib/date';
 import { formatGpsBadgeLabel } from '@/lib/gps-accuracy';
-import { DEFAULT_LEAFLET_TILE_OPTIONS, resolveMapTileConfig } from '@/lib/map-tiles';
+import { buildRasterMapStyle, resolveMapTileConfig } from '@/lib/map-tiles';
 import type { LatLng, RouteStop } from '@/lib/route-footprints';
 
 export type FreeMapStyle = 'street' | 'satellite';
 
-const DEFAULT_PH_CENTER: [number, number] = [10.7202, 122.5621];
+// MapLibre uses [lng, lat] coordinates
+const DEFAULT_PH_CENTER: [number, number] = [122.5621, 10.7202];
+const ROUTE_SOURCE_ID = 'bpwi-route';
+const ROUTE_CASING_LAYER_ID = 'bpwi-route-casing';
+const ROUTE_ROAD_LAYER_ID = 'bpwi-route-road';
+const ROUTE_FALLBACK_LAYER_ID = 'bpwi-route-fallback';
 
-function createPinIcon(L: typeof LeafletNS, stop: RouteStop, isSelected: boolean): LeafletNS.DivIcon {
+function resolveMapStyleInput(style: FreeMapStyle): string | MapLibreGL.StyleSpecification {
+  const tileConfig = resolveMapTileConfig(style);
+  if (tileConfig.kind === 'vector-style') {
+    return tileConfig.url;
+  }
+  return buildRasterMapStyle(tileConfig) as unknown as MapLibreGL.StyleSpecification;
+}
+
+function createPinElement(stop: RouteStop, isSelected: boolean): HTMLDivElement {
   const isBase = stop.kind !== 'activity';
-  const label = isBase ? 'HQ' : String(stop.sequence);
-  const bg = isBase ? '#0f172a' : stop.color;
-  const cls = isSelected ? 'bpwi-map-pin is-selected' : 'bpwi-map-pin';
-
   const el = document.createElement('div');
-  el.className = cls;
-  el.style.backgroundColor = bg;
-  el.textContent = label;
-
-  return L.divIcon({
-    className: 'bpwi-map-pin-icon',
-    html: el,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-    popupAnchor: [0, -14],
-  });
+  el.className = isSelected ? 'bpwi-map-pin is-selected' : 'bpwi-map-pin';
+  el.style.backgroundColor = isBase ? '#0f172a' : stop.color;
+  el.textContent = isBase ? 'HQ' : String(stop.sequence);
+  el.title = `#${stop.sequence} ${stop.label}`;
+  el.setAttribute('aria-label', `#${stop.sequence} ${stop.label}`);
+  return el;
 }
 
 function appendExternalLink(parent: HTMLElement, label: string, href: string) {
@@ -116,6 +120,102 @@ function buildStopPopupElement(stop: RouteStop): HTMLDivElement {
   return root;
 }
 
+function buildRouteGeoJson(stops: RouteStop[], routePaths: LatLng[][], isFallbackLine: boolean) {
+  const features: Array<{
+    type: 'Feature';
+    properties: { kind: 'road' | 'fallback' };
+    geometry: { type: 'LineString'; coordinates: [number, number][] };
+  }> = [];
+
+  if (stops.length >= 2) {
+    if (!isFallbackLine && routePaths.length > 0) {
+      for (const path of routePaths) {
+        if (path.length < 2) continue;
+        features.push({
+          type: 'Feature',
+          properties: { kind: 'road' },
+          geometry: {
+            type: 'LineString',
+            coordinates: path.map((pt) => [pt.lng, pt.lat]),
+          },
+        });
+      }
+    } else {
+      features.push({
+        type: 'Feature',
+        properties: { kind: 'fallback' },
+        geometry: {
+          type: 'LineString',
+          coordinates: stops.map((s) => [s.lng, s.lat]),
+        },
+      });
+    }
+  }
+
+  return {
+    type: 'FeatureCollection' as const,
+    features,
+  };
+}
+
+function syncRouteLayersOnMap(
+  map: MapLibreGL.Map,
+  stops: RouteStop[],
+  routePaths: LatLng[][],
+  isFallbackLine: boolean,
+) {
+  if (!map.isStyleLoaded()) return;
+
+  const data = buildRouteGeoJson(stops, routePaths, isFallbackLine);
+  const existingSource = map.getSource(ROUTE_SOURCE_ID) as MapLibreGL.GeoJSONSource | undefined;
+  if (existingSource) {
+    existingSource.setData(data);
+  } else {
+    map.addSource(ROUTE_SOURCE_ID, {
+      type: 'geojson',
+      data,
+    });
+  }
+
+  if (!map.getLayer(ROUTE_CASING_LAYER_ID)) {
+    map.addLayer({
+      id: ROUTE_CASING_LAYER_ID,
+      type: 'line',
+      source: ROUTE_SOURCE_ID,
+      filter: ['==', ['get', 'kind'], 'road'],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': '#ffffff', 'line-width': 7, 'line-opacity': 0.85 },
+    });
+  }
+
+  if (!map.getLayer(ROUTE_ROAD_LAYER_ID)) {
+    map.addLayer({
+      id: ROUTE_ROAD_LAYER_ID,
+      type: 'line',
+      source: ROUTE_SOURCE_ID,
+      filter: ['==', ['get', 'kind'], 'road'],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': '#2563eb', 'line-width': 4.5, 'line-opacity': 0.92 },
+    });
+  }
+
+  if (!map.getLayer(ROUTE_FALLBACK_LAYER_ID)) {
+    map.addLayer({
+      id: ROUTE_FALLBACK_LAYER_ID,
+      type: 'line',
+      source: ROUTE_SOURCE_ID,
+      filter: ['==', ['get', 'kind'], 'fallback'],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': '#64748b',
+        'line-width': 3,
+        'line-opacity': 0.85,
+        'line-dasharray': [4, 4],
+      },
+    });
+  }
+}
+
 export default function FreeRouteMap(p: {
   stops: RouteStop[];
   routePaths: LatLng[][];
@@ -125,18 +225,29 @@ export default function FreeRouteMap(p: {
   mapStyle: FreeMapStyle;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const leafletRef = useRef<typeof LeafletNS | null>(null);
-  const mapRef = useRef<LeafletNS.Map | null>(null);
-  const tileLayerRef = useRef<LeafletNS.TileLayer | null>(null);
-  const routeLayerGroupRef = useRef<LeafletNS.LayerGroup | null>(null);
-  const markerLayerGroupRef = useRef<LeafletNS.LayerGroup | null>(null);
-  const markerByIdRef = useRef<Map<string, LeafletNS.Marker>>(new Map());
+  const maplibreRef = useRef<typeof MapLibreGL | null>(null);
+  const mapRef = useRef<MapLibreGL.Map | null>(null);
+  const activeStyleRef = useRef<FreeMapStyle>(p.mapStyle);
+  const markerByIdRef = useRef<Map<string, { marker: MapLibreGL.Marker; el: HTMLDivElement; popup: MapLibreGL.Popup }>>(
+    new Map(),
+  );
   const onSelectStopRef = useRef(p.onSelectStop);
   onSelectStopRef.current = p.onSelectStop;
 
+  const latestRouteRef = useRef({
+    stops: p.stops,
+    routePaths: p.routePaths,
+    isFallbackLine: p.isFallbackLine,
+  });
+  latestRouteRef.current = {
+    stops: p.stops,
+    routePaths: p.routePaths,
+    isFallbackLine: p.isFallbackLine,
+  };
+
   const [ready, setReady] = useState(false);
 
-  // Initialize Leaflet map client-side only
+  // Initialize MapLibre GL map client-side only
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -144,22 +255,29 @@ export default function FreeRouteMap(p: {
     const markerMap = markerByIdRef.current;
     let disposed = false;
     let resizeObserver: ResizeObserver | null = null;
+    const initialStyle = activeStyleRef.current;
 
-    import('leaflet')
+    import('maplibre-gl')
       .then((mod) => {
         if (disposed || !containerRef.current) return;
-        const L = ((mod as unknown as { default?: typeof LeafletNS }).default ?? mod) as typeof LeafletNS;
-        leafletRef.current = L;
+        const maplibregl = ((mod as unknown as { default?: typeof MapLibreGL }).default ?? mod) as typeof MapLibreGL;
+        maplibreRef.current = maplibregl;
 
-        const map = L.map(containerRef.current, {
-          zoomControl: true,
-          scrollWheelZoom: false,
+        const map = new maplibregl.Map({
+          container: containerRef.current,
+          style: resolveMapStyleInput(initialStyle),
           center: DEFAULT_PH_CENTER,
           zoom: 13,
+          attributionControl: { compact: true },
         });
 
-        routeLayerGroupRef.current = L.layerGroup().addTo(map);
-        markerLayerGroupRef.current = L.layerGroup().addTo(map);
+        map.scrollZoom.disable();
+        map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+
+        map.on('style.load', () => {
+          const cur = latestRouteRef.current;
+          syncRouteLayersOnMap(map, cur.stops, cur.routePaths, cur.isFallbackLine);
+        });
 
         map.on('click', () => {
           onSelectStopRef.current(null);
@@ -169,7 +287,7 @@ export default function FreeRouteMap(p: {
 
         if (typeof ResizeObserver !== 'undefined') {
           resizeObserver = new ResizeObserver(() => {
-            map.invalidateSize({ animate: false });
+            map.resize();
           });
           resizeObserver.observe(containerRef.current);
         }
@@ -183,10 +301,11 @@ export default function FreeRouteMap(p: {
     return () => {
       disposed = true;
       resizeObserver?.disconnect();
+      for (const entry of markerMap.values()) {
+        entry.popup.remove();
+        entry.marker.remove();
+      }
       markerMap.clear();
-      tileLayerRef.current = null;
-      routeLayerGroupRef.current = null;
-      markerLayerGroupRef.current = null;
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -195,116 +314,81 @@ export default function FreeRouteMap(p: {
     };
   }, []);
 
-  // Swap free tile layer when mapStyle changes
+  // Swap vector / raster style when mapStyle changes after initial mount
   useEffect(() => {
-    const L = leafletRef.current;
     const map = mapRef.current;
-    if (!ready || !L || !map) return;
-
-    if (tileLayerRef.current) {
-      map.removeLayer(tileLayerRef.current);
-      tileLayerRef.current = null;
-    }
-
-    const tileConfig = resolveMapTileConfig(p.mapStyle);
-    tileLayerRef.current = L.tileLayer(tileConfig.url, {
-      attribution: tileConfig.attribution,
-      maxNativeZoom: tileConfig.maxNativeZoom,
-      maxZoom: tileConfig.maxZoom,
-      ...DEFAULT_LEAFLET_TILE_OPTIONS,
-    }).addTo(map);
+    if (!ready || !map || activeStyleRef.current === p.mapStyle) return;
+    activeStyleRef.current = p.mapStyle;
+    map.setStyle(resolveMapStyleInput(p.mapStyle));
   }, [ready, p.mapStyle]);
 
-  // Draw road-snapped polyline or dashed straight-line fallback
+  // Update route polylines whenever route data changes
   useEffect(() => {
-    const L = leafletRef.current;
-    const group = routeLayerGroupRef.current;
-    if (!ready || !L || !group) return;
-
-    group.clearLayers();
-
-    if (p.stops.length < 2) return;
-
-    if (!p.isFallbackLine && p.routePaths.length > 0) {
-      for (const path of p.routePaths) {
-        if (path.length < 2) continue;
-        const latLngs: LeafletNS.LatLngExpression[] = path.map((pt) => [pt.lat, pt.lng]);
-        L.polyline(latLngs, {
-          color: '#ffffff',
-          weight: 7,
-          opacity: 0.8,
-          lineCap: 'round',
-          lineJoin: 'round',
-        }).addTo(group);
-        L.polyline(latLngs, {
-          color: '#2563eb',
-          weight: 4.5,
-          opacity: 0.92,
-          lineCap: 'round',
-          lineJoin: 'round',
-        }).addTo(group);
-      }
-      return;
-    }
-
-    const straightLatLngs: LeafletNS.LatLngExpression[] = p.stops.map((s) => [s.lat, s.lng]);
-    L.polyline(straightLatLngs, {
-      color: '#64748b',
-      weight: 3,
-      opacity: 0.85,
-      dashArray: '8 8',
-    }).addTo(group);
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    syncRouteLayersOnMap(map, p.stops, p.routePaths, p.isFallbackLine);
   }, [ready, p.stops, p.routePaths, p.isFallbackLine]);
 
-  // Create/rebuild stop markers only when stops change
+  // Create/rebuild stop markers when stops change
   useEffect(() => {
-    const L = leafletRef.current;
-    const group = markerLayerGroupRef.current;
-    if (!ready || !L || !group) return;
+    const maplibregl = maplibreRef.current;
+    const map = mapRef.current;
+    if (!ready || !maplibregl || !map) return;
 
-    group.clearLayers();
+    for (const entry of markerByIdRef.current.values()) {
+      entry.popup.remove();
+      entry.marker.remove();
+    }
     markerByIdRef.current.clear();
 
     for (const stop of p.stops) {
-      const marker = L.marker([stop.lat, stop.lng], {
-        icon: createPinIcon(L, stop, false),
-        title: `#${stop.sequence} ${stop.label}`,
-        zIndexOffset: stop.kind !== 'activity' ? 150 : 100 + stop.sequence,
-      });
+      const pinEl = createPinElement(stop, false);
+      pinEl.style.zIndex = String(stop.kind !== 'activity' ? 15 : 10 + stop.sequence);
 
-      marker.bindPopup(() => buildStopPopupElement(stop), { maxWidth: 265 });
-      marker.on('click', () => {
+      const popup = new maplibregl.Popup({
+        offset: 18,
+        maxWidth: '275px',
+        closeOnClick: false,
+      }).setDOMContent(buildStopPopupElement(stop));
+
+      const marker = new maplibregl.Marker({ element: pinEl, anchor: 'center' })
+        .setLngLat([stop.lng, stop.lat])
+        .setPopup(popup)
+        .addTo(map);
+
+      pinEl.addEventListener('click', (ev) => {
+        ev.stopPropagation();
         onSelectStopRef.current(stop.id);
       });
 
-      marker.addTo(group);
-      markerByIdRef.current.set(stop.id, marker);
+      markerByIdRef.current.set(stop.id, { marker, el: pinEl, popup });
     }
   }, [ready, p.stops]);
 
-  // Update active pin highlight and open popup when selectedStopId changes
+  // Highlight active pin and toggle popup when selectedStopId changes
   useEffect(() => {
-    const L = leafletRef.current;
     const map = mapRef.current;
-    if (!ready || !L || !map) return;
+    if (!ready || !map) return;
 
     for (const stop of p.stops) {
-      const marker = markerByIdRef.current.get(stop.id);
-      if (!marker) continue;
+      const entry = markerByIdRef.current.get(stop.id);
+      if (!entry) continue;
       const isSelected = stop.id === p.selectedStopId;
-      marker.setIcon(createPinIcon(L, stop, isSelected));
-      marker.setZIndexOffset(isSelected ? 500 : stop.kind !== 'activity' ? 150 : 100 + stop.sequence);
+      entry.el.className = isSelected ? 'bpwi-map-pin is-selected' : 'bpwi-map-pin';
+      entry.el.style.zIndex = String(isSelected ? 50 : stop.kind !== 'activity' ? 15 : 10 + stop.sequence);
+      if (!isSelected && entry.popup.isOpen()) {
+        entry.popup.remove();
+      }
     }
 
-    if (!p.selectedStopId) {
-      map.closePopup();
-      return;
-    }
+    if (!p.selectedStopId) return;
 
-    const activeMarker = markerByIdRef.current.get(p.selectedStopId);
-    if (activeMarker) {
-      map.panTo(activeMarker.getLatLng(), { animate: true });
-      activeMarker.openPopup();
+    const active = markerByIdRef.current.get(p.selectedStopId);
+    if (active) {
+      map.easeTo({ center: active.marker.getLngLat(), duration: 300 });
+      if (!active.popup.isOpen()) {
+        active.marker.togglePopup();
+      }
     }
   }, [ready, p.stops, p.selectedStopId]);
 
@@ -316,30 +400,33 @@ export default function FreeRouteMap(p: {
   }, [p.stops, p.routePaths]);
 
   useEffect(() => {
-    const L = leafletRef.current;
+    const maplibregl = maplibreRef.current;
     const map = mapRef.current;
-    if (!ready || !L || !map || p.stops.length === 0) return;
+    if (!ready || !maplibregl || !map || p.stops.length === 0) return;
 
     if (p.stops.length === 1) {
-      map.setView([p.stops[0].lat, p.stops[0].lng], 16, { animate: false });
+      map.jumpTo({ center: [p.stops[0].lng, p.stops[0].lat], zoom: 16 });
       return;
     }
 
-    const bounds = L.latLngBounds(p.stops.map((s) => [s.lat, s.lng] as [number, number]));
+    const bounds = new maplibregl.LngLatBounds();
+    for (const stop of p.stops) {
+      bounds.extend([stop.lng, stop.lat]);
+    }
     for (const path of p.routePaths) {
       for (const pt of path) {
-        bounds.extend([pt.lat, pt.lng]);
+        bounds.extend([pt.lng, pt.lat]);
       }
     }
-    if (bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [44, 44], maxZoom: 16, animate: false });
+    if (!bounds.isEmpty()) {
+      map.fitBounds(bounds, { padding: 48, maxZoom: 16, duration: 0 });
     }
   }, [ready, boundsKey, p.stops, p.routePaths]);
 
   return (
     <div
       ref={containerRef}
-      className="bpwi-leaflet-container"
+      className="bpwi-map-container"
       aria-label="Daily field activity route map"
       style={{ width: '100%', height: '100%' }}
     />

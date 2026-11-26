@@ -582,7 +582,7 @@ export default function ActivitiesRoutesTab(p: {
                 size="sm"
                 value={mapStyle}
                 onChange={setMapStyle}
-                items={[{ id: 'street', label: 'Street (OSM)' }, { id: 'satellite', label: 'Satellite' }]}
+                items={[{ id: 'street', label: 'Street' }, { id: 'satellite', label: 'Satellite' }]}
               />
             </div>
 

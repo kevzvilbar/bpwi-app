@@ -1,15 +1,26 @@
 'use client';
 
-import 'leaflet/dist/leaflet.css';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef, useState } from 'react';
-import type * as LeafletNS from 'leaflet';
+import type * as MapLibreGL from 'maplibre-gl';
 import { SegmentedTabs } from '@/components/ui';
-import { DEFAULT_LEAFLET_TILE_OPTIONS, getPublicTileAdminNotice, resolveMapTileConfig } from '@/lib/map-tiles';
+import { buildRasterMapStyle, getPublicTileAdminNotice, resolveMapTileConfig } from '@/lib/map-tiles';
 import type { FreeMapStyle } from '@/components/FreeRouteMap';
 
-const DEFAULT_PH_CENTER: [number, number] = [10.7202, 122.5621];
+const DEFAULT_PH_CENTER: [number, number] = [122.5621, 10.7202];
+const ACCURACY_SOURCE_ID = 'bpwi-gps-accuracy';
+const ACCURACY_FILL_LAYER_ID = 'bpwi-gps-accuracy-fill';
+const ACCURACY_LINE_LAYER_ID = 'bpwi-gps-accuracy-line';
 
-function createPickerIcon(L: typeof LeafletNS): LeafletNS.DivIcon {
+function resolveModalStyleSpec(style: FreeMapStyle): string | MapLibreGL.StyleSpecification {
+  const tileConfig = resolveMapTileConfig(style);
+  if (tileConfig.kind === 'vector-style') {
+    return tileConfig.url;
+  }
+  return buildRasterMapStyle(tileConfig) as unknown as MapLibreGL.StyleSpecification;
+}
+
+function createPickerElement(): HTMLDivElement {
   const el = document.createElement('div');
   el.style.width = '22px';
   el.style.height = '22px';
@@ -17,12 +28,66 @@ function createPickerIcon(L: typeof LeafletNS): LeafletNS.DivIcon {
   el.style.background = '#0284c7';
   el.style.border = '3px solid #ffffff';
   el.style.boxShadow = '0 2px 8px rgba(15, 23, 42, 0.55)';
-  return L.divIcon({
-    className: 'bpwi-pin-picker-marker',
-    html: el,
-    iconSize: [22, 22],
-    iconAnchor: [11, 11],
-  });
+  el.style.cursor = 'grab';
+  return el;
+}
+
+function buildAccuracyCircleGeoJson(lat: number, lng: number, radiusMeters: number) {
+  const steps = 48;
+  const clamped = Math.min(250, Math.max(1, radiusMeters));
+  const dLat = clamped / 111320;
+  const dLng = clamped / (111320 * Math.max(0.1, Math.cos((lat * Math.PI) / 180)));
+  const ring: [number, number][] = [];
+  for (let i = 0; i <= steps; i += 1) {
+    const theta = (i / steps) * 2 * Math.PI;
+    ring.push([lng + dLng * Math.cos(theta), lat + dLat * Math.sin(theta)]);
+  }
+  return {
+    type: 'FeatureCollection' as const,
+    features: [
+      {
+        type: 'Feature' as const,
+        properties: {},
+        geometry: {
+          type: 'Polygon' as const,
+          coordinates: [ring],
+        },
+      },
+    ],
+  };
+}
+
+function syncAccuracyCircleOnMap(
+  map: MapLibreGL.Map,
+  hintCoords: { lat: number; lng: number; accuracy?: number } | null | undefined,
+) {
+  if (!map.isStyleLoaded() || !hintCoords || !hintCoords.accuracy || hintCoords.accuracy <= 0) return;
+
+  const data = buildAccuracyCircleGeoJson(hintCoords.lat, hintCoords.lng, hintCoords.accuracy);
+  const existing = map.getSource(ACCURACY_SOURCE_ID) as MapLibreGL.GeoJSONSource | undefined;
+  if (existing) {
+    existing.setData(data);
+  } else {
+    map.addSource(ACCURACY_SOURCE_ID, { type: 'geojson', data });
+  }
+
+  if (!map.getLayer(ACCURACY_FILL_LAYER_ID)) {
+    map.addLayer({
+      id: ACCURACY_FILL_LAYER_ID,
+      type: 'fill',
+      source: ACCURACY_SOURCE_ID,
+      paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.1 },
+    });
+  }
+
+  if (!map.getLayer(ACCURACY_LINE_LAYER_ID)) {
+    map.addLayer({
+      id: ACCURACY_LINE_LAYER_ID,
+      type: 'line',
+      source: ACCURACY_SOURCE_ID,
+      paint: { 'line-color': '#f59e0b', 'line-width': 1.5, 'line-dasharray': [3, 3] },
+    });
+  }
 }
 
 export default function GpsPinPickerModal(p: {
@@ -46,10 +111,12 @@ export default function GpsPinPickerModal(p: {
   const [ready, setReady] = useState(false);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const leafletRef = useRef<typeof LeafletNS | null>(null);
-  const mapRef = useRef<LeafletNS.Map | null>(null);
-  const tileLayerRef = useRef<LeafletNS.TileLayer | null>(null);
-  const markerRef = useRef<LeafletNS.Marker | null>(null);
+  const maplibreRef = useRef<typeof MapLibreGL | null>(null);
+  const mapRef = useRef<MapLibreGL.Map | null>(null);
+  const markerRef = useRef<MapLibreGL.Marker | null>(null);
+  const activeStyleRef = useRef<FreeMapStyle>(mapStyle);
+  const hintCoordsRef = useRef(p.hintCoords);
+  hintCoordsRef.current = p.hintCoords;
 
   useEffect(() => {
     if (!p.open) return;
@@ -69,47 +136,48 @@ export default function GpsPinPickerModal(p: {
 
     let disposed = false;
     let resizeObserver: ResizeObserver | null = null;
+    const initialStyle = activeStyleRef.current;
 
-    import('leaflet')
+    import('maplibre-gl')
       .then((mod) => {
         if (disposed || !containerRef.current) return;
-        const L = ((mod as unknown as { default?: typeof LeafletNS }).default ?? mod) as typeof LeafletNS;
-        leafletRef.current = L;
+        const maplibregl = ((mod as unknown as { default?: typeof MapLibreGL }).default ?? mod) as typeof MapLibreGL;
+        maplibreRef.current = maplibregl;
 
-        const startLat = p.initialLat ?? p.hintCoords?.lat ?? DEFAULT_PH_CENTER[0];
-        const startLng = p.initialLng ?? p.hintCoords?.lng ?? DEFAULT_PH_CENTER[1];
+        const startLat = p.initialLat ?? p.hintCoords?.lat ?? DEFAULT_PH_CENTER[1];
+        const startLng = p.initialLng ?? p.hintCoords?.lng ?? DEFAULT_PH_CENTER[0];
         const startZoom = p.initialLat !== null || p.hintCoords ? 18 : 13;
 
-        const map = L.map(containerRef.current, {
-          zoomControl: true,
-          scrollWheelZoom: true,
-          center: [startLat, startLng],
+        const map = new maplibregl.Map({
+          container: containerRef.current,
+          style: resolveModalStyleSpec(initialStyle),
+          center: [startLng, startLat],
           zoom: startZoom,
+          attributionControl: { compact: true },
         });
 
-        if (p.hintCoords && p.hintCoords.accuracy && p.hintCoords.accuracy > 0) {
-          L.circle([p.hintCoords.lat, p.hintCoords.lng], {
-            radius: Math.min(250, p.hintCoords.accuracy),
-            color: '#f59e0b',
-            weight: 1.5,
-            dashArray: '4 4',
-            fillOpacity: 0.08,
-          }).addTo(map);
-        }
+        map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+
+        map.on('style.load', () => {
+          syncAccuracyCircleOnMap(map, hintCoordsRef.current);
+        });
 
         const placeMarker = (lat: number, lng: number) => {
           const roundedLat = Number(lat.toFixed(6));
           const roundedLng = Number(lng.toFixed(6));
           setPicked({ lat: roundedLat, lng: roundedLng });
           if (markerRef.current) {
-            markerRef.current.setLatLng([roundedLat, roundedLng]);
+            markerRef.current.setLngLat([roundedLng, roundedLat]);
           } else {
-            const m = L.marker([roundedLat, roundedLng], {
-              icon: createPickerIcon(L),
+            const m = new maplibregl.Marker({
+              element: createPickerElement(),
+              anchor: 'center',
               draggable: true,
-            }).addTo(map);
+            })
+              .setLngLat([roundedLng, roundedLat])
+              .addTo(map);
             m.on('dragend', () => {
-              const ll = m.getLatLng();
+              const ll = m.getLngLat();
               setPicked({ lat: Number(ll.lat.toFixed(6)), lng: Number(ll.lng.toFixed(6)) });
             });
             markerRef.current = m;
@@ -122,15 +190,15 @@ export default function GpsPinPickerModal(p: {
           placeMarker(p.hintCoords.lat, p.hintCoords.lng);
         }
 
-        map.on('click', (ev: LeafletNS.LeafletMouseEvent) => {
-          placeMarker(ev.latlng.lat, ev.latlng.lng);
+        map.on('click', (ev: MapLibreGL.MapMouseEvent) => {
+          placeMarker(ev.lngLat.lat, ev.lngLat.lng);
         });
 
         mapRef.current = map;
 
         if (typeof ResizeObserver !== 'undefined') {
           resizeObserver = new ResizeObserver(() => {
-            map.invalidateSize({ animate: false });
+            map.resize();
           });
           resizeObserver.observe(containerRef.current);
         }
@@ -138,14 +206,14 @@ export default function GpsPinPickerModal(p: {
         setReady(true);
       })
       .catch(() => {
-        /* ignore Leaflet load error */
+        /* ignore MapLibre load error */
       });
 
     return () => {
       disposed = true;
       resizeObserver?.disconnect();
+      markerRef.current?.remove();
       markerRef.current = null;
-      tileLayerRef.current = null;
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -155,22 +223,10 @@ export default function GpsPinPickerModal(p: {
   }, [p.open, p.initialLat, p.initialLng, p.hintCoords]);
 
   useEffect(() => {
-    const L = leafletRef.current;
     const map = mapRef.current;
-    if (!ready || !L || !map) return;
-
-    if (tileLayerRef.current) {
-      map.removeLayer(tileLayerRef.current);
-      tileLayerRef.current = null;
-    }
-
-    const tileConfig = resolveMapTileConfig(mapStyle);
-    tileLayerRef.current = L.tileLayer(tileConfig.url, {
-      attribution: tileConfig.attribution,
-      maxNativeZoom: tileConfig.maxNativeZoom,
-      maxZoom: tileConfig.maxZoom,
-      ...DEFAULT_LEAFLET_TILE_OPTIONS,
-    }).addTo(map);
+    if (!ready || !map || activeStyleRef.current === mapStyle) return;
+    activeStyleRef.current = mapStyle;
+    map.setStyle(resolveModalStyleSpec(mapStyle));
   }, [ready, mapStyle]);
 
   if (!p.open) return null;
@@ -235,6 +291,7 @@ export default function GpsPinPickerModal(p: {
 
         <div
           ref={containerRef}
+          className="bpwi-map-container"
           style={{
             width: '100%',
             height: 'clamp(240px, 52vh, 460px)',

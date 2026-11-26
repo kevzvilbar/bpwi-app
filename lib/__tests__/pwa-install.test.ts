@@ -140,7 +140,7 @@ describe('PWA installability & manifest', () => {
   it('keeps sw.js OFFLINE_PAGE_ALLOWLIST restricted to /mobile while providing offline navigation fallback for /', async () => {
     const swPath = resolve(process.cwd(), 'public/sw.js');
     const source = readFileSync(swPath, 'utf8');
-    assert.match(source, /CACHE_NAME\s*=\s*'bpwi-ops-v6'/);
+    assert.match(source, /CACHE_NAME\s*=\s*'bpwi-ops-v8'/);
     assert.match(source, /OFFLINE_PAGE_ALLOWLIST\s*=\s*new Set\(\['\/mobile'\]\)/);
 
     // 1. Online navigation to '/' goes network-only and NEVER stores '/' in cache

@@ -47,20 +47,13 @@ export function buildCspHeader(opts: {
     imgSources.add(supabaseOrigin);
   }
 
-  const customStreetOrigin = extractOrigin(opts.streetTileUrl);
-  if (customStreetOrigin) {
-    imgSources.add(customStreetOrigin);
-  } else {
-    imgSources.add('https://tile.openstreetmap.org');
-    imgSources.add('https://*.tile.openstreetmap.org');
-  }
+  const streetOrigin = extractOrigin(opts.streetTileUrl) ?? 'https://tiles.openfreemap.org';
+  imgSources.add(streetOrigin);
+  connectSources.add(streetOrigin);
 
-  const customSatOrigin = extractOrigin(opts.satelliteTileUrl);
-  if (customSatOrigin) {
-    imgSources.add(customSatOrigin);
-  } else {
-    imgSources.add('https://server.arcgisonline.com');
-  }
+  const satOrigin = extractOrigin(opts.satelliteTileUrl) ?? 'https://server.arcgisonline.com';
+  imgSources.add(satOrigin);
+  connectSources.add(satOrigin);
 
   const reportUri = opts.reportUri === undefined ? '/api/csp-report' : opts.reportUri.trim();
 
@@ -72,6 +65,7 @@ export function buildCspHeader(opts: {
     "font-src 'self' data:",
     `connect-src ${[...connectSources].join(' ')}`,
     "worker-src 'self' blob:",
+    "child-src 'self' blob:",
     "frame-ancestors 'none'",
     "object-src 'none'",
     "base-uri 'self'",
