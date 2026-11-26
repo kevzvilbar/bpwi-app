@@ -51,9 +51,11 @@ export function buildCspHeader(opts: {
   imgSources.add(streetOrigin);
   connectSources.add(streetOrigin);
 
-  const satOrigin = extractOrigin(opts.satelliteTileUrl) ?? 'https://server.arcgisonline.com';
-  imgSources.add(satOrigin);
-  connectSources.add(satOrigin);
+  const customSatOrigin = extractOrigin(opts.satelliteTileUrl);
+  if (customSatOrigin) {
+    imgSources.add(customSatOrigin);
+    connectSources.add(customSatOrigin);
+  }
 
   const reportUri = opts.reportUri === undefined ? '/api/csp-report' : opts.reportUri.trim();
 

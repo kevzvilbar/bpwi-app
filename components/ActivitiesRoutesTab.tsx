@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import type { DailyActivityRow } from '@/lib/activity-types';
 import { fmtTimeManila } from '@/lib/date';
 import { startHighAccuracyGpsCapture } from '@/lib/gps-accuracy';
-import { getPublicTileAdminNotice, resolveMapTileConfig } from '@/lib/map-tiles';
+import { getMapStyleOptions, getPublicTileAdminNotice, resolveMapTileConfig } from '@/lib/map-tiles';
 import {
   buildRouteCacheKey,
   buildStraightLineRoute,
@@ -582,7 +582,7 @@ export default function ActivitiesRoutesTab(p: {
                 size="sm"
                 value={mapStyle}
                 onChange={setMapStyle}
-                items={[{ id: 'street', label: 'Street' }, { id: 'satellite', label: 'Satellite' }]}
+                items={getMapStyleOptions()}
               />
             </div>
 

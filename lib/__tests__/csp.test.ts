@@ -35,7 +35,7 @@ describe('CSP header & nonce helpers', () => {
     assert.ok(!csp.includes("connect-src 'self' https: wss:"));
     assert.ok(csp.includes('https://demo.supabase.co'));
     assert.ok(csp.includes('https://tiles.openfreemap.org'));
-    assert.ok(csp.includes('https://server.arcgisonline.com'));
+    assert.ok(!csp.includes('server.arcgisonline.com'));
     assert.ok(!csp.includes('tile.openstreetmap.org'));
     assert.ok(csp.includes('report-uri /api/csp-report'));
   });

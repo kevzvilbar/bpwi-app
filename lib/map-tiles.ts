@@ -1,10 +1,10 @@
 /**
  * Configurable MapLibre map source & style configuration helper.
- * Uses free, unlimited OpenFreeMap vector tiles by default for street maps,
- * with optional `NEXT_PUBLIC_MAP_*` XYZ raster tile overrides and Esri satellite fallback.
+ * Uses free, unlimited OpenFreeMap vector tiles across all default map views
+ * (`liberty`, `positron`, `bright`), with optional `NEXT_PUBLIC_MAP_*` XYZ raster tile overrides.
  */
 
-export type MapStyle = 'street' | 'satellite';
+export type MapStyle = 'street' | 'clean' | 'satellite';
 export type MapTileSourceKind = 'vector-style' | 'raster-xyz';
 
 export interface MapTileLayerConfig {
@@ -45,12 +45,11 @@ export interface RasterMapStyleSpecification {
 }
 
 export const DEFAULT_OPENFREEMAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
+export const DEFAULT_OPENFREEMAP_CLEAN_URL = 'https://tiles.openfreemap.org/styles/positron';
+export const DEFAULT_OPENFREEMAP_BRIGHT_URL = 'https://tiles.openfreemap.org/styles/bright';
+
 const DEFAULT_OPENFREEMAP_ATTRIBUTION =
   '&copy; <a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer">OpenFreeMap</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors';
-
-const DEFAULT_SATELLITE_URL =
-  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-const DEFAULT_SATELLITE_ATTRIBUTION = 'Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics';
 
 /** Validates that a custom tile URL template uses an allowed scheme/path and `{z}/{x}/{y}` placeholders. */
 export function isValidTileUrlTemplate(url: string | undefined): boolean {
@@ -65,7 +64,28 @@ export function isValidTileUrlTemplate(url: string | undefined): boolean {
   return trimmed.includes('{z}') && trimmed.includes('{x}') && trimmed.includes('{y}');
 }
 
-/** Builds a MapLibre v8 raster style JSON object for XYZ tile layers (e.g., Esri Satellite or custom XYZ). */
+/** Returns true when a custom satellite XYZ tile URL has been explicitly configured. */
+export function hasCustomSatelliteTiles(env?: MapTileEnvOverrides): boolean {
+  const satUrl =
+    env !== undefined ? env.satelliteUrl : process.env.NEXT_PUBLIC_MAP_SATELLITE_TILE_URL;
+  return isValidTileUrlTemplate(satUrl);
+}
+
+/** Returns UI style selector items: free OpenFreeMap presets plus custom Satellite if configured. */
+export function getMapStyleOptions(
+  env?: MapTileEnvOverrides,
+): Array<{ id: MapStyle; label: string }> {
+  const items: Array<{ id: MapStyle; label: string }> = [
+    { id: 'street', label: 'Street' },
+    { id: 'clean', label: 'Clean' },
+  ];
+  if (hasCustomSatelliteTiles(env)) {
+    items.push({ id: 'satellite', label: 'Satellite' });
+  }
+  return items;
+}
+
+/** Builds a MapLibre v8 raster style JSON object for custom XYZ tile layers. */
 export function buildRasterMapStyle(config: MapTileLayerConfig): RasterMapStyleSpecification {
   return {
     version: 8,
@@ -90,7 +110,7 @@ export function buildRasterMapStyle(config: MapTileLayerConfig): RasterMapStyleS
   };
 }
 
-/** Resolves MapLibre style URL or XYZ tile configuration for street or satellite view. */
+/** Resolves MapLibre style URL or XYZ tile configuration for street, clean, or satellite view. */
 export function resolveMapTileConfig(
   style: MapStyle,
   env?: MapTileEnvOverrides,
@@ -116,13 +136,25 @@ export function resolveMapTileConfig(
       };
     }
     return {
-      kind: 'raster-xyz',
-      url: DEFAULT_SATELLITE_URL,
-      attribution: DEFAULT_SATELLITE_ATTRIBUTION,
-      maxNativeZoom: 18,
+      kind: 'vector-style',
+      url: DEFAULT_OPENFREEMAP_BRIGHT_URL,
+      attribution: DEFAULT_OPENFREEMAP_ATTRIBUTION,
+      maxNativeZoom: 19,
       maxZoom: 20,
-      isPublicDefault: true,
-      providerLabel: 'Esri World Imagery',
+      isPublicDefault: false,
+      providerLabel: 'OpenFreeMap (Bright)',
+    };
+  }
+
+  if (style === 'clean') {
+    return {
+      kind: 'vector-style',
+      url: DEFAULT_OPENFREEMAP_CLEAN_URL,
+      attribution: DEFAULT_OPENFREEMAP_ATTRIBUTION,
+      maxNativeZoom: 19,
+      maxZoom: 20,
+      isPublicDefault: false,
+      providerLabel: 'OpenFreeMap (Positron)',
     };
   }
 
@@ -150,8 +182,8 @@ export function resolveMapTileConfig(
 }
 
 /**
- * Returns an admin-facing configuration notice when the active map style uses
- * a rate-limited public default tile server (e.g., Esri satellite) rather than OpenFreeMap or a custom provider.
+ * Returns an admin-facing configuration notice when a rate-limited public default tile provider
+ * is active (returns null for all free OpenFreeMap presets and custom providers).
  */
 export function getPublicTileAdminNotice(
   style: MapStyle,

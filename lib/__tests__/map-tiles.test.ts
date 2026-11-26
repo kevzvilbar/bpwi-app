@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { getPublicTileAdminNotice, isValidTileUrlTemplate, resolveMapTileConfig } from '../map-tiles.ts';
+import { getMapStyleOptions, getPublicTileAdminNotice, hasCustomSatelliteTiles, isValidTileUrlTemplate, resolveMapTileConfig } from '../map-tiles.ts';
 
 describe('isValidTileUrlTemplate', () => {
   it('accepts https, localhost http, and relative URL templates with {z}/{x}/{y}', () => {
@@ -36,21 +36,26 @@ describe('resolveMapTileConfig', () => {
     assert.equal(sat.isPublicDefault, false);
   });
 
-  it('uses OpenFreeMap vector tiles with no rate-limit banner by default for street and Esri fallback for satellite', () => {
+  it('uses OpenFreeMap vector tiles with no rate-limit banner across street, clean, and unset satellite styles', () => {
     const street = resolveMapTileConfig('street', { streetUrl: 'invalid-url' });
     assert.equal(street.kind, 'vector-style');
-    assert.ok(street.url.includes('tiles.openfreemap.org'));
+    assert.ok(street.url.includes('tiles.openfreemap.org/styles/liberty'));
     assert.equal(street.isPublicDefault, false);
 
+    const clean = resolveMapTileConfig('clean', {});
+    assert.equal(clean.kind, 'vector-style');
+    assert.ok(clean.url.includes('tiles.openfreemap.org/styles/positron'));
+    assert.equal(clean.isPublicDefault, false);
+
     const sat = resolveMapTileConfig('satellite', {});
-    assert.equal(sat.kind, 'raster-xyz');
-    assert.ok(sat.url.includes('arcgisonline.com'));
-    assert.equal(sat.isPublicDefault, true);
+    assert.equal(sat.kind, 'vector-style');
+    assert.ok(sat.url.includes('tiles.openfreemap.org/styles/bright'));
+    assert.equal(sat.isPublicDefault, false);
   });
 });
 
-describe('getPublicTileAdminNotice', () => {
-  it('returns null for OpenFreeMap street default and custom providers, and returns notice for public satellite fallback', () => {
+describe('getPublicTileAdminNotice & style options', () => {
+  it('returns null across all default OpenFreeMap presets and custom providers, and exposes satellite only when configured', () => {
     const customStreet = resolveMapTileConfig('street', {
       streetUrl: 'https://maps.bpwi.internal/street/{z}/{x}/{y}.png',
     });
@@ -61,11 +66,26 @@ describe('getPublicTileAdminNotice', () => {
     });
     assert.equal(getPublicTileAdminNotice('satellite', customSat), null);
 
-    const defaultStreet = resolveMapTileConfig('street', {});
-    assert.equal(getPublicTileAdminNotice('street', defaultStreet), null);
+    assert.equal(getPublicTileAdminNotice('street', resolveMapTileConfig('street', {})), null);
+    assert.equal(getPublicTileAdminNotice('clean', resolveMapTileConfig('clean', {})), null);
+    assert.equal(getPublicTileAdminNotice('satellite', resolveMapTileConfig('satellite', {})), null);
 
-    const publicSat = resolveMapTileConfig('satellite', {});
-    const satNotice = getPublicTileAdminNotice('satellite', publicSat);
-    assert.ok(satNotice && satNotice.includes('NEXT_PUBLIC_MAP_SATELLITE_TILE_URL'));
+    assert.equal(hasCustomSatelliteTiles({}), false);
+    assert.deepEqual(getMapStyleOptions({}), [
+      { id: 'street', label: 'Street' },
+      { id: 'clean', label: 'Clean' },
+    ]);
+    assert.equal(
+      hasCustomSatelliteTiles({ satelliteUrl: 'https://maps.bpwi.internal/sat/{z}/{x}/{y}.jpg' }),
+      true,
+    );
+    assert.deepEqual(
+      getMapStyleOptions({ satelliteUrl: 'https://maps.bpwi.internal/sat/{z}/{x}/{y}.jpg' }),
+      [
+        { id: 'street', label: 'Street' },
+        { id: 'clean', label: 'Clean' },
+        { id: 'satellite', label: 'Satellite' },
+      ],
+    );
   });
 });

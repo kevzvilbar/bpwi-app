@@ -4,7 +4,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef, useState } from 'react';
 import type * as MapLibreGL from 'maplibre-gl';
 import { SegmentedTabs } from '@/components/ui';
-import { buildRasterMapStyle, getPublicTileAdminNotice, resolveMapTileConfig } from '@/lib/map-tiles';
+import { buildRasterMapStyle, getMapStyleOptions, getPublicTileAdminNotice, resolveMapTileConfig } from '@/lib/map-tiles';
 import type { FreeMapStyle } from '@/components/FreeRouteMap';
 
 const DEFAULT_PH_CENTER: [number, number] = [122.5621, 10.7202];
@@ -100,7 +100,7 @@ export default function GpsPinPickerModal(p: {
   onConfirm: (coords: { lat: number; lng: number }) => void;
   onClose: () => void;
 }) {
-  const [mapStyle, setMapStyle] = useState<FreeMapStyle>('satellite');
+  const [mapStyle, setMapStyle] = useState<FreeMapStyle>('street');
   const [picked, setPicked] = useState<{ lat: number; lng: number } | null>(() =>
     p.initialLat !== null && p.initialLng !== null
       ? { lat: Number(p.initialLat.toFixed(6)), lng: Number(p.initialLng.toFixed(6)) }
@@ -261,10 +261,7 @@ export default function GpsPinPickerModal(p: {
               size="sm"
               value={mapStyle}
               onChange={(v) => setMapStyle(v)}
-              items={[
-                { id: 'satellite', label: 'Satellite' },
-                { id: 'street', label: 'Street' },
-              ]}
+              items={getMapStyleOptions()}
             />
             <button type="button" className="btn" onClick={p.onClose} aria-label="Close">
               ✕

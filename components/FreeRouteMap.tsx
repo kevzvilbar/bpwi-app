@@ -5,10 +5,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type * as MapLibreGL from 'maplibre-gl';
 import { fmtTimeManila } from '@/lib/date';
 import { formatGpsBadgeLabel } from '@/lib/gps-accuracy';
-import { buildRasterMapStyle, resolveMapTileConfig } from '@/lib/map-tiles';
+import { buildRasterMapStyle, resolveMapTileConfig, type MapStyle } from '@/lib/map-tiles';
 import type { LatLng, RouteStop } from '@/lib/route-footprints';
 
-export type FreeMapStyle = 'street' | 'satellite';
+export type FreeMapStyle = MapStyle;
 
 // MapLibre uses [lng, lat] coordinates
 const DEFAULT_PH_CENTER: [number, number] = [122.5621, 10.7202];
