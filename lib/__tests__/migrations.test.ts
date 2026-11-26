@@ -260,4 +260,18 @@ describe('Supabase SQL migrations integrity', () => {
       assert.ok(!allSql.includes(target), 'Committed migrations must not contain employee PII names');
     }
   });
+
+  it('creates consumables inventory tables with RLS and activity sync trigger in 039_consumables_inventory.sql', () => {
+    const sql39 = fs.readFileSync(path.join(MIGRATIONS_DIR, '039_consumables_inventory.sql'), 'utf8');
+    for (const required of [
+      'create table if not exists consumable_items',
+      'create table if not exists consumable_movements',
+      'alter table consumable_items enable row level security',
+      'alter table consumable_movements enable row level security',
+      'seed_default_consumables',
+      'sync_consumable_inventory_from_activity',
+    ]) {
+      assert.ok(sql39.includes(required), `039_consumables_inventory.sql missing required construct: ${required}`);
+    }
+  });
 });

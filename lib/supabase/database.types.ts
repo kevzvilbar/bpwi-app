@@ -1246,6 +1246,117 @@ export type Database = {
         };
         Relationships: [];
       };
+      consumable_items: {
+        Row: {
+          id: string;
+          organization_id: string;
+          code: string | null;
+          name: string;
+          category: 'chlorine' | 'fuel' | 'chemical' | 'lubricant' | 'supplies' | 'other';
+          unit: string;
+          low_stock_threshold: number;
+          is_active: boolean;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          code?: string | null;
+          name: string;
+          category?: 'chlorine' | 'fuel' | 'chemical' | 'lubricant' | 'supplies' | 'other';
+          unit: string;
+          low_stock_threshold?: number;
+          is_active?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          code?: string | null;
+          name?: string;
+          category?: 'chlorine' | 'fuel' | 'chemical' | 'lubricant' | 'supplies' | 'other';
+          unit?: string;
+          low_stock_threshold?: number;
+          is_active?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      consumable_movements: {
+        Row: {
+          id: string;
+          organization_id: string;
+          item_id: string;
+          site_name: string;
+          movement_type:
+            | 'opening_stock'
+            | 'delivery'
+            | 'manual_usage'
+            | 'adjustment'
+            | 'transfer_in'
+            | 'transfer_out'
+            | 'activity_usage'
+            | 'activity_delivery';
+          quantity_delta: number;
+          movement_date: string;
+          activity_id: string | null;
+          reference_no: string | null;
+          notes: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          item_id: string;
+          site_name: string;
+          movement_type:
+            | 'opening_stock'
+            | 'delivery'
+            | 'manual_usage'
+            | 'adjustment'
+            | 'transfer_in'
+            | 'transfer_out'
+            | 'activity_usage'
+            | 'activity_delivery';
+          quantity_delta: number;
+          movement_date?: string;
+          activity_id?: string | null;
+          reference_no?: string | null;
+          notes?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          item_id?: string;
+          site_name?: string;
+          movement_type?:
+            | 'opening_stock'
+            | 'delivery'
+            | 'manual_usage'
+            | 'adjustment'
+            | 'transfer_in'
+            | 'transfer_out'
+            | 'activity_usage'
+            | 'activity_delivery';
+          quantity_delta?: number;
+          movement_date?: string;
+          activity_id?: string | null;
+          reference_no?: string | null;
+          notes?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -1349,6 +1460,12 @@ export type Database = {
           activities_scrubbed: number;
           job_orders_scrubbed: number;
         }>;
+      };
+      seed_default_consumables: {
+        Args: {
+          p_org_id: string;
+        };
+        Returns: undefined;
       };
       current_org: {
         Args: Record<PropertyKey, never>;

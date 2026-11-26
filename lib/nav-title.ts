@@ -3,6 +3,7 @@ const ROUTE_TITLES: Array<{ prefix: string; title: string }> = [
   { prefix: '/activities', title: 'Activities' },
   { prefix: '/pm', title: 'PM Plan' },
   { prefix: '/call-sheet', title: 'Standby' },
+  { prefix: '/inventory', title: 'Inventory' },
   { prefix: '/reports', title: 'Reports' },
   { prefix: '/requests', title: 'Change Requests' },
   { prefix: '/operators', title: 'Operators & Setup' },

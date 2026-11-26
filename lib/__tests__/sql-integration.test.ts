@@ -2128,5 +2128,200 @@ describe('PGlite SQL migrations (all) execution & security invariants', () => {
 
     // Re-running 038 migration is idempotent
     await db.exec(sql38);
+
+    // 22. 039 Per-site consumables inventory, RLS & auto-sync triggers from daily_activities
+    const sql39 = fs.readFileSync(path.join(MIGRATIONS_DIR, '039_consumables_inventory.sql'), 'utf8');
+    await db.exec(sql39);
+
+    // 22a. Starter items seeded automatically for existing org
+    const starterItemsRes = await db.query<{ id: string; code: string; unit: string }>(
+      `select id, code, unit from consumable_items where organization_id = $1 and code is not null order by sort_order`,
+      [orgId],
+    );
+    assert.deepEqual(
+      starterItemsRes.rows.map((r) => ({ code: r.code, unit: r.unit })),
+      [
+        { code: 'CHLORINE_GRAN', unit: 'kg' },
+        { code: 'CHLORINE_LIQ', unit: 'L' },
+        { code: 'GASOLINE', unit: 'L' },
+        { code: 'DIESEL', unit: 'L' },
+      ],
+    );
+    const clGranId = starterItemsRes.rows[0].id;
+    const gasId = starterItemsRes.rows[2].id;
+    const dieselId = starterItemsRes.rows[3].id;
+
+    // 22b. Manager can add custom consumable + record opening stock; Operator is read-only under RLS
+    await runAs(mgr1Id, async () => {
+      const oilRes = await db.query<{ id: string }>(
+        `insert into consumable_items (organization_id, name, category, unit, low_stock_threshold)
+         values ($1, 'Engine Oil 15W-40', 'lubricant', 'L', 10) returning id`,
+        [orgId],
+      );
+      assert.ok(oilRes.rows[0].id);
+
+      const openRes = await db.query<{ id: string }>(
+        `insert into consumable_movements (organization_id, item_id, site_name, movement_type, quantity_delta, movement_date, created_by)
+         values ($1, $2, 'Well 4 BAR', 'opening_stock', 50, '2026-11-20', $3) returning id`,
+        [orgId, clGranId, mgr1Id],
+      );
+      assert.ok(openRes.rows[0].id);
+    }, true);
+
+    // Manager cannot spoof activity-synced movement rows
+    await assert.rejects(
+      () =>
+        runAs(mgr1Id, () =>
+          db.query(
+            `insert into consumable_movements (organization_id, item_id, site_name, movement_type, quantity_delta)
+             values ($1, $2, 'Well 4 BAR', 'activity_usage', -5)`,
+            [orgId, clGranId],
+          ),
+        ),
+      /row-level security/i,
+    );
+
+    // Operator can read inventory but cannot insert items or manual stock entries
+    await runAs(assignedUserId, async () => {
+      const readRes = await db.query<{ count: number }>(
+        `select count(*)::int as count from consumable_movements where organization_id = $1`,
+        [orgId],
+      );
+      assert.ok(readRes.rows[0].count >= 1);
+    });
+    await assert.rejects(
+      () =>
+        runAs(assignedUserId, () =>
+          db.query(
+            `insert into consumable_items (organization_id, name, unit) values ($1, 'Unauthorized', 'pcs')`,
+            [orgId],
+          ),
+        ),
+      /row-level security/i,
+    );
+    await assert.rejects(
+      () =>
+        runAs(assignedUserId, () =>
+          db.query(
+            `insert into consumable_movements (organization_id, item_id, site_name, movement_type, quantity_delta)
+             values ($1, $2, 'Well 4 BAR', 'delivery', 10)`,
+            [orgId, clGranId],
+          ),
+        ),
+      /row-level security/i,
+    );
+
+    // 22c. Operator real chlorine_refill & fuel logs auto-sync stock; sample logs do not
+    let clActId = '';
+    let sampleClActId = '';
+    let distActId = '';
+    let refillActId = '';
+    let directRefillActId = '';
+    let purchaseActId = '';
+
+    await runAs(assignedUserId, async () => {
+      const r1 = await db.query<{ id: string }>(
+        `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, site_or_well, details, is_sample)
+         values ($1, $2, 'chlorine_refill', '2026-11-24', 'Well 4 BAR', $3::jsonb, false) returning id`,
+        [orgId, assignedUserId, JSON.stringify({ chemicalType: 'Calcium Hypochlorite 70% (granules)', amountAdded: 4.5, amountUnit: 'kg' })],
+      );
+      clActId = r1.rows[0].id;
+
+      const rDist = await db.query<{ id: string }>(
+        `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, site_or_well, details, is_sample)
+         values ($1, $2, 'genset_fuel_distribution', '2026-11-25', 'Depot', $3::jsonb, false) returning id`,
+        [
+          orgId,
+          assignedUserId,
+          JSON.stringify({
+            fuelType: 'Diesel',
+            fuelDistributions: [
+              { destinationSite: 'Well 4 BAR', liters: 40 },
+              { destinationSite: 'Well 6 PR2', liters: 20 },
+            ],
+          }),
+        ],
+      );
+      distActId = rDist.rows[0].id;
+
+      const rRefill = await db.query<{ id: string }>(
+        `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, site_or_well, details, is_sample)
+         values ($1, $2, 'genset_fuel_refill', '2026-11-25', 'Well 4 BAR', $3::jsonb, false) returning id`,
+        [orgId, assignedUserId, JSON.stringify({ fuelType: 'Diesel', fuelSource: 'Stock Drum / Container', litersAdded: 15 })],
+      );
+      refillActId = rRefill.rows[0].id;
+
+      const rDirect = await db.query<{ id: string }>(
+        `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, site_or_well, details, is_sample)
+         values ($1, $2, 'genset_fuel_refill', '2026-11-25', 'Well 4 BAR', $3::jsonb, false) returning id`,
+        [orgId, assignedUserId, JSON.stringify({ fuelType: 'Diesel', fuelSource: 'Direct Purchase', litersAdded: 30 })],
+      );
+      directRefillActId = rDirect.rows[0].id;
+
+      const rPurch = await db.query<{ id: string }>(
+        `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, site_or_well, details, is_sample)
+         values ($1, $2, 'genset_fuel_purchase', '2026-11-25', 'Pavia Plant', $3::jsonb, false) returning id`,
+        [orgId, assignedUserId, JSON.stringify({ fuelType: 'Gasoline', litersPurchased: 25, receiptNumber: 'OR-991' })],
+      );
+      purchaseActId = rPurch.rows[0].id;
+    }, true);
+
+    await runAs(mgr1Id, async () => {
+      const rSample = await db.query<{ id: string }>(
+        `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, site_or_well, details, is_sample)
+         values ($1, $2, 'chlorine_refill', '2026-11-24', 'Well 4 BAR', $3::jsonb, true) returning id`,
+        [orgId, mgr1Id, JSON.stringify({ chemicalType: 'Calcium Hypochlorite 70% (granules)', amountAdded: 99, amountUnit: 'kg' })],
+      );
+      sampleClActId = rSample.rows[0].id;
+    }, true);
+
+    // Update chlorine_refill from 4.5 -> 6.0 kg as admin and verify old -4.5 row is replaced
+    await runAs(adminId, async () => {
+      await db.query(
+        `update daily_activities set details = $2::jsonb where id = $1`,
+        [clActId, JSON.stringify({ chemicalType: 'Calcium Hypochlorite 70% (granules)', amountAdded: 6, amountUnit: 'kg' })],
+      );
+    }, true);
+
+    await setAuthUid(db, null);
+    const sampleMoves = await db.query<{ cnt: number }>(
+      `select count(*)::int as cnt from consumable_movements where activity_id in ($1, $2)`,
+      [sampleClActId, directRefillActId],
+    );
+    assert.equal(sampleMoves.rows[0].cnt, 0);
+
+    const clBal = await db.query<{ total: string }>(
+      `select sum(quantity_delta)::text as total from consumable_movements
+       where organization_id = $1 and item_id = $2 and lower(btrim(site_name)) = 'well 4 bar'`,
+      [orgId, clGranId],
+    );
+    assert.equal(Number(clBal.rows[0].total), 44); // 50 opening - 6 updated chlorine_refill
+
+    const dieselWell4 = await db.query<{ total: string }>(
+      `select sum(quantity_delta)::text as total from consumable_movements
+       where organization_id = $1 and item_id = $2 and lower(btrim(site_name)) = 'well 4 bar'`,
+      [orgId, dieselId],
+    );
+    assert.equal(Number(dieselWell4.rows[0].total), 25); // +40 distributed - 15 stock drum refill
+
+    const gasPavia = await db.query<{ total: string; ref: string | null }>(
+      `select sum(quantity_delta)::text as total, max(reference_no) as ref from consumable_movements
+       where organization_id = $1 and item_id = $2 and lower(btrim(site_name)) = 'pavia plant'`,
+      [orgId, gasId],
+    );
+    assert.equal(Number(gasPavia.rows[0].total), 25);
+    assert.equal(gasPavia.rows[0].ref, 'OR-991');
+
+    // Deleting an activity cascades cleanly and removes its auto movements
+    assert.ok(distActId && refillActId && purchaseActId);
+    await db.query(`delete from daily_activities where id = $1`, [distActId]);
+    const distMovesAfterDel = await db.query<{ cnt: number }>(
+      `select count(*)::int as cnt from consumable_movements where activity_id = $1`,
+      [distActId],
+    );
+    assert.equal(distMovesAfterDel.rows[0].cnt, 0);
+
+    // Re-running 039 migration is idempotent
+    await db.exec(sql39);
   });
 });

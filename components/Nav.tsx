@@ -326,6 +326,25 @@ export default function Nav(p: {
         </nav>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Link
+            href="/inventory"
+            className="desktop-only"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              padding: '3px 8px',
+              borderRadius: 6,
+              fontSize: 12,
+              fontWeight: 700,
+              textDecoration: 'none',
+              background: path.startsWith('/inventory') ? 'var(--primary)' : 'var(--surface-muted)',
+              color: path.startsWith('/inventory') ? 'var(--primary-fg)' : 'var(--text)',
+              border: '1px solid var(--border)',
+            }}
+          >
+            Inventory
+          </Link>
           {(p.canApprove || p.role === 'manager') && (
             <Link
               href="/requests"
@@ -486,6 +505,15 @@ export default function Nav(p: {
               >
                 <Icon name="close" />
               </button>
+            </div>
+
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              Operations
+            </div>
+            <div style={{ display: 'grid', gap: 6 }}>
+              <Link href="/inventory" className="btn" style={{ justifyContent: 'flex-start', textDecoration: 'none' }}>
+                Consumables Inventory
+              </Link>
             </div>
 
             {(canGenerate || p.isAdmin || p.canApprove || p.role === 'manager') && (
