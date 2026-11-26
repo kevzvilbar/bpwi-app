@@ -44,18 +44,8 @@ export default function ConfirmDialog({
           </button>
           <button
             type="button"
-            className={tone === 'primary' ? 'btn btn-primary' : 'btn'}
+            className={tone === 'primary' ? 'btn btn-primary' : 'btn btn-danger-soft'}
             disabled={busy}
-            style={
-              tone === 'danger'
-                ? {
-                    background: 'var(--danger-bg)',
-                    color: 'var(--danger-fg)',
-                    borderColor: 'var(--danger-border)',
-                    fontWeight: 700,
-                  }
-                : undefined
-            }
             onClick={() => void onConfirm()}
           >
             {confirmLabel}

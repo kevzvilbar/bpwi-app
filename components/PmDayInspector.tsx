@@ -57,7 +57,7 @@ export default function PmDayInspector({
       style={{
         padding: 14,
         position: 'sticky',
-        top: 12,
+        top: 68,
         display: 'grid',
         gap: 10,
       }}
@@ -221,9 +221,8 @@ export default function PmDayInspector({
                               background: 'transparent',
                               color: chipFg,
                               cursor: 'pointer',
-                              padding: '4px 6px',
-                              minWidth: 28,
-                              minHeight: 28,
+                              padding: '0 4px',
+                              lineHeight: 1,
                               display: 'inline-flex',
                               alignItems: 'center',
                               justifyContent: 'center',
@@ -321,19 +320,18 @@ export default function PmDayInspector({
                     {t.status === 'done' && onRequestComplete && (
                       <button
                         type="button"
-                        className="btn"
-                        style={{ padding: '2px 8px', fontSize: 11 }}
+                        className="btn btn-xs"
                         onClick={() => onRequestComplete(t, 'edit')}
                       >
                         Edit crew
                       </button>
                     )}
-                    <button className="btn" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => onEditTask(t)}>
+                    <button className="btn btn-xs" onClick={() => onEditTask(t)}>
                       Edit
                     </button>
                     <button
-                      className="btn"
-                      style={{ padding: '2px 8px', fontSize: 11, color: 'var(--danger)' }}
+                      className="btn btn-xs"
+                      style={{ color: 'var(--danger)' }}
                       onClick={() => onRemoveTask({ id: t.id, legacy_key: t.legacy_key, date: t.scheduled_date })}
                     >
                       Delete

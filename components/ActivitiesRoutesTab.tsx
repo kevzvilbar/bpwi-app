@@ -386,7 +386,7 @@ export default function ActivitiesRoutesTab(p: {
           {p.canVerifyActivity ? (
             <label className="field-label" style={{ flex: '1 1 200px', minWidth: 0 }}>
               <span>Operator / Field Staff</span>
-              <select value={selectedOpId} onChange={(e) => setSelectedOpId(e.target.value)}>
+              <select className="input" value={selectedOpId} onChange={(e) => setSelectedOpId(e.target.value)}>
                 {p.operators.map((op) => {
                   const row = teamSummary.find((r) => r.operatorId === op.id);
                   return (
@@ -398,14 +398,14 @@ export default function ActivitiesRoutesTab(p: {
               </select>
             </label>
           ) : (
-            <div className="card-pad-xs text-sm" style={MUTED_BOX_STYLE}>
+            <div className="card-pad-xs text-sm" style={{ ...MUTED_BOX_STYLE, minHeight: 38, display: 'flex', alignItems: 'center' }}>
               Viewing your route: <b>{selectedOp?.full_name ?? 'Unlinked Operator Account'}</b>
             </div>
           )}
 
           <label className="field-label">
             <span>Travel Mode</span>
-            <select value={travelMode} onChange={(e) => setTravelMode(e.target.value as RouteTravelMode)}>
+            <select className="input" value={travelMode} onChange={(e) => setTravelMode(e.target.value as RouteTravelMode)}>
               <option value="DRIVE">Driving (Service Vehicle)</option>
               <option value="TWO_WHEELER">Motorcycle (Road Profile)</option>
               <option value="WALK">Walking</option>
@@ -428,7 +428,7 @@ export default function ActivitiesRoutesTab(p: {
             <div className="row-xs">
               <button
                 type="button"
-                className={`btn btn-sm ${baseHqEnabled && parsedHqCoords ? 'btn-primary' : ''}`}
+                className={`btn ${baseHqEnabled && parsedHqCoords ? 'btn-primary' : ''}`}
                 onClick={() => {
                   if (!parsedHqCoords) return setHqEditorOpen(true);
                   const nextEnabled = !baseHqEnabled;
@@ -438,7 +438,7 @@ export default function ActivitiesRoutesTab(p: {
               >
                 {baseHqEnabled && parsedHqCoords ? '✓ Round-Trip On' : 'Off (Stops Only)'}
               </button>
-              <button type="button" className="btn btn-sm" onClick={() => setHqEditorOpen((v) => !v)}>
+              <button type="button" className="btn" onClick={() => setHqEditorOpen((v) => !v)}>
                 {hqEditorOpen ? 'Hide Base HQ' : 'Set Base HQ'}
               </button>
             </div>
@@ -453,6 +453,7 @@ export default function ActivitiesRoutesTab(p: {
                 <label key={f.label} className="field-label" style={{ flex: '1 1 140px', minWidth: 0 }}>
                   <span>{f.label}</span>
                   <input
+                    className="input"
                     type="text"
                     inputMode={f.decimal ? 'decimal' : undefined}
                     value={f.value}
@@ -567,64 +568,66 @@ export default function ActivitiesRoutesTab(p: {
       )}
 
       {effectiveOpId && (
-        <div className="card card-pad-sm stack-sm">
-          <div className="row-between-wrap">
-            <div>
-              <strong style={{ fontSize: 14 }}>
-                Route Map — {selectedOp?.full_name ?? 'Operator'} ({footprint.stops.length} plotted point{footprint.stops.length === 1 ? '' : 's'})
-              </strong>
-              <div className="text-secondary-xs">Click any numbered pin to inspect the activity log</div>
-            </div>
-            <SegmentedTabs
-              ariaLabel="Map style"
-              size="sm"
-              value={mapStyle}
-              onChange={setMapStyle}
-              items={[{ id: 'street', label: 'Street (OSM)' }, { id: 'satellite', label: 'Satellite' }]}
-            />
-          </div>
-
-          {footprint.stops.length === 0 ? (
-            <EmptyState
-              minHeight={300}
-              title={`No GPS footprints recorded for ${selectedOp?.full_name ?? 'this operator'} on ${p.date}.`}
-              description={
-                footprint.unmappedCount > 0
-                  ? `${footprint.unmappedCount} activity log(s) exist on this date without captured GPS coordinates.`
-                  : 'Field operators can capture GPS automatically using the GPS button inside the Activity Logger.'
-              }
-            />
-          ) : (
-            <div style={{ width: '100%', height: 'clamp(260px, 46vh, 460px)', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
-              <FreeRouteMap
-                stops={footprint.stops}
-                routePaths={computedRoute?.paths ?? []}
-                isFallbackLine={isFallbackLine}
-                selectedStopId={selectedStopId}
-                onSelectStop={setSelectedStopId}
-                mapStyle={mapStyle}
+        <div className="routes-desktop-split">
+          <div className="card card-pad-sm stack-sm" style={{ minWidth: 0 }}>
+            <div className="row-between-wrap">
+              <div>
+                <strong style={{ fontSize: 14 }}>
+                  Route Map — {selectedOp?.full_name ?? 'Operator'} ({footprint.stops.length} plotted point{footprint.stops.length === 1 ? '' : 's'})
+                </strong>
+                <div className="text-secondary-xs">Click any numbered pin to inspect the activity log</div>
+              </div>
+              <SegmentedTabs
+                ariaLabel="Map style"
+                size="sm"
+                value={mapStyle}
+                onChange={setMapStyle}
+                items={[{ id: 'street', label: 'Street (OSM)' }, { id: 'satellite', label: 'Satellite' }]}
               />
             </div>
-          )}
 
-          {publicTileNotice && (
-            <AlertBanner tone="warn"><strong>Public map tiles active:</strong> {publicTileNotice}</AlertBanner>
-          )}
-          <div className="text-secondary-xs">
-            Location note: Coordinates reflect operator-initiated GPS check-ins captured when submitting daily field activities. Active map tiles: {tileConfig.providerLabel}; road distances computed via server-side OSRM routing with straight-line fallback.
+            {footprint.stops.length === 0 ? (
+              <EmptyState
+                minHeight={300}
+                title={`No GPS footprints recorded for ${selectedOp?.full_name ?? 'this operator'} on ${p.date}.`}
+                description={
+                  footprint.unmappedCount > 0
+                    ? `${footprint.unmappedCount} activity log(s) exist on this date without captured GPS coordinates.`
+                    : 'Field operators can capture GPS automatically using the GPS button inside the Activity Logger.'
+                }
+              />
+            ) : (
+              <div style={{ width: '100%', height: 'clamp(340px, 56vh, 520px)', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                <FreeRouteMap
+                  stops={footprint.stops}
+                  routePaths={computedRoute?.paths ?? []}
+                  isFallbackLine={isFallbackLine}
+                  selectedStopId={selectedStopId}
+                  onSelectStop={setSelectedStopId}
+                  mapStyle={mapStyle}
+                />
+              </div>
+            )}
+
+            {publicTileNotice && (
+              <AlertBanner tone="warn"><strong>Public map tiles active:</strong> {publicTileNotice}</AlertBanner>
+            )}
+            <div className="text-secondary-xs">
+              Location note: Coordinates reflect operator-initiated GPS check-ins captured when submitting daily field activities. Active map tiles: {tileConfig.providerLabel}; road distances computed via server-side OSRM routing with straight-line fallback.
+            </div>
+          </div>
+
+          <div style={{ maxHeight: 520, overflowY: 'auto', minWidth: 0 }}>
+            <RouteStopsList
+              stops={footprint.stops}
+              unmappedActivities={footprint.unmappedActivities}
+              straightLineLegsMeters={footprint.straightLineLegsMeters}
+              computedRoute={computedRoute}
+              selectedStopId={selectedStopId}
+              onSelectStop={setSelectedStopId}
+            />
           </div>
         </div>
-      )}
-
-      {effectiveOpId && (
-        <RouteStopsList
-          stops={footprint.stops}
-          unmappedActivities={footprint.unmappedActivities}
-          straightLineLegsMeters={footprint.straightLineLegsMeters}
-          computedRoute={computedRoute}
-          selectedStopId={selectedStopId}
-          onSelectStop={setSelectedStopId}
-        />
       )}
 
       {p.canVerifyActivity && (

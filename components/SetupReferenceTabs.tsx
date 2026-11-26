@@ -222,7 +222,7 @@ export default function SetupReferenceTabs({
 
   if (tab === 'shifts') {
     return (
-      <table className="data-table">
+      <table className="data-table data-table-sticky">
         <thead>
           <tr>
             {['Code', 'Description', 'Start', 'End', 'Hours', 'Off day', 'BG', 'Text', 'Preview', ''].map((h) => (
@@ -241,7 +241,7 @@ export default function SetupReferenceTabs({
               <td style={SETUP_CELL_STYLE}>
                 <input style={SETUP_INPUT_STYLE} value={s.description ?? ''} onChange={(e) => updShift(i, { description: e.target.value })} />
               </td>
-              <td style={{ ...SETUP_CELL_STYLE, width: 105 }}>
+              <td style={{ ...SETUP_CELL_STYLE, width: 132 }}>
                 <input
                   style={SETUP_INPUT_STYLE}
                   type="time"
@@ -249,7 +249,7 @@ export default function SetupReferenceTabs({
                   onChange={(e) => updShift(i, { start_time: e.target.value || null })}
                 />
               </td>
-              <td style={{ ...SETUP_CELL_STYLE, width: 105 }}>
+              <td style={{ ...SETUP_CELL_STYLE, width: 132 }}>
                 <input
                   style={SETUP_INPUT_STYLE}
                   type="time"
@@ -257,7 +257,7 @@ export default function SetupReferenceTabs({
                   onChange={(e) => updShift(i, { end_time: e.target.value || null })}
                 />
               </td>
-              <td style={{ ...SETUP_CELL_STYLE, width: 68 }}>
+              <td style={{ ...SETUP_CELL_STYLE, width: 82 }}>
                 <input style={SETUP_INPUT_STYLE} type="number" step="0.5" value={s.duration_hours} onChange={(e) => updShift(i, { duration_hours: +e.target.value })} />
               </td>
               <td style={{ ...SETUP_CELL_STYLE, textAlign: 'center' }}>
@@ -270,7 +270,7 @@ export default function SetupReferenceTabs({
                 <ColorSwatchInput v={s.text_color} on={(c) => updShift(i, { text_color: c })} />
               </td>
               <td style={SETUP_CELL_STYLE}>
-                <span style={{ background: s.background_color, color: s.text_color, padding: '3px 10px', borderRadius: 4, fontWeight: 800, border: '1px solid var(--border)' }}>
+                <span style={{ background: s.background_color, color: s.text_color, padding: '3px 10px', borderRadius: 4, fontWeight: 800, border: '1px solid var(--border)', whiteSpace: 'nowrap', display: 'inline-block' }}>
                   {s.code || '?'}
                 </span>
               </td>
@@ -308,7 +308,7 @@ export default function SetupReferenceTabs({
   }
 
   return (
-    <table className="data-table">
+    <table className="data-table data-table-sticky">
       <thead>
         <tr>
           {['Code', 'Name', 'Category', 'Sub-sites / Wells', 'BG', 'Text', 'Preview', ''].map((h) => (
@@ -324,7 +324,7 @@ export default function SetupReferenceTabs({
             <td style={{ ...SETUP_CELL_STYLE, width: 80 }}>
               <input style={SETUP_INPUT_STYLE} value={a.code} onChange={(e) => updArea(i, { code: e.target.value })} />
             </td>
-            <td style={SETUP_CELL_STYLE}>
+            <td style={{ ...SETUP_CELL_STYLE, minWidth: 150 }}>
               <input style={SETUP_INPUT_STYLE} value={a.name ?? ''} onChange={(e) => updArea(i, { name: e.target.value })} />
             </td>
             <td style={{ ...SETUP_CELL_STYLE, width: 115 }}>
@@ -335,7 +335,7 @@ export default function SetupReferenceTabs({
                 <option value="holiday">Holiday</option>
               </select>
             </td>
-            <td style={SETUP_CELL_STYLE}>
+            <td style={{ ...SETUP_CELL_STYLE, minWidth: 150 }}>
               {a.category === 'station' ? (
                 <input
                   style={SETUP_INPUT_STYLE}
@@ -358,7 +358,7 @@ export default function SetupReferenceTabs({
               <ColorSwatchInput v={a.text_color} on={(c) => updArea(i, { text_color: c })} />
             </td>
             <td style={SETUP_CELL_STYLE}>
-              <span style={{ background: a.background_color, color: a.text_color, padding: '3px 10px', borderRadius: 4, fontWeight: 800, border: '1px solid var(--border)' }}>
+              <span style={{ background: a.background_color, color: a.text_color, padding: '3px 10px', borderRadius: 4, fontWeight: 800, border: '1px solid var(--border)', whiteSpace: 'nowrap', display: 'inline-block' }}>
                 {a.code || '?'}
               </span>
             </td>

@@ -202,7 +202,7 @@ export default function CallSheet(p: {
       {/* Desktop / Tablet 2-Column Side-by-Side Layout (> 640px) */}
       <div className="call-sheet-table-wrap call-sheet-split">
         {/* Left Column: Standby Dispatch & Shift Coverage Summary */}
-        <section className="card" style={{ padding: 12, display: 'grid', gap: 10 }} aria-label="Emergency standby dispatch">
+        <section className="card call-sheet-standby-sticky" style={{ padding: 12, display: 'grid', gap: 10 }} aria-label="Emergency standby dispatch">
           <div style={{ display: 'grid', gap: 6, padding: 10, borderRadius: 8, background: 'var(--surface-muted)', border: '1px solid var(--border-light)' }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
               Today&apos;s Shift Summary
@@ -259,18 +259,10 @@ export default function CallSheet(p: {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6 }}>
                     <a
                       href={`tel:${op.phone_number}`}
+                      className="btn btn-primary"
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        minHeight: 36,
-                        padding: '5px 10px',
-                        borderRadius: 7,
-                        background: 'var(--primary)',
-                        color: 'var(--primary-fg)',
                         textDecoration: 'none',
                         fontWeight: 700,
-                        fontSize: 12.5,
                         fontFamily: 'ui-monospace, monospace',
                       }}
                     >
@@ -287,10 +279,10 @@ export default function CallSheet(p: {
         </section>
 
         {/* Right Column: Full Roster Table */}
-        <div className="card" style={{ overflow: 'auto' }}>
-          <table className="schedule-table" style={{ fontSize: 13 }}>
+        <div className="card call-sheet-table-card">
+          <table className="data-table data-table-sticky" style={{ fontSize: 13 }}>
           <thead>
-            <tr style={{ background: 'var(--header-bg)', color: 'var(--header-fg)', textAlign: 'left' }}>
+            <tr>
               <th style={{ padding: '8px 10px', width: 38, textAlign: 'center' }}>#</th>
               <th style={{ padding: '8px 10px' }}>Operator</th>
               <th style={{ padding: '8px 10px' }}>Status</th>
@@ -351,18 +343,10 @@ export default function CallSheet(p: {
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         <a
                           href={`tel:${op.phone_number}`}
+                          className="btn btn-primary"
                           style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            minHeight: 38,
-                            padding: '6px 12px',
-                            borderRadius: 8,
-                            background: 'var(--primary)',
-                            color: 'var(--primary-fg)',
                             textDecoration: 'none',
                             fontWeight: 700,
-                            fontSize: 13,
                             fontFamily: 'ui-monospace, monospace',
                           }}
                         >
@@ -371,7 +355,7 @@ export default function CallSheet(p: {
                         <a
                           href={`sms:${op.phone_number}`}
                           className="btn"
-                          style={{ minHeight: 38, textDecoration: 'none', fontWeight: 700 }}
+                          style={{ textDecoration: 'none', fontWeight: 700 }}
                         >
                           SMS
                         </a>
@@ -448,15 +432,8 @@ export default function CallSheet(p: {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
                   <a
                     href={`tel:${op.phone_number}`}
+                    className="btn btn-primary"
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      minHeight: 44,
-                      padding: '10px 14px',
-                      borderRadius: 8,
-                      background: 'var(--primary)',
-                      color: 'var(--primary-fg)',
                       textDecoration: 'none',
                       fontWeight: 700,
                       fontSize: 14,

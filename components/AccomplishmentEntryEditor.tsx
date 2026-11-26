@@ -9,6 +9,8 @@ interface Props {
   onRemove: (idx: number) => void;
 }
 
+const CELL_INPUT_STYLE = { padding: '4px 6px' } as const;
+
 export default function AccomplishmentEntryEditor({ entries, isLocked, onUpdate, onRemove }: Props) {
   return (
     <>
@@ -34,7 +36,7 @@ export default function AccomplishmentEntryEditor({ entries, isLocked, onUpdate,
                 <button
                   type="button"
                   className="btn"
-                  style={{ padding: '2px 8px', fontSize: 12, color: '#b91c1c' }}
+                  style={{ padding: '2px 8px', fontSize: 12, color: 'var(--danger)' }}
                   onClick={() => onRemove(idx)}
                 >
                   Remove
@@ -122,14 +124,14 @@ export default function AccomplishmentEntryEditor({ entries, isLocked, onUpdate,
         <table className="data-table" style={{ fontSize: 12 }}>
           <thead>
             <tr style={{ background: 'var(--surface-muted)', textAlign: 'left' }}>
-              <th style={{ padding: '6px 8px' }}>Form Column</th>
-              <th style={{ padding: '6px 8px', width: 90 }}>Others (Code)</th>
+              <th style={{ padding: '6px 8px', minWidth: 180 }}>Form Column</th>
+              <th style={{ padding: '6px 8px', width: 108 }}>Others (Code)</th>
               <th style={{ padding: '6px 8px', width: 130 }}>Project / Site</th>
-              <th style={{ padding: '6px 8px', width: 55 }}>PH</th>
-              <th style={{ padding: '6px 8px', width: 55 }}>BLK</th>
-              <th style={{ padding: '6px 8px', width: 55 }}>LOT</th>
-              <th style={{ padding: '6px 8px', width: 90 }}>Started</th>
-              <th style={{ padding: '6px 8px', width: 90 }}>Finished</th>
+              <th style={{ padding: '6px 8px', width: 72 }}>PH</th>
+              <th style={{ padding: '6px 8px', width: 72 }}>BLK</th>
+              <th style={{ padding: '6px 8px', width: 72 }}>LOT</th>
+              <th style={{ padding: '6px 8px', width: 108 }}>Started</th>
+              <th style={{ padding: '6px 8px', width: 108 }}>Finished</th>
               <th style={{ padding: '6px 8px', minWidth: 220 }}>Remarks</th>
               <th style={{ padding: '6px 8px', width: 42 }}></th>
             </tr>
@@ -140,6 +142,7 @@ export default function AccomplishmentEntryEditor({ entries, isLocked, onUpdate,
                 <td style={{ padding: 4 }}>
                   <select
                     className="input"
+                    style={CELL_INPUT_STYLE}
                     disabled={isLocked}
                     value={row.column_id ?? '__others__'}
                     onChange={(e) => {
@@ -166,6 +169,7 @@ export default function AccomplishmentEntryEditor({ entries, isLocked, onUpdate,
                 <td style={{ padding: 4 }}>
                   <input
                     className="input"
+                    style={CELL_INPUT_STYLE}
                     disabled={isLocked || row.column_id !== null}
                     placeholder="W.M"
                     value={row.column_id === null ? row.others_specify : ''}
@@ -175,6 +179,7 @@ export default function AccomplishmentEntryEditor({ entries, isLocked, onUpdate,
                 <td style={{ padding: 4 }}>
                   <input
                     className="input"
+                    style={CELL_INPUT_STYLE}
                     disabled={isLocked}
                     placeholder="e.g. Sta. Barbara"
                     value={row.location_project}
@@ -184,6 +189,7 @@ export default function AccomplishmentEntryEditor({ entries, isLocked, onUpdate,
                 <td style={{ padding: 4 }}>
                   <input
                     className="input"
+                    style={CELL_INPUT_STYLE}
                     disabled={isLocked}
                     value={row.location_ph}
                     onChange={(e) => onUpdate(idx, { location_ph: e.target.value })}
@@ -192,6 +198,7 @@ export default function AccomplishmentEntryEditor({ entries, isLocked, onUpdate,
                 <td style={{ padding: 4 }}>
                   <input
                     className="input"
+                    style={CELL_INPUT_STYLE}
                     disabled={isLocked}
                     value={row.location_blk}
                     onChange={(e) => onUpdate(idx, { location_blk: e.target.value })}
@@ -200,6 +207,7 @@ export default function AccomplishmentEntryEditor({ entries, isLocked, onUpdate,
                 <td style={{ padding: 4 }}>
                   <input
                     className="input"
+                    style={CELL_INPUT_STYLE}
                     disabled={isLocked}
                     value={row.location_lot}
                     onChange={(e) => onUpdate(idx, { location_lot: e.target.value })}
@@ -208,6 +216,7 @@ export default function AccomplishmentEntryEditor({ entries, isLocked, onUpdate,
                 <td style={{ padding: 4 }}>
                   <input
                     className="input"
+                    style={CELL_INPUT_STYLE}
                     disabled={isLocked}
                     placeholder="3:10 PM"
                     value={row.time_started}
@@ -217,6 +226,7 @@ export default function AccomplishmentEntryEditor({ entries, isLocked, onUpdate,
                 <td style={{ padding: 4 }}>
                   <input
                     className="input"
+                    style={CELL_INPUT_STYLE}
                     disabled={isLocked}
                     placeholder="3:54 PM"
                     value={row.time_finished}
@@ -226,6 +236,7 @@ export default function AccomplishmentEntryEditor({ entries, isLocked, onUpdate,
                 <td style={{ padding: 4 }}>
                   <input
                     className="input"
+                    style={CELL_INPUT_STYLE}
                     disabled={isLocked}
                     placeholder="Well / site status, FM & PG readings..."
                     value={row.remarks}
@@ -237,7 +248,7 @@ export default function AccomplishmentEntryEditor({ entries, isLocked, onUpdate,
                     <button
                       type="button"
                       className="btn"
-                      style={{ padding: '4px 8px', color: '#b91c1c' }}
+                      style={{ padding: '4px 8px', color: 'var(--danger)' }}
                       onClick={() => onRemove(idx)}
                       title="Remove row"
                     >

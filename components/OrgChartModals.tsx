@@ -30,9 +30,9 @@ export function OrgHeaderModal({
   onSave: () => void;
 }) {
   return (
-    <div className="modal-overlay no-print" role="dialog" aria-modal="true" onClick={() => !busy && onCancel()}>
+    <div className="modal-overlay no-print" role="dialog" aria-modal="true" aria-labelledby="org-header-dialog-title" onClick={() => !busy && onCancel()}>
       <div className="modal-sheet" style={{ display: 'grid', gap: 10 }} onClick={(e) => e.stopPropagation()}>
-        <strong style={{ fontSize: 15 }}>Edit Chart Header &amp; Shift Legends</strong>
+        <strong id="org-header-dialog-title" style={{ fontSize: 15 }}>Edit Chart Header &amp; Shift Legends</strong>
         <label style={{ fontSize: 12 }}>
           Organization / Office Title
           <input className="input" value={draftMeta.title} onChange={(e) => onChange({ ...draftMeta, title: e.target.value })} />
@@ -86,9 +86,9 @@ export function OrgPositionModal({
   onDelete: (id: string) => void;
 }) {
   return (
-    <div className="modal-overlay no-print" role="dialog" aria-modal="true" onClick={() => !busy && onCancel()}>
-      <div className="modal-sheet" style={{ display: 'grid', gap: 10 }} onClick={(e) => e.stopPropagation()}>
-        <strong style={{ fontSize: 15 }}>{editingPos.id ? 'Edit Org Position' : 'Add Org Position'}</strong>
+    <div className="modal-overlay no-print" role="dialog" aria-modal="true" aria-labelledby="org-pos-dialog-title" onClick={() => !busy && onCancel()}>
+      <div className="modal-sheet" style={{ maxWidth: 620, display: 'grid', gap: 10 }} onClick={(e) => e.stopPropagation()}>
+        <strong id="org-pos-dialog-title" style={{ fontSize: 15 }}>{editingPos.id ? 'Edit Org Position' : 'Add Org Position'}</strong>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
           <label style={{ fontSize: 12, minWidth: 0 }}>
@@ -253,7 +253,7 @@ export function OrgPositionModal({
             <button
               type="button"
               className="btn"
-              style={{ color: '#b91c1c' }}
+              style={{ color: 'var(--danger)' }}
               disabled={busy}
               onClick={() => onDelete(editingPos.id!)}
             >
@@ -304,9 +304,9 @@ export function OrgAbsorbModal({
   onConfirm: () => void;
 }) {
   return (
-    <div className="modal-overlay no-print" role="dialog" aria-modal="true" onClick={() => !busy && onCancel()}>
+    <div className="modal-overlay no-print" role="dialog" aria-modal="true" aria-labelledby="org-absorb-dialog-title" onClick={() => !busy && onCancel()}>
       <div className="modal-sheet" style={{ display: 'grid', gap: 10 }} onClick={(e) => e.stopPropagation()}>
-        <strong style={{ fontSize: 15 }}>Restructure / Absorb Department</strong>
+        <strong id="org-absorb-dialog-title" style={{ fontSize: 15 }}>Restructure / Absorb Department</strong>
         <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-secondary)' }}>
           Move all teams and staff under one Department Head to another Head (for example, if a department is omitted and absorbed).
         </p>

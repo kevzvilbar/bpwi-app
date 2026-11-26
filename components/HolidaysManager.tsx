@@ -162,15 +162,15 @@ export default function HolidaysManager(p: {
 
         {p.isAdmin && (
           <form onSubmit={handleAdd} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end', borderTop: '1px solid var(--border-light)', paddingTop: 10 }}>
-            <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600, flex: '1 1 140px', minWidth: 0 }}>
+            <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600, flex: '0 1 165px', minWidth: 0 }}>
               Date
               <input className="input" type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} required />
             </label>
-            <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600, flex: '1 1 180px', minWidth: 0 }}>
+            <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600, flex: '2 1 240px', minWidth: 0 }}>
               Holiday Name
               <input className="input" placeholder="e.g. Maundy Thursday, Iloilo Charter Day" value={newName} onChange={(e) => setNewName(e.target.value)} required />
             </label>
-            <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600, flex: '1 1 140px', minWidth: 0 }}>
+            <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600, flex: '0 1 180px', minWidth: 0 }}>
               Type
               <select className="input" value={newType} onChange={(e) => setNewType(e.target.value as HolidayRow['holiday_type'])}>
                 <option value="regular">Regular Holiday</option>
@@ -188,9 +188,9 @@ export default function HolidaysManager(p: {
       </div>
 
       <div className="card responsive-table-wrap scroll-x">
-        <table className="data-table">
+        <table className="data-table data-table-sticky">
           <thead>
-            <tr style={{ background: 'var(--header-bg)', color: 'var(--header-fg)', textAlign: 'left', fontSize: 12 }}>
+            <tr style={{ textAlign: 'left' }}>
               <th style={{ padding: '7px 12px' }}>Date</th>
               <th style={{ padding: '7px 10px' }}>Holiday Name</th>
               <th style={{ padding: '7px 10px' }}>Classification</th>

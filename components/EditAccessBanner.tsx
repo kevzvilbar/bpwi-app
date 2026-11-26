@@ -100,37 +100,39 @@ export default function EditAccessBanner(p: { active: Grant | null; next: Grant 
         fontWeight: 600,
       }}
     >
-      {p.active ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-          <div>
-            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: 'var(--ok-fg)', marginRight: 6 }} />
-            Edit window open until {formatManila(p.active.ends_at)} ({remaining(Date.parse(p.active.ends_at) - now)}) · Dates: {rangeText(p.active)}
-            {p.active.note ? ` · ${p.active.note}` : ''} · Changes save directly.
+      <div style={{ maxWidth: 1440, margin: '0 auto' }}>
+        {p.active ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+            <div>
+              <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: 'var(--ok-fg)', marginRight: 6 }} />
+              Edit window open until {formatManila(p.active.ends_at)} ({remaining(Date.parse(p.active.ends_at) - now)}) · Dates: {rangeText(p.active)}
+              {p.active.note ? ` · ${p.active.note}` : ''} · Changes save directly.
+            </div>
           </div>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-          <div>
-            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: 'var(--status-pending)', marginRight: 6 }} />
-            <strong>Propose mode:</strong> Outside an edit window, changes queue as pending requests for admin review.
-            {p.next ? ` Next window: ${formatManila(p.next.starts_at)} – ${formatManila(p.next.ends_at)} (${rangeText(p.next)}).` : ''}
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+            <div>
+              <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: 'var(--status-pending)', marginRight: 6 }} />
+              <strong>Propose mode:</strong> Outside an edit window, changes queue as pending requests for admin review.
+              {p.next ? ` Next window: ${formatManila(p.next.starts_at)} – ${formatManila(p.next.ends_at)} (${rangeText(p.next)}).` : ''}
+            </div>
+            <a
+              href="/requests"
+              style={{
+                color: 'inherit',
+                textDecoration: 'underline',
+                fontWeight: 700,
+                fontSize: 12,
+                display: 'inline-flex',
+                alignItems: 'center',
+                minHeight: 36,
+              }}
+            >
+              View Change Requests →
+            </a>
           </div>
-          <a
-            href="/requests"
-            style={{
-              color: 'inherit',
-              textDecoration: 'underline',
-              fontWeight: 700,
-              fontSize: 12,
-              display: 'inline-flex',
-              alignItems: 'center',
-              minHeight: 36,
-            }}
-          >
-            View Change Requests →
-          </a>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

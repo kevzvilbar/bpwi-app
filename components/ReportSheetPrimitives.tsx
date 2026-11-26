@@ -256,7 +256,7 @@ export function ReportSignatureGrid({
                 }}
               >
                 <div style={{ height: 28, borderBottom: '1px solid #0f172a', marginBottom: 4 }} />
-                <div style={{ fontWeight: 800, fontSize: 9.5 }}>{entry.printedName || ' '}</div>
+                <div style={{ fontWeight: 800, fontSize: 9.5, minHeight: 14 }}>{entry.printedName || '\u00A0'}</div>
                 <div style={{ fontSize: 8.5, color: '#475569' }}>
                   {entry.subtitle || entry.roleTitle}
                 </div>

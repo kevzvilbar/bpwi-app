@@ -15,7 +15,7 @@ interface ChlorineRefillFieldsProps {
   setFields: React.Dispatch<React.SetStateAction<ActivityDetailFieldsState>>;
 }
 
-const GRID = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, alignItems: 'start' } as const;
+const GRID = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, alignItems: 'end' } as const;
 const LABEL = { display: 'grid', gap: 3, fontSize: 12 } as const;
 const HEADING = { fontSize: 12, fontWeight: 700 } as const;
 
@@ -49,7 +49,7 @@ export default function ChlorineRefillFields({ fields, setFields }: ChlorineRefi
     <div className="card" style={{ padding: 10, display: 'grid', gap: 10, borderColor: 'var(--teal)' }}>
       <strong style={{ fontSize: 12.5, color: 'var(--teal)' }}>Chlorine Dosing Drum Refill</strong>
 
-      <div style={{ display: 'grid', gap: 8 }}>
+      <div style={GRID}>
         <label style={LABEL}>
           Chlorine type
           <select
@@ -122,7 +122,7 @@ export default function ChlorineRefillFields({ fields, setFields }: ChlorineRefi
         {numberInput('New speed / frequency (%)', cl.newPumpSpeedPct, (v) => patch({ newPumpSpeedPct: v }), 'Unchanged')}
       </div>
 
-      <div style={GRID}>
+      <div style={{ ...GRID, maxWidth: 260 }}>
         {numberInput('Residual chlorine (mg/L), if tested', fields.chlorineResidual, (v) =>
           setFields((prev) => ({ ...prev, chlorineResidual: v })),
         )}

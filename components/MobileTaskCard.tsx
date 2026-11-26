@@ -140,6 +140,7 @@ export default function MobileTaskCard({
         <>
           <input
             className="input"
+            aria-label="Completion remarks"
             placeholder="Completion notes / remarks…"
             value={remarksValue}
             onChange={(e) => onRemarksChange(e.target.value)}
@@ -171,7 +172,6 @@ export default function MobileTaskCard({
               className={isDone ? 'btn flex-1 font-bold' : 'btn btn-teal-soft flex-1 font-bold'}
               disabled={busy}
               onClick={() => (isDone ? onReopenTask(t) : onOpenCompleteModal(t, 'complete'))}
-              style={isDone ? { background: 'var(--surface-muted)', borderColor: 'var(--border)', color: 'var(--text)' } : undefined}
             >
               {busy ? 'Updating…' : isDone ? 'Reopen Task' : '✓ Quick Done'}
             </button>

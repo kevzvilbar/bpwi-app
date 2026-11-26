@@ -85,8 +85,8 @@ export default function PmExportModal({ currentMonth, typeFilter, statusFilter, 
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
-          <label style={{ fontSize: 12, minWidth: 0 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: preset === 'month' || preset === 'custom' ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) 110px', gap: 8 }}>
+          <label style={{ fontSize: 12, minWidth: 0, display: 'grid', gap: 4 }}>
             Timeframe
             <select
               className="input"
@@ -106,7 +106,7 @@ export default function PmExportModal({ currentMonth, typeFilter, statusFilter, 
           </label>
 
           {preset !== 'month' && preset !== 'custom' && (
-            <label style={{ fontSize: 12, minWidth: 0 }}>
+            <label style={{ fontSize: 12, minWidth: 0, display: 'grid', gap: 4 }}>
               Year
               <select className="input" value={year} onChange={(e) => setYear(Number(e.target.value))}>
                 {yearOptions.map((y) => (
@@ -119,11 +119,11 @@ export default function PmExportModal({ currentMonth, typeFilter, statusFilter, 
 
         {preset === 'custom' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
-            <label style={{ fontSize: 12, minWidth: 0 }}>
+            <label style={{ fontSize: 12, minWidth: 0, display: 'grid', gap: 4 }}>
               From Date
               <input type="date" className="input" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
             </label>
-            <label style={{ fontSize: 12, minWidth: 0 }}>
+            <label style={{ fontSize: 12, minWidth: 0, display: 'grid', gap: 4 }}>
               To Date
               <input type="date" className="input" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
             </label>
@@ -136,7 +136,7 @@ export default function PmExportModal({ currentMonth, typeFilter, statusFilter, 
             borderRadius: 6,
             background: 'var(--surface-muted)',
             fontSize: 12,
-            color: invalidRange ? '#b91c1c' : 'var(--text-secondary)',
+            color: invalidRange ? 'var(--danger)' : 'var(--text-secondary)',
           }}
         >
           {invalidRange ? (

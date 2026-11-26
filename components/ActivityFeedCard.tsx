@@ -75,7 +75,7 @@ export default function ActivityFeedCard({
   return (
     <div
       className="card card-pad stack-sm"
-      style={{ borderLeft: `4px solid ${def?.color ?? 'var(--accent)'}` }}
+      style={{ display: 'flex', flexDirection: 'column', borderLeft: `4px solid ${def?.color ?? 'var(--accent)'}` }}
     >
       <div className="row-between">
         <span className="badge" style={{ background: def?.color ?? 'var(--primary)', color: '#ffffff' }}>
@@ -89,12 +89,12 @@ export default function ActivityFeedCard({
         </span>
       </div>
 
-      <div className="row-between font-bold" style={{ fontSize: 13.5 }}>
+      <div className="row-between font-bold" style={{ fontSize: 13.5, alignItems: 'start' }}>
         <span>
           {area ? `${area.code}${area.name ? ` · ${area.name}` : ''}` : 'Unassigned Area'}
           {act.site_or_well ? ` — ${act.site_or_well}` : ''}
         </span>
-        <span className="text-secondary-xs" style={{ fontWeight: 500 }}>
+        <span className="text-secondary-xs" style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
           {fmtTimeManila(act.completed_at ?? act.created_at)}
         </span>
       </div>
@@ -189,7 +189,7 @@ export default function ActivityFeedCard({
       {/* Action Bar */}
       <div
         className="row-wrap"
-        style={{ gap: 6, marginTop: 4, borderTop: '1px solid var(--border-light)', paddingTop: 8 }}
+        style={{ gap: 6, marginTop: 'auto', borderTop: '1px solid var(--border-light)', paddingTop: 8 }}
       >
         {canVerifyActivity && !act.is_sample && act.status !== 'verified' && (
           <button

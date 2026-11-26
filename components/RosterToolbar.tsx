@@ -134,14 +134,17 @@ export default function RosterToolbar(p: RosterToolbarProps) {
 
         <span
           aria-live="polite"
-          className={p.saveState === 'idle' ? 'mobile-hide-idle-spacer' : undefined}
-          style={{
-            minWidth: 96,
-            fontSize: 12,
-            color: p.saveState === 'error' ? 'var(--danger)' : p.saveState === 'saved' ? 'var(--ok-fg)' : 'var(--accent)',
-            fontWeight: 600,
-            visibility: p.saveState === 'idle' ? 'hidden' : 'visible',
-          }}
+          className={p.saveState === 'idle' ? 'sr-only' : undefined}
+          style={
+            p.saveState === 'idle'
+              ? undefined
+              : {
+                  minWidth: 72,
+                  fontSize: 12,
+                  color: p.saveState === 'error' ? 'var(--danger)' : p.saveState === 'saved' ? 'var(--ok-fg)' : 'var(--accent)',
+                  fontWeight: 600,
+                }
+          }
         >
           {p.saveState === 'saving' ? 'Saving…' : p.saveState === 'saved' ? 'Saved ✓' : p.saveState === 'error' ? 'Not saved' : ''}
         </span>

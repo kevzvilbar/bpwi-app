@@ -20,7 +20,7 @@ export default function RoutesTeamOverview(p: {
         </div>
       </div>
       <div className="responsive-table-wrap scroll-x">
-        <table className="data-table">
+        <table className="data-table data-table-sticky">
           <thead>
             <tr style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>
               <th style={{ padding: '7px 8px' }}>Operator</th>
@@ -40,7 +40,7 @@ export default function RoutesTeamOverview(p: {
                   onClick={() => p.onSelectOperator(row.operatorId)}
                   style={{
                     borderBottom: '1px solid var(--border)',
-                    background: isCurrent ? 'var(--info-bg)' : 'transparent',
+                    background: isCurrent ? 'var(--info-bg)' : undefined,
                     cursor: 'pointer',
                   }}
                 >
@@ -50,25 +50,27 @@ export default function RoutesTeamOverview(p: {
                       <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{row.position}</div>
                     )}
                   </td>
-                  <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700 }}>
+                  <td className="tabular-nums" style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>
                     {row.mappedCount}
                   </td>
                   <td
+                    className="tabular-nums"
                     style={{
                       padding: '7px 8px',
                       textAlign: 'right',
                       color: row.unmappedCount > 0 ? 'var(--warn-fg)' : 'var(--text-secondary)',
                       fontWeight: row.unmappedCount > 0 ? 700 : 400,
+                      whiteSpace: 'nowrap',
                     }}
                   >
                     {row.unmappedCount}
                   </td>
-                  <td style={{ padding: '7px 8px', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
+                  <td className="tabular-nums" style={{ padding: '7px 8px', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
                     {row.firstTimestamp && row.lastTimestamp
                       ? `${fmtTimeManila(row.firstTimestamp)} → ${fmtTimeManila(row.lastTimestamp)}`
                       : '—'}
                   </td>
-                  <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                  <td className="tabular-nums" style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>
                     {formatDistanceKm(row.straightLineMeters)}
                   </td>
                   <td style={{ padding: '7px 8px', textAlign: 'right' }}>

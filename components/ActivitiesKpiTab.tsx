@@ -515,7 +515,7 @@ export default function ActivitiesKpiTab(p: {
           <strong style={{ fontSize: 14 }}>Employee Performance Leaderboard ({periodDays}-Day Window)</strong>
         </div>
         <div className="responsive-table-wrap scroll-x">
-          <table className="data-table">
+          <table className="data-table data-table-sticky">
             <thead>
               <tr style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>
                 <th>Operator</th>
@@ -527,46 +527,60 @@ export default function ActivitiesKpiTab(p: {
               </tr>
             </thead>
             <tbody>
-              {operatorRows.map((r) => (
-                <tr key={r.op.id}>
-                  <td>
-                    <div className="font-bold">{r.op.full_name}</div>
-                    {r.op.position && <div className="text-secondary-xs">{r.op.position}</div>}
-                  </td>
-                  <td className="tabular-nums text-right">{r.dutyDays}d / {r.dutyHours}h</td>
-                  <td className="tabular-nums text-right font-bold">
-                    {r.actCount} <span className="text-secondary-xs" style={{ fontWeight: 400 }}>({r.verifiedActs} ✓)</span>
-                  </td>
-                  <td
-                    className="tabular-nums text-right"
-                    title={`Planned & Done: ${r.plannedDonePms} · Unlisted Substitute Done: ${r.substituteDonePms} · Assigned Not Participating: ${r.missedAssignedPms}`}
-                  >
-                    {r.donePms}/{r.assignedPms}{' '}
-                    {r.pmCompliance !== null && (
-                      <span className="font-bold" style={{ marginLeft: 4, fontSize: 11, color: r.pmCompliance >= 80 ? 'var(--ok-fg)' : 'var(--warn-fg)' }}>
-                        ({r.pmCompliance}%)
-                      </span>
-                    )}
-                    {r.substituteDonePms > 0 && (
-                      <span style={{ marginLeft: 4 }}><Badge tone="warn" size="sm">+{r.substituteDonePms} sub</Badge></span>
-                    )}
-                  </td>
-                  <td className="tabular-nums text-right">{r.doneJos}/{r.assignedJos}</td>
-                  <td className="tabular-nums text-right">
-                    {r.avgTatHours !== null ? `${r.avgTatHours}h` : '—'}
-                    {r.onTimePct !== null && (
-                      <span className="font-bold" style={{ marginLeft: 4, fontSize: 11, color: r.onTimePct >= 80 ? 'var(--ok-fg)' : 'var(--danger)' }}>
-                        ({r.onTimePct}%)
-                      </span>
-                    )}
+              {operatorRows.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="text-center text-secondary-sm" style={{ padding: 20 }}>
+                    No operator KPI data found for this {periodDays}-day window.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                operatorRows.map((r) => (
+                  <tr key={r.op.id}>
+                    <td>
+                      <div className="font-bold">{r.op.full_name}</div>
+                      {r.op.position && <div className="text-secondary-xs">{r.op.position}</div>}
+                    </td>
+                    <td className="tabular-nums text-right" style={{ whiteSpace: 'nowrap' }}>{r.dutyDays}d / {r.dutyHours}h</td>
+                    <td className="tabular-nums text-right font-bold" style={{ whiteSpace: 'nowrap' }}>
+                      {r.actCount} <span className="text-secondary-xs" style={{ fontWeight: 400 }}>({r.verifiedActs} ✓)</span>
+                    </td>
+                    <td
+                      className="tabular-nums text-right"
+                      style={{ whiteSpace: 'nowrap' }}
+                      title={`Planned & Done: ${r.plannedDonePms} · Unlisted Substitute Done: ${r.substituteDonePms} · Assigned Not Participating: ${r.missedAssignedPms}`}
+                    >
+                      {r.donePms}/{r.assignedPms}{' '}
+                      {r.pmCompliance !== null && (
+                        <span className="font-bold" style={{ marginLeft: 4, fontSize: 11, color: r.pmCompliance >= 80 ? 'var(--ok-fg)' : 'var(--warn-fg)' }}>
+                          ({r.pmCompliance}%)
+                        </span>
+                      )}
+                      {r.substituteDonePms > 0 && (
+                        <span style={{ marginLeft: 4 }}><Badge tone="warn" size="sm">+{r.substituteDonePms} sub</Badge></span>
+                      )}
+                    </td>
+                    <td className="tabular-nums text-right" style={{ whiteSpace: 'nowrap' }}>{r.doneJos}/{r.assignedJos}</td>
+                    <td className="tabular-nums text-right" style={{ whiteSpace: 'nowrap' }}>
+                      {r.avgTatHours !== null ? `${r.avgTatHours}h` : '—'}
+                      {r.onTimePct !== null && (
+                        <span className="font-bold" style={{ marginLeft: 4, fontSize: 11, color: r.onTimePct >= 80 ? 'var(--ok-fg)' : 'var(--danger)' }}>
+                          ({r.onTimePct}%)
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
         <div className="responsive-cards" style={{ padding: 12 }}>
-          {operatorRows.map((r) => (
+          {operatorRows.length === 0 ? (
+            <div className="text-center text-secondary-sm" style={{ padding: 16 }}>
+              No operator KPI data found for this {periodDays}-day window.
+            </div>
+          ) : (
+            operatorRows.map((r) => (
             <div
               key={r.op.id}
               className="card"
@@ -618,7 +632,8 @@ export default function ActivitiesKpiTab(p: {
                 </div>
               </div>
             </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
 
@@ -636,7 +651,7 @@ export default function ActivitiesKpiTab(p: {
             )}
           </div>
           <div className="responsive-table-wrap scroll-x">
-            <table className="data-table">
+            <table className="data-table data-table-sticky">
               <thead>
                 <tr style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>
                   <th>Date</th>
@@ -653,17 +668,17 @@ export default function ActivitiesKpiTab(p: {
               <tbody>
                 {gensetLogs.map((g) => (
                   <tr key={g.id}>
-                    <td>{g.date}</td>
+                    <td className="tabular-nums" style={{ whiteSpace: 'nowrap' }}>{g.date}</td>
                     <td style={{ fontWeight: 600 }}>{g.station} · {g.site}</td>
                     <td>{g.cause}</td>
-                    <td className="tabular-nums text-right">{g.initialFuel ?? '—'}</td>
+                    <td className="tabular-nums text-right" style={{ whiteSpace: 'nowrap' }}>{g.initialFuel ?? '—'}</td>
                     <td
                       className="tabular-nums text-right"
-                      style={{ color: g.refilledLiters !== null ? 'var(--ok-fg)' : undefined, fontWeight: g.refilledLiters !== null ? 700 : undefined }}
+                      style={{ whiteSpace: 'nowrap', color: g.refilledLiters !== null ? 'var(--ok-fg)' : undefined, fontWeight: g.refilledLiters !== null ? 700 : undefined }}
                     >
                       {g.refilledLiters !== null ? `+${g.refilledLiters}` : '—'}
                     </td>
-                    <td className="tabular-nums text-right font-bold">{g.finalFuel ?? '—'}</td>
+                    <td className="tabular-nums text-right font-bold" style={{ whiteSpace: 'nowrap' }}>{g.finalFuel ?? '—'}</td>
                     <td className="text-xs">
                       {g.runSummary || g.oilLevel ? (
                         <>
@@ -682,7 +697,7 @@ export default function ActivitiesKpiTab(p: {
                         </>
                       ) : '—'}
                     </td>
-                    <td className="tabular-nums text-right">{g.runningHours ?? '—'}</td>
+                    <td className="tabular-nums text-right" style={{ whiteSpace: 'nowrap' }}>{g.runningHours ?? '—'}</td>
                     <td title={g.findingsText || undefined}>
                       {g.standbyLabel && g.standbyVerdict ? (
                         <Badge tone={STANDBY_TONES[g.standbyVerdict]} size="sm">{g.standbyLabel}</Badge>

@@ -2,6 +2,7 @@
 
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import {
   canAssignGensetToLocation,
   findActiveGensetAtLocation,
@@ -52,6 +53,7 @@ export default function GensetsManager({
 
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState<GensetRow | null>(null);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -191,6 +193,7 @@ export default function GensetsManager({
     setErrorMsg('');
     const { error } = await supabaseBrowser().from('gensets').delete().eq('id', g.id);
     setBusy(false);
+    setConfirmDelete(null);
     if (error) {
       setErrorMsg(error.message);
       return;
@@ -252,6 +255,12 @@ export default function GensetsManager({
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
+      <style>{`
+        .genset-site-field { grid-column: span 2; }
+        @media (max-width: 480px) {
+          .genset-site-field { grid-column: span 1; }
+        }
+      `}</style>
       {!tableReady && (
         <div
           style={{
@@ -292,53 +301,68 @@ export default function GensetsManager({
           style={{ padding: 10, display: 'grid', gap: 8, background: 'var(--surface-muted)' }}
         >
           <div style={{ fontSize: 12.5, fontWeight: 700 }}>Register Genset</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 6 }}>
-            <input
-              className="input"
-              aria-label="Genset Control #"
-              placeholder="Control # (e.g. GS-04)"
-              value={newControlNo}
-              onChange={(e) => setNewControlNo(e.target.value)}
-              disabled={busy}
-            />
-            <input
-              className="input"
-              aria-label="kVA Rating"
-              placeholder="kVA (e.g. 100 kVA)"
-              value={newKva}
-              onChange={(e) => setNewKva(e.target.value)}
-              disabled={busy}
-            />
-            <input
-              className="input"
-              aria-label="Brand / Model"
-              placeholder="Brand / Model (opt.)"
-              value={newBrand}
-              onChange={(e) => setNewBrand(e.target.value)}
-              disabled={busy}
-            />
-            <select
-              className="input"
-              aria-label="Genset status"
-              value={newStatus}
-              onChange={(e) => setNewStatus(e.target.value as GensetStatus)}
-              disabled={busy}
-            >
-              {(Object.keys(GENSET_STATUS_LABELS) as GensetStatus[]).map((st) => (
-                <option key={st} value={st}>
-                  {GENSET_STATUS_LABELS[st]}
-                </option>
-              ))}
-            </select>
-            <select
-              className="input"
-              aria-label="Assigned site"
-              value={newLocation}
-              onChange={(e) => setNewLocation(e.target.value)}
-              disabled={busy}
-            >
-              {renderLocationOptions(undefined, newLocation, newStatus)}
-            </select>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 8 }}>
+            <label className="field-label" style={{ minWidth: 0 }}>
+              Control #
+              <input
+                className="input"
+                aria-label="Genset Control #"
+                placeholder="e.g. GS-04"
+                value={newControlNo}
+                onChange={(e) => setNewControlNo(e.target.value)}
+                disabled={busy}
+              />
+            </label>
+            <label className="field-label" style={{ minWidth: 0 }}>
+              kVA Rating
+              <input
+                className="input"
+                aria-label="kVA Rating"
+                placeholder="e.g. 100 kVA"
+                value={newKva}
+                onChange={(e) => setNewKva(e.target.value)}
+                disabled={busy}
+              />
+            </label>
+            <label className="field-label" style={{ minWidth: 0 }}>
+              Brand / Model
+              <input
+                className="input"
+                aria-label="Brand / Model"
+                placeholder="Optional"
+                value={newBrand}
+                onChange={(e) => setNewBrand(e.target.value)}
+                disabled={busy}
+              />
+            </label>
+            <label className="field-label" style={{ minWidth: 0 }}>
+              Status
+              <select
+                className="input"
+                aria-label="Genset status"
+                value={newStatus}
+                onChange={(e) => setNewStatus(e.target.value as GensetStatus)}
+                disabled={busy}
+              >
+                {(Object.keys(GENSET_STATUS_LABELS) as GensetStatus[]).map((st) => (
+                  <option key={st} value={st}>
+                    {GENSET_STATUS_LABELS[st]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field-label genset-site-field" style={{ minWidth: 0 }}>
+              Assigned site
+              <select
+                className="input"
+                aria-label="Assigned site"
+                value={newLocation}
+                onChange={(e) => setNewLocation(e.target.value)}
+                disabled={busy}
+              >
+                {renderLocationOptions(undefined, newLocation, newStatus)}
+              </select>
+            </label>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
@@ -402,7 +426,7 @@ export default function GensetsManager({
                             className="btn"
                             style={{ padding: '4px 9px', fontSize: 12, color: 'var(--danger)' }}
                             disabled={busy}
-                            onClick={() => void handleDelete(g)}
+                            onClick={() => setConfirmDelete(g)}
                           >
                             Delete
                           </button>
@@ -412,38 +436,59 @@ export default function GensetsManager({
                   </div>
                 ) : (
                   <div style={{ display: 'grid', gap: 8 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 6 }}>
-                      <input className="input" aria-label="Edit Control #" value={editControlNo} onChange={(e) => setEditControlNo(e.target.value)} disabled={busy} />
-                      <input className="input" aria-label="Edit kVA" placeholder="kVA" value={editKva} onChange={(e) => setEditKva(e.target.value)} disabled={busy} />
-                      <input className="input" aria-label="Edit Brand" placeholder="Brand / Model" value={editBrand} onChange={(e) => setEditBrand(e.target.value)} disabled={busy} />
-                      <select className="input" aria-label="Edit status" value={editStatus} onChange={(e) => setEditStatus(e.target.value as GensetStatus)} disabled={busy}>
-                        {(Object.keys(GENSET_STATUS_LABELS) as GensetStatus[]).map((st) => (
-                          <option key={st} value={st}>
-                            {GENSET_STATUS_LABELS[st]}
-                          </option>
-                        ))}
-                      </select>
-                      <select className="input" aria-label="Edit assigned site" value={editLocation} onChange={(e) => setEditLocation(e.target.value)} disabled={busy}>
-                        {renderLocationOptions(g.id, editLocation, editStatus)}
-                      </select>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 8 }}>
+                      <label className="field-label" style={{ minWidth: 0 }}>
+                        Control #
+                        <input className="input" aria-label="Edit Control #" value={editControlNo} onChange={(e) => setEditControlNo(e.target.value)} disabled={busy} />
+                      </label>
+                      <label className="field-label" style={{ minWidth: 0 }}>
+                        kVA Rating
+                        <input className="input" aria-label="Edit kVA" placeholder="kVA" value={editKva} onChange={(e) => setEditKva(e.target.value)} disabled={busy} />
+                      </label>
+                      <label className="field-label" style={{ minWidth: 0 }}>
+                        Brand / Model
+                        <input className="input" aria-label="Edit Brand" placeholder="Brand / Model" value={editBrand} onChange={(e) => setEditBrand(e.target.value)} disabled={busy} />
+                      </label>
+                      <label className="field-label" style={{ minWidth: 0 }}>
+                        Status
+                        <select className="input" aria-label="Edit status" value={editStatus} onChange={(e) => setEditStatus(e.target.value as GensetStatus)} disabled={busy}>
+                          {(Object.keys(GENSET_STATUS_LABELS) as GensetStatus[]).map((st) => (
+                            <option key={st} value={st}>
+                              {GENSET_STATUS_LABELS[st]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="field-label genset-site-field" style={{ minWidth: 0 }}>
+                        Assigned site
+                        <select className="input" aria-label="Edit assigned site" value={editLocation} onChange={(e) => setEditLocation(e.target.value)} disabled={busy}>
+                          {renderLocationOptions(g.id, editLocation, editStatus)}
+                        </select>
+                      </label>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: locChanged ? 'repeat(auto-fit, minmax(180px, 1fr))' : '1fr', gap: 6 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: locChanged ? 'repeat(auto-fit, minmax(180px, 1fr))' : '1fr', gap: 8 }}>
                       {locChanged && (
+                        <label className="field-label" style={{ minWidth: 0 }}>
+                          Relocation reason (optional)
+                          <input
+                            className="input"
+                            placeholder="e.g. Backup swap"
+                            value={moveReason}
+                            onChange={(e) => setMoveReason(e.target.value)}
+                            disabled={busy}
+                          />
+                        </label>
+                      )}
+                      <label className="field-label" style={{ minWidth: 0 }}>
+                        Notes (optional)
                         <input
                           className="input"
-                          placeholder="Reason for relocation (optional, e.g. Backup swap)"
-                          value={moveReason}
-                          onChange={(e) => setMoveReason(e.target.value)}
+                          placeholder="Notes (optional)"
+                          value={editNotes}
+                          onChange={(e) => setEditNotes(e.target.value)}
                           disabled={busy}
                         />
-                      )}
-                      <input
-                        className="input"
-                        placeholder="Notes (optional)"
-                        value={editNotes}
-                        onChange={(e) => setEditNotes(e.target.value)}
-                        disabled={busy}
-                      />
+                      </label>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
                       <button type="button" className="btn" disabled={busy} onClick={() => setEditingId(null)}>
@@ -479,6 +524,17 @@ export default function GensetsManager({
           })
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        title={confirmDelete ? `Delete genset ${confirmDelete.control_no}?` : 'Delete genset?'}
+        description="This permanently removes the genset and its relocation history from the registry. Recurring well PMs on its site are not deleted."
+        confirmLabel={busy ? 'Deleting…' : 'Delete genset'}
+        tone="danger"
+        busy={busy}
+        onCancel={() => setConfirmDelete(null)}
+        onConfirm={() => (confirmDelete ? handleDelete(confirmDelete) : undefined)}
+      />
     </div>
   );
 }

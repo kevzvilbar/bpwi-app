@@ -121,32 +121,39 @@ export default function PwaInstallPrompt() {
             color: 'var(--info-fg)',
             borderBottom: '1px solid var(--info-border)',
             padding: '7px 14px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 10,
-            flexWrap: 'wrap',
             fontSize: 12.5,
           }}
         >
-          <span>
-            <strong>Install BPWI Ops</strong> on your phone for one-tap home screen access &amp; offline field logging.
-          </span>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={() => void triggerInstall(deferredPrompt)}
-            >
-              {deferredPrompt ? 'Install App' : 'How to Install'}
-            </button>
-            <button
-              type="button"
-              className="btn btn-sm"
-              onClick={dismissBanner}
-            >
-              Later
-            </button>
+          <div
+            style={{
+              maxWidth: 1440,
+              margin: '0 auto',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+              flexWrap: 'wrap',
+            }}
+          >
+            <span>
+              <strong>Install BPWI Ops</strong> {platform === 'desktop' ? 'on this device' : 'on your phone'} for one-tap home screen access &amp; offline field logging.
+            </span>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => void triggerInstall(deferredPrompt)}
+              >
+                {deferredPrompt ? 'Install App' : 'How to Install'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={dismissBanner}
+              >
+                Later
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -155,7 +162,7 @@ export default function PwaInstallPrompt() {
         <div className="modal-overlay no-print" role="dialog" aria-modal="true" aria-labelledby="pwa-install-guide-title" onClick={() => setGuideOpen(false)}>
           <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420, display: 'grid', gap: 12 }}>
             <h2 id="pwa-install-guide-title" style={{ margin: 0, fontSize: 17 }}>
-              Install BPWI Ops on your phone
+              Install BPWI Ops {platform === 'desktop' ? 'on this device' : 'on your phone'}
             </h2>
             {platform === 'ios' ? (
               <ol style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 8, fontSize: 13.5, color: 'var(--text-secondary)', lineHeight: 1.45 }}>

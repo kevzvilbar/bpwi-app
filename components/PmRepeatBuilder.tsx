@@ -133,7 +133,7 @@ export default function PmRepeatBuilder({
                         fontSize: 11,
                         fontWeight: 700,
                         cursor: 'pointer',
-                        background: active ? 'var(--teal)' : 'var(--surface)',
+                        background: active ? 'var(--primary)' : 'var(--surface)',
                         color: active ? 'var(--primary-fg)' : 'var(--text-secondary)',
                       }}
                     >
@@ -172,9 +172,9 @@ export default function PmRepeatBuilder({
                         onClick={() => patch({ until: targetDate })}
                         style={{
                           ...chipBase,
-                          background: active ? 'var(--teal)' : 'var(--surface)',
+                          background: active ? 'var(--primary)' : 'var(--surface)',
                           color: active ? 'var(--primary-fg)' : 'var(--text-secondary)',
-                          borderColor: active ? 'var(--teal)' : 'var(--border)',
+                          borderColor: active ? 'var(--primary)' : 'var(--border)',
                         }}
                       >
                         {label}
@@ -264,9 +264,9 @@ export default function PmRepeatBuilder({
                     onClick={() => patch({ customInterval: days })}
                     style={{
                       ...chipBase,
-                      background: active ? 'var(--teal)' : 'var(--surface-muted)',
+                      background: active ? 'var(--primary)' : 'var(--surface-muted)',
                       color: active ? 'var(--primary-fg)' : 'var(--text-secondary)',
-                      borderColor: active ? 'var(--teal)' : 'var(--border)',
+                      borderColor: active ? 'var(--primary)' : 'var(--border)',
                     }}
                   >
                     Every {days} days
@@ -294,8 +294,8 @@ export default function PmRepeatBuilder({
                         width: 30,
                         height: 30,
                         borderRadius: '50%',
-                        border: active ? '1px solid var(--teal)' : '1px solid var(--border)',
-                        background: active ? 'var(--teal)' : 'var(--surface)',
+                        border: active ? '1px solid var(--primary)' : '1px solid var(--border)',
+                        background: active ? 'var(--primary)' : 'var(--surface)',
                         color: active ? 'var(--primary-fg)' : 'var(--text-secondary)',
                         fontSize: 11.5,
                         fontWeight: 800,

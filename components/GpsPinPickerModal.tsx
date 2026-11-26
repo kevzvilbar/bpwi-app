@@ -190,7 +190,7 @@ export default function GpsPinPickerModal(p: {
       <div
         className="modal-sheet"
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: 680, width: '100%', display: 'grid', gap: 10 }}
+        style={{ maxWidth: 820, width: '100%', display: 'grid', gap: 10 }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <div>
@@ -237,7 +237,7 @@ export default function GpsPinPickerModal(p: {
           ref={containerRef}
           style={{
             width: '100%',
-            height: 'clamp(220px, 42vh, 340px)',
+            height: 'clamp(240px, 52vh, 460px)',
             borderRadius: 8,
             overflow: 'hidden',
             border: '1px solid var(--border)',

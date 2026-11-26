@@ -153,7 +153,7 @@ export default function FreeRouteMap(p: {
 
         const map = L.map(containerRef.current, {
           zoomControl: true,
-          scrollWheelZoom: true,
+          scrollWheelZoom: false,
           center: DEFAULT_PH_CENTER,
           zoom: 13,
         });

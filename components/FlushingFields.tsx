@@ -102,7 +102,6 @@ export default function FlushingFields({ fields, setFields }: FlushingFieldsProp
           <button
             type="button"
             className="btn btn-add btn-sm"
-            style={{ minHeight: 36 }}
             onClick={addBlowOffPoint}
           >
             + Add Point
@@ -131,11 +130,9 @@ export default function FlushingFields({ fields, setFields }: FlushingFieldsProp
               <button
                 key={opt.id}
                 type="button"
-                className="btn"
+                className="btn btn-sm"
                 onClick={() => patch({ flushingMeterStatus: opt.id as FlushingMeterStatus })}
                 style={{
-                  minHeight: 36,
-                  padding: '4px 10px',
                   fontSize: 11.5,
                   fontWeight: 700,
                   background: active
@@ -165,7 +162,7 @@ export default function FlushingFields({ fields, setFields }: FlushingFieldsProp
       {/* Metered Inputs */}
       {!isOrificeMode ? (
         <div style={{ display: 'grid', gap: 6 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, alignItems: 'end' }}>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
               Main Meter Initial (m³)
               <input
@@ -237,7 +234,6 @@ export default function FlushingFields({ fields, setFields }: FlushingFieldsProp
                     type="button"
                     className="btn btn-sm btn-danger-soft"
                     aria-label={`Remove blow-off point ${idx + 1}`}
-                    style={{ minHeight: 36 }}
                     onClick={() =>
                       setFields((prev) => ({
                         ...prev,
@@ -305,9 +301,9 @@ export default function FlushingFields({ fields, setFields }: FlushingFieldsProp
               {fields.blowOffs.length > 1 && (
                 <button
                   type="button"
-                  className="btn"
+                  className="btn btn-sm"
                   aria-label={`Remove blow-off point ${idx + 1}`}
-                  style={{ minHeight: 36, minWidth: 36, padding: '0 8px', color: 'var(--danger)' }}
+                  style={{ padding: '0 8px', color: 'var(--danger)' }}
                   onClick={() =>
                     setFields((prev) => ({
                       ...prev,
@@ -320,7 +316,7 @@ export default function FlushingFields({ fields, setFields }: FlushingFieldsProp
               )}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, alignItems: 'end' }}>
               <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
                 Blow-Off Diameter d (mm)
                 <input
@@ -375,11 +371,9 @@ export default function FlushingFields({ fields, setFields }: FlushingFieldsProp
                 <button
                   key={preset.mm}
                   type="button"
-                  className="btn"
+                  className="btn btn-xs"
                   onClick={() => patchBlowOff(idx, { diameterMm: preset.mm })}
                   style={{
-                    minHeight: 36,
-                    padding: '4px 9px',
                     fontSize: 11,
                     fontWeight: bo.diameterMm === preset.mm ? 700 : 500,
                     background: bo.diameterMm === preset.mm ? 'var(--info-bg)' : 'var(--surface)',
@@ -406,7 +400,7 @@ export default function FlushingFields({ fields, setFields }: FlushingFieldsProp
               </label>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, alignItems: 'end' }}>
               <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
                 Start Time
                 <input

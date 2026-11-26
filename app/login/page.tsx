@@ -278,19 +278,8 @@ function LoginForm() {
                 {mode === 'signin' && (
                   <button
                     type="button"
+                    className="btn-link"
                     onClick={() => switchMode('forgot')}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      minHeight: 38,
-                      padding: '6px 4px',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: 'var(--accent)',
-                      cursor: 'pointer',
-                    }}
                   >
                     Forgot password?
                   </button>

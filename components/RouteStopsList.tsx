@@ -38,7 +38,7 @@ export default function RouteStopsList({
         <div className="card card-pad stack-md">
           <strong style={{ fontSize: 14 }}>Chronological Stop Itinerary &amp; Leg Distances</strong>
           <div className="responsive-table-wrap scroll-x">
-            <table className="data-table">
+            <table className="data-table data-table-sticky">
               <thead>
                 <tr style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>
                   <th>#</th>
@@ -83,7 +83,7 @@ export default function RouteStopsList({
                           {stop.kind === 'activity' ? stop.sequence : 'HQ'}
                         </span>
                       </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
+                      <td className="tabular-nums" style={{ whiteSpace: 'nowrap' }}>
                         {stop.timestamp ? fmtTimeManila(stop.timestamp) : stop.kind === 'base_start' ? 'Depart' : 'Return'}
                       </td>
                       <td>

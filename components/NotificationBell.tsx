@@ -134,6 +134,8 @@ export default function NotificationBell({ hasUser }: { hasUser: boolean }) {
           if (next) void loadNotifications();
         }}
         aria-label={`Notifications${unreadCount ? ` (${unreadCount} unread)` : ''}`}
+        aria-expanded={open}
+        aria-haspopup="true"
         title="Notifications"
         style={{ position: 'relative', padding: '6px 9px' }}
       >
@@ -168,16 +170,14 @@ export default function NotificationBell({ hasUser }: { hasUser: boolean }) {
             {unreadCount > 0 && (
               <button
                 type="button"
+                className="btn btn-xs"
                 onClick={() => void markAllRead()}
                 style={{
-                  border: 'none',
+                  borderColor: 'transparent',
                   background: 'transparent',
-                  color: 'var(--primary)',
-                  fontSize: 11.5,
+                  boxShadow: 'none',
+                  color: 'var(--accent)',
                   fontWeight: 700,
-                  cursor: 'pointer',
-                  minHeight: 36,
-                  padding: '4px 10px',
                 }}
               >
                 Mark all read
@@ -198,17 +198,8 @@ export default function NotificationBell({ hasUser }: { hasUser: boolean }) {
               <button
                 key={n.id}
                 type="button"
+                className={`notif-row${n.is_read ? '' : ' is-unread'}`}
                 onClick={() => void markRead(n)}
-                style={{
-                  textAlign: 'left',
-                  padding: '8px 9px',
-                  borderRadius: 6,
-                  border: '1px solid var(--border-light)',
-                  background: n.is_read ? 'var(--surface)' : 'rgba(2,132,199,0.08)',
-                  cursor: 'pointer',
-                  display: 'grid',
-                  gap: 2,
-                }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, alignItems: 'center' }}>
                   <span style={{ fontSize: 12, fontWeight: n.is_read ? 600 : 800, color: 'var(--text)' }}>

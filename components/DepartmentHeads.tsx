@@ -183,14 +183,16 @@ export default function DepartmentHeads(p: { people: Person[]; grants: Grant[]; 
           Could not load department head data: {p.error}. If this is a fresh update, run migrations 007 and then 008 in Supabase.
         </AlertBanner>
       )}
-      <div aria-live="polite" style={{ minHeight: 18, fontSize: 12.5 }}>
-        {msg && (
-          <span role="alert" style={{ color: 'var(--danger)', fontWeight: 600 }}>
-            {msg}
-          </span>
-        )}
-        {!msg && ok && <span style={{ color: 'var(--ok-fg)', fontWeight: 600 }}>{ok}</span>}
-      </div>
+      {(msg || ok) && (
+        <div aria-live="polite" style={{ fontSize: 12.5 }}>
+          {msg && (
+            <span role="alert" style={{ color: 'var(--danger)', fontWeight: 600 }}>
+              {msg}
+            </span>
+          )}
+          {!msg && ok && <span style={{ color: 'var(--ok-fg)', fontWeight: 600 }}>{ok}</span>}
+        </div>
+      )}
 
       <section className="card" style={{ padding: 14, display: 'grid', gap: 10 }}>
         <div>
@@ -300,7 +302,7 @@ export default function DepartmentHeads(p: { people: Person[]; grants: Grant[]; 
         ) : (
           <>
             <div className="responsive-table-wrap scroll-x">
-              <table className="data-table">
+              <table className="data-table data-table-sticky">
                 <thead>
                   <tr>
                     {['Department head', 'Window (Manila)', 'Editable dates', 'Note', 'Status', ''].map((h) => (
@@ -315,19 +317,19 @@ export default function DepartmentHeads(p: { people: Person[]; grants: Grant[]; 
                     return (
                       <tr key={g.id}>
                         <td style={{ padding: '6px 8px' }}>{nameOf.get(g.user_id)}</td>
-                        <td style={{ padding: '6px 8px' }}>
+                        <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
                           {formatManila(g.starts_at)} → {formatManila(g.ends_at)}
                         </td>
-                        <td style={{ padding: '6px 8px' }}>{rangeText(g)}</td>
+                        <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>{rangeText(g)}</td>
                         <td style={{ padding: '6px 8px' }}>{g.note ?? '—'}</td>
                         <td style={{ padding: '6px 8px' }}>
                           <Badge size="sm" tone={st === 'Active' ? 'ok' : st === 'Upcoming' ? 'info' : 'neutral'}>
                             {st}
                           </Badge>
                         </td>
-                        <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-light)' }}>
+                        <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-light)', whiteSpace: 'nowrap', textAlign: 'right' }}>
                           {live && (
-                            <button className="btn" disabled={busy === `r${g.id}`} onClick={() => revoke(g)}>
+                            <button className="btn btn-sm" disabled={busy === `r${g.id}`} onClick={() => revoke(g)}>
                               {busy === `r${g.id}` ? 'Revoking…' : 'Revoke'}
                             </button>
                           )}

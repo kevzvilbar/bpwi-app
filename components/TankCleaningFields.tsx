@@ -25,8 +25,8 @@ const SECTION_STYLE: React.CSSProperties = {
   padding: 10,
   display: 'grid',
   gap: 8,
-  background: 'var(--bg-surface)',
-  borderColor: 'var(--border-subtle)',
+  background: 'var(--surface)',
+  borderColor: 'var(--border-light)',
 };
 
 const LABEL_STYLE: React.CSSProperties = {
@@ -40,6 +40,7 @@ const GRID_STYLE: React.CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
   gap: 8,
+  alignItems: 'end',
 };
 
 const CONDITIONS: readonly TankCleaningCondition[] = ['Good', 'Fair', 'Needs Repair', 'N/A'];
@@ -83,7 +84,7 @@ function verdictBadgeStyle(v: WaterQualityVerdict): React.CSSProperties {
     fontWeight: 600,
     background: 'var(--surface-muted)',
     color: 'var(--text-muted)',
-    border: '1px solid var(--border-subtle)',
+    border: '1px solid var(--border-light)',
   };
 }
 
@@ -133,10 +134,10 @@ export default function TankCleaningFields({
     <div style={{ display: 'grid', gap: 10 }}>
       {/* Header / Tank Metadata & Timeline */}
       <div className="card" style={{ ...SECTION_STYLE, borderColor: 'var(--accent)' }}>
-        <strong style={{ fontSize: 12.5, color: 'var(--text-primary)' }}>
+        <strong style={{ fontSize: 12.5, color: 'var(--text)' }}>
           Tank Cleaning &amp; Sanitation Details
         </strong>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, alignItems: 'end' }}>
           <label style={LABEL_STYLE}>
             Tank Type
             <select
@@ -152,7 +153,7 @@ export default function TankCleaningFields({
           </label>
           <div style={LABEL_STYLE}>
             <span>Tank Capacity</span>
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 86px', gap: 6 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 86px', gap: 6, alignItems: 'end' }}>
               <input
                 className="input"
                 value={value.tankCapacity}
@@ -170,74 +171,80 @@ export default function TankCleaningFields({
               </select>
             </div>
           </div>
-          <label style={LABEL_STYLE}>
-            Date Started
-            <input
-              className="input"
-              type="date"
-              value={defaultStartYmd}
-              onChange={(e) => patch({ dateStarted: e.target.value })}
-            />
-          </label>
-          <label style={LABEL_STYLE}>
-            Time Started
-            <input
-              className="input"
-              type="time"
-              value={normalizePulloutTimeHHMM(value.timeStarted)}
-              onChange={(e) => patch({ timeStarted: e.target.value })}
-            />
-          </label>
-          <label style={LABEL_STYLE}>
-            Date Finished
-            <input
-              className="input"
-              type="date"
-              value={defaultEndYmd}
-              onChange={(e) => patch({ dateFinished: e.target.value })}
-            />
-          </label>
-          <label style={LABEL_STYLE}>
-            Time Finished
-            <input
-              className="input"
-              type="time"
-              value={normalizePulloutTimeHHMM(value.timeFinished)}
-              onChange={(e) => patch({ timeFinished: e.target.value })}
-            />
-          </label>
-          <div style={LABEL_STYLE}>
-            <span>Total Downtime (auto-computed)</span>
-            <div
-              className="input"
-              style={{
-                background: 'var(--surface-muted)',
-                color: 'var(--text-secondary)',
-                fontSize: 12,
-                display: 'flex',
-                alignItems: 'center',
-              }}
-            >
-              {value.totalDowntime ||
-                computeTankDowntime(
-                  value.dateStarted,
-                  value.timeStarted,
-                  value.dateFinished,
-                  value.timeFinished,
-                  activityDate,
-                ) ||
-                'Auto-computed from start & finish'}
-            </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 8, alignItems: 'end' }}>
+          <div className="grid-2" style={{ gap: 8, alignItems: 'end' }}>
+            <label style={LABEL_STYLE}>
+              Date Started
+              <input
+                className="input"
+                type="date"
+                value={defaultStartYmd}
+                onChange={(e) => patch({ dateStarted: e.target.value })}
+              />
+            </label>
+            <label style={LABEL_STYLE}>
+              Time Started
+              <input
+                className="input"
+                type="time"
+                value={normalizePulloutTimeHHMM(value.timeStarted)}
+                onChange={(e) => patch({ timeStarted: e.target.value })}
+              />
+            </label>
+          </div>
+          <div className="grid-2" style={{ gap: 8, alignItems: 'end' }}>
+            <label style={LABEL_STYLE}>
+              Date Finished
+              <input
+                className="input"
+                type="date"
+                value={defaultEndYmd}
+                onChange={(e) => patch({ dateFinished: e.target.value })}
+              />
+            </label>
+            <label style={LABEL_STYLE}>
+              Time Finished
+              <input
+                className="input"
+                type="time"
+                value={normalizePulloutTimeHHMM(value.timeFinished)}
+                onChange={(e) => patch({ timeFinished: e.target.value })}
+              />
+            </label>
+          </div>
+        </div>
+        <div style={{ ...LABEL_STYLE, maxWidth: 320 }}>
+          <span>Total Downtime (auto-computed)</span>
+          <div
+            className="input"
+            style={{
+              background: 'var(--surface-muted)',
+              color: 'var(--text-secondary)',
+              fontSize: 12,
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            {value.totalDowntime ||
+              computeTankDowntime(
+                value.dateStarted,
+                value.timeStarted,
+                value.dateFinished,
+                value.timeFinished,
+                activityDate,
+              ) ||
+              'Auto-computed from start & finish'}
           </div>
         </div>
       </div>
 
       {/* Section 2: Scope of Work */}
       <div className="card" style={SECTION_STYLE}>
-        <strong style={{ fontSize: 12, color: 'var(--text-primary)' }}>
+        <strong style={{ fontSize: 12, color: 'var(--text)' }}>
           2. Scope of Work &amp; Execution Summary
         </strong>
-        <div style={{ display: 'grid', gap: 6, fontSize: 12, color: 'var(--text-primary)' }}>
+        <div style={{ display: 'grid', gap: 6, fontSize: 12, color: 'var(--text)' }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
               <input
@@ -282,7 +289,7 @@ export default function TankCleaningFields({
               <span>Disinfection &amp; Sanitization</span>
             </label>
             {value.scopeDisinfection && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, paddingLeft: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, paddingLeft: 12, alignItems: 'end' }}>
                 <label style={LABEL_STYLE}>
                   Contact Time
                   <input
@@ -323,7 +330,7 @@ export default function TankCleaningFields({
       {/* Section 3: Water Quality & Disinfection Log */}
       <div className="card" style={SECTION_STYLE}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-          <strong style={{ fontSize: 12, color: 'var(--text-primary)' }}>
+          <strong style={{ fontSize: 12, color: 'var(--text)' }}>
             3. Water Quality &amp; Disinfection Log (PNSDW Verification)
           </strong>
           <span
@@ -340,7 +347,7 @@ export default function TankCleaningFields({
         <div style={{ display: 'grid', gap: 8 }}>
           <div style={{ padding: 8, borderRadius: 8, border: '1px solid var(--border-light)', background: 'var(--surface-muted)', display: 'grid', gap: 6, fontSize: 11 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
-              <strong style={{ color: 'var(--text-primary)', fontSize: 12 }}>Free Cl₂ (0.30–1.50 mg/L)</strong>
+              <strong style={{ color: 'var(--text)', fontSize: 12 }}>Free Cl₂ (0.30–1.50 mg/L)</strong>
               <span style={verdictBadgeStyle(evalRes.chlorine)}>{evalRes.chlorine}</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
@@ -352,7 +359,7 @@ export default function TankCleaningFields({
 
           <div style={{ padding: 8, borderRadius: 8, border: '1px solid var(--border-light)', background: 'var(--surface-muted)', display: 'grid', gap: 6, fontSize: 11 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
-              <strong style={{ color: 'var(--text-primary)', fontSize: 12 }}>Turbidity (≤ 5.0 NTU)</strong>
+              <strong style={{ color: 'var(--text)', fontSize: 12 }}>Turbidity (≤ 5.0 NTU)</strong>
               <span style={verdictBadgeStyle(evalRes.turbidity)}>{evalRes.turbidity}</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6, alignItems: 'center' }}>
@@ -364,7 +371,7 @@ export default function TankCleaningFields({
 
           <div style={{ padding: 8, borderRadius: 8, border: '1px solid var(--border-light)', background: 'var(--surface-muted)', display: 'grid', gap: 6, fontSize: 11 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
-              <strong style={{ color: 'var(--text-primary)', fontSize: 12 }}>pH Level (6.5–8.5)</strong>
+              <strong style={{ color: 'var(--text)', fontSize: 12 }}>pH Level (6.5–8.5)</strong>
               <span style={verdictBadgeStyle(evalRes.ph)}>{evalRes.ph}</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
@@ -376,7 +383,7 @@ export default function TankCleaningFields({
 
           <div style={{ padding: 8, borderRadius: 8, border: '1px solid var(--border-light)', background: 'var(--surface-muted)', display: 'grid', gap: 6, fontSize: 11 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
-              <strong style={{ color: 'var(--text-primary)', fontSize: 12 }}>Odor &amp; Appearance</strong>
+              <strong style={{ color: 'var(--text)', fontSize: 12 }}>Odor &amp; Appearance</strong>
               <span style={verdictBadgeStyle(evalRes.odor)}>{evalRes.odor}</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6, alignItems: 'center' }}>
@@ -387,7 +394,7 @@ export default function TankCleaningFields({
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, paddingTop: 4 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, paddingTop: 4, alignItems: 'end' }}>
           <label style={LABEL_STYLE}>
             Disinfectant Used
             <input
@@ -416,7 +423,7 @@ export default function TankCleaningFields({
 
       {/* Section 4: Physical Inspection & Conclusion */}
       <div className="card" style={SECTION_STYLE}>
-        <strong style={{ fontSize: 12, color: 'var(--text-primary)' }}>
+        <strong style={{ fontSize: 12, color: 'var(--text)' }}>
           4. Physical Inspection &amp; Observations
         </strong>
         <div style={{ display: 'grid', gap: 8 }}>
@@ -428,16 +435,17 @@ export default function TankCleaningFields({
                 borderRadius: 8,
                 border: '1px solid var(--border-light)',
                 background: 'var(--surface-muted)',
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-                gap: 6,
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 8,
                 alignItems: 'center',
                 fontSize: 11.5,
               }}
             >
-              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.title}</span>
+              <span style={{ fontWeight: 600, color: 'var(--text)', flex: '1 1 170px', minWidth: 0 }}>{item.title}</span>
               <select
                 className="input"
+                style={{ flex: '0 1 140px', minWidth: 120 }}
                 value={value[item.condKey]}
                 onChange={(e) => patch({ [item.condKey]: e.target.value as TankCleaningCondition })}
               >
@@ -447,6 +455,7 @@ export default function TankCleaningFields({
               </select>
               <input
                 className="input"
+                style={{ flex: '2 1 220px', minWidth: 0 }}
                 value={value[item.remKey]}
                 placeholder={item.placeholder}
                 onChange={(e) => patch({ [item.remKey]: e.target.value })}
@@ -477,7 +486,7 @@ export default function TankCleaningFields({
 
       {/* Section 6 & 7: Photo Documentation Captions & Signatories */}
       <div className="card" style={SECTION_STYLE}>
-        <strong style={{ fontSize: 12, color: 'var(--text-primary)' }}>
+        <strong style={{ fontSize: 12, color: 'var(--text)' }}>
           6. Photo Captions &amp; 7. Sign-Off Details
         </strong>
         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>

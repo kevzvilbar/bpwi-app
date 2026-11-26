@@ -366,7 +366,7 @@ export default function OrgChart(p: Props) {
               {pos.department_group}
             </div>
           )}
-          <div className="font-bold truncate" style={{ fontSize: compact ? 12 : 14 }}>{name}</div>
+          <div className="font-bold truncate" style={{ fontSize: compact ? 12 : 14 }} title={name}>{name}</div>
           <div style={{ fontSize: compact ? 10.5 : 11.5, opacity: isSolidHeader && !pos.is_vacant ? 0.9 : 0.72 }}>
             {pos.title}
             {!pos.is_active ? ' · Archived' : ''}
@@ -398,7 +398,7 @@ export default function OrgChart(p: Props) {
   };
 
   return (
-    <div className="stack-md">
+    <div className="stack-md" style={{ padding: '14px 16px 24px', maxWidth: 1600, margin: '0 auto' }}>
       <style>{`
         @media print {
           @page { size: landscape; margin: 8mm; }
@@ -408,7 +408,7 @@ export default function OrgChart(p: Props) {
 
       <div className="no-print card card-pad-sm row-wrap">
         <div>
-          <h1 className="page-title" style={{ fontSize: 15 }}>Master Organizational Chart</h1>
+          <h1 className="page-title">Master Organizational Chart</h1>
           <span className="text-secondary-xs">
             Heads &amp; Up · Auto-updates when heads resign or new heads sign up
           </span>
@@ -513,7 +513,7 @@ export default function OrgChart(p: Props) {
             <div>
               <div className="row-sm">
                 <span className="font-bold" style={{ fontSize: 18, color: 'var(--text)' }}>{meta.title}</span>
-                {p.canEdit && (
+                {editMode && p.canEdit && (
                   <button
                     type="button"
                     className="no-print btn btn-xs"
@@ -568,12 +568,12 @@ export default function OrgChart(p: Props) {
 
         <BusConnector
           items={headColumns.map((col) => ({ key: `stem-${col.head.id}`, span: col.span }))}
-          gridTemplateColumns={`repeat(${totalTeamCols}, minmax(205px, 1fr))`}
+          gridTemplateColumns={`repeat(${totalTeamCols}, minmax(220px, 1fr))`}
           height={20}
         />
 
         {/* Tier 2 & 3: Department Heads + Optional Leadman + Team Columns */}
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${totalTeamCols}, minmax(205px, 1fr))`, columnGap: 12, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${totalTeamCols}, minmax(220px, 1fr))`, columnGap: 12, alignItems: 'start' }}>
           {headColumns.map(({ head, groups }) => {
             const headLeadmen = leadmen.filter((l) => l.parent_position_id === head.id);
             return (
@@ -585,7 +585,7 @@ export default function OrgChart(p: Props) {
                     <StemDown />
                     <div className="row-sm" style={{ justifyContent: 'center' }}>
                       {headLeadmen.map((lm) => (
-                        <div key={lm.id} className="w-full" style={{ minWidth: 230, maxWidth: 290 }}>
+                        <div key={lm.id} className="w-full" style={{ minWidth: 0, width: '100%' }}>
                           {renderPersonCard(lm, true)}
                         </div>
                       ))}
@@ -656,7 +656,7 @@ export default function OrgChart(p: Props) {
               </div>
               <div className="text-secondary-sm" style={{ marginTop: 2 }}>{meta.subtitle}</div>
             </div>
-            {p.canEdit && (
+            {editMode && p.canEdit && (
               <button
                 type="button"
                 className="no-print btn btn-sm"

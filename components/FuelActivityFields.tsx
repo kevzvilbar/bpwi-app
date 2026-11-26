@@ -92,7 +92,6 @@ export default function FuelActivityFields({
             <button
               type="button"
               className="btn btn-add btn-sm"
-              style={{ minHeight: 36 }}
               onClick={() =>
                 patchFuel({
                   fuelDistributions: [
@@ -111,7 +110,7 @@ export default function FuelActivityFields({
       {/* Vehicle Refueling */}
       {isVehicle && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, alignItems: 'end' }}>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
               Vehicle / Unit
               <input
@@ -142,7 +141,7 @@ export default function FuelActivityFields({
               </select>
             </label>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, alignItems: 'end' }}>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
               Liters Added (L)
               <input
@@ -177,7 +176,7 @@ export default function FuelActivityFields({
               />
             </label>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, alignItems: 'end' }}>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
               Receipt / PO / Slip # (opt.)
               <input
@@ -209,7 +208,7 @@ export default function FuelActivityFields({
       {/* Genset Fuel Purchase */}
       {isPurchase && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, alignItems: 'end' }}>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
               Fuel Type
               <select
@@ -243,7 +242,7 @@ export default function FuelActivityFields({
               />
             </label>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, alignItems: 'end' }}>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
               Gas Station / Supplier
               <input
@@ -281,7 +280,7 @@ export default function FuelActivityFields({
       {/* Genset Fuel Distribution to Areas */}
       {isDist && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, alignItems: 'end' }}>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
               Fuel Type
               <select
@@ -347,7 +346,6 @@ export default function FuelActivityFields({
                       type="button"
                       className="btn btn-sm btn-danger-soft"
                       aria-label={`Remove drop ${idx + 1}`}
-                      style={{ minHeight: 36 }}
                       onClick={() =>
                         patchFuel({
                           fuelDistributions: fuel.fuelDistributions.filter((_, i) => i !== idx),
@@ -396,7 +394,7 @@ export default function FuelActivityFields({
 
       {/* Genset Fuel Refilling */}
       {isRefill && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, alignItems: 'end' }}>
           <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
             Fuel Source
             <select

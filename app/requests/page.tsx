@@ -213,30 +213,32 @@ export default async function RequestsPage() {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {profile.isAdmin && (
-        <div
-          className="card"
-          style={{
-            padding: '10px 14px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: 10,
-            flexWrap: 'wrap',
-            borderLeft: profile.pendingUsersCount > 0 ? '4px solid #f59e0b' : '4px solid var(--border)',
-          }}
-        >
-          <span style={{ fontSize: 13 }}>
-            {profile.pendingUsersCount > 0 ? (
-              <>
-                <strong>{profile.pendingUsersCount} new user sign-up{profile.pendingUsersCount === 1 ? '' : 's'}</strong> waiting for account approval &amp; role assignment.
-              </>
-            ) : (
-              <>Looking for new user sign-ups or role assignments? Manage them under <strong>Users &amp; roles</strong>.</>
-            )}
-          </span>
-          <Link href="/operators" className="btn btn-primary" style={{ textDecoration: 'none', fontSize: 12.5 }}>
-            Open Users &amp; Roles →
-          </Link>
+        <div style={{ maxWidth: 1100, width: '100%', margin: '0 auto', padding: '14px 14px 0' }}>
+          <div
+            className="card"
+            style={{
+              padding: '10px 14px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 10,
+              flexWrap: 'wrap',
+              borderLeft: profile.pendingUsersCount > 0 ? '4px solid #f59e0b' : '4px solid var(--border)',
+            }}
+          >
+            <span style={{ fontSize: 13 }}>
+              {profile.pendingUsersCount > 0 ? (
+                <>
+                  <strong>{profile.pendingUsersCount} new user sign-up{profile.pendingUsersCount === 1 ? '' : 's'}</strong> waiting for account approval &amp; role assignment.
+                </>
+              ) : (
+                <>Looking for new user sign-ups or role assignments? Manage them under <strong>Users &amp; roles</strong>.</>
+              )}
+            </span>
+            <Link href="/operators" className="btn btn-primary" style={{ textDecoration: 'none', fontSize: 12.5 }}>
+              Open Users &amp; Roles →
+            </Link>
+          </div>
         </div>
       )}
       <ChangeRequests

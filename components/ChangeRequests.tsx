@@ -326,7 +326,22 @@ export default function ChangeRequests(p: Props) {
   };
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '16px 12px' }}>
+    <div style={{ maxWidth: 1100, width: '100%', margin: '0 auto', padding: '16px 12px' }}>
+      <style>{`
+        .override-diff-row {
+          display: grid;
+          grid-template-columns: minmax(120px, 0.4fr) minmax(220px, 1fr);
+          gap: 8px;
+          align-items: start;
+          font-size: 13px;
+        }
+        @media (max-width: 480px) {
+          .override-diff-row {
+            grid-template-columns: 1fr;
+            gap: 2px;
+          }
+        }
+      `}</style>
       {/* Header */}
       <div className="mobile-toolbar-compact" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <div>
@@ -412,7 +427,7 @@ export default function ChangeRequests(p: Props) {
               <div
                 key={req.id}
                 className="card"
-                style={{ border: open ? '1px solid var(--accent)' : '1px solid var(--border)', borderRadius: 8, padding: 16, background: 'var(--surface)' }}
+                style={{ border: open ? '1px solid var(--accent)' : '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 16, background: 'var(--surface)' }}
               >
                 {/* Request Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
@@ -521,7 +536,7 @@ export default function ChangeRequests(p: Props) {
 
                 {/* Items Table (Desktop) */}
                 <div className="responsive-table-wrap scroll-x" style={{ border: '1px solid var(--border-light)', borderRadius: 6 }}>
-                  <table className="data-table" style={{ textAlign: 'left' }}>
+                  <table className="data-table data-table-sticky" style={{ textAlign: 'left' }}>
                     <thead>
                       <tr style={{ background: 'var(--surface-muted)', borderBottom: '1px solid var(--border)' }}>
                         {canAct && (
@@ -790,7 +805,7 @@ export default function ChangeRequests(p: Props) {
               >
                 Cancel
               </button>
-              <button type="button" className="btn" style={{ background: '#dc2626', color: '#ffffff', fontWeight: 700 }} onClick={handleRejectConfirm} disabled={busy}>
+              <button type="button" className="btn" style={{ background: '#dc2626', borderColor: '#dc2626', color: '#ffffff', fontWeight: 700 }} onClick={handleRejectConfirm} disabled={busy}>
                 {busy ? 'Rejecting…' : 'Confirm rejection'}
               </button>
             </div>
@@ -806,7 +821,7 @@ export default function ChangeRequests(p: Props) {
               const { item } = overrideDialog;
               const missing = item.conflict_reason === 'target_missing';
               const row = (label: string, body: ReactNode) => (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, alignItems: 'start', fontSize: 13 }}>
+                <div className="override-diff-row">
                   <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
                   <span>{body}</span>
                 </div>
@@ -828,7 +843,7 @@ export default function ChangeRequests(p: Props) {
                     <button type="button" className="btn" disabled={busy} onClick={() => setOverrideDialog(null)}>
                       Cancel
                     </button>
-                    <button type="button" className="btn" style={{ background: '#b45309', color: '#ffffff', fontWeight: 700 }} disabled={busy} onClick={handleOverrideConfirm}>
+                    <button type="button" className="btn" style={{ background: '#b45309', borderColor: '#b45309', color: '#ffffff', fontWeight: 700 }} disabled={busy} onClick={handleOverrideConfirm}>
                       {busy ? 'Working…' : missing ? 'Discard item' : 'Override & apply'}
                     </button>
                   </div>

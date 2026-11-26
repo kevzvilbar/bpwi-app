@@ -7,6 +7,7 @@ import { resolveActivityPhotoUrl } from '@/lib/activity-media';
 import { DEFAULT_STATION_CODE } from '@/lib/roster-helpers';
 import { SampleBadge } from '@/components/SampleBadge';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import { Badge, EmptyState } from '@/components/ui';
 
 export type MobileOp = {
   id: string;
@@ -244,49 +245,56 @@ export default function MobileActivitiesAndSchedule({
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div className="card" style={{ padding: 8, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', maxWidth: 420 }}>
-        <button className="btn" onClick={() => onNavigateDate(addDays(date, -1))}>
+        <button type="button" className="btn" aria-label="Previous day" onClick={() => onNavigateDate(addDays(date, -1))}>
           ‹
         </button>
         <input
           type="date"
           className="input"
+          aria-label="Select date"
           value={date}
           onChange={(e) => e.target.value && onNavigateDate(e.target.value)}
           style={{ flex: '1 1 140px', minWidth: 0 }}
         />
-        <button className="btn" onClick={() => onNavigateDate(addDays(date, 1))}>
+        <button type="button" className="btn" aria-label="Next day" onClick={() => onNavigateDate(addDays(date, 1))}>
           ›
         </button>
         {date !== today && (
-          <button className="btn btn-primary" onClick={() => onNavigateDate(today)}>
+          <button type="button" className="btn btn-primary" onClick={() => onNavigateDate(today)}>
             Today
           </button>
         )}
       </div>
 
-      <div className="schedule-cards-grid">
-        {scheduleList.map(({ op, shift, area, standbyType, isLeave, isRestDay, isOnDuty, isNow }) => (
-          <div
-            key={op.id}
-            className="card"
-            style={{
-              padding: 12,
-              display: 'grid',
-              gap: 6,
-              borderLeft: standbyType ? '4px solid var(--violet)' : undefined,
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8 }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 15 }}>{op.full_name}</div>
-                {op.position && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{op.position}</div>}
-              </div>
-              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                {standbyType && (
-                  <span style={{ background: '#6d28d9', color: '#ffffff', padding: '3px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700 }}>
-                    STANDBY · {standbyType}
-                  </span>
-                )}
+      {scheduleList.length === 0 ? (
+        <EmptyState
+          title="No operators match your search"
+          description="Try clearing the search filter or selecting a different date."
+        />
+      ) : (
+        <div className="schedule-cards-grid">
+          {scheduleList.map(({ op, shift, area, standbyType, isLeave, isRestDay, isOnDuty, isNow }) => (
+            <div
+              key={op.id}
+              className="card"
+              style={{
+                padding: 12,
+                display: 'grid',
+                gap: 6,
+                borderLeft: standbyType ? '4px solid var(--violet)' : undefined,
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8 }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{op.full_name}</div>
+                  {op.position && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{op.position}</div>}
+                </div>
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {standbyType && (
+                    <Badge tone="violet" size="sm">
+                      STANDBY · {standbyType}
+                    </Badge>
+                  )}
                 {isLeave ? (
                   <span style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)', padding: '3px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700 }}>
                     LEAVE · {area?.code}
@@ -325,19 +333,8 @@ export default function MobileActivitiesAndSchedule({
                 <div style={{ display: 'flex', gap: 6 }}>
                   <a
                     href={`tel:${op.phone_number}`}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      minHeight: 44,
-                      padding: '6px 12px',
-                      borderRadius: 8,
-                      background: '#0369a1',
-                      color: '#ffffff',
-                      textDecoration: 'none',
-                      fontWeight: 700,
-                      fontSize: 12.5,
-                    }}
+                    className="btn btn-primary"
+                    style={{ textDecoration: 'none', fontWeight: 700 }}
                   >
                     Call
                   </a>
@@ -348,8 +345,9 @@ export default function MobileActivitiesAndSchedule({
               )}
             </div>
           </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

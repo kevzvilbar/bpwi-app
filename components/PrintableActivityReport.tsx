@@ -374,9 +374,8 @@ export default function PrintableActivityReport(p: {
           </ReportViewport>
         ) : (
           <ReportViewport>
-            <div style={{ padding: 10 }}>
-              {/* Official Document Header (standard reports / meter certificate) */}
-              <ReportLetterhead
+            {/* Official Document Header (standard reports / meter certificate) */}
+            <ReportLetterhead
                 orgName={p.orgName}
                 eyebrow={p.orgName || 'BP Waterworks, Inc.'}
                 title={p.mode === 'meter_test' ? 'Water Meter Volumetric Test Certificate' : 'Field Activity & Job Order Report'}
@@ -706,7 +705,6 @@ export default function PrintableActivityReport(p: {
                   />
                 </div>
               )}
-            </div>
           </ReportViewport>
         )}
       </div>

@@ -162,6 +162,7 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
         fontSize: 12.5,
       }}
     >
+      <div style={{ maxWidth: 1440, margin: '0 auto' }}>
       <div
         style={{
           display: 'flex',
@@ -279,15 +280,12 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
                     <>
                       <button
                         type="button"
-                        className="btn"
+                        className="btn btn-danger-soft"
                         disabled={busy}
                         style={{
                           minHeight: 36,
                           padding: '3px 9px',
                           fontSize: 12,
-                          color: 'var(--danger-fg)',
-                          background: 'var(--danger-bg)',
-                          borderColor: 'var(--danger-border)',
                         }}
                         onClick={() => void discardItem('activity', item.queueId)}
                       >
@@ -364,15 +362,12 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
                     <>
                       <button
                         type="button"
-                        className="btn"
+                        className="btn btn-danger-soft"
                         disabled={busy}
                         style={{
                           minHeight: 36,
                           padding: '3px 9px',
                           fontSize: 12,
-                          color: 'var(--danger-fg)',
-                          background: 'var(--danger-bg)',
-                          borderColor: 'var(--danger-border)',
                         }}
                         onClick={() => void discardItem('report', item.queueId)}
                       >
@@ -405,6 +400,7 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }

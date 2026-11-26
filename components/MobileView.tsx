@@ -326,7 +326,7 @@ export default function MobileView(p: {
       <div className="card card-pad-sm stack-sm mobile-toolbar-compact">
         <SegmentedTabs
           ariaLabel="Tasks and field views"
-          fullWidth
+          className="mobile-full-tabs"
           size="sm"
           value={tab}
           onChange={setTab}
@@ -345,18 +345,8 @@ export default function MobileView(p: {
             placeholder="Search site, activity, employee…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ flex: '1 1 160px', minWidth: 0 }}
+            style={{ flex: '1 1 160px', minWidth: 0, maxWidth: 280 }}
           />
-          {(p.canLogActivity || p.canLogSampleActivity) && p.orgId && (
-            <button
-              type="button"
-              className="btn btn-primary font-bold"
-              onClick={() => { setLinkedPmForLog(null); setLoggerOpen(true); }}
-              style={{ whiteSpace: 'nowrap' }}
-            >
-              {p.canLogActivity ? '+ Log Activity' : '+ Log Sample'}
-            </button>
-          )}
           {(tab === 'tasks' || (tab === 'activities' && p.canVerifyActivity)) && (
             <select
               className="input"
@@ -364,13 +354,23 @@ export default function MobileView(p: {
               title={tab === 'tasks' ? 'All employees (incl. substitute coverage)' : 'All employees'}
               value={selectedOp}
               onChange={(e) => setSelectedOp(e.target.value)}
-              style={{ flex: '1 1 150px', minWidth: 0 }}
+              style={{ flex: '1 1 150px', minWidth: 0, maxWidth: 260 }}
             >
               <option value="">All employees</option>
               {p.operators.map((o) => (
                 <option key={o.id} value={o.id}>{o.full_name}{o.id === p.operatorId ? ' (Me)' : ''}</option>
               ))}
             </select>
+          )}
+          {(p.canLogActivity || p.canLogSampleActivity) && p.orgId && (
+            <button
+              type="button"
+              className="btn btn-primary font-bold desktop-ml-auto"
+              onClick={() => { setLinkedPmForLog(null); setLoggerOpen(true); }}
+              style={{ whiteSpace: 'nowrap' }}
+            >
+              {p.canLogActivity ? '+ Log Activity' : '+ Log Sample'}
+            </button>
           )}
         </div>
       </div>
@@ -379,7 +379,7 @@ export default function MobileView(p: {
 
       {tab === 'tasks' && (
         <>
-          <div className="row-wrap text-xs font-bold" style={{ gap: 10 }}>
+          <div className="row-wrap text-xs font-bold tabular-nums" style={{ gap: 10 }}>
             <span style={{ color: 'var(--danger-fg)' }}>● {delayedTasks.length} Delayed</span>
             <span style={{ color: 'var(--info-fg)' }}>● {dueTodayCount} Today</span>
             <span style={{ color: 'var(--text-secondary)' }}>{upcomingTasks.length} Upcoming</span>
@@ -447,11 +447,10 @@ export default function MobileView(p: {
         <div
           role="status"
           aria-live="polite"
-          className="row-md"
+          className="row-md undo-toast"
           style={{
-            position: 'fixed', bottom: 'calc(76px + env(safe-area-inset-bottom))', left: '50%', transform: 'translateX(-50%)', zIndex: 75,
             background: 'var(--header-bg)', color: 'var(--header-fg)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px',
-            boxShadow: '0 10px 28px rgba(0, 0, 0, 0.28)', maxWidth: 'calc(100vw - 24px)', fontSize: 13,
+            boxShadow: '0 10px 28px rgba(0, 0, 0, 0.28)', fontSize: 13,
           }}
         >
           <span><b>{undoToast.task.title}</b> marked done</span>

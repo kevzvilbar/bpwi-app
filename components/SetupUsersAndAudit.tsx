@@ -449,7 +449,7 @@ export default function SetupUsersAndAudit({
 
   if (tab === 'users') {
     return (
-      <table className="data-table">
+      <table className="data-table data-table-sticky">
         <thead>
           <tr>
             {['Full name', 'Role', 'Org Position (Auto-Chart)', 'Linked Operator', 'Active (Approved)', 'User ID', ''].map((h) => (
@@ -480,7 +480,7 @@ export default function SetupUsersAndAudit({
                 });
               };
               return (
-                <tr key={u.id} style={{ background: u.is_active ? 'var(--surface)' : 'var(--warn-bg)' }}>
+                <tr key={u.id} style={{ background: u.is_active ? undefined : 'var(--warn-bg)' }}>
                   <td style={SETUP_CELL_STYLE}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <input
@@ -594,7 +594,9 @@ export default function SetupUsersAndAudit({
                       )}
                     </label>
                   </td>
-                  <td style={{ ...SETUP_CELL_STYLE, fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-secondary)' }}>{u.id}</td>
+                  <td style={{ ...SETUP_CELL_STYLE, fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }} title={u.id}>
+                    {u.id.slice(0, 8)}…
+                  </td>
                   <td style={{ ...SETUP_CELL_STYLE, whiteSpace: 'nowrap' }}>
                     <button
                       className={`btn ${dirty.has(`u${i}`) ? 'btn-primary' : ''}`}
@@ -627,7 +629,7 @@ export default function SetupUsersAndAudit({
           </button>
         )}
       </div>
-      <table className="data-table">
+      <table className="data-table data-table-sticky">
         <thead>
           <tr>
             {['Time (Manila)', 'User', 'Action', 'Area / Table', 'Details'].map((h) => (
@@ -656,7 +658,7 @@ export default function SetupUsersAndAudit({
                 <td style={{ ...SETUP_CELL_STYLE, padding: '6px 8px', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
                   {formatManilaTimestamp(log.created_at)}
                 </td>
-                <td style={{ ...SETUP_CELL_STYLE, padding: '6px 8px', fontWeight: 600 }}>
+                <td style={{ ...SETUP_CELL_STYLE, padding: '6px 8px', fontWeight: 600, whiteSpace: 'nowrap' }}>
                   {log.user_id ? userNameMap.get(log.user_id) ?? log.user_id.slice(0, 8) : 'System'}
                 </td>
                 <td style={{ ...SETUP_CELL_STYLE, padding: '6px 8px' }}>
@@ -672,7 +674,7 @@ export default function SetupUsersAndAudit({
                     {log.action}
                   </span>
                 </td>
-                <td style={{ ...SETUP_CELL_STYLE, padding: '6px 8px', fontFamily: 'ui-monospace, monospace', fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                <td style={{ ...SETUP_CELL_STYLE, padding: '6px 8px', fontFamily: 'ui-monospace, monospace', fontSize: 11.5, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                   {log.table_name}
                 </td>
                 <td style={{ ...SETUP_CELL_STYLE, padding: '6px 8px' }}>{summarizeAudit(log, opNameMap, shiftCodeMap, areaCodeMap)}</td>

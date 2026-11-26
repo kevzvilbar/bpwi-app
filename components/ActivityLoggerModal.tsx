@@ -26,6 +26,18 @@ import {
 export type { LinkedJobOrder, LinkedPmTask };
 export type { LoggerOperator, LoggerArea, LoggerShift, LoggerAssignment, ActivityLoggerModalProps };
 
+const STRUCTURED_MODAL_ACTIVITY_TYPES = new Set([
+  'well_pull_out',
+  'tank_cleaning',
+  'genset_monitoring',
+  'leak_repair',
+  'flushing',
+  'meter_test',
+  'genset_fuel_distribution',
+  'genset_fuel_refill',
+  'chlorine_refill',
+]);
+
 /** Modal dialog for logging or editing field activities, linked PM completions, and Job Order fulfillments. */
 export default function ActivityLoggerModal(p: ActivityLoggerModalProps) {
   const f = useActivityLoggerForm(p);
@@ -39,6 +51,7 @@ export default function ActivityLoggerModal(p: ActivityLoggerModalProps) {
 
   const selArea = f.stationAreas.find((a) => a.id === f.areaCodeId);
   const subSites = selArea?.sub_sites ?? [];
+  const modalMaxWidth = STRUCTURED_MODAL_ACTIVITY_TYPES.has(f.activityType) ? 780 : 680;
 
   function handleAttemptClose() {
     if (f.submitting) return;
@@ -62,7 +75,7 @@ export default function ActivityLoggerModal(p: ActivityLoggerModalProps) {
         className="modal-sheet"
         onClick={(e) => e.stopPropagation()}
         onSubmit={f.handleSubmit}
-        style={{ maxWidth: 640, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 0 }}
+        style={{ maxWidth: modalMaxWidth, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 0 }}
       >
         <div
           className="row-between"
@@ -234,8 +247,8 @@ export default function ActivityLoggerModal(p: ActivityLoggerModalProps) {
                 <button
                   type="button"
                   onClick={() => f.setShowAllOps((v) => !v)}
-                  className="text-xs font-bold"
-                  style={{ background: 'transparent', border: 'none', color: 'var(--accent)', cursor: 'pointer', minHeight: 36, padding: '4px 8px' }}
+                  className="btn-xs font-bold"
+                  style={{ background: 'transparent', border: 'none', color: 'var(--accent)', cursor: 'pointer' }}
                 >
                   {f.showAllOps ? 'Hide off-shift ops' : `+ Show all (${f.otherOps.length} more)`}
                 </button>

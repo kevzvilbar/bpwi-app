@@ -449,7 +449,7 @@ export default function AccomplishmentReports(p: Props) {
   const isLocked = activeReportForMy?.status === 'checked';
 
   return (
-    <div style={{ display: 'grid', gap: 12 }}>
+    <div className="card-pad w-full" style={{ maxWidth: 1360, margin: '0 auto', display: 'grid', gap: 12 }}>
       {/* Top Toolbar */}
       <div className="no-print card mobile-toolbar-compact" style={{ padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -606,7 +606,7 @@ export default function AccomplishmentReports(p: Props) {
                 <button
                   type="button"
                   className="btn"
-                  style={{ color: '#b91c1c' }}
+                  style={{ color: 'var(--danger)' }}
                   disabled={busy}
                   onClick={() => reviewReport(selectedInboxReport, 'returned')}
                 >
@@ -642,7 +642,7 @@ export default function AccomplishmentReports(p: Props) {
             )}
 
             <div className="report-meta-grid">
-              <label style={{ fontSize: 12 }}>
+              <label style={{ fontSize: 12, display: 'grid', gap: 4 }}>
                 Report Date
                 <input
                   type="date"
@@ -652,7 +652,7 @@ export default function AccomplishmentReports(p: Props) {
                 />
               </label>
 
-              <label style={{ fontSize: 12 }}>
+              <label style={{ fontSize: 12, display: 'grid', gap: 4 }}>
                 Shift
                 <select
                   className="input"
@@ -669,7 +669,7 @@ export default function AccomplishmentReports(p: Props) {
                 </select>
               </label>
 
-              <label className="report-meta-full" style={{ fontSize: 12 }}>
+              <label className="report-meta-full" style={{ fontSize: 12, display: 'grid', gap: 4 }}>
                 Assigned Department Head *
                 <select
                   className="input"
@@ -686,7 +686,7 @@ export default function AccomplishmentReports(p: Props) {
                 </select>
               </label>
 
-              <label style={{ fontSize: 12 }}>
+              <label style={{ fontSize: 12, display: 'grid', gap: 4 }}>
                 Prepared By
                 <input
                   className="input"
@@ -696,7 +696,7 @@ export default function AccomplishmentReports(p: Props) {
                 />
               </label>
 
-              <label style={{ fontSize: 12 }}>
+              <label style={{ fontSize: 12, display: 'grid', gap: 4 }}>
                 Designation / Title
                 <input
                   className="input"

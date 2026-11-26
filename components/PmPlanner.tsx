@@ -305,8 +305,8 @@ export default function PmPlanner(p: PmPlannerProps) {
                       fontSize: dayNum === 1 ? 10 : 11,
                       fontWeight: 700,
                       whiteSpace: 'nowrap',
-                      background: isToday ? '#0369a1' : hol ? 'var(--danger-bg)' : 'transparent',
-                      color: isToday ? '#ffffff' : hol ? 'var(--danger-fg)' : inMonth ? 'var(--text)' : 'var(--text-muted)',
+                      background: isToday ? 'var(--primary)' : hol ? 'var(--danger-bg)' : 'transparent',
+                      color: isToday ? 'var(--primary-fg)' : hol ? 'var(--danger-fg)' : inMonth ? 'var(--text)' : 'var(--text-muted)',
                     }}
                     title={hol ? hol.name : undefined}
                   >
@@ -372,8 +372,11 @@ export default function PmPlanner(p: PmPlannerProps) {
                         .join(', ')}${conflict ? '\n⚠ Crew conflict (RD/off/leave)' : ''}`}
                       style={{
                         background: isDone ? 'var(--surface)' : color,
-                        color: isDone ? color : '#ffffff',
-                        border: `1.5px solid ${color}`,
+                        color: isDone ? 'var(--text)' : '#ffffff',
+                        borderTop: `1.5px solid ${color}`,
+                        borderRight: `1.5px solid ${color}`,
+                        borderBottom: `1.5px solid ${color}`,
+                        borderLeft: `${isDone ? 3 : 1.5}px solid ${color}`,
                         borderRadius: 999,
                         padding: '2px 6px',
                         margin: '2px 0',

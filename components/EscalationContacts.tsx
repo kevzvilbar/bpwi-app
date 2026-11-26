@@ -26,18 +26,10 @@ export default function EscalationContacts({ contacts }: { contacts: EscalationC
               <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6 }}>
                 <a
                   href={`tel:${c.phone_number}`}
+                  className="btn btn-primary"
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    minHeight: 44,
-                    padding: '5px 10px',
-                    borderRadius: 7,
-                    background: 'var(--primary)',
-                    color: 'var(--primary-fg)',
                     textDecoration: 'none',
                     fontWeight: 700,
-                    fontSize: 12.5,
                     fontFamily: 'ui-monospace, monospace',
                   }}
                 >

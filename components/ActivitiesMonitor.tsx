@@ -367,7 +367,7 @@ export default function ActivitiesMonitor(p: {
                 <div className="text-secondary-sm">No operators scheduled on duty or standby for {p.date}.</div>
               ) : (
                 <>
-                  <div className="grid-auto-md" style={{ gap: 8 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
                     {visibleDutyRows.map((row) => {
                       const hasOutput = row.logsCount > 0 || row.pmsClosedToday > 0;
                       const canLogForThisOp = p.isAdmin || (p.canLogActivity && p.operatorId === row.op.id);
@@ -412,14 +412,16 @@ export default function ActivitiesMonitor(p: {
                     })}
                   </div>
                   {dutyMatrix.length > MATRIX_PREVIEW_COUNT && (
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      style={{ width: '100%' }}
-                      onClick={() => setMatrixExpanded((prev) => !prev)}
-                    >
-                      {matrixExpanded ? 'Show fewer operators ▲' : `Show all ${dutyMatrix.length} on-duty operators ▾`}
-                    </button>
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        style={{ width: 'auto' }}
+                        onClick={() => setMatrixExpanded((prev) => !prev)}
+                      >
+                        {matrixExpanded ? 'Show fewer operators ▲' : `Show all ${dutyMatrix.length} on-duty operators ▾`}
+                      </button>
+                    </div>
                   )}
                 </>
               )}
@@ -449,7 +451,7 @@ export default function ActivitiesMonitor(p: {
               <option value="flagged">Flagged</option>
             </select>
             {hasActiveFilters && (
-              <button type="button" className="btn btn-sm activity-filter-head" onClick={resetFilters}>
+              <button type="button" className="btn activity-filter-head" onClick={resetFilters}>
                 Reset
               </button>
             )}

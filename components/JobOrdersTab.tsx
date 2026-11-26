@@ -273,7 +273,8 @@ export default function JobOrdersTab({
                 className="card"
                 style={{
                   padding: 14,
-                  display: 'grid',
+                  display: 'flex',
+                  flexDirection: 'column',
                   gap: 8,
                   borderLeft: `4px solid ${jo.priority === 'high' ? 'var(--danger)' : jo.priority === 'medium' ? 'var(--warn-fg)' : 'var(--accent)'}`,
                 }}
@@ -322,7 +323,7 @@ export default function JobOrdersTab({
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', borderTop: '1px solid var(--border-light)', paddingTop: 8 }}>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', borderTop: '1px solid var(--border-light)', paddingTop: 8, marginTop: 'auto' }}>
                   {canLogActivity && (jo.status === 'pending' || jo.status === 'in_progress') && (
                     <button
                       type="button"
@@ -402,11 +403,27 @@ export default function JobOrdersTab({
         const activeSla = joSlaId !== 'custom' ? JOB_ORDER_SLA_BY_ID[joSlaId] : null;
         return (
         <div className="modal-overlay no-print" role="dialog" aria-modal="true" onClick={() => !savingJo && setJoModalOpen(false)}>
-          <form className="modal-sheet" onClick={(e) => e.stopPropagation()} onSubmit={handleCreateJobOrder} style={{ maxWidth: 580, display: 'grid', gap: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <form
+            className="modal-sheet"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={handleCreateJobOrder}
+            style={{ maxWidth: 580, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 0 }}
+          >
+            <div
+              style={{
+                flexShrink: 0,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '16px 18px 12px',
+                borderBottom: '1px solid var(--border-light)',
+                background: 'var(--surface)',
+              }}
+            >
               <h2 style={{ margin: 0, fontSize: 17 }}>Dispatch Field Job Order</h2>
-              <button type="button" className="btn" onClick={() => setJoModalOpen(false)}>✕</button>
+              <button type="button" className="btn" onClick={() => setJoModalOpen(false)} aria-label="Close">✕</button>
             </div>
+            <div style={{ flex: '1 1 auto', overflowY: 'auto', minHeight: 0, padding: '14px 18px', display: 'grid', gap: 10 }}>
             <label style={{ display: 'grid', gap: 3, fontSize: 12.5, fontWeight: 600 }}>
               Job Order Task / SLA Standard
               <select className="input" value={joSlaId} onChange={(e) => applySlaPreset(e.target.value)}>
@@ -536,7 +553,18 @@ export default function JobOrdersTab({
                 <span>Log as sample (auto-deletes in 24h)</span>
               </label>
             )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            </div>
+            <div
+              style={{
+                flexShrink: 0,
+                padding: '12px 18px calc(12px + env(safe-area-inset-bottom))',
+                borderTop: '1px solid var(--border-light)',
+                background: 'var(--surface)',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: 8,
+              }}
+            >
               <button type="button" className="btn" onClick={() => setJoModalOpen(false)} disabled={savingJo}>Cancel</button>
               <button type="submit" className="btn btn-primary" disabled={savingJo}>{savingJo ? 'Dispatching…' : 'Dispatch JO'}</button>
             </div>

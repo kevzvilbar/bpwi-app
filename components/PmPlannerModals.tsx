@@ -239,7 +239,7 @@ export default function PmPlannerModals({
                 {modalError}
               </div>
             )}
-            <label style={{ fontSize: 13 }}>
+            <label style={{ fontSize: 13, display: 'grid', gap: 4 }}>
               Activity
               <select
                 className="input"
@@ -359,7 +359,7 @@ export default function PmPlannerModals({
                 )}
               </div>
             )}
-            <label style={{ fontSize: 13 }}>
+            <label style={{ fontSize: 13, display: 'grid', gap: 4 }}>
               {draft.typeKey === 'GENSET' ? 'Asset / Genset Control #' : 'Asset'}{' '}
               <input
                 className="input"
@@ -373,7 +373,7 @@ export default function PmPlannerModals({
               />
             </label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <label style={{ fontSize: 13, flex: '1 1 160px', minWidth: 0 }}>
+              <label style={{ fontSize: 13, flex: '1 1 160px', minWidth: 0, display: 'grid', gap: 4 }}>
                 Date{' '}
                 <input
                   type="date"
@@ -391,7 +391,7 @@ export default function PmPlannerModals({
                   }}
                 />
               </label>
-              <label style={{ fontSize: 13, flex: '1 1 160px', minWidth: 0 }}>
+              <label style={{ fontSize: 13, flex: '1 1 160px', minWidth: 0, display: 'grid', gap: 4 }}>
                 Status
                 <select
                   className="input"
@@ -428,6 +428,7 @@ export default function PmPlannerModals({
                     key={o.id}
                     style={{
                       display: 'inline-flex',
+                      alignItems: 'center',
                       gap: 4,
                       margin: '2px 10px 2px 0',
                       color: cReason ? 'var(--danger)' : undefined,
@@ -463,6 +464,7 @@ export default function PmPlannerModals({
                       key={o.id}
                       style={{
                         display: 'inline-flex',
+                        alignItems: 'center',
                         gap: 4,
                         margin: '2px 10px 2px 0',
                         color: checked && !isPlanned ? 'var(--warn-fg)' : undefined,
@@ -505,7 +507,7 @@ export default function PmPlannerModals({
                 <i>Inspection Only</i> if already run on outage); check oil, coolant/battery, fuel level, leaks, noise &amp; smoke.
               </div>
             )}
-            <label style={{ fontSize: 13 }}>
+            <label style={{ fontSize: 13, display: 'grid', gap: 4 }}>
               Remarks{' '}
               <input
                 className="input"

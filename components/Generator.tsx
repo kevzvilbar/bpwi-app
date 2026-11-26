@@ -159,7 +159,11 @@ export default function Generator(p: {
   }
 
   if (!p.canEdit) {
-    return <p style={{ padding: 20, color: 'var(--text-secondary)' }}>Only admins and schedulers can generate schedules.</p>;
+    return (
+      <div className="card" style={{ maxWidth: 720, margin: '16px auto', padding: 20, color: 'var(--text-secondary)' }}>
+        Only admins and schedulers can generate schedules.
+      </div>
+    );
   }
 
   return (
@@ -243,9 +247,9 @@ export default function Generator(p: {
           <button type="button" className="btn" onClick={() => setSel(new Set())}>
             None
           </button>
-          <div style={{ marginTop: 8, maxHeight: 160, overflow: 'auto', display: 'flex', flexWrap: 'wrap', gap: '6px 14px' }}>
+          <div style={{ marginTop: 8, maxHeight: 180, overflow: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '4px 12px' }}>
             {p.operators.map((o) => (
-              <label key={o.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minHeight: 38 }}>
+              <label key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 36 }}>
                 <input
                   type="checkbox"
                   checked={sel.has(o.id)}
@@ -288,7 +292,7 @@ export default function Generator(p: {
                 <tr>
                   <th style={{ textAlign: 'left', padding: '5px 8px', borderBottom: '1px solid var(--border)' }}>Operator</th>
                   {previewDays.map((d) => (
-                    <th key={d} style={{ padding: '5px 6px', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>
+                    <th key={d} className="tabular-nums" style={{ padding: '5px 6px', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>
                       {d.slice(5)}
                     </th>
                   ))}

@@ -247,7 +247,7 @@ export default function InventoryManager(p: InventoryManagerProps) {
             placeholder="Search site or item…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ flex: '1 1 200px', maxWidth: '100%' }}
+            style={{ flex: '1 1 200px', maxWidth: 300, minWidth: 0 }}
           />
         )}
       </div>
@@ -438,7 +438,7 @@ export default function InventoryManager(p: InventoryManagerProps) {
               aria-label="Filter ledger by item"
               value={ledgerItemId}
               onChange={(e) => setLedgerItemId(e.target.value)}
-              style={{ flex: '1 1 200px', maxWidth: '100%' }}
+              style={{ flex: '1 1 200px', maxWidth: 300, minWidth: 0 }}
             >
               <option value="all">All Consumables</option>
               {items.map((it) => (
@@ -512,7 +512,7 @@ export default function InventoryManager(p: InventoryManagerProps) {
               </div>
 
               <div className="responsive-table-wrap scroll-x">
-                <table className="data-table">
+                <table className="data-table data-table-sticky">
                   <thead>
                     <tr style={{ textAlign: 'left' }}>
                       <th>Date</th>
@@ -620,7 +620,7 @@ export default function InventoryManager(p: InventoryManagerProps) {
               </div>
 
               <div className="responsive-table-wrap scroll-x">
-                <table className="data-table">
+                <table className="data-table data-table-sticky">
                   <thead>
                     <tr style={{ textAlign: 'left' }}>
                       <th>Consumable</th>

@@ -64,7 +64,7 @@ export default function ActivityCategoryFields({
       {activityType === 'pump_monitoring' && (
         <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: 'var(--info-border)' }}>
           <strong style={{ fontSize: 12.5, color: 'var(--accent)' }}>Pump House Readings</strong>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, alignItems: 'end' }}>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
               Pressure (PSI)
               <input className="input" type="number" step="0.1" value={fields.pressurePsi} onChange={(e) => patch({ pressurePsi: e.target.value })} />
@@ -99,7 +99,7 @@ export default function ActivityCategoryFields({
       {activityType === 'meter_test' && (
         <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: 'var(--violet-border)' }}>
           <strong style={{ fontSize: 12.5, color: 'var(--violet-fg)' }}>Volumetric Meter Calibration Test</strong>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, alignItems: 'end' }}>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
               Account # (12-char auto-parse)
               <input className="input" value={fields.accountNumber} onChange={(e) => patch({ accountNumber: e.target.value })} placeholder="e.g. 001002003004" />
@@ -125,7 +125,7 @@ export default function ActivityCategoryFields({
               <input className="input" type="number" step="0.001" value={fields.refVolumeM3} onChange={(e) => patch({ refVolumeM3: e.target.value })} />
             </label>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: 6 }}>
+          <div className="grid-2" style={{ gap: 8, alignItems: 'end' }}>
             <label style={{ display: 'grid', gap: 2, fontSize: 11.5 }}>
               Initial
               <input className="input" type="number" step="0.0001" value={fields.initialReading} onChange={(e) => patch({ initialReading: e.target.value })} />
@@ -230,7 +230,7 @@ export default function ActivityCategoryFields({
       {isMeterFieldActivity(activityType) && (
         <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: 'var(--ok-border)' }}>
           <strong style={{ fontSize: 12.5, color: 'var(--ok-fg)' }}>Customer &amp; Meter Details</strong>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
+          <div className="grid-2" style={{ gap: 8, alignItems: 'end' }}>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
               Account # (12-char auto-parse)
               <input className="input" value={fields.accountNumber} onChange={(e) => patch({ accountNumber: e.target.value })} placeholder="e.g. 001002003004" />
@@ -254,7 +254,7 @@ export default function ActivityCategoryFields({
               </select>
             </label>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
+          <div className="grid-2" style={{ gap: 8, alignItems: 'end' }}>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
               Old Brand / Serial
               <input className="input" value={fields.oldMeterSerial} onChange={(e) => patch({ oldMeterSerial: e.target.value })} placeholder="Serial #" />
@@ -284,7 +284,7 @@ export default function ActivityCategoryFields({
           <strong style={{ fontSize: 12.5, color: 'var(--accent)' }}>
             {activityType === 'low_pressure' ? 'Low Pressure Inspection Details' : 'No Water Supply Investigation Details'}
           </strong>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, alignItems: 'end' }}>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
               Account # (12-char auto-parse)
               <input className="input" value={fields.accountNumber} onChange={(e) => patch({ accountNumber: e.target.value })} placeholder="Optional 12-char account #" />
@@ -322,7 +322,7 @@ export default function ActivityCategoryFields({
               + Trip Cycle
             </button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, alignItems: 'end' }}>
             <input className="input" placeholder="Vehicle Type" value={fields.vehicleType} onChange={(e) => patch({ vehicleType: e.target.value })} />
             <input className="input" placeholder="Plate #" value={fields.plateNumber} onChange={(e) => patch({ plateNumber: e.target.value })} />
           </div>
@@ -330,9 +330,11 @@ export default function ActivityCategoryFields({
             Driver: <strong>{leadOpName || 'Auto-filled from Lead Operator above'}</strong>
           </div>
           {fields.haulingCycles.map((c, idx) => (
-            <div key={idx} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 6 }}>
+            <div key={idx} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
               <input
                 className="input"
+                aria-label={`Trip ${idx + 1} source location`}
+                style={{ flex: '1 1 140px', minWidth: 0 }}
                 placeholder="Source"
                 value={c.sourceLocation}
                 onChange={(e) =>
@@ -344,6 +346,8 @@ export default function ActivityCategoryFields({
               />
               <input
                 className="input"
+                aria-label={`Trip ${idx + 1} delivery location`}
+                style={{ flex: '1 1 140px', minWidth: 0 }}
                 placeholder="Delivery site"
                 value={c.deliveryLocation}
                 onChange={(e) =>
@@ -355,6 +359,8 @@ export default function ActivityCategoryFields({
               />
               <input
                 className="input"
+                aria-label={`Trip ${idx + 1} volume in m³`}
+                style={{ flex: '0 1 100px', minWidth: 80 }}
                 type="number"
                 step="0.1"
                 placeholder="m³"
@@ -366,6 +372,21 @@ export default function ActivityCategoryFields({
                   }))
                 }
               />
+              {fields.haulingCycles.length > 1 && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-danger-soft"
+                  aria-label={`Remove trip cycle ${idx + 1}`}
+                  onClick={() =>
+                    setFields((prev) => ({
+                      ...prev,
+                      haulingCycles: prev.haulingCycles.filter((_, i) => i !== idx),
+                    }))
+                  }
+                >
+                  ✕
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -396,7 +417,7 @@ export default function ActivityCategoryFields({
       {activityType === 'backwash' && (
         <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: 'var(--violet-border)' }}>
           <strong style={{ fontSize: 12.5, color: 'var(--violet-fg)' }}>MMF / Filter Backwash Telemetry</strong>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, alignItems: 'end' }}>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
               Duration (mins, auto from time)
               <input className="input" type="number" step="1" value={fields.backwashDurationMin} onChange={(e) => patch({ backwashDurationMin: e.target.value })} />
@@ -443,7 +464,7 @@ export default function ActivityCategoryFields({
       {activityType === 'water_level_monitoring' && (
         <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: 'var(--warn-border)' }}>
           <strong style={{ fontSize: 12.5, color: 'var(--warn-fg)' }}>Well Water Level (SWL &amp; PWL)</strong>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, alignItems: 'end' }}>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
               Static Water Level — SWL (m)
               <input className="input" type="number" step="0.01" value={fields.swlMeters} onChange={(e) => patch({ swlMeters: e.target.value })} />

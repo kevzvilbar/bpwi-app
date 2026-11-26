@@ -264,26 +264,14 @@ export default function Nav(p: {
               {p.isAdmin && p.orgId && (
                 <button
                   type="button"
+                  className="topbar-edit-btn"
                   onClick={() => {
                     setTitleErr('');
                     setEditingTitle(true);
                   }}
                   aria-label="Edit app title and company name"
                   title="Edit title"
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    color: 'var(--text-secondary)',
-                    cursor: 'pointer',
-                    padding: '2px 4px',
-                    borderRadius: 4,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    minWidth: 36,
-                    minHeight: 36,
-                    flexShrink: 0,
-                  }}
+                  style={{ padding: '3px 5px' }}
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M12 20h9" />
@@ -332,40 +320,16 @@ export default function Nav(p: {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <Link
             href="/inventory"
-            className="desktop-only"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '3px 8px',
-              borderRadius: 6,
-              fontSize: 12,
-              fontWeight: 700,
-              textDecoration: 'none',
-              background: path.startsWith('/inventory') ? 'var(--primary)' : 'var(--surface-muted)',
-              color: path.startsWith('/inventory') ? 'var(--primary-fg)' : 'var(--text)',
-              border: '1px solid var(--border)',
-            }}
+            className={`btn btn-sm desktop-only${path.startsWith('/inventory') ? ' btn-primary' : ''}`}
+            style={{ textDecoration: 'none', whiteSpace: 'nowrap' }}
           >
             Inventory
           </Link>
           {(p.canApprove || p.role === 'manager') && (
             <Link
               href="/requests"
-              className="desktop-only"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '3px 8px',
-                borderRadius: 6,
-                fontSize: 12,
-                fontWeight: 700,
-                textDecoration: 'none',
-                background: path.startsWith('/requests') ? 'var(--primary)' : 'var(--surface-muted)',
-                color: path.startsWith('/requests') ? 'var(--primary-fg)' : 'var(--text)',
-                border: '1px solid var(--border)',
-              }}
+              className={`btn btn-sm desktop-only${path.startsWith('/requests') ? ' btn-primary' : ''}`}
+              style={{ textDecoration: 'none', whiteSpace: 'nowrap' }}
             >
               <span>Requests</span>
               {(p.pendingRequestsCount ?? 0) > 0 && (
@@ -395,6 +359,7 @@ export default function Nav(p: {
               background: p.canEdit ? 'var(--info-bg)' : 'var(--surface-muted)',
               color: p.canEdit ? 'var(--info-fg)' : 'var(--text-secondary)',
               textTransform: 'uppercase',
+              whiteSpace: 'nowrap',
             }}
           >
             {roleLabel}

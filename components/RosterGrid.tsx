@@ -154,10 +154,10 @@ export default function RosterGrid(p: RosterGridProps) {
         <table ref={gridRef} className="schedule-table" role="grid" aria-label={`Monthly schedule for ${p.monthLabel}`}>
           <thead>
             <tr style={{ height: 26 }}>
-              <th rowSpan={2} className="sticky-corner-idx" style={{ background: 'var(--header-bg)', color: 'var(--text-muted)', width: 36, minWidth: 36, textAlign: 'center', fontSize: 10 }}>
+              <th rowSpan={2} className="sticky-corner-idx" style={{ background: 'var(--header-bg)', color: 'rgba(248, 250, 252, 0.85)', width: 36, minWidth: 36, textAlign: 'center', fontSize: 10 }}>
                 #
               </th>
-              <th rowSpan={2} className="sticky-corner-name" style={{ background: 'var(--header-bg)', color: 'var(--header-fg)', minWidth: 165, padding: '4px 8px', textAlign: 'left' }}>
+              <th rowSpan={2} className="sticky-corner-name" title={`Operator (${p.operators.length})`} style={{ background: 'var(--header-bg)', color: 'var(--header-fg)', minWidth: 165, maxWidth: 205, padding: '4px 8px', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 Operator ({p.operators.length})
               </th>
               <th
@@ -177,7 +177,7 @@ export default function RosterGrid(p: RosterGridProps) {
               <th rowSpan={2} className="sticky-corner-stat sticky-col-hours" style={{ background: 'var(--header-bg)', color: 'var(--header-fg)', width: 42, minWidth: 42, textAlign: 'center' }}>
                 Hrs
               </th>
-              <th rowSpan={2} className="sticky-corner-stat sticky-col-off" style={{ background: 'var(--header-bg)', color: 'var(--text-muted)', width: 42, minWidth: 42, textAlign: 'center' }}>
+              <th rowSpan={2} className="sticky-corner-stat sticky-col-off" style={{ background: 'var(--header-bg)', color: 'rgba(248, 250, 252, 0.85)', width: 42, minWidth: 42, textAlign: 'center' }}>
                 Off
               </th>
               <th rowSpan={2} className="sticky-corner-stat sticky-col-leaves" style={{ background: 'var(--header-bg)', color: '#fde68a', width: 42, minWidth: 42, textAlign: 'center' }}>
@@ -242,14 +242,30 @@ export default function RosterGrid(p: RosterGridProps) {
                     <td className="sticky-col-idx tabular-nums" style={{ background: 'var(--surface-muted)', color: 'var(--text-secondary)', textAlign: 'center', fontSize: 10.5, fontWeight: 600 }}>
                       {rIdx + 1}
                     </td>
-                    <td className="sticky-col-name" style={{ background: o.id === p.operatorId ? 'rgba(3, 105, 161, 0.08)' : 'var(--surface)', padding: '3px 8px', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                      <div style={{ color: 'var(--text)' }}>
+                    <td
+                      className="sticky-col-name"
+                      title={o.position ? `${o.full_name} — ${o.position}` : o.full_name}
+                      style={{
+                        background: o.id === p.operatorId ? 'rgba(3, 105, 161, 0.08)' : 'var(--surface)',
+                        padding: '3px 8px',
+                        fontWeight: 600,
+                        whiteSpace: 'nowrap',
+                        maxWidth: 205,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      <div style={{ color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {o.full_name}
                         {o.id === p.operatorId && (
                           <span style={{ marginLeft: 5, fontSize: 10.5, fontWeight: 700, color: 'var(--accent)' }}>(Me)</span>
                         )}
                       </div>
-                      {o.position && <div style={{ fontSize: 10.5, fontWeight: 400, color: 'var(--text-secondary)' }}>{o.position}</div>}
+                      {o.position && (
+                        <div style={{ fontSize: 10.5, fontWeight: 400, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {o.position}
+                        </div>
+                      )}
                     </td>
 
                     {p.days.map((d, cIdx) => {
@@ -281,7 +297,7 @@ export default function RosterGrid(p: RosterGridProps) {
                       if (effShift && !isOffArea) hrs += Number(effShift.duration_hours ?? 0);
 
                       const bg = isOffArea
-                        ? (offShift?.background_color ?? (s?.is_off ? s.background_color : '#f8fafc'))
+                        ? (offShift?.background_color ?? (s?.is_off ? s.background_color : 'var(--surface-muted)'))
                         : (s?.background_color ?? (sb ? 'var(--violet-bg)' : d.isWeekend ? 'var(--surface-muted)' : 'var(--surface)'));
                       const fg = isOffArea
                         ? (a?.text_color ?? offShift?.text_color ?? 'var(--text)')
@@ -483,7 +499,7 @@ export default function RosterGrid(p: RosterGridProps) {
                     {cnt}
                   </td>
                 ))}
-                <td colSpan={5} style={{ position: 'sticky', bottom: 0, zIndex: 20, background: 'var(--surface-muted)', borderTop: '2px solid var(--border)' }} />
+                <td colSpan={5} style={{ position: 'sticky', bottom: 0, right: 0, zIndex: 30, background: 'var(--surface-muted)', borderTop: '2px solid var(--border)' }} />
               </tr>
             </tfoot>
           )}

@@ -89,7 +89,7 @@ export default function LeakRepairFields({
       </div>
 
       {/* Pipe Spec & Cause */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, alignItems: 'end' }}>
         <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
           Pipe / Valve Size &amp; Spec
           <input
@@ -171,7 +171,7 @@ export default function LeakRepairFields({
             </div>
 
             {leak.faultAttribution === 'third_party' && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, alignItems: 'end' }}>
                 <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
                   Responsible Party / Customer Name
                   <input
@@ -238,7 +238,7 @@ export default function LeakRepairFields({
 
             {leak.openingShape === 'circular' ? (
               <div style={{ display: 'grid', gap: 5 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, alignItems: 'end' }}>
                   <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
                     Damage Diameter d (mm)
                     <input
@@ -292,11 +292,9 @@ export default function LeakRepairFields({
                     <button
                       key={preset.mm}
                       type="button"
-                      className="btn"
+                      className="btn btn-xs"
                       onClick={() => patchLeak({ diameterMm: preset.mm })}
                       style={{
-                        minHeight: 24,
-                        padding: '1px 7px',
                         fontSize: 11,
                         fontWeight: leak.diameterMm === preset.mm ? 700 : 500,
                         background: leak.diameterMm === preset.mm ? 'var(--info-bg)' : 'var(--surface)',
@@ -309,7 +307,7 @@ export default function LeakRepairFields({
                 </div>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, alignItems: 'end' }}>
                 <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
                   Crack Length L (mm)
                   <input
@@ -386,7 +384,7 @@ export default function LeakRepairFields({
               </label>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, alignItems: 'end' }}>
               <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
                 Leak Reported Time
                 <input
@@ -460,7 +458,6 @@ export default function LeakRepairFields({
           <button
             type="button"
             className="btn btn-add btn-sm"
-            style={{ minHeight: 36 }}
             onClick={() =>
               setFields((prev) => ({
                 ...prev,
@@ -485,15 +482,15 @@ export default function LeakRepairFields({
                 borderRadius: 8,
                 border: '1px solid var(--border-light)',
                 background: 'var(--surface-muted)',
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                display: 'flex',
+                flexWrap: 'wrap',
                 gap: 6,
                 alignItems: 'center',
               }}
             >
               <input
                 className="input"
-                style={{ gridColumn: '1 / -1' }}
+                style={{ flex: '2 1 220px', minWidth: 0 }}
                 placeholder="Material description (e.g. 2&quot; GI Coupling)"
                 value={m.item}
                 onChange={(e) =>
@@ -507,6 +504,7 @@ export default function LeakRepairFields({
               />
               <input
                 className="input"
+                style={{ flex: '0 1 88px', minWidth: 72 }}
                 placeholder="Qty"
                 value={m.qty}
                 onChange={(e) =>
@@ -521,6 +519,7 @@ export default function LeakRepairFields({
               <select
                 className="input"
                 aria-label="Material unit"
+                style={{ flex: '0 1 112px', minWidth: 96 }}
                 value={unitVal}
                 onChange={(e) =>
                   setFields((prev) => ({
@@ -542,7 +541,7 @@ export default function LeakRepairFields({
                 type="button"
                 className="btn btn-sm btn-danger-soft"
                 aria-label={`Remove material ${idx + 1}`}
-                style={{ minHeight: 36 }}
+                style={{ flexShrink: 0 }}
                 onClick={() =>
                   setFields((prev) => ({
                     ...prev,

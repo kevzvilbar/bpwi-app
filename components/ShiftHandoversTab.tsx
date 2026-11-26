@@ -98,7 +98,7 @@ export default function ShiftHandoversTab({
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 14, alignItems: 'start' }}>
-      <div style={{ display: 'grid', gap: 12 }}>
+      <div style={{ display: 'grid', gap: 12, position: 'sticky', top: 68 }}>
         {/* Daily Huddle Brief Card */}
         <div className="card" style={{ padding: 14, display: 'grid', gap: 10 }}>
           <strong style={{ fontSize: 15 }}>Daily Operations Huddle Brief ({date})</strong>
@@ -121,7 +121,7 @@ export default function ShiftHandoversTab({
         {canLogHandover && (
           <form className="card" onSubmit={handleSaveHandover} style={{ padding: 14, display: 'grid', gap: 10 }}>
             <strong style={{ fontSize: 14.5 }}>Log Shift Handover Note</strong>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 8 }}>
+            <div className="grid-2" style={{ gap: 8, alignItems: 'end' }}>
               <label style={{ display: 'grid', gap: 3, fontSize: 12, fontWeight: 600 }}>
                 Station / Area
                 <select className="input" value={hoAreaId} onChange={(e) => setHoAreaId(e.target.value)}>
@@ -184,9 +184,11 @@ export default function ShiftHandoversTab({
                 <span>Log as sample (auto-deletes in 24h)</span>
               </label>
             )}
-            <button type="submit" className="btn btn-primary" disabled={savingHo}>
-              {savingHo ? 'Saving Handover…' : 'Save Handover Entry'}
-            </button>
+            <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+              <button type="submit" className="btn btn-primary" style={{ justifySelf: 'start' }} disabled={savingHo}>
+                {savingHo ? 'Saving Handover…' : 'Save Handover Entry'}
+              </button>
+            </div>
           </form>
         )}
       </div>

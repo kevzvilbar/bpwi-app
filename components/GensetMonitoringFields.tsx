@@ -122,7 +122,7 @@ export default function GensetMonitoringFields({ fields, setFields }: GensetMoni
       </div>
 
       {/* Section 1: Exercise Run & Fuel Level */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 8, alignItems: 'end' }}>
         <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
           Run Cause
           <select
@@ -135,7 +135,7 @@ export default function GensetMonitoringFields({ fields, setFields }: GensetMoni
             <option value="Power Outage">Power Outage</option>
           </select>
         </label>
-        <label style={{ display: 'grid', gap: 3, fontSize: 12, gridColumn: '1 / -1' }}>
+        <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
           Exercise / Run Mode
           <select
             className="input"
@@ -163,8 +163,8 @@ export default function GensetMonitoringFields({ fields, setFields }: GensetMoni
                     type="button"
                     onClick={() => patchGenset({ runDurationMin: String(m) })}
                     style={{
-                      minHeight: 32,
-                      padding: '4px 8px',
+                      minHeight: 24,
+                      padding: '2px 7px',
                       fontSize: 11,
                       fontWeight: 700,
                       borderRadius: 4,
@@ -239,7 +239,7 @@ export default function GensetMonitoringFields({ fields, setFields }: GensetMoni
       )}
 
       {/* Section 2: Fluid Levels & Battery */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+      <div className="grid-2" style={{ gap: 8, alignItems: 'end' }}>
         <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
           Engine Oil Level
           <select
@@ -296,7 +296,7 @@ export default function GensetMonitoringFields({ fields, setFields }: GensetMoni
       </div>
 
       {/* Section 3: Mechanical / Exhaust Observations & Optional Output */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, alignItems: 'end' }}>
         <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
           Leaks Observed
           <select
@@ -339,6 +339,8 @@ export default function GensetMonitoringFields({ fields, setFields }: GensetMoni
             ))}
           </select>
         </label>
+      </div>
+      <div className="grid-2" style={{ gap: 8, alignItems: 'end' }}>
         <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
           Output Voltage (V, opt.)
           <input

@@ -266,7 +266,7 @@ export default function Setup(p: {
   const headOptions = (p.people ?? []).filter((x) => x.is_active && (x.role === 'manager' || x.role === 'admin'));
 
   return (
-    <div style={{ padding: 14 }}>
+    <div style={{ padding: 14, maxWidth: 1440, margin: '0 auto' }}>
       <h1 className="page-title" style={{ marginBottom: 10 }}>
         Operators, Users &amp; Setup
       </h1>
@@ -475,9 +475,9 @@ export default function Setup(p: {
       </div>
 
       {/* Desktop Table (> 640px) */}
-      <div className="card responsive-table-wrap" style={{ overflow: 'auto' }}>
+      <div className="card responsive-table-wrap" style={{ overflow: 'auto', maxHeight: '70vh' }}>
         {tab === 'operators' && (
-          <table className="data-table">
+          <table className="data-table data-table-sticky">
             <thead>
               <tr>
                 {['#', 'Full name', 'Position', 'Phone', 'Default station', 'Assigned Head', 'Active', ''].map((h) => (
@@ -493,20 +493,20 @@ export default function Setup(p: {
                   <td style={{ ...cell, width: 64 }}>
                     <input style={inp} type="number" value={o.sort_order} onChange={(e) => upd(setOps, i, { sort_order: +e.target.value })} />
                   </td>
-                  <td style={cell}>
+                  <td style={{ ...cell, minWidth: 160 }}>
                     <input style={inp} value={o.full_name} onChange={(e) => upd(setOps, i, { full_name: e.target.value })} />
                   </td>
-                  <td style={cell}>
+                  <td style={{ ...cell, minWidth: 130 }}>
                     <input style={inp} value={o.position ?? ''} onChange={(e) => upd(setOps, i, { position: e.target.value })} />
                   </td>
-                  <td style={cell}>
+                  <td style={{ ...cell, minWidth: 120 }}>
                     <input style={inp} value={o.phone_number ?? ''} onChange={(e) => upd(setOps, i, { phone_number: e.target.value })} />
                   </td>
-                  <td style={cell}>
+                  <td style={{ ...cell, minWidth: 90 }}>
                     <input style={inp} value={o.default_station ?? ''} onChange={(e) => upd(setOps, i, { default_station: e.target.value })} />
                   </td>
                   <td style={cell}>
-                    <select style={inp} value={o.department_head_id ?? ''} onChange={(e) => upd(setOps, i, { department_head_id: e.target.value || null })}>
+                    <select style={{ ...inp, maxWidth: 210 }} value={o.department_head_id ?? ''} onChange={(e) => upd(setOps, i, { department_head_id: e.target.value || null })}>
                       <option value="">— Unassigned —</option>
                       {headOptions.map((h) => (
                         <option key={h.id} value={h.id}>{h.full_name ?? h.id}{h.job_title ? ` (${h.job_title})` : ''}</option>

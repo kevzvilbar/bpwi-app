@@ -31,15 +31,15 @@ const SECTION_STYLE: React.CSSProperties = {
   padding: 10,
   display: 'grid',
   gap: 8,
-  background: 'var(--bg-surface)',
-  borderColor: 'var(--border-subtle)',
+  background: 'var(--surface)',
+  borderColor: 'var(--border-light)',
 };
 
 const SUBHEADER_STYLE: React.CSSProperties = {
   fontSize: 11.5,
   fontWeight: 700,
   color: 'var(--text-secondary)',
-  borderTop: '1px solid var(--border-subtle)',
+  borderTop: '1px solid var(--border-light)',
   paddingTop: 6,
 };
 
@@ -54,6 +54,7 @@ const GRID_3_STYLE: React.CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
   gap: 8,
+  alignItems: 'end',
 };
 
 const SPEC_PAIRS: ReadonlyArray<readonly [StringFieldKey, StringFieldKey]> = [
@@ -161,10 +162,18 @@ export default function WellPulloutFields({
     keys: readonly [StringFieldKey, StringFieldKey, StringFieldKey],
     labels: readonly [string, string, string],
     placeholders?: readonly [string, string, string],
+    compactCols = false,
   ) => (
     <div style={{ display: 'grid', gap: 4 }}>
-      <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-primary)' }}>{title}</span>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(105px, 1fr))', gap: 6 }}>
+      <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text)' }}>{title}</span>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: compactCols ? 'repeat(3, minmax(0, 1fr))' : 'repeat(auto-fit, minmax(105px, 1fr))',
+          gap: 6,
+          alignItems: 'end',
+        }}
+      >
         {keys.map((k, idx) => (
           <label key={k} style={LABEL_STYLE}>
             {labels[idx]}
@@ -250,7 +259,7 @@ export default function WellPulloutFields({
     <div style={{ display: 'grid', gap: 10 }}>
       {/* Section 1 */}
       <div className="card" style={{ ...SECTION_STYLE, borderColor: 'var(--accent)' }}>
-        <strong style={{ fontSize: 12, color: 'var(--text-primary)' }}>
+        <strong style={{ fontSize: 12, color: 'var(--text)' }}>
           1. To Be Filled Up By Contractor / Site Coordinator
         </strong>
         <div style={GRID_3_STYLE}>
@@ -268,7 +277,7 @@ export default function WellPulloutFields({
 
       {/* Section 2 */}
       <div className="card" style={SECTION_STYLE}>
-        <strong style={{ fontSize: 12, color: 'var(--text-primary)' }}>
+        <strong style={{ fontSize: 12, color: 'var(--text)' }}>
           2. Before Pull Out of Pump and Motor
         </strong>
         <div style={GRID_3_STYLE}>
@@ -300,10 +309,10 @@ export default function WellPulloutFields({
 
       {/* Section 3 */}
       <div className="card" style={SECTION_STYLE}>
-        <strong style={{ fontSize: 12, color: 'var(--text-primary)' }}>
+        <strong style={{ fontSize: 12, color: 'var(--text)' }}>
           3. After Pull Out of Pump and Motor
         </strong>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 8, alignItems: 'end' }}>
           {renderInputs([
             { key: 'afterPulloutTime', label: 'Time Completed (Pull-Out)', type: 'time' },
             { key: 'afterPulloutRemarks', label: 'Remarks', placeholder: 'e.g. MOTOR IN GOOD CONDITION. PUMP FOR REPLACEMENT.' },
@@ -349,7 +358,7 @@ export default function WellPulloutFields({
 
       {/* Section 4 */}
       <div className="card" style={SECTION_STYLE}>
-        <strong style={{ fontSize: 12, color: 'var(--text-primary)' }}>
+        <strong style={{ fontSize: 12, color: 'var(--text)' }}>
           4. Before Installation Pump and Motor
         </strong>
         <div style={GRID_3_STYLE}>
@@ -360,7 +369,7 @@ export default function WellPulloutFields({
           ])}
         </div>
         <div style={SUBHEADER_STYLE}>Installed Pump &amp; Motor Details</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, fontSize: 11.5, color: 'var(--text-primary)' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, fontSize: 11.5, color: 'var(--text)' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
             <input
               type="checkbox"
@@ -435,20 +444,23 @@ export default function WellPulloutFields({
           {renderEquipStatus('Motor Status', 'installMotorStatus')}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10 }}>
-          <div style={{ display: 'grid', gap: 6, padding: 8, borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
+          <div style={{ display: 'grid', gap: 6, padding: 8, borderRadius: 8, border: '1px solid var(--border-light)' }}>
             {renderTriplet(
               'Before Splicing IR (≥ 100 MΩ)',
               ['motorIrBeforeSpliceL1', 'motorIrBeforeSpliceL2', 'motorIrBeforeSpliceL3'],
               ['(L1) MΩ', '(L2) MΩ', '(L3) MΩ'],
+              undefined,
+              true,
             )}
             {autoBadge(accept.beforeSplice, accept.beforeSplice === 'OK')}
           </div>
-          <div style={{ display: 'grid', gap: 6, padding: 8, borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
+          <div style={{ display: 'grid', gap: 6, padding: 8, borderRadius: 8, border: '1px solid var(--border-light)' }}>
             {renderTriplet(
               'After Splicing IR (≥ 2 MΩ)',
               ['splicedIrL1', 'splicedIrL2', 'splicedIrL3'],
               ['(L1) MΩ', '(L2) MΩ', '(L3) MΩ'],
               ['30.63', '30.13', '31.66'],
+              true,
             )}
             {autoBadge(accept.afterSplice, accept.afterSplice === 'OK')}
           </div>
@@ -462,8 +474,8 @@ export default function WellPulloutFields({
 
       {/* Section 5 */}
       <div className="card" style={SECTION_STYLE}>
-        <strong style={{ fontSize: 12, color: 'var(--text-primary)' }}>5. After Installation</strong>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 8 }}>
+        <strong style={{ fontSize: 12, color: 'var(--text)' }}>5. After Installation</strong>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 8, alignItems: 'end' }}>
           {renderInputs([
             { key: 'afterInstallTime', label: 'Time Tested (Post-Install)', type: 'time' },
             { key: 'afterInstallRemarks', label: 'Remarks', placeholder: 'e.g. ALL GOOD. NO LEAKS AFTER ACTIVITY COMPLETION.' },
@@ -508,7 +520,7 @@ export default function WellPulloutFields({
             gap: 8,
             fontSize: 11.5,
             fontWeight: 600,
-            color: 'var(--text-primary)',
+            color: 'var(--text)',
             paddingTop: 4,
             cursor: 'pointer',
           }}
@@ -543,7 +555,7 @@ export default function WellPulloutFields({
 
       {/* Section 6 & 7 */}
       <div className="card" style={SECTION_STYLE}>
-        <strong style={{ fontSize: 12, color: 'var(--text-primary)' }}>
+        <strong style={{ fontSize: 12, color: 'var(--text)' }}>
           6. Results of Operation &amp; 7. Over All Remarks / Signatories
         </strong>
         <div style={GRID_3_STYLE}>

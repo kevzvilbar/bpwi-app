@@ -203,7 +203,7 @@ export function RosterProposeBar({
         </button>
         <button
           type="button"
-          className="btn btn-outline"
+          className="btn"
           onClick={onDiscard}
           style={{ padding: '6px 12px', fontSize: 12.5, color: 'var(--danger)' }}
         >
@@ -261,7 +261,7 @@ export function RosterSubmitProposalModal({
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
           <button
             type="button"
-            className="btn btn-outline"
+            className="btn"
             disabled={isSubmitting}
             onClick={onCancel}
             style={{ padding: '6px 14px', fontSize: 12.5 }}

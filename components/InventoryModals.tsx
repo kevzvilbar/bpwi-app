@@ -189,7 +189,7 @@ export function StockMovementModal(p: StockMovementModalProps) {
       <div className="modal-sheet" role="dialog" aria-modal="true" aria-label="Record stock movement" onClick={(e) => e.stopPropagation()}>
         <h3 style={{ margin: '0 0 10px' }}>Record Stock Movement</h3>
         <form onSubmit={(e) => void submit(e)} style={{ display: 'grid', gap: 10 }}>
-          <label style={{ fontSize: 12, fontWeight: 600 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, display: 'grid', gap: 4 }}>
             Action
             <select
               className="input"
@@ -204,7 +204,7 @@ export function StockMovementModal(p: StockMovementModalProps) {
           </label>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 8 }}>
-            <label style={{ fontSize: 12, fontWeight: 600 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, display: 'grid', gap: 4 }}>
               {action === 'transfer' ? 'From Site / Well' : 'Well / Pump Site'}
               <input
                 className="input"
@@ -217,7 +217,7 @@ export function StockMovementModal(p: StockMovementModalProps) {
               />
             </label>
             {action === 'transfer' && (
-              <label style={{ fontSize: 12, fontWeight: 600 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, display: 'grid', gap: 4 }}>
                 To Site / Well
                 <input
                   className="input"
@@ -230,7 +230,7 @@ export function StockMovementModal(p: StockMovementModalProps) {
                 />
               </label>
             )}
-            <label style={{ fontSize: 12, fontWeight: 600 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, display: 'grid', gap: 4 }}>
               Consumable Item
               <select
                 className="input"
@@ -268,7 +268,7 @@ export function StockMovementModal(p: StockMovementModalProps) {
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, minWidth: 0 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, minWidth: 0, display: 'grid', gap: 4 }}>
               {action === 'adjustment'
                 ? `Physical Count (${selectedItem?.unit ?? ''})`
                 : `Quantity (${selectedItem?.unit ?? ''})`}
@@ -284,7 +284,7 @@ export function StockMovementModal(p: StockMovementModalProps) {
                 required
               />
             </label>
-            <label style={{ fontSize: 12, fontWeight: 600, minWidth: 0 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, minWidth: 0, display: 'grid', gap: 4 }}>
               Date
               <input
                 className="input"
@@ -298,7 +298,7 @@ export function StockMovementModal(p: StockMovementModalProps) {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, minWidth: 0 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, minWidth: 0, display: 'grid', gap: 4 }}>
               DR / Receipt # (optional)
               <input
                 className="input"
@@ -308,7 +308,7 @@ export function StockMovementModal(p: StockMovementModalProps) {
                 placeholder="DR-2026-001"
               />
             </label>
-            <label style={{ fontSize: 12, fontWeight: 600, minWidth: 0 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, minWidth: 0, display: 'grid', gap: 4 }}>
               Notes (optional)
               <input
                 className="input"
@@ -418,7 +418,7 @@ export function ConsumableItemModal(p: ConsumableItemModalProps) {
       <div className="modal-sheet" role="dialog" aria-modal="true" aria-label={p.editing ? 'Edit consumable item' : 'Add consumable item'} onClick={(e) => e.stopPropagation()}>
         <h3 style={{ margin: '0 0 10px' }}>{p.editing ? 'Edit Consumable Item' : 'Add Consumable Item'}</h3>
         <form onSubmit={(e) => void submit(e)} style={{ display: 'grid', gap: 10 }}>
-          <label style={{ fontSize: 12, fontWeight: 600 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, display: 'grid', gap: 4 }}>
             Item Name
             <input
               className="input"
@@ -430,7 +430,7 @@ export function ConsumableItemModal(p: ConsumableItemModalProps) {
             />
           </label>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, minWidth: 0 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, minWidth: 0, display: 'grid', gap: 4 }}>
               Category
               <select
                 className="input"
@@ -443,7 +443,7 @@ export function ConsumableItemModal(p: ConsumableItemModalProps) {
                 ))}
               </select>
             </label>
-            <label style={{ fontSize: 12, fontWeight: 600, minWidth: 0 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, minWidth: 0, display: 'grid', gap: 4 }}>
               Unit
               <input
                 className="input"
@@ -461,7 +461,7 @@ export function ConsumableItemModal(p: ConsumableItemModalProps) {
               <option key={u} value={u} />
             ))}
           </datalist>
-          <label style={{ fontSize: 12, fontWeight: 600 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, display: 'grid', gap: 4 }}>
             Low-Stock Alert Threshold (per site, 0 = none)
             <input
               className="input"
