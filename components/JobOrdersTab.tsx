@@ -19,6 +19,8 @@ import {
   JOB_ORDER_SLA_STANDARDS,
 } from '@/lib/job-order-sla';
 import { JOB_ORDER_COLUMNS } from '@/lib/query-columns';
+import { getErrorMessage, isNetworkErrorMessage } from '@/lib/error-utils';
+import { enqueueOfflineMutation } from '@/lib/offline-queue';
 import { Badge, EmptyState, SegmentedTabs } from '@/components/ui';
 import { SampleBadge } from '@/components/SampleBadge';
 import { canEditLogRow } from '@/lib/sample-logs';
@@ -178,7 +180,6 @@ export default function JobOrdersTab({
       onBannerMsg('Department heads can only change sample job orders; real job orders are read-only.');
       return;
     }
-    const sb = supabaseBrowser();
     const updates: {
       status: JobOrderRow['status'];
       completed_at: string | null;
@@ -188,17 +189,57 @@ export default function JobOrdersTab({
       completed_at: nextStatus === 'completed' ? new Date().toISOString() : null,
       ...(tatJustification !== undefined ? { tat_justification: tatJustification } : {}),
     };
-    const { data, error } = await sb
-      .from('job_orders')
-      .update(updates)
-      .eq('id', jo.id)
-      .select(JOB_ORDER_COLUMNS)
-      .single();
-    if (error) {
-      onBannerMsg(`Update failed: ${error.message}`);
+
+    const queueJoOffline = async () => {
+      await enqueueOfflineMutation({
+        kind: 'job_order_status',
+        targetId: jo.id,
+        expectedUpdatedAt: jo.updated_at,
+        ownerUserId: userId,
+        payload: {
+          joNumber: jo.jo_number,
+          ...updates,
+        },
+      });
+      onJobOrderUpdated({
+        ...jo,
+        status: updates.status,
+        completed_at: updates.completed_at,
+        ...(updates.tat_justification !== undefined ? { tat_justification: updates.tat_justification } : {}),
+      });
+      onBannerMsg(`Saved offline — ${jo.jo_number} update will sync when signal returns.`);
+    };
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      await queueJoOffline();
       return;
     }
-    onJobOrderUpdated(data as unknown as JobOrderRow);
+
+    try {
+      const sb = supabaseBrowser();
+      const { data, error } = await sb
+        .from('job_orders')
+        .update(updates)
+        .eq('id', jo.id)
+        .select(JOB_ORDER_COLUMNS)
+        .single();
+      if (error) {
+        if (isNetworkErrorMessage(error.message)) {
+          await queueJoOffline();
+          return;
+        }
+        onBannerMsg(`Update failed: ${error.message}`);
+        return;
+      }
+      onJobOrderUpdated(data as unknown as JobOrderRow);
+    } catch (err: unknown) {
+      const message = getErrorMessage(err, 'Update failed');
+      if ((typeof navigator !== 'undefined' && !navigator.onLine) || isNetworkErrorMessage(message)) {
+        await queueJoOffline();
+        return;
+      }
+      onBannerMsg(`Update failed: ${message}`);
+    }
   }
 
   async function confirmOverdueCompletion(e: React.FormEvent) {

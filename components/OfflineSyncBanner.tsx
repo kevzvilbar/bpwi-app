@@ -4,23 +4,29 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { classifySyncError } from '@/lib/error-utils';
 import {
+  flushOfflineMutations,
   flushOfflineQueue,
   flushOfflineReports,
+  getOfflineMutations,
   getOfflineQueue,
   getOfflineReports,
   removeOfflineItem,
+  removeOfflineMutation,
   removeOfflineReport,
   retrySingleOfflineActivity,
+  retrySingleOfflineMutation,
   retrySingleOfflineReport,
   type PendingOfflineActivity,
+  type PendingOfflineMutation,
   type PendingOfflineReport,
 } from '@/lib/offline-queue';
-import { describeQueuedActivity, describeQueuedReport } from '@/lib/offline-sync-core';
+import { describeQueuedActivity, describeQueuedMutation, describeQueuedReport } from '@/lib/offline-sync-core';
 
 export default function OfflineSyncBanner({ userId }: { userId?: string }) {
   const [online, setOnline] = useState<boolean>(true);
   const [acts, setActs] = useState<PendingOfflineActivity[]>([]);
   const [reps, setReps] = useState<PendingOfflineReport[]>([]);
+  const [muts, setMuts] = useState<PendingOfflineMutation[]>([]);
   const [syncing, setSyncing] = useState<boolean>(false);
   const [busyItemId, setBusyItemId] = useState<string | null>(null);
   const [confirmDiscardId, setConfirmDiscardId] = useState<string | null>(null);
@@ -31,10 +37,15 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
   const syncingRef = useRef<boolean>(false);
 
   const refreshQueue = useCallback(async () => {
-    const [nextActs, nextReps] = await Promise.all([getOfflineQueue(userId), getOfflineReports(userId)]);
+    const [nextActs, nextReps, nextMuts] = await Promise.all([
+      getOfflineQueue(userId),
+      getOfflineReports(userId),
+      getOfflineMutations(userId),
+    ]);
     setActs(nextActs);
     setReps(nextReps);
-    const total = nextActs.length + nextReps.length;
+    setMuts(nextMuts);
+    const total = nextActs.length + nextReps.length + nextMuts.length;
     if (total === 0) {
       setDetailsOpen(false);
       setConfirmDiscardId(null);
@@ -47,17 +58,19 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
     setSyncing(true);
     setStatusNote(null);
     const sb = supabaseBrowser();
-    const [actRes, repRes] = await Promise.all([
+    const [actRes, repRes, mutRes] = await Promise.all([
       flushOfflineQueue(sb, userId),
       flushOfflineReports(sb, userId),
+      flushOfflineMutations(sb, userId),
     ]);
     await refreshQueue();
     setSyncing(false);
 
-    const totalSynced = actRes.synced.length + repRes.synced;
-    const totalFailed = actRes.failed + repRes.failed;
+    const totalSynced = actRes.synced.length + repRes.synced + mutRes.synced;
+    const totalFailed = actRes.failed + repRes.failed + mutRes.failed;
     if (totalFailed > 0) {
-      const firstErr = actRes.errors[0]?.message ?? repRes.errors[0]?.message ?? 'Sync failed';
+      const firstErr =
+        actRes.errors[0]?.message ?? repRes.errors[0]?.message ?? mutRes.errors[0]?.message ?? 'Sync failed';
       const errKind = classifySyncError(firstErr);
       if (errKind === 'auth') {
         setStatusNote({
@@ -93,8 +106,8 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
   }, [refreshQueue, userId]);
 
   useEffect(() => {
-    totalQueuedRef.current = acts.length + reps.length;
-  }, [acts.length, reps.length]);
+    totalQueuedRef.current = acts.length + reps.length + muts.length;
+  }, [acts.length, reps.length, muts.length]);
 
   useEffect(() => {
     syncingRef.current = syncing;
@@ -143,9 +156,12 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
 
   const actCount = acts.length;
   const repCount = reps.length;
-  const totalQueued = actCount + repCount;
+  const mutCount = muts.length;
+  const totalQueued = actCount + repCount + mutCount;
   const failedCount =
-    acts.filter((a) => Boolean(a.lastError)).length + reps.filter((r) => Boolean(r.lastError)).length;
+    acts.filter((a) => Boolean(a.lastError)).length +
+    reps.filter((r) => Boolean(r.lastError)).length +
+    muts.filter((m) => Boolean(m.lastError)).length;
 
   if (online && totalQueued === 0 && !statusNote) return null;
 
@@ -183,10 +199,24 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
     }
   }
 
-  async function discardItem(kind: 'activity' | 'report', queueId: string) {
+  async function retryMutation(item: PendingOfflineMutation) {
+    setBusyItemId(item.queueId);
+    const res = await retrySingleOfflineMutation(supabaseBrowser(), item);
+    await refreshQueue();
+    setBusyItemId(null);
+    if (res.ok) {
+      setStatusNote({ kind: 'ok', text: 'Synced queued update.' });
+      setTimeout(() => setStatusNote(null), 3500);
+    } else if (res.error) {
+      setStatusNote({ kind: 'err', text: `Retry failed: ${res.error}` });
+    }
+  }
+
+  async function discardItem(kind: 'activity' | 'report' | 'mutation', queueId: string) {
     setBusyItemId(queueId);
     if (kind === 'activity') await removeOfflineItem(queueId);
-    else await removeOfflineReport(queueId);
+    else if (kind === 'report') await removeOfflineReport(queueId);
+    else await removeOfflineMutation(queueId);
     setConfirmDiscardId(null);
     await refreshQueue();
     setBusyItemId(null);
@@ -217,7 +247,7 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
         <span>
           {!online ? (
             <>
-              <strong>Offline Mode:</strong> No internet signal. Field logs &amp; reports will queue on this device
+              <strong>Offline Mode:</strong> No internet signal. Field logs, reports, PM updates &amp; handovers will queue on this device
               {totalQueued > 0 ? ` (${totalQueued} waiting)` : ''}.
             </>
           ) : failedCount > 0 ? (
@@ -232,7 +262,8 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
             <>
               <strong>{totalQueued} queued offline</strong>
               {actCount > 0 ? ` · ${actCount} activit${actCount === 1 ? 'y' : 'ies'}` : ''}
-              {repCount > 0 ? ` · ${repCount} report${repCount === 1 ? '' : 's'}` : ''} ready to sync.
+              {repCount > 0 ? ` · ${repCount} report${repCount === 1 ? '' : 's'}` : ''}
+              {mutCount > 0 ? ` · ${mutCount} field update${mutCount === 1 ? '' : 's'}` : ''} ready to sync.
             </>
           ) : (
             <strong>{statusNote?.text}</strong>
@@ -412,6 +443,84 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
                           fontSize: 12,
                         }}
                         onClick={() => void discardItem('report', item.queueId)}
+                      >
+                        Confirm discard
+                      </button>
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={busy}
+                        style={{ minHeight: 36, padding: '3px 9px', fontSize: 12 }}
+                        onClick={() => setConfirmDiscardId(null)}
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={busy}
+                      style={{ minHeight: 36, padding: '3px 9px', fontSize: 12, color: 'var(--danger)' }}
+                      onClick={() => setConfirmDiscardId(item.queueId)}
+                    >
+                      Discard
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {muts.map((item) => {
+            const meta = describeQueuedMutation(item.kind, item.payload);
+            const busy = syncing || busyItemId === item.queueId;
+            return (
+              <div
+                key={item.queueId}
+                style={{
+                  background: 'var(--surface)',
+                  color: 'var(--text)',
+                  border: `1px solid ${item.lastError ? 'var(--danger-border)' : 'var(--border-light)'}`,
+                  borderRadius: 8,
+                  padding: '8px 10px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 10,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ display: 'grid', gap: 2, minWidth: 0, flex: '1 1 220px' }}>
+                  <div style={{ fontWeight: 700, fontSize: 12.5 }}>{meta.title}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{meta.subtitle}</div>
+                  {item.lastError && (
+                    <div style={{ fontSize: 11.5, color: 'var(--danger)', fontWeight: 600 }}>
+                      Sync error{item.attempts ? ` (attempt ${item.attempts})` : ''}: {item.lastError}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  {online && (
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={busy}
+                      style={{ minHeight: 36, padding: '3px 9px', fontSize: 12 }}
+                      onClick={() => void retryMutation(item)}
+                    >
+                      {busyItemId === item.queueId ? 'Retrying…' : 'Retry'}
+                    </button>
+                  )}
+                  {confirmDiscardId === item.queueId ? (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-danger-soft"
+                        disabled={busy}
+                        style={{ minHeight: 36, padding: '3px 9px', fontSize: 12 }}
+                        onClick={() => void discardItem('mutation', item.queueId)}
                       >
                         Confirm discard
                       </button>

@@ -10,7 +10,8 @@ import MobileActivitiesAndSchedule, { type MobileArea, type MobileOp, type Mobil
 import MobileTaskCard, { type MobileActType, type MobileTask } from '@/components/MobileTaskCard';
 import { ACTIVITY_BY_ID, type DailyActivityRow } from '@/lib/activity-types';
 import { manilaToday } from '@/lib/date';
-import { enqueueOfflineActivity } from '@/lib/offline-queue';
+import { isNetworkErrorMessage } from '@/lib/error-utils';
+import { enqueueOfflineActivity, enqueueOfflineMutation, saveFieldReferenceSnapshot } from '@/lib/offline-queue';
 import { buildPmActualPerformerIds, isMissingCompletedByColumnError } from '@/lib/pm-credit';
 import { AlertBanner, Badge, SegmentedTabs } from '@/components/ui';
 
@@ -84,6 +85,7 @@ export default function MobileView(p: {
   tasks: MobileTask[];
   activityTypes: MobileActType[];
   initialActivities?: DailyActivityRow[];
+  disableSnapshotSave?: boolean;
   error: string;
 }) {
   const router = useRouter();
@@ -184,6 +186,37 @@ export default function MobileView(p: {
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
+
+  useEffect(() => {
+    if (p.disableSnapshotSave) return;
+    if (!p.userId || !p.orgId || p.error || !online) return;
+    void saveFieldReferenceSnapshot({
+      userId: p.userId,
+      orgId: p.orgId,
+      role: p.role,
+      operatorId: p.operatorId,
+      canClosePm: p.canClosePm,
+      canLogActivity: Boolean(p.canLogActivity),
+      canLogSampleActivity: Boolean(p.canLogSampleActivity),
+      canVerifyActivity: Boolean(p.canVerifyActivity),
+      savedAt: new Date().toISOString(),
+      snapshotDate: p.date,
+      operators: p.operators,
+      shifts: p.shifts,
+      areas: p.areas,
+      assignments: p.assignments,
+      yesterdayAssignments: p.yesterdayAssignments,
+      standby: p.standby,
+      tasks,
+      activityTypes: p.activityTypes,
+      recentActivities: activities,
+    });
+  }, [
+    p.disableSnapshotSave, p.userId, p.orgId, p.error, online, p.role, p.operatorId,
+    p.canClosePm, p.canLogActivity, p.canLogSampleActivity, p.canVerifyActivity,
+    p.date, p.operators, p.shifts, p.areas, p.assignments, p.yesterdayAssignments,
+    p.standby, tasks, p.activityTypes, activities,
+  ]);
 
   useEffect(() => () => { if (undoTimerRef.current) clearTimeout(undoTimerRef.current); }, []);
 
@@ -294,16 +327,61 @@ export default function MobileView(p: {
     const nextRemarks = opts?.remarks !== undefined ? opts.remarks : remarksDraft[t.id] !== undefined ? remarksDraft[t.id].trim() || null : t.remarks;
     const completedAt = opts?.completedAt !== undefined ? opts.completedAt : nextStatus === 'done' ? p.today : null;
     const nextCompletedByIds = nextStatus === 'done' ? (opts?.completedByIds ?? t.completed_by_operator_ids ?? []) : (opts?.completedByIds ?? []);
-
     const basePayload = { status: nextStatus, completed_at: completedAt, remarks: nextRemarks };
-    const sb = supabaseBrowser();
-    let { error } = await sb.from('pm_tasks').update({ ...basePayload, completed_by_operator_ids: nextCompletedByIds }).eq('id', t.id);
-    if (error && isMissingCompletedByColumnError(error)) {
-      ({ error } = await sb.from('pm_tasks').update(basePayload).eq('id', t.id));
+
+    const queuePmOffline = async () => {
+      await enqueueOfflineMutation({
+        kind: 'pm_task_status',
+        targetId: t.id,
+        expectedStatus: prevStatus,
+        ownerUserId: p.userId,
+        payload: {
+          taskTitle: t.title,
+          ...basePayload,
+          completed_by_operator_ids: nextCompletedByIds,
+        },
+      });
+      setBusyId('');
+      setCompleteModal(null);
+      const optimisticTask: MobileTask = {
+        ...t,
+        status: nextStatus,
+        completed_at: completedAt,
+        completed_by_operator_ids: nextCompletedByIds,
+        remarks: nextRemarks,
+      };
+      setTasks((list) => list.map((x) => (x.id === t.id ? optimisticTask : x)));
+      setMsg('Saved offline — PM task update will sync when signal returns.');
+    };
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      await queuePmOffline();
+      return;
+    }
+
+    let errText = '';
+    try {
+      const sb = supabaseBrowser();
+      let { error } = await sb.from('pm_tasks').update({ ...basePayload, completed_by_operator_ids: nextCompletedByIds }).eq('id', t.id);
+      if (error && isMissingCompletedByColumnError(error)) {
+        ({ error } = await sb.from('pm_tasks').update(basePayload).eq('id', t.id));
+      }
+      if (error) errText = error.message;
+    } catch (err: unknown) {
+      errText = err instanceof Error ? err.message : 'PM task update failed';
+    }
+
+    if (errText) {
+      if ((typeof navigator !== 'undefined' && !navigator.onLine) || isNetworkErrorMessage(errText)) {
+        await queuePmOffline();
+        return;
+      }
+      setBusyId('');
+      setMsg(errText);
+      return;
     }
 
     setBusyId('');
-    if (error) { setMsg(error.message); return; }
     setCompleteModal(null);
     const updatedTask: MobileTask = { ...t, status: nextStatus, completed_at: completedAt, completed_by_operator_ids: nextCompletedByIds, remarks: nextRemarks };
     setTasks((list) => list.map((x) => (x.id === t.id ? updatedTask : x)));

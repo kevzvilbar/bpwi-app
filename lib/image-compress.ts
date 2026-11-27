@@ -88,7 +88,7 @@ export async function uploadActivityPhoto(
   orgId: string,
   file: File,
   opts: { sample?: boolean } = {},
-): Promise<{ url: string; storagePath: string | null; savedBytes: number; uploadError?: string }> {
+): Promise<{ url: string; storagePath: string | null; savedBytes: number; blob?: Blob; uploadError?: string }> {
   const compressed = await compressImageFile(file, 1024, 0.72);
   const ext = compressed.mimeType === 'image/webp' ? 'webp' : 'jpg';
   const rand = Math.random().toString(36).slice(2, 8);
@@ -121,6 +121,7 @@ export async function uploadActivityPhoto(
     url: compressed.dataUrl,
     storagePath: null,
     savedBytes: compressed.savedBytes,
+    blob: compressed.blob,
     uploadError,
   };
 }
@@ -144,7 +145,40 @@ export function dataUrlToBlob(dataUrl: string): Blob {
 }
 
 /**
- * Converts a base64 data URL (e.g. from offline IndexedDB queue) and uploads it to
+ * Uploads a compressed image Blob to Supabase Storage 'activity-media' cleanly and idempotently.
+ */
+export async function uploadBlobPhoto(
+  sb: SupabaseClient,
+  orgId: string,
+  blob: Blob,
+  opts: { fileStem?: string; requireStorage?: boolean; sample?: boolean } = {},
+): Promise<{ url: string; storagePath: string | null }> {
+  const mimeType = blob.type || 'image/jpeg';
+  const ext = mimeType.includes('webp') ? 'webp' : mimeType.includes('png') ? 'png' : 'jpg';
+  const rand = Math.random().toString(36).slice(2, 8);
+  const dateFolder = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
+  const stem = opts.fileStem && /^[A-Za-z0-9_-]+$/.test(opts.fileStem) ? opts.fileStem : `${Date.now()}-${rand}`;
+  const storagePath = `${orgId}/${dateFolder}/${samplePhotoStem(stem, opts.sample)}.${ext}`;
+
+  const { error } = await sb.storage
+    .from(ACTIVITY_MEDIA_BUCKET)
+    .upload(storagePath, blob, {
+      contentType: mimeType,
+      cacheControl: '604800',
+      upsert: false,
+    });
+
+  const already =
+    error && (String((error as { statusCode?: string }).statusCode) === '409' || /already exists|duplicate/i.test(error.message ?? ''));
+  if (!error || already) {
+    return { url: buildActivityPhotoUrl(storagePath), storagePath };
+  }
+  if (opts.requireStorage) throw new Error(error.message || 'Photo upload failed');
+  return { url: '', storagePath: null };
+}
+
+/**
+ * Converts a base64 data URL (e.g. from legacy offline IndexedDB queue items) and uploads it to
  * Supabase Storage 'activity-media' when connectivity returns.
  */
 export async function uploadDataUrlPhoto(
@@ -158,27 +192,10 @@ export async function uploadDataUrlPhoto(
   }
   try {
     const blob = dataUrlToBlob(dataUrl);
-    const mimeType = blob.type || 'image/jpeg';
-    const ext = mimeType.includes('webp') ? 'webp' : mimeType.includes('png') ? 'png' : 'jpg';
-    const rand = Math.random().toString(36).slice(2, 8);
-    const dateFolder = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
-    const stem = opts.fileStem && /^[A-Za-z0-9_-]+$/.test(opts.fileStem) ? opts.fileStem : `${Date.now()}-${rand}`;
-    const storagePath = `${orgId}/${dateFolder}/${samplePhotoStem(stem, opts.sample)}.${ext}`;
-
-    const { error } = await sb.storage
-      .from(ACTIVITY_MEDIA_BUCKET)
-      .upload(storagePath, blob, {
-        contentType: mimeType,
-        cacheControl: '604800',
-        upsert: false,
-      });
-
-    const already =
-      error && (String((error as { statusCode?: string }).statusCode) === '409' || /already exists|duplicate/i.test(error.message ?? ''));
-    if (!error || already) {
-      return { url: buildActivityPhotoUrl(storagePath), storagePath };
+    const res = await uploadBlobPhoto(sb, orgId, blob, opts);
+    if (res.storagePath) {
+      return res;
     }
-    if (opts.requireStorage) throw new Error(error.message || 'Photo upload failed');
   } catch (e) {
     if (opts.requireStorage) throw e instanceof Error ? e : new Error('Photo upload failed');
     /* keep dataUrl fallback if storage is still unreachable */

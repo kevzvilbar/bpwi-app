@@ -10,6 +10,7 @@ import {
   type LinkedPmTask,
 } from '@/lib/activity-types';
 import { calcDurationMinutes } from '@/lib/activity-logger-details';
+import { fmtTimeManila } from '@/lib/date';
 import ActivityCategoryFields from '@/components/ActivityCategoryFields';
 import ActivityMediaCapture from '@/components/ActivityMediaCapture';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -106,6 +107,31 @@ export default function ActivityLoggerModal(p: ActivityLoggerModalProps) {
         </div>
 
         <div className="stack-md" style={{ flex: '1 1 auto', overflowY: 'auto', minHeight: 0, padding: '14px 18px' }}>
+
+        {f.draftRestoredAt && (
+          <div
+            role="status"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+              flexWrap: 'wrap',
+              padding: '8px 12px',
+              borderRadius: 8,
+              border: '1px solid var(--info-border)',
+              background: 'var(--info-bg)',
+              color: 'var(--info-fg)',
+              fontSize: 12.5,
+              fontWeight: 600,
+            }}
+          >
+            <span>Restored unsaved draft from {fmtTimeManila(f.draftRestoredAt)}.</span>
+            <button type="button" className="btn btn-sm" onClick={() => void f.startFreshDraft()}>
+              Start Fresh
+            </button>
+          </div>
+        )}
 
         {/* Core Fields */}
         <div className="grid-auto-md">
@@ -445,6 +471,7 @@ export default function ActivityLoggerModal(p: ActivityLoggerModalProps) {
         tone="danger"
         onConfirm={() => {
           setConfirmDiscardOpen(false);
+          void f.discardDraft();
           p.onClose();
         }}
         onCancel={() => setConfirmDiscardOpen(false)}

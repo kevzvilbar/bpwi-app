@@ -1,6 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildPmActualPerformerIds, isMissingCompletedByColumnError } from './pm-credit.ts';
 
+export const OFFLINE_BLOB_PREFIX = 'offline-blob://';
+
+export function extractOfflineBlobId(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith(OFFLINE_BLOB_PREFIX)) return null;
+  const id = trimmed.slice(OFFLINE_BLOB_PREFIX.length).trim();
+  return id || null;
+}
+
 export type PhotoUploader = (
   sb: SupabaseClient,
   orgId: string,
@@ -91,12 +100,44 @@ export function describeQueuedReport(payload: Row, editingId: string | null): { 
   };
 }
 
+export type OfflineMutationKind = 'pm_task_status' | 'shift_handover' | 'job_order_status';
+
+export function describeQueuedMutation(kind: OfflineMutationKind, payload: Row): { title: string; subtitle: string } {
+  if (kind === 'pm_task_status') {
+    const status = typeof payload.status === 'string' ? payload.status : 'updated';
+    const action = status === 'done' ? 'Mark Done' : status === 'planned' ? 'Reopen' : status;
+    const taskTitle = typeof payload.taskTitle === 'string' ? payload.taskTitle : 'PM Task';
+    const completedAt = typeof payload.completed_at === 'string' ? payload.completed_at : '';
+    const remarks = typeof payload.remarks === 'string' ? payload.remarks : '';
+    return {
+      title: `PM Task (${action})`,
+      subtitle: [taskTitle, completedAt, remarks].filter(Boolean).join(' · ') || 'Queued PM status change',
+    };
+  }
+  if (kind === 'shift_handover') {
+    const date = typeof payload.handover_date === 'string' ? payload.handover_date : '';
+    const plant = typeof payload.plant_status === 'string' ? payload.plant_status : '';
+    const summary = typeof payload.summary === 'string' ? payload.summary : '';
+    return {
+      title: 'Shift Handover',
+      subtitle: [date, plant, summary].filter(Boolean).join(' · ') || 'Queued handover note',
+    };
+  }
+  const joNumber = typeof payload.joNumber === 'string' && payload.joNumber ? payload.joNumber : 'Update';
+  const status = typeof payload.status === 'string' ? payload.status : 'updated';
+  const tat = typeof payload.tat_justification === 'string' ? payload.tat_justification : '';
+  return {
+    title: `Job Order (${joNumber})`,
+    subtitle: [status, tat].filter(Boolean).join(' · ') || 'Queued job order update',
+  };
+}
+
 const CONFLICT_ERROR_MESSAGE =
   'Conflict: this record was updated by someone else while you were offline. Refresh to review the latest version or discard this queued edit.';
 
 async function updateWithOptimisticConcurrency(
   sb: SupabaseClient,
-  table: 'daily_activities' | 'accomplishment_reports',
+  table: 'daily_activities' | 'accomplishment_reports' | 'job_orders',
   targetEditId: string,
   patch: Row,
   expectedUpdatedAt: string | null | undefined,
@@ -155,7 +196,7 @@ export async function syncQueuedActivity(
     for (const raw of body.photo_urls) {
       i += 1;
       if (typeof raw !== 'string') continue;
-      if (raw.startsWith('data:image/')) {
+      if (raw.startsWith('data:image/') || raw.startsWith(OFFLINE_BLOB_PREFIX)) {
         const up = await upload(sb, orgId, raw, { fileStem: `${queueId}-${i}`, requireStorage: true, sample: body.is_sample === true });
         urls.push(up.url);
         if (up.storagePath && !paths.includes(up.storagePath)) paths.push(up.storagePath);
@@ -297,4 +338,80 @@ export async function syncQueuedReport(
   }
   if (!row) throw new Error('Report was not saved');
   return row;
+}
+
+/**
+ * Syncs a queued PM task completion or reopen with an expected-status check to surface concurrent
+ * schedule/status changes as conflicts instead of silently overwriting them.
+ */
+export async function syncQueuedPmTaskStatus(
+  sb: SupabaseClient,
+  taskId: string,
+  patch: Row,
+  expectedStatus?: string | null,
+): Promise<Row> {
+  const { taskTitle: _omitTitle, ...dbPatch } = patch;
+  const { completed_by_operator_ids: _omitCompletedBy, ...basePatch } = dbPatch;
+  const expected = typeof expectedStatus === 'string' && expectedStatus.trim() ? expectedStatus.trim() : null;
+
+  const runUpdate = async (body: Row) => {
+    let query = sb.from('pm_tasks').update(body).eq('id', taskId);
+    if (expected) query = query.eq('status', expected);
+    return query.select('id, status').maybeSingle();
+  };
+
+  let res = await runUpdate(dbPatch);
+  if (res.error && 'completed_by_operator_ids' in dbPatch && isMissingCompletedByColumnError(res.error)) {
+    res = await runUpdate(basePatch);
+  }
+  if (res.error) throw new Error(res.error.message);
+  if (!res.data) {
+    throw new Error(expected ? CONFLICT_ERROR_MESSAGE : 'PM task update failed');
+  }
+  return res.data as Row;
+}
+
+/**
+ * Inserts a queued shift handover with a client-generated UUID so retries after lost responses
+ * hit 23505 and resolve cleanly without duplicating records.
+ */
+export async function syncQueuedShiftHandover(sb: SupabaseClient, payload: Row): Promise<Row> {
+  const body: Row = { ...payload };
+  if (typeof body.id !== 'string' || !body.id) body.id = newClientId();
+
+  const ins = await sb.from('shift_handovers').insert(body).select('*').single();
+  let row = ins.data as Row | null;
+  if (ins.error) {
+    if (ins.error.code === '23505') {
+      const existing = await sb
+        .from('shift_handovers')
+        .select('*')
+        .eq('id', body.id as string)
+        .maybeSingle();
+      if (existing.error || !existing.data) throw new Error(ins.error.message);
+      row = existing.data as Row;
+    } else {
+      throw new Error(ins.error.message);
+    }
+  }
+  if (!row) throw new Error('Shift handover was not saved');
+  return row;
+}
+
+/** Syncs a queued Job Order status transition with optimistic concurrency checking against `updated_at`. */
+export async function syncQueuedJobOrderStatus(
+  sb: SupabaseClient,
+  jobOrderId: string,
+  patch: Row,
+  expectedUpdatedAt?: string | null,
+): Promise<Row> {
+  const { joNumber: _omitJoNumber, ...dbPatch } = patch;
+  return updateWithOptimisticConcurrency(
+    sb,
+    'job_orders',
+    jobOrderId,
+    dbPatch,
+    expectedUpdatedAt,
+    'Job order update failed',
+  );
 }

@@ -1,7 +1,7 @@
-const CACHE_NAME = 'bpwi-ops-v8';
+const CACHE_NAME = 'bpwi-ops-v9';
 const PRECACHE = ['/app-icon.svg', '/apple-touch-icon.png', '/app-icon-192.png', '/app-icon-512.png', '/manifest.webmanifest'];
-// Strict allow-list: only cache HTML for the offline field-logger view, never phone lists, user roles, or admin reports.
-const OFFLINE_PAGE_ALLOWLIST = new Set(['/mobile']);
+// Strict allow-list: only cache HTML for the offline field-logger views, never phone lists, user roles, or admin reports.
+const OFFLINE_PAGE_ALLOWLIST = new Set(['/field', '/mobile']);
 
 const OFFLINE_FALLBACK_HTML = `<!doctype html>
 <html lang="en">
@@ -25,7 +25,7 @@ const OFFLINE_FALLBACK_HTML = `<!doctype html>
     <h1>BPWI Ops — You are offline</h1>
     <p>No internet connection detected. Open the offline field logger or try reconnecting.</p>
     <div class="actions">
-      <a class="primary" href="/mobile">Open Field Logger</a>
+      <a class="primary" href="/field">Open Field Logger</a>
       <button class="secondary" type="button" onclick="window.location.reload()">Try again</button>
     </div>
   </main>
@@ -48,7 +48,7 @@ let cacheGeneration = 0;
  */
 async function warmOfflinePage() {
   const generation = cacheGeneration;
-  const res = await fetch('/mobile', { credentials: 'same-origin', headers: { Accept: 'text/html' } });
+  const res = await fetch('/field', { credentials: 'same-origin', headers: { Accept: 'text/html' } });
   // A redirect means the session is gone (/login); never store that as the field logger.
   if (!res.ok || res.redirected) return;
   const html = await res.clone().text();
@@ -62,7 +62,7 @@ async function warmOfflinePage() {
     }),
   );
   // Stored last: the page is only offered offline once its assets are saved.
-  if (generation === cacheGeneration) await cache.put('/mobile', res);
+  if (generation === cacheGeneration) await cache.put('/field', res);
 }
 
 self.addEventListener('install', (event) => {
@@ -123,7 +123,12 @@ self.addEventListener('fetch', (event) => {
   // Network-only for PWA start_url ('/'): never cache '/' HTML, but serve an offline launch fallback
   if (req.mode === 'navigate' && url.pathname === '/') {
     event.respondWith(
-      fetch(req).catch(() => caches.match('/mobile').then((cached) => cached || offlineFallbackResponse())),
+      fetch(req).catch(() =>
+        caches
+          .match('/field')
+          .then((cached) => cached || caches.match('/mobile'))
+          .then((cached) => cached || offlineFallbackResponse()),
+      ),
     );
     return;
   }
@@ -145,6 +150,7 @@ self.addEventListener('fetch', (event) => {
         .catch(() =>
           caches
             .match(req)
+            .then((cached) => cached || caches.match('/field'))
             .then((cached) => cached || caches.match('/mobile'))
             .then((cached) => cached || offlineFallbackResponse()),
         ),

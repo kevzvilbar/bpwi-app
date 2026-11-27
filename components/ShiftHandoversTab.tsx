@@ -3,6 +3,9 @@
 import { useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import type { DailyActivityRow, ShiftHandoverRow } from '@/lib/activity-types';
+import { getErrorMessage, isNetworkErrorMessage } from '@/lib/error-utils';
+import { enqueueOfflineMutation } from '@/lib/offline-queue';
+import { newClientId } from '@/lib/offline-sync-core';
 import { Badge, EmptyState, StatCard } from '@/components/ui';
 import { SampleBadge } from '@/components/SampleBadge';
 
@@ -63,37 +66,79 @@ export default function ShiftHandoversTab({
     e.preventDefault();
     if (!hoSummary.trim()) return;
     setSavingHo(true);
-    const sb = supabaseBrowser();
-    const { data, error } = await sb
-      .from('shift_handovers')
-      .insert({
-        organization_id: orgId,
-        handover_date: date,
-        shift_type_id: null,
-        area_code_id: hoAreaId || null,
-        outgoing_operator_id: hoOutOpId || null,
-        incoming_operator_id: hoInOpId || null,
-        plant_status: hoPlantStatus,
-        summary: hoSummary.trim(),
-        pending_items: hoPending.trim() || null,
-        chemical_fuel_notes: hoChemFuel.trim() || null,
-        created_by: userId,
-        is_sample: canLogSample ? hoIsSample : false,
-      })
-      .select('*')
-      .single();
 
-    setSavingHo(false);
-    if (error) {
-      onBannerMsg(`Handover save error: ${error.message}`);
+    const handoverId = newClientId();
+    const createdAtIso = new Date().toISOString();
+    const payload = {
+      id: handoverId,
+      organization_id: orgId,
+      handover_date: date,
+      shift_type_id: null,
+      area_code_id: hoAreaId || null,
+      outgoing_operator_id: hoOutOpId || null,
+      incoming_operator_id: hoInOpId || null,
+      plant_status: hoPlantStatus,
+      summary: hoSummary.trim(),
+      pending_items: hoPending.trim() || null,
+      chemical_fuel_notes: hoChemFuel.trim() || null,
+      created_by: userId,
+      is_sample: canLogSample ? hoIsSample : false,
+      created_at: createdAtIso,
+    };
+
+    const queueHandoverOffline = async () => {
+      await enqueueOfflineMutation({
+        kind: 'shift_handover',
+        targetId: handoverId,
+        ownerUserId: userId,
+        payload,
+      });
+      setSavingHo(false);
+      onHandoverCreated(payload as ShiftHandoverRow);
+      setHoSummary('');
+      setHoPending('');
+      setHoChemFuel('');
+      setHoIsSample(false);
+      onBannerMsg('Saved offline — shift handover will sync when signal returns.');
+    };
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      await queueHandoverOffline();
       return;
     }
-    onHandoverCreated(data as ShiftHandoverRow);
-    setHoSummary('');
-    setHoPending('');
-    setHoChemFuel('');
-    setHoIsSample(false);
-    onBannerMsg('✓ Shift handover recorded.');
+
+    try {
+      const sb = supabaseBrowser();
+      const { data, error } = await sb
+        .from('shift_handovers')
+        .insert(payload)
+        .select('*')
+        .single();
+
+      setSavingHo(false);
+      if (error) {
+        if (isNetworkErrorMessage(error.message)) {
+          await queueHandoverOffline();
+          return;
+        }
+        onBannerMsg(`Handover save error: ${error.message}`);
+        return;
+      }
+      onHandoverCreated(data as ShiftHandoverRow);
+      setHoSummary('');
+      setHoPending('');
+      setHoChemFuel('');
+      setHoIsSample(false);
+      onBannerMsg('✓ Shift handover recorded.');
+    } catch (err: unknown) {
+      const message = getErrorMessage(err, 'Handover save failed');
+      if ((typeof navigator !== 'undefined' && !navigator.onLine) || isNetworkErrorMessage(message)) {
+        await queueHandoverOffline();
+        return;
+      }
+      setSavingHo(false);
+      onBannerMsg(`Handover save error: ${message}`);
+    }
   }
 
   return (

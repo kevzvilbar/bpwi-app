@@ -2,17 +2,23 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   describeQueuedActivity,
+  describeQueuedMutation,
   describeQueuedReport,
+  extractOfflineBlobId,
   isOwnedByUser,
+  OFFLINE_BLOB_PREFIX,
   syncQueuedActivity,
+  syncQueuedJobOrderStatus,
+  syncQueuedPmTaskStatus,
   syncQueuedReport,
+  syncQueuedShiftHandover,
   type PhotoUploader,
 } from '../offline-sync-core.ts';
 
 type Err = { code?: string; message: string } | null;
 
 /** Minimal in-memory stand-in for the Supabase client calls the sync uses. */
-function fakeSb(opts: { insertFailsOnce?: boolean; pmError?: boolean; updateError?: boolean } = {}) {
+function fakeSb(opts: { insertFailsOnce?: boolean; pmError?: boolean; updateError?: boolean; pmMissingCol?: boolean } = {}) {
   const rows = new Map<string, Record<string, unknown>>();
   const pm: Record<string, unknown>[] = [];
   const updates: Array<{
@@ -57,12 +63,19 @@ function fakeSb(opts: { insertFailsOnce?: boolean; pmError?: boolean; updateErro
             const execute = async () => {
               const id = eqFilters.find((f) => f.column === 'id')?.value;
               const expectedUpdatedAt = eqFilters.find((f) => f.column === 'updated_at')?.value;
+              const expectedStatus = eqFilters.find((f) => f.column === 'status')?.value;
               updates.push({ table, id, patch, eqFilters: [...eqFilters] });
+              if (opts.pmMissingCol && 'completed_by_operator_ids' in patch) {
+                return { data: null, error: { message: 'column "completed_by_operator_ids" does not exist' } as Err };
+              }
               if (opts.updateError) {
                 return { data: null, error: { message: 'update denied' } as Err };
               }
               const existing = id ? rows.get(id) : undefined;
               if (expectedUpdatedAt !== undefined && existing?.updated_at !== expectedUpdatedAt) {
+                return { data: null, error: null as Err };
+              }
+              if (expectedStatus !== undefined && existing?.status !== expectedStatus) {
                 return { data: null, error: null as Err };
               }
               const updated = { ...(existing ?? {}), ...patch, id };
@@ -396,5 +409,116 @@ describe('offline queue user ownership scoping and descriptions', () => {
     const joUpdate = f.pm.find((u) => u.table === 'job_orders');
     assert.ok(joUpdate, 'expected linked job_orders update');
     assert.equal((joUpdate.patch as { completed_at?: string }).completed_at, '2026-11-26T04:05:00.000Z');
+  });
+
+  it('extracts offline-blob:// IDs and uploads native Blob refs with deterministic stems on sync', async () => {
+    assert.equal(extractOfflineBlobId(`${OFFLINE_BLOB_PREFIX}blob-abc-123`), 'blob-abc-123');
+    assert.equal(extractOfflineBlobId('data:image/webp;base64,AAA'), null);
+
+    const f = fakeSb();
+    const seenStems: string[] = [];
+    const seenRaw: string[] = [];
+    const row = await syncQueuedActivity(
+      f.sb,
+      'q-blob-7',
+      {
+        id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+        organization_id: 'org1',
+        activity_date: '2026-11-27',
+        activity_type: 'leak_repair',
+        photo_urls: [`${OFFLINE_BLOB_PREFIX}blob-abc-123`],
+        photo_storage_paths: [],
+      },
+      async (_sb, orgId, raw, opts) => {
+        seenStems.push(opts.fileStem);
+        seenRaw.push(raw);
+        const path = `${orgId}/2026-11-27/${opts.fileStem}.webp`;
+        return { url: `/api/activities/photo?path=${encodeURIComponent(path)}`, storagePath: path };
+      },
+    );
+
+    assert.deepEqual(seenStems, ['q-blob-7-1']);
+    assert.deepEqual(seenRaw, [`${OFFLINE_BLOB_PREFIX}blob-abc-123`]);
+    assert.deepEqual(row.photo_storage_paths, ['org1/2026-11-27/q-blob-7-1.webp']);
+    assert.deepEqual(row.photo_urls, ['/api/activities/photo?path=org1%2F2026-11-27%2Fq-blob-7-1.webp']);
+  });
+});
+
+describe('offline PM task, shift handover, and job order mutations', () => {
+  it('syncs queued PM task status with expected-status conflict protection and legacy column fallback', async () => {
+    const f = fakeSb();
+    f.rows.set('pm-1', { id: 'pm-1', status: 'planned' });
+
+    const doneRes = await syncQueuedPmTaskStatus(
+      f.sb,
+      'pm-1',
+      { taskTitle: 'Flush Line', status: 'done', completed_at: '2026-11-27', completed_by_operator_ids: ['op-1'], remarks: 'Done' },
+      'planned',
+    );
+    assert.equal(doneRes.status, 'done');
+
+    await assert.rejects(
+      () => syncQueuedPmTaskStatus(f.sb, 'pm-1', { status: 'done' }, 'planned'),
+      /Conflict: this record was updated by someone else while you were offline/,
+    );
+
+    const legacySb = fakeSb({ pmMissingCol: true });
+    legacySb.rows.set('pm-2', { id: 'pm-2', status: 'done' });
+    const reopened = await syncQueuedPmTaskStatus(
+      legacySb.sb,
+      'pm-2',
+      { status: 'planned', completed_at: null, completed_by_operator_ids: [] },
+      'done',
+    );
+    assert.equal(reopened.status, 'planned');
+  });
+
+  it('syncs queued shift handovers idempotently on 23505 retry', async () => {
+    const f = fakeSb({ insertFailsOnce: true });
+    const payload = {
+      id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      organization_id: 'org1',
+      handover_date: '2026-11-27',
+      plant_status: 'watch',
+      summary: 'Low tank level on Well 4',
+    };
+    await assert.rejects(() => syncQueuedShiftHandover(f.sb, payload), /network/);
+    const row = await syncQueuedShiftHandover(f.sb, payload);
+    assert.equal(f.rows.size, 1);
+    assert.equal(row.id, payload.id);
+    assert.equal(row.summary, 'Low tank level on Well 4');
+  });
+
+  it('syncs queued job order updates with optimistic concurrency check on updated_at', async () => {
+    const f = fakeSb();
+    f.rows.set('jo-1', { id: 'jo-1', status: 'in_progress', updated_at: '2026-11-27T01:00:00Z' });
+
+    const ok = await syncQueuedJobOrderStatus(
+      f.sb,
+      'jo-1',
+      { joNumber: 'JO-2026-001', status: 'completed', completed_at: '2026-11-27T02:00:00Z' },
+      '2026-11-27T01:00:00Z',
+    );
+    assert.equal(ok.status, 'completed');
+
+    await assert.rejects(
+      () => syncQueuedJobOrderStatus(f.sb, 'jo-1', { status: 'completed' }, '2026-11-26T00:00:00Z'),
+      /Conflict: this record was updated by someone else while you were offline/,
+    );
+  });
+
+  it('formats readable queue descriptions for PM tasks, handovers, and job orders', () => {
+    assert.deepEqual(
+      describeQueuedMutation('pm_task_status', { taskTitle: 'Backwash', status: 'done', completed_at: '2026-11-27' }),
+      { title: 'PM Task (Mark Done)', subtitle: 'Backwash · 2026-11-27' },
+    );
+    assert.deepEqual(
+      describeQueuedMutation('shift_handover', { handover_date: '2026-11-27', plant_status: 'normal', summary: 'All pumps OK' }),
+      { title: 'Shift Handover', subtitle: '2026-11-27 · normal · All pumps OK' },
+    );
+    assert.deepEqual(
+      describeQueuedMutation('job_order_status', { joNumber: 'JO-102', status: 'completed', tat_justification: 'Road closure' }),
+      { title: 'Job Order (JO-102)', subtitle: 'completed · Road closure' },
+    );
   });
 });

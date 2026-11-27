@@ -137,11 +137,11 @@ describe('PWA installability & manifest', () => {
     );
   });
 
-  it('keeps sw.js OFFLINE_PAGE_ALLOWLIST restricted to /mobile while providing offline navigation fallback for /', async () => {
+  it('keeps sw.js OFFLINE_PAGE_ALLOWLIST restricted to /field and /mobile while providing offline navigation fallback for /', async () => {
     const swPath = resolve(process.cwd(), 'public/sw.js');
     const source = readFileSync(swPath, 'utf8');
-    assert.match(source, /CACHE_NAME\s*=\s*'bpwi-ops-v8'/);
-    assert.match(source, /OFFLINE_PAGE_ALLOWLIST\s*=\s*new Set\(\['\/mobile'\]\)/);
+    assert.match(source, /CACHE_NAME\s*=\s*'bpwi-ops-v9'/);
+    assert.match(source, /OFFLINE_PAGE_ALLOWLIST\s*=\s*new Set\(\['\/field',\s*'\/mobile'\]\)/);
 
     // 1. Online navigation to '/' goes network-only and NEVER stores '/' in cache
     const onlineSw = loadServiceWorker({
@@ -157,10 +157,10 @@ describe('PWA installability & manifest', () => {
     const callSheetPromise = dispatchFetch(onlineSw.fetchHandler, makeNavRequest('/call-sheet'));
     assert.equal(callSheetPromise, null);
 
-    // 3. Offline launch on '/' serves cached /mobile when available
-    const cachedMobileSw = loadServiceWorker({
+    // 3. Offline launch on '/' serves cached /field when available
+    const cachedFieldSw = loadServiceWorker({
       cachedEntries: {
-        '/mobile': new Response('<html>cached mobile logger</html>', {
+        '/field': new Response('<html>cached field shell</html>', {
           status: 200,
           headers: { 'Content-Type': 'text/html' },
         }),
@@ -169,13 +169,13 @@ describe('PWA installability & manifest', () => {
         throw new TypeError('Failed to fetch');
       },
     });
-    const cachedFallbackPromise = dispatchFetch(cachedMobileSw.fetchHandler, makeNavRequest('/'));
+    const cachedFallbackPromise = dispatchFetch(cachedFieldSw.fetchHandler, makeNavRequest('/'));
     assert.ok(cachedFallbackPromise);
     const cachedFallbackRes = await cachedFallbackPromise;
     assert.equal(cachedFallbackRes.status, 200);
-    assert.equal(await cachedFallbackRes.text(), '<html>cached mobile logger</html>');
+    assert.equal(await cachedFallbackRes.text(), '<html>cached field shell</html>');
 
-    // 4. Offline launch on '/' without cached /mobile returns self-contained 200 text/html fallback
+    // 4. Offline launch on '/' without cached /field or /mobile returns self-contained 200 text/html fallback
     const uncachedSw = loadServiceWorker({
       fetchImpl: async () => {
         throw new TypeError('Failed to fetch');
@@ -188,7 +188,7 @@ describe('PWA installability & manifest', () => {
     assert.match(htmlFallbackRes.headers.get('content-type') ?? '', /^text\/html/);
     const fallbackHtml = await htmlFallbackRes.text();
     assert.match(fallbackHtml, /BPWI Ops — You are offline/);
-    assert.match(fallbackHtml, /href="\/mobile"/);
+    assert.match(fallbackHtml, /href="\/field"/);
     assert.match(fallbackHtml, /Try again/);
     assert.match(fallbackHtml, /reload\(\)/);
   });
@@ -212,7 +212,7 @@ describe('offline field logger warm-up', () => {
       Promise,
       Set,
       fetch: async (url: string) => {
-        if (url === '/mobile') return response(pageResponse);
+        if (url === '/field') return response(pageResponse);
         onAsset?.(post);
         return response({ ok: true, redirected: false });
       },
@@ -226,14 +226,14 @@ describe('offline field logger warm-up', () => {
     return { stored, run: async () => { post('CACHE_OFFLINE_PAGE'); await pending; } };
   }
 
-  it('stores the referenced build assets first and /mobile last', async () => {
+  it('stores the referenced build assets first and /field last', async () => {
     const sw = load({ ok: true, redirected: false });
     await sw.run();
     assert.deepEqual(
       sw.stored.slice(0, -1).sort(),
       ['/_next/static/chunks/app.js', '/_next/static/chunks/page.js', '/_next/static/css/a.css'],
     );
-    assert.equal(sw.stored.at(-1), '/mobile');
+    assert.equal(sw.stored.at(-1), '/field');
   });
 
   it('stores nothing when signed out (redirect)', async () => {

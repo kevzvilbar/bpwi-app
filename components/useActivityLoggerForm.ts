@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import {
   ACTIVITY_TYPES,
@@ -28,9 +28,18 @@ import {
   normalizePulloutDateYMD,
   normalizePulloutTimeHHMM,
 } from '@/lib/well-pullout-types';
-import { compressImageFile, uploadActivityPhoto, uploadDataUrlPhoto } from '@/lib/image-compress';
+import { compressImageFile, uploadActivityPhoto, uploadBlobPhoto, uploadDataUrlPhoto } from '@/lib/image-compress';
 import { CHLORINE_REFILL_ACTIVITY_TYPE, validateChlorineRefill } from '@/lib/chlorine-refill';
-import { newClientId } from '@/lib/offline-sync-core';
+import { extractOfflineBlobId, newClientId, OFFLINE_BLOB_PREFIX } from '@/lib/offline-sync-core';
+import {
+  buildActivityDraftKey,
+  deleteActivityDraft,
+  deleteOfflinePhotoBlobs,
+  getOfflinePhotoBlob,
+  loadActivityDraft,
+  saveActivityDraft,
+  saveOfflinePhotoBlob,
+} from '@/lib/offline-queue';
 import type { ActivityPhotoEntry } from '@/components/ActivityMediaCapture';
 
 export const MAX_ACTIVITY_PHOTOS = 4;
@@ -143,9 +152,48 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
   const [isSample, setIsSample] = useState(Boolean(p.sampleOnly));
   const [openAtMs, setOpenAtMs] = useState(0);
   const [openSeq, setOpenSeq] = useState(0);
+  const [freshSeq, setFreshSeq] = useState(0);
+  const [draftRestoredAt, setDraftRestoredAt] = useState<string | null>(null);
   const [initialSnapshot, setInitialSnapshot] = useState('');
   const initPhaseRef = useRef<'closed' | 'init' | 'capture' | 'settled'>('closed');
   const lastParsedRef = useRef('');
+  const objectUrlsRef = useRef<Set<string>>(new Set());
+  const draftGenRef = useRef(0);
+  const skipDraftRestoreRef = useRef(false);
+  const lastSavedPhotoCountRef = useRef(0);
+
+  const trackObjectUrl = useCallback((blob: Blob): string => {
+    if (typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') return '';
+    const u = URL.createObjectURL(blob);
+    objectUrlsRef.current.add(u);
+    return u;
+  }, []);
+
+  const revokeAllObjectUrls = useCallback(() => {
+    if (typeof URL === 'undefined' || typeof URL.revokeObjectURL !== 'function') {
+      objectUrlsRef.current.clear();
+      return;
+    }
+    for (const u of objectUrlsRef.current) {
+      URL.revokeObjectURL(u);
+    }
+    objectUrlsRef.current.clear();
+  }, []);
+
+  useEffect(() => revokeAllObjectUrls, [revokeAllObjectUrls]);
+
+  const draftKey = useMemo(
+    () =>
+      p.userId
+        ? buildActivityDraftKey({
+            userId: p.userId,
+            editingId: p.editingActivity?.id,
+            linkedPmTaskId: p.linkedPmTask?.id,
+            linkedJobOrderId: p.linkedJobOrder?.id,
+          })
+        : '',
+    [p.userId, p.editingActivity?.id, p.linkedPmTask?.id, p.linkedJobOrder?.id],
+  );
   /** Primary key for the log being created. Fixed for the whole modal session so that every attempt
    *  (online, retried, or queued offline) refers to the same row and cannot create a duplicate. */
   const newLogIdRef = useRef('');
@@ -170,10 +218,18 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
 
   // Initialize defaults whenever modal opens
   useEffect(() => {
-    if (!p.open) return;
+    if (!p.open) {
+      draftGenRef.current += 1;
+      setDraftRestoredAt(null);
+      revokeAllObjectUrls();
+      return;
+    }
     initPhaseRef.current = 'init';
     newLogIdRef.current = newClientId();
     setOpenSeq((n) => n + 1);
+    setDraftRestoredAt(null);
+    lastSavedPhotoCountRef.current = 0;
+    revokeAllObjectUrls();
     const { p: props, asgByOp: asgMap, stationAreas: stAreas, stationIdSet: stIdSet } = initCtxRef.current;
     setErrMsg('');
     setJoTatJustification('');
@@ -304,7 +360,57 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
         ctx?.clearRect(0, 0, cv.width, cv.height);
       }
     }, 50);
-  }, [p.open, p.editingActivity?.id, p.linkedPmTask?.id, p.linkedJobOrder?.id, p.initialActivityType, p.initialLeadOperatorId]);
+
+    const shouldSkipDraft = skipDraftRestoreRef.current;
+    skipDraftRestoreRef.current = false;
+    const restoreGen = ++draftGenRef.current;
+    if (!shouldSkipDraft && draftKey && props.userId) {
+      void loadActivityDraft(draftKey, props.userId).then(async (draft) => {
+        if (!draft || draftGenRef.current !== restoreGen || !initCtxRef.current.p.open) return;
+        const hydratedPhotos: ActivityPhotoEntry[] = await Promise.all(
+          (draft.photos ?? []).map(async (ph) => {
+            const blobId = extractOfflineBlobId(ph.url);
+            if (blobId) {
+              const blob = await getOfflinePhotoBlob(blobId);
+              if (blob) {
+                const previewUrl = trackObjectUrl(blob);
+                return { url: ph.url, storagePath: ph.storagePath, preview: previewUrl || ph.url };
+              }
+            }
+            const resolved = ph.url.startsWith('data:image/')
+              ? ph.url
+              : resolveActivityPhotoUrl(ph.url, ph.storagePath);
+            return { url: resolved, storagePath: ph.storagePath, preview: resolved };
+          }),
+        );
+        if (draftGenRef.current !== restoreGen || !initCtxRef.current.p.open) return;
+        if (draft.newLogId && !props.editingActivity) {
+          newLogIdRef.current = draft.newLogId;
+        }
+        setActivityType(draft.activityType);
+        setLeadOpId(draft.leadOpId);
+        setCrewOpIds(draft.crewOpIds);
+        setShiftTypeId(draft.shiftTypeId);
+        setAreaCodeId(draft.areaCodeId);
+        setAreaTouched(true);
+        setSiteOrWell(draft.siteOrWell);
+        setBlockLot(draft.blockLot);
+        setStartedHHMM(draft.startedHHMM);
+        setCompletedHHMM(draft.completedHHMM);
+        setNotes(draft.notes);
+        setGpsLat(draft.gpsLat);
+        setGpsLng(draft.gpsLng);
+        setGpsAccuracyM(draft.gpsAccuracyM);
+        setGpsSource(draft.gpsSource);
+        setPhotos(hydratedPhotos);
+        lastSavedPhotoCountRef.current = hydratedPhotos.length;
+        setDetails(draft.details);
+        setJoTatJustification(draft.joTatJustification);
+        setIsSample(draft.isSample);
+        setDraftRestoredAt(draft.savedAt);
+      });
+    }
+  }, [p.open, p.editingActivity?.id, p.linkedPmTask?.id, p.linkedJobOrder?.id, p.initialActivityType, p.initialLeadOperatorId, freshSeq, draftKey, revokeAllObjectUrls, trackObjectUrl]);
 
   // Sync shift & area when Lead Operator changes
   useEffect(() => {
@@ -366,6 +472,49 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
 
   const isDirty = Boolean(initialSnapshot) && initPhaseRef.current === 'settled' && currentSnapshot !== initialSnapshot;
 
+  useEffect(() => {
+    if (!p.open || !draftKey || !p.userId || initPhaseRef.current !== 'settled' || submitting) return;
+    if (!isDirty && !draftRestoredAt) return;
+
+    const photosChanged = photos.length !== lastSavedPhotoCountRef.current;
+    lastSavedPhotoCountRef.current = photos.length;
+    const delayMs = photosChanged ? 0 : 400;
+
+    const timer = setTimeout(() => {
+      void saveActivityDraft({
+        draftKey,
+        ownerUserId: p.userId,
+        savedAt: new Date().toISOString(),
+        newLogId: p.editingActivity ? null : newLogIdRef.current,
+        activityType,
+        leadOpId,
+        crewOpIds,
+        shiftTypeId,
+        areaCodeId,
+        siteOrWell,
+        blockLot,
+        startedHHMM,
+        completedHHMM,
+        notes,
+        gpsLat,
+        gpsLng,
+        gpsAccuracyM,
+        gpsSource,
+        photos: photos.map((ph) => ({ url: ph.url, storagePath: ph.storagePath })),
+        details,
+        joTatJustification,
+        isSample,
+      });
+    }, delayMs);
+
+    return () => clearTimeout(timer);
+  }, [
+    p.open, p.userId, p.editingActivity, draftKey, submitting, isDirty, draftRestoredAt,
+    activityType, leadOpId, crewOpIds, shiftTypeId, areaCodeId, siteOrWell, blockLot,
+    startedHHMM, completedHHMM, notes, gpsLat, gpsLng, gpsAccuracyM, gpsSource,
+    photos, details, joTatJustification, isSample,
+  ]);
+
   // Operators on duty today for 1-tap crew tagging
   const { sameShiftOps, otherOps } = useMemo(() => {
     const same: LoggerOperator[] = [];
@@ -410,7 +559,31 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
   }
 
   function handleRemovePhoto(idx: number) {
+    const removed = photos[idx];
+    if (removed?.preview.startsWith('blob:') && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+      URL.revokeObjectURL(removed.preview);
+      objectUrlsRef.current.delete(removed.preview);
+    }
+    const blobId = removed ? extractOfflineBlobId(removed.url) : null;
+    if (blobId) {
+      void deleteOfflinePhotoBlobs([blobId]);
+    }
     setPhotos((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  async function discardDraft() {
+    draftGenRef.current += 1;
+    const blobIds = photos.map((ph) => extractOfflineBlobId(ph.url)).filter((id): id is string => Boolean(id));
+    if (draftKey) await deleteActivityDraft(draftKey);
+    if (blobIds.length > 0) await deleteOfflinePhotoBlobs(blobIds);
+    revokeAllObjectUrls();
+    setDraftRestoredAt(null);
+  }
+
+  async function startFreshDraft() {
+    await discardDraft();
+    skipDraftRestoreRef.current = true;
+    setFreshSeq((n) => n + 1);
   }
 
   async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -432,20 +605,35 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
     let totalSaved = 0;
     const added: ActivityPhotoEntry[] = [];
 
+    const persistPendingBlob = async (blob: Blob, fallbackDataUrl: string): Promise<ActivityPhotoEntry> => {
+      const blobRef = await saveOfflinePhotoBlob(blob, p.userId);
+      if (blobRef) {
+        const previewUrl = trackObjectUrl(blob);
+        return { url: blobRef, storagePath: null, preview: previewUrl || fallbackDataUrl };
+      }
+      return { url: fallbackDataUrl, storagePath: null, preview: fallbackDataUrl };
+    };
+
     const count = Math.min(files.length, remaining);
     for (let i = 0; i < count; i++) {
       const file = files[i];
       try {
         if (navigator.onLine) {
           const res = await uploadActivityPhoto(sb, p.orgId, file, { sample: Boolean(p.sampleOnly || isSample) });
-          added.push({ url: res.url, storagePath: res.storagePath, preview: res.url });
           if (res.uploadError) {
             setErrMsg(`Photo not uploaded yet (${res.uploadError}). It will be uploaded when you submit.`);
+            if (res.blob) {
+              added.push(await persistPendingBlob(res.blob, res.url));
+            } else {
+              added.push({ url: res.url, storagePath: res.storagePath, preview: res.url });
+            }
+          } else {
+            added.push({ url: res.url, storagePath: res.storagePath, preview: res.url });
           }
           totalSaved += res.savedBytes;
         } else {
-          const compact = await compressImageFile(file, 480, 0.65);
-          added.push({ url: compact.dataUrl, storagePath: null, preview: compact.dataUrl });
+          const compact = await compressImageFile(file, 1024, 0.70);
+          added.push(await persistPendingBlob(compact.blob, compact.dataUrl));
           totalSaved += compact.savedBytes;
         }
       } catch (err: unknown) {
@@ -593,6 +781,10 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
     const queueOffline = async () => {
       if (!p.onQueuedOffline) return false;
       await p.onQueuedOffline(offlinePayload, queueOpts);
+      draftGenRef.current += 1;
+      if (draftKey) void deleteActivityDraft(draftKey);
+      revokeAllObjectUrls();
+      setDraftRestoredAt(null);
       setSubmitting(false);
       p.onSaved(buildOfflineActivityRow(), { offline: true });
       p.onClose();
@@ -603,19 +795,32 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
 
     try {
       const sb = supabaseBrowser();
+      const uploadedBlobIds: string[] = [];
 
-      // Photos still held as data URLs failed to upload earlier. Upload them now; base64 image data must
-      // never be written into the database row.
-      if (payload.photo_urls.some((u) => u.startsWith('data:'))) {
+      // Photos still held locally (IndexedDB blobs or data URLs) failed to upload earlier.
+      // Upload them now; base64 image data must never be written into the database row.
+      if (payload.photo_urls.some((u) => u.startsWith('data:') || u.startsWith(OFFLINE_BLOB_PREFIX))) {
         const ready: ActivityPhotoEntry[] = [];
         let uploadFailure = '';
         for (const ph of photos) {
-          if (!ph.url.startsWith('data:') || uploadFailure) {
+          const isPending = ph.url.startsWith('data:') || ph.url.startsWith(OFFLINE_BLOB_PREFIX);
+          if (!isPending || uploadFailure) {
             ready.push(ph);
             continue;
           }
           try {
-            const up = await uploadDataUrlPhoto(sb, p.orgId, ph.url, { requireStorage: true, sample: effectiveIsSample });
+            const blobId = extractOfflineBlobId(ph.url);
+            let up: { url: string; storagePath: string | null };
+            if (blobId) {
+              const blob = await getOfflinePhotoBlob(blobId);
+              if (!blob) {
+                throw new Error('Queued photo file is missing from device storage');
+              }
+              up = await uploadBlobPhoto(sb, p.orgId, blob, { requireStorage: true, sample: effectiveIsSample });
+              if (up.storagePath) uploadedBlobIds.push(blobId);
+            } else {
+              up = await uploadDataUrlPhoto(sb, p.orgId, ph.url, { requireStorage: true, sample: effectiveIsSample });
+            }
             ready.push({ url: up.url, storagePath: up.storagePath, preview: up.url });
           } catch (err: unknown) {
             uploadFailure = getErrorMessage(err, 'Photo upload failed');
@@ -668,6 +873,11 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
           .select(DAILY_ACTIVITY_LIST_COLUMNS)
           .single();
         if (error) throw error;
+        draftGenRef.current += 1;
+        if (draftKey) void deleteActivityDraft(draftKey);
+        if (uploadedBlobIds.length > 0) void deleteOfflinePhotoBlobs(uploadedBlobIds);
+        revokeAllObjectUrls();
+        setDraftRestoredAt(null);
         setSubmitting(false);
         const savedRow: DailyActivityRow = {
           ...(data as unknown as DailyActivityRow),
@@ -736,6 +946,11 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
       if (joErrMsg) warnParts.push(`Job Order could not be closed (${joErrMsg})`);
       const linkedWarning = warnParts.length > 0 ? `Activity saved, but ${warnParts.join('; ')}.` : undefined;
 
+      draftGenRef.current += 1;
+      if (draftKey) void deleteActivityDraft(draftKey);
+      if (uploadedBlobIds.length > 0) void deleteOfflinePhotoBlobs(uploadedBlobIds);
+      revokeAllObjectUrls();
+      setDraftRestoredAt(null);
       setSubmitting(false);
       const savedRow: DailyActivityRow = {
         ...(data as unknown as DailyActivityRow),
@@ -764,6 +979,7 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
     gpsLat, gpsLng, gpsAccuracyM, gpsSource, handleGpsChange, photos, savedBytesTotal, uploadingPhoto,
     handlePhotoUpload, handleRemovePhoto, details, setDetails, sigCanvasRef, sigDrawingRef, setHasSignature,
     submitting, errMsg, joTatJustification, setJoTatJustification, isSample, setIsSample, openAtMs, isDirty,
+    draftRestoredAt, discardDraft, startFreshDraft,
     leadOpName, performedBySummary, sameShiftOps, otherOps, meterCalc, toggleCrew, handleSubmit,
   };
 }
