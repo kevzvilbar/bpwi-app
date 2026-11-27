@@ -25,11 +25,17 @@ export async function GET(req: NextRequest) {
     sb.from('holidays').select('holiday_date, holiday_type').gte('holiday_date', `${year}-01-01`).lte('holiday_date', `${year}-12-31`),
   ]);
 
+  const refErr = ops.error || areas.error || shifts.error || holRes.error;
+  if (refErr) {
+    console.error('[reports/leave-export] Failed to load reference data:', refErr.message);
+    return NextResponse.json({ error: 'Failed to load leave summary reference data' }, { status: 500 });
+  }
+
   const leaveAreas = (areas.data ?? []).filter((a) => a.category === 'leave');
   const nonWorkingIds = new Set((areas.data ?? []).map((a) => a.id));
   const leaveIds = leaveAreas.map((a) => a.id);
   const offShiftIds = new Set((shifts.data ?? []).filter((s) => s.is_off).map((s) => s.id));
-  const holidays = holRes.error ? [] : (holRes.data ?? []);
+  const holidays = holRes.data ?? [];
   const holidayDates = holidays.map((h) => h.holiday_date);
 
   const [asg, holAsg] = await Promise.all([
@@ -44,6 +50,11 @@ export async function GET(req: NextRequest) {
             .in('schedule_date', holidayDates).order('schedule_date').range(from, to))
       : Promise.resolve({ data: [], error: '' }),
   ]);
+
+  if (asg.error || holAsg.error) {
+    console.error('[reports/leave-export] Failed to load schedule data:', asg.error || holAsg.error);
+    return NextResponse.json({ error: 'Failed to load leave schedule records' }, { status: 500 });
+  }
 
   const holTypeByDate = new Map(holidays.map((h) => [h.holiday_date, h.holiday_type]));
   const holWorkedCounts = new Map<string, { reg: number; spec: number }>();

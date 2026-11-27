@@ -59,6 +59,19 @@ export default async function ReportsPage() {
 
   const migrationMissing = Boolean(reportsRes.error && /accomplishment_reports/i.test(reportsRes.error.message));
 
+  const loadErrors = Array.from(
+    new Set(
+      [
+        reportsRes.error?.message,
+        actsRes.error?.message,
+        headsRes.error?.message,
+        opsRes.error?.message,
+        shiftsRes.error?.message,
+        areasRes.error?.message,
+      ].filter((e): e is string => Boolean(e)),
+    ),
+  );
+
   return (
     <AccomplishmentReports
       orgId={orgId}
@@ -77,7 +90,7 @@ export default async function ReportsPage() {
       initialActivities={(actsRes.data ?? []) as DailyActivityRow[]}
       initialReports={migrationMissing ? [] : ((reportsRes.data ?? []) as AccomplishmentReportRow[])}
       migrationMissing={migrationMissing}
-      error={!migrationMissing ? (reportsRes.error?.message || actsRes.error?.message || '') : ''}
+      error={!migrationMissing ? loadErrors.join(' · ') : ''}
     />
   );
 }

@@ -1,4 +1,5 @@
 const ROUTE_TITLES: Array<{ prefix: string; title: string }> = [
+  { prefix: '/field', title: 'Tasks' },
   { prefix: '/mobile', title: 'Tasks' },
   { prefix: '/activities', title: 'Activities' },
   { prefix: '/pm', title: 'PM Plan' },

@@ -188,7 +188,7 @@ export default function Nav(p: {
 
   const primaryLinks = [
     { href: '/', label: 'Schedule', mobileLabel: 'Schedule', icon: 'schedule' as const },
-    { href: '/mobile', label: 'Tasks', mobileLabel: 'Tasks', icon: 'tasks' as const },
+    { href: '/field', label: 'Tasks', mobileLabel: 'Tasks', icon: 'tasks' as const },
     { href: '/activities', label: 'Activities', mobileLabel: 'Logs', icon: 'activity' as const },
     { href: '/pm', label: 'PM Plan', mobileLabel: 'PM Plan', icon: 'pm' as const },
     { href: '/call-sheet', label: 'Standby', mobileLabel: 'Standby', icon: 'standby' as const },

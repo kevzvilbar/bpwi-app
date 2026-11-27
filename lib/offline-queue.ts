@@ -435,13 +435,22 @@ export async function deleteActivityDraft(draftKey: string): Promise<void> {
   }
 }
 
-/** Saves per-user field reference data (roster, tasks, areas, recent activities) in IndexedDB for offline access. */
+function redactSnapshotPhoneNumbers(snapshot: FieldReferenceSnapshot): FieldReferenceSnapshot {
+  return {
+    ...snapshot,
+    operators: Array.isArray(snapshot.operators)
+      ? snapshot.operators.map((op) => ({ ...op, phone_number: null }))
+      : [],
+  };
+}
+
+/** Saves per-user field reference data (roster, tasks, areas, recent activities) in IndexedDB without phone numbers. */
 export async function saveFieldReferenceSnapshot(snapshot: FieldReferenceSnapshot): Promise<boolean> {
   const userId = snapshot.userId.trim();
   if (!userId || !snapshot.orgId.trim()) return false;
   try {
     requestPersistentStorage();
-    await putRecord(REF_SNAPSHOT_STORE, { ...snapshot, userId });
+    await putRecord(REF_SNAPSHOT_STORE, redactSnapshotPhoneNumbers({ ...snapshot, userId }));
     if (typeof window !== 'undefined') {
       try {
         window.localStorage.setItem(FIELD_LAST_USER_KEY, userId);
@@ -475,7 +484,7 @@ export async function loadFieldReferenceSnapshot(userId?: string | null): Promis
       req.onerror = () => reject(req.error);
     });
     db.close();
-    return rec ?? null;
+    return rec ? redactSnapshotPhoneNumbers(rec) : null;
   } catch {
     return null;
   }

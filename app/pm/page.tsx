@@ -79,14 +79,22 @@ export default async function PmPage({ searchParams }: { searchParams: Promise<{
     tasksError = legacyRes.error;
   }
 
-  const error =
-    tasksError?.message ||
-    ops.error?.message ||
-    shifts.error?.message ||
-    areas.error?.message ||
-    asg.error ||
-    standby.error ||
-    '';
+  const error = Array.from(
+    new Set(
+      [
+        tasksError?.message,
+        ops.error?.message,
+        shifts.error?.message,
+        areas.error?.message,
+        asg.error,
+        standby.error,
+        holidaysRes.error?.message,
+        activityTypes.error?.message,
+        pmLocationsTableReady ? locationsRes.error?.message : '',
+        gensetsTableReady ? gensetsRes.error?.message : '',
+      ].filter((e): e is string => Boolean(e)),
+    ),
+  ).join(' · ');
 
   return (
     <PmPlanner

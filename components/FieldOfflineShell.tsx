@@ -105,7 +105,7 @@ export default function FieldOfflineShell() {
           sb.from('area_codes').select('id, code, name, category, sub_sites'),
           sb
             .from('operators')
-            .select('id, full_name, position, phone_number, default_station')
+            .select('id, full_name, position, default_station')
             .eq('is_active', true)
             .order('sort_order'),
           sb
@@ -168,6 +168,14 @@ export default function FieldOfflineShell() {
           return;
         }
 
+        const partialWarnings = [
+          actTypes.error ? `activity types (${actTypes.error.message})` : '',
+          dailyActs.error ? `recent activities (${dailyActs.error.message})` : '',
+        ].filter(Boolean);
+        if (partialWarnings.length > 0) {
+          setSyncError(`Could not refresh all field data: ${partialWarnings.join(' · ')}`);
+        }
+
         const asgRows = (allAsg.data ?? []) as Array<{
           operator_id: string;
           schedule_date: string;
@@ -185,7 +193,18 @@ export default function FieldOfflineShell() {
           canVerifyActivity: perms.canVerifyActivity,
           savedAt: new Date().toISOString(),
           snapshotDate: targetDate,
-          operators: (ops.data ?? []) as FieldReferenceSnapshot['operators'],
+          operators: ((ops.data ?? []) as Array<{
+            id: string;
+            full_name: string;
+            position: string | null;
+            default_station: string | null;
+          }>).map((o) => ({
+            id: o.id,
+            full_name: o.full_name,
+            position: o.position,
+            phone_number: null,
+            default_station: o.default_station,
+          })),
           shifts: (shifts.data ?? []) as FieldReferenceSnapshot['shifts'],
           areas: (areasRes.data ?? []) as FieldSnapshotArea[],
           assignments: asgRows
@@ -204,8 +223,12 @@ export default function FieldOfflineShell() {
             })),
           standby: (standby.data ?? []) as FieldReferenceSnapshot['standby'],
           tasks: tasksData,
-          activityTypes: (actTypes.error ? [] : (actTypes.data ?? [])) as FieldReferenceSnapshot['activityTypes'],
-          recentActivities: (dailyActs.error ? [] : (dailyActs.data ?? [])) as DailyActivityRow[],
+          activityTypes: actTypes.error
+            ? (cachedForUser?.activityTypes ?? [])
+            : ((actTypes.data ?? []) as FieldReferenceSnapshot['activityTypes']),
+          recentActivities: dailyActs.error
+            ? (cachedForUser?.recentActivities ?? [])
+            : ((dailyActs.data ?? []) as DailyActivityRow[]),
         };
 
         await saveFieldReferenceSnapshot(nextSnapshot);

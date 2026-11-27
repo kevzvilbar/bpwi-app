@@ -80,11 +80,18 @@ export default async function InventoryPage() {
     }
   }
 
-  const error =
-    (!missingItems ? itemsRes.error?.message : '') ||
-    (!missingMovements ? pagedMovementsRes.error?.message : '') ||
-    fallbackMovementsErr ||
-    '';
+  const error = Array.from(
+    new Set(
+      [
+        !missingItems ? itemsRes.error?.message : '',
+        !missingMovements ? pagedMovementsRes.error?.message : '',
+        fallbackMovementsErr,
+        locationsRes.error && !isMissingPmLocationsTableError(locationsRes.error) ? locationsRes.error.message : '',
+        areasRes.error?.message,
+        usersRes.error?.message,
+      ].filter((e): e is string => Boolean(e)),
+    ),
+  ).join(' · ');
 
   return (
     <InventoryManager

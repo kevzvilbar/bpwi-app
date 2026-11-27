@@ -17,7 +17,7 @@ export default function NotFound() {
           <Link href="/" className="btn btn-primary" style={{ textDecoration: 'none' }}>
             Back to Schedule
           </Link>
-          <Link href="/mobile" className="btn" style={{ textDecoration: 'none' }}>
+          <Link href="/field" className="btn" style={{ textDecoration: 'none' }}>
             Open Tasks
           </Link>
         </div>
