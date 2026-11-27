@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useTransition } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { formatManila, formatDateOnly } from '@/lib/date';
@@ -9,8 +9,16 @@ import type { ChangeRequest, ChangeRequestItem } from '@/lib/profile';
 import { getErrorMessage } from '@/lib/error-utils';
 
 import { findOffShift, isOffPartnerArea } from '@/lib/roster-helpers';
-import { conflictLabel, describeReviewResult, overrideExplanation, toggleAllSelection, type ReviewRpcResult } from '@/lib/change-request-conflicts';
+import { conflictLabel, describeReviewResult, toggleAllSelection, type ReviewRpcResult } from '@/lib/change-request-conflicts';
 import { AlertBanner, Badge, EmptyState, SegmentedTabs, type BadgeTone } from '@/components/ui';
+import {
+  ChangeRequestOverrideDialog,
+  ChangeRequestRejectDialog,
+  type ChangeRequestSnap,
+  type OverrideDialog,
+  type RejectDialog,
+} from '@/components/ChangeRequestDialogs';
+import ChangeRequestMobileCards from '@/components/ChangeRequestMobileCards';
 
 type Shift = { id: string; code: string; description?: string | null; background_color: string; text_color: string; is_off?: boolean };
 type Area = { id: string; code: string; name?: string | null; category?: string; background_color: string; text_color: string };
@@ -33,8 +41,6 @@ type Props = {
 
 type Tab = 'pending' | 'approved' | 'rejected' | 'all';
 type Msg = { type: 'ok' | 'warn' | 'err'; text: string };
-type RejectDialog = { request: ChangeRequest; itemIds: string[] | null; count: number };
-type OverrideDialog = { request: ChangeRequest; item: ChangeRequestItem };
 
 const isOpenItem = (i: ChangeRequestItem) => i.status === 'pending' || i.status === 'conflict';
 const getOpenItems = (r: ChangeRequest) => (r.items ?? []).filter(isOpenItem);
@@ -239,18 +245,7 @@ export default function ChangeRequests(p: Props) {
   const range = (start?: string | null, end?: string | null) =>
     start ? (end && end !== start ? `${formatDateOnly(start)} – ${formatDateOnly(end)}` : formatDateOnly(start)) : null;
 
-  type Snap = {
-    shift_type_id?: string | null;
-    area_code_id?: string | null;
-    standby_type?: string | null;
-    title?: string | null;
-    status?: string | null;
-    scheduled_date?: string | null;
-    assigned_operator_ids?: string[] | null;
-    leave_code?: string | null;
-    start_date?: string | null;
-    end_date?: string | null;
-  };
+  type Snap = ChangeRequestSnap;
 
   /** Renders a state snapshot (original or live) for any target table. */
   function renderSnapshot(item: ChangeRequestItem, s: Snap | null | undefined, emptyLabel: string): ReactNode {
@@ -308,8 +303,6 @@ export default function ChangeRequests(p: Props) {
     if (item.conflict_reason === 'target_missing') return <span style={{ color: 'var(--danger)', fontWeight: 700 }}>Deleted</span>;
     return renderSnapshot(item, item.live_state as Snap | null, 'Empty cell');
   }
-
-  const dlgText: CSSProperties = { fontSize: 13, color: 'var(--text-secondary)', margin: 0 };
 
   // A failed action leaves its dialog open, and the page banner sits behind the overlay: show the error in the dialog.
   const dialogError =
@@ -625,233 +618,60 @@ export default function ChangeRequests(p: Props) {
                 </div>
 
                 {/* Items Cards (Mobile <= 640px) */}
-                <div className="responsive-cards">
-                  {canAct && openItems.length > 1 && (
-                    <label
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        minHeight: 38,
-                        padding: '4px 8px',
-                        borderRadius: 6,
-                        background: 'var(--surface-muted)',
-                        fontSize: 12.5,
-                        fontWeight: 600,
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        aria-label="Select all open items (mobile)"
-                        checked={openItems.length > 0 && selectedOpenIds.length === openItems.length}
-                        onChange={() => toggleAllItemsForRequest(req)}
-                      />
-                      Select all open items ({openItems.length})
-                    </label>
-                  )}
-                  {items.map((item) => {
-                    const opName = item.operator_id ? (opMap.get(item.operator_id) ?? 'Unknown Operator') : item.target_table === 'pm_tasks' ? 'See assignees' : 'N/A';
-                    const isConflict = item.status === 'conflict';
-                    const isItemOpen = isOpenItem(item);
-                    const isSelected = isItemOpen && selected.has(item.id);
-                    const mobileConflictNote =
-                      item.conflict_reason === 'target_missing'
-                        ? 'Live record no longer exists'
-                        : item.conflict_reason === 'changed'
-                          ? 'Modified on live schedule'
-                          : 'Flagged by server';
-
-                    return (
-                      <div
-                        key={`m-${item.id}`}
-                        style={{
-                          border: isConflict ? '1px solid var(--warn-border)' : '1px solid var(--border)',
-                          borderRadius: 8,
-                          padding: 12,
-                          display: 'grid',
-                          gap: 8,
-                          background: isConflict ? 'var(--warn-bg)' : isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--surface-muted)',
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
-                            {canAct && isItemOpen && (
-                              <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 32, minHeight: 32, cursor: 'pointer' }}>
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => toggleItemSelection(req.id, item.id)}
-                                  aria-label={`Select mobile item for ${opName} on ${item.schedule_date ?? 'n/a'}`}
-                                />
-                              </label>
-                            )}
-                            <Badge size="sm" tone="neutral">{categoryLabel(item.target_table)}</Badge>
-                          </div>
-                          {isConflict ? (
-                            <Badge size="sm" tone="warn">⚠️ Conflict</Badge>
-                          ) : item.status === 'approved' ? (
-                            <Badge size="sm" tone="ok">✓ Approved</Badge>
-                          ) : item.status === 'rejected' ? (
-                            <Badge size="sm" tone="danger">✗ Rejected</Badge>
-                          ) : (
-                            <Badge size="sm" tone="neutral">Pending</Badge>
-                          )}
-                        </div>
-
-                        <div style={{ display: 'grid', gap: 2 }}>
-                          <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--text)' }}>{opName}</div>
-                          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{renderDate(item)}</div>
-                        </div>
-
-                        <div
-                          style={{
-                            display: 'grid',
-                            gap: 6,
-                            padding: '8px 10px',
-                            borderRadius: 6,
-                            background: 'var(--surface)',
-                            border: '1px solid var(--border-light)',
-                            fontSize: 12.5,
-                          }}
-                        >
-                          <div style={{ display: 'grid', gap: 2 }}>
-                            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>When proposed</span>
-                            <div>{renderSnapshot(item, item.original_state as Snap | null, 'Empty cell')}</div>
-                          </div>
-                          <div style={{ display: 'grid', gap: 2 }}>
-                            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>Proposed change</span>
-                            <div>{renderProposed(item)}</div>
-                            {item.notes && <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>Note: {item.notes}</div>}
-                          </div>
-                        </div>
-
-                        {isConflict && (
-                          <div style={{ display: 'grid', gap: 6 }}>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--warn-fg)' }}>{mobileConflictNote}</div>
-                            {item.conflict_reason && (
-                              <div style={{ fontSize: 12 }}>
-                                <span style={{ color: 'var(--text-secondary)' }}>Now: </span>
-                                {renderLive(item)}
-                              </div>
-                            )}
-                            {canAct && (
-                              <button
-                                type="button"
-                                className="btn"
-                                style={{ width: '100%' }}
-                                disabled={busy}
-                                onClick={() => openOverrideDialog({ request: req, item })}
-                              >
-                                {item.conflict_reason === 'target_missing' ? 'Inspect & discard…' : 'Inspect & override…'}
-                              </button>
-                            )}
-                          </div>
-                        )}
-
-                        {item.status === 'rejected' && item.rejection_reason && (
-                          <div style={{ fontSize: 12, color: 'var(--danger)' }}>
-                            Reason: {item.rejection_reason}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                <ChangeRequestMobileCards
+                  request={req}
+                  items={items}
+                  openItems={openItems}
+                  selected={selected}
+                  selectedOpenIds={selectedOpenIds}
+                  canAct={canAct}
+                  busy={busy}
+                  opMap={opMap}
+                  isOpenItem={isOpenItem}
+                  categoryLabel={categoryLabel}
+                  renderDate={renderDate}
+                  renderSnapshot={renderSnapshot}
+                  renderProposed={renderProposed}
+                  renderLive={renderLive}
+                  onToggleAll={() => toggleAllItemsForRequest(req)}
+                  onToggleItem={(itemId) => toggleItemSelection(req.id, itemId)}
+                  onOpenOverrideDialog={openOverrideDialog}
+                />
               </div>
             );
           })}
         </div>
       )}
 
-      {/* Reject dialog (shared .modal-overlay so Escape / focus trap / focus return come from DialogA11y) */}
       {rejectDialog && (
-        <div
-          className="no-print modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="reject-dialog-title"
-          onClick={() => {
-            if (!busy) {
-              setRejectDialog(null);
-              setRejectReason('');
-            }
+        <ChangeRequestRejectDialog
+          rejectDialog={rejectDialog}
+          rejectReason={rejectReason}
+          busy={busy}
+          dialogError={dialogError}
+          onChangeReason={setRejectReason}
+          onCancel={() => {
+            setRejectDialog(null);
+            setRejectReason('');
           }}
-        >
-          <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ display: 'grid', gap: 12 }}>
-            <h2 id="reject-dialog-title" style={{ fontSize: 17, margin: 0 }}>
-              {rejectDialog.itemIds ? `Reject ${rejectDialog.count} selected item${rejectDialog.count === 1 ? '' : 's'}` : `Reject ${rejectDialog.count} open item${rejectDialog.count === 1 ? '' : 's'}`}
-            </h2>
-            <p style={dlgText}>
-              From <strong>{rejectDialog.request.requester_name || 'Department Head'}</strong>. Items that were already approved stay applied
-              {rejectDialog.itemIds ? '; other open items stay open.' : '.'}
-            </p>
-            <textarea
-              aria-label="Reason for rejection"
-              style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13, minHeight: 80, resize: 'vertical', boxSizing: 'border-box' }}
-              placeholder="e.g. Schedule already locked for payroll; please revise weekend shifts."
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-            />
-            {dialogError}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button
-                type="button"
-                className="btn"
-                disabled={busy}
-                onClick={() => {
-                  setRejectDialog(null);
-                  setRejectReason('');
-                }}
-              >
-                Cancel
-              </button>
-              <button type="button" className="btn" style={{ background: '#dc2626', borderColor: '#dc2626', color: '#ffffff', fontWeight: 700 }} onClick={handleRejectConfirm} disabled={busy}>
-                {busy ? 'Rejecting…' : 'Confirm rejection'}
-              </button>
-            </div>
-          </div>
-        </div>
+          onConfirm={handleRejectConfirm}
+        />
       )}
 
-      {/* Override dialog: shows exactly what would be replaced before anything is forced */}
       {overrideDialog && (
-        <div className="no-print modal-overlay" role="dialog" aria-modal="true" aria-labelledby="override-dialog-title" onClick={() => !busy && setOverrideDialog(null)}>
-          <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ display: 'grid', gap: 12 }}>
-            {(() => {
-              const { item } = overrideDialog;
-              const missing = item.conflict_reason === 'target_missing';
-              const row = (label: string, body: ReactNode) => (
-                <div className="override-diff-row">
-                  <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
-                  <span>{body}</span>
-                </div>
-              );
-              return (
-                <>
-                  <h2 id="override-dialog-title" style={{ fontSize: 17, margin: 0 }}>
-                    {missing ? 'Discard this item?' : 'Override live change?'}
-                  </h2>
-                  <p style={dlgText}>
-                    <strong>{categoryLabel(item.target_table)}</strong> · {item.operator_id ? (opMap.get(item.operator_id) ?? 'Unknown Operator') : 'PM task'} · {renderDate(item)}
-                  </p>
-                  {row('When proposed', renderSnapshot(item, item.original_state as Snap | null, 'Empty cell'))}
-                  {item.conflict_reason && row('Now (live)', renderLive(item))}
-                  {row(missing ? 'Requested' : 'Will be applied', renderProposed(item))}
-                  <p style={dlgText}>{overrideExplanation(item.conflict_reason)}</p>
-                  {dialogError}
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                    <button type="button" className="btn" disabled={busy} onClick={() => setOverrideDialog(null)}>
-                      Cancel
-                    </button>
-                    <button type="button" className="btn" style={{ background: '#b45309', borderColor: '#b45309', color: '#ffffff', fontWeight: 700 }} disabled={busy} onClick={handleOverrideConfirm}>
-                      {busy ? 'Working…' : missing ? 'Discard item' : 'Override & apply'}
-                    </button>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        </div>
+        <ChangeRequestOverrideDialog
+          overrideDialog={overrideDialog}
+          busy={busy}
+          dialogError={dialogError}
+          opMap={opMap}
+          categoryLabel={categoryLabel}
+          renderDate={renderDate}
+          renderSnapshot={renderSnapshot}
+          renderLive={renderLive}
+          renderProposed={renderProposed}
+          onCancel={() => setOverrideDialog(null)}
+          onConfirm={handleOverrideConfirm}
+        />
       )}
     </div>
   );

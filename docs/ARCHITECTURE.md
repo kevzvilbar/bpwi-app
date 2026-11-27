@@ -5,7 +5,7 @@
 `bpwi-app` is the internal shift scheduling, field activity monitoring, preventive maintenance (PM), job-order dispatch, and accomplishment reporting platform for **BP Waterworks, Inc.** Built on **Next.js 16 App Router** (React 19, strict TypeScript), **Supabase** (PostgreSQL + Auth + Storage + Realtime), and **Vercel**:
 
 - **Server-Rendered Data-Loader Pages (`page.tsx` RSC):**
-  - `/` (Monthly Roster), `/activities` (Daily Activity Monitor, Job Orders, Shift Handovers, Employee KPIs & Fuel, Footprints & Routes), `/pm` (PM Planner), `/leave` (Leave Summary), `/call-sheet` (Call Sheet & Escalation), `/mobile` (Mobile Field Logger & Tasks), `/generate` (Shift Cycle Generator), `/operators` (Operators & Setup, admin-only), `/org-chart` (Organizational Chart), `/reports` (Daily Accomplishment Reports / `BPEMS-F-002`), and `/requests` (Department Head Change Request Review Queue).
+  - `/` (Monthly Roster — defaults signed-in `operator` accounts to `/field` unless `?view=roster` or `?m=` is requested), `/activities` (Daily Activity Monitor, Job Orders, Shift Handovers, Employee KPIs & Fuel, Footprints & Routes), `/pm` (PM Planner), `/leave` (Leave Summary), `/call-sheet` (Call Sheet & Escalation), `/field` (Offline-First Field Tasks & Logger), `/generate` (Shift Cycle Generator), `/operators` (Operators & Setup, admin-only), `/org-chart` (Organizational Chart), `/reports` (Daily Accomplishment Reports / `BPEMS-F-002`), and `/requests` (Department Head Change Request Review Queue).
 - **Client Entry & Error Boundary:**
   - `/login` (`app/login/page.tsx`, `'use client'`) for sign-in, pending-approval sign-up, and password recovery.
   - `app/error.tsx` (`'use client'`) global App Router error boundary.

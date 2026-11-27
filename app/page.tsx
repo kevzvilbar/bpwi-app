@@ -1,13 +1,17 @@
+import { redirect } from 'next/navigation';
 import { fetchAll, getProfile, type ChangeRequestItem } from '@/lib/profile';
 import { manilaToday } from '@/lib/date';
+import { resolveDefaultHomePath } from '@/lib/home-route';
 import { CHANGE_REQUEST_ITEM_COLUMNS } from '@/lib/query-columns';
 import Roster from '@/components/Roster';
 
 export const dynamic = 'force-dynamic';
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
+export default async function Home({ searchParams }: { searchParams: Promise<{ m?: string; view?: string }> }) {
   const sp = await searchParams;
   const { sb, user, role, orgId, operatorId, name, canEdit, canPropose, editGrant } = await getProfile();
+  const defaultHome = resolveDefaultHomePath(role, sp);
+  if (defaultHome) redirect(defaultHome);
   const today = manilaToday();
   const month = /^\d{4}-\d{2}$/.test(sp.m ?? '') ? sp.m! : today.slice(0, 7);
   const [y, mo] = month.split('-').map(Number);

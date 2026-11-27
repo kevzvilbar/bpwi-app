@@ -75,7 +75,7 @@ Configure these in `.env.local` locally and in Vercel Project Settings for produ
 | `NEXT_PUBLIC_MAP_SATELLITE_TILE_URL` / `_ATTRIBUTION` | Client | Unset | Optional custom `{z}/{x}/{y}` satellite tile URL and attribution |
 
 ## Roles & Permissions Matrix
-Permissions are computed in [`lib/permissions.ts`](lib/permissions.ts) and enforced by Postgres Row-Level Security:
+Permissions are computed in [`lib/permissions.ts`](lib/permissions.ts) and enforced by Postgres Row-Level Security (`operator` accounts land directly on `/field` at login with the full roster accessible at `/?view=roster` via **Schedule**):
 
 | Capability | `admin` | `scheduler` | `manager` (Dept Head) | `operator` | `viewer` |
 | --- | :---: | :---: | :---: | :---: | :---: |

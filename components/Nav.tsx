@@ -7,6 +7,7 @@ import { usePathname } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import NotificationBell from '@/components/NotificationBell';
 import { clearOfflineQueues, countOfflineItems } from '@/lib/offline-queue';
+import { getScheduleNavHref } from '@/lib/home-route';
 import { getDocumentTitle } from '@/lib/nav-title';
 import { OPEN_INSTALL_EVENT } from '@/lib/pwa-install';
 
@@ -187,12 +188,12 @@ export default function Nav(p: {
   }
 
   const primaryLinks = [
-    { href: '/', label: 'Schedule', mobileLabel: 'Schedule', icon: 'schedule' as const },
-    { href: '/field', label: 'Tasks', mobileLabel: 'Tasks', icon: 'tasks' as const },
-    { href: '/activities', label: 'Activities', mobileLabel: 'Logs', icon: 'activity' as const },
-    { href: '/pm', label: 'PM Plan', mobileLabel: 'PM Plan', icon: 'pm' as const },
-    { href: '/call-sheet', label: 'Standby', mobileLabel: 'Standby', icon: 'standby' as const },
-    { href: '/reports', label: 'Reports', mobileLabel: 'Reports', icon: 'reports' as const },
+    { href: getScheduleNavHref(p.role), matchPath: '/', label: 'Schedule', mobileLabel: 'Schedule', icon: 'schedule' as const },
+    { href: '/field', matchPath: '/field', label: 'Tasks', mobileLabel: 'Tasks', icon: 'tasks' as const },
+    { href: '/activities', matchPath: '/activities', label: 'Activities', mobileLabel: 'Logs', icon: 'activity' as const },
+    { href: '/pm', matchPath: '/pm', label: 'PM Plan', mobileLabel: 'PM Plan', icon: 'pm' as const },
+    { href: '/call-sheet', matchPath: '/call-sheet', label: 'Standby', mobileLabel: 'Standby', icon: 'standby' as const },
+    { href: '/reports', matchPath: '/reports', label: 'Reports', mobileLabel: 'Reports', icon: 'reports' as const },
   ];
 
   async function saveBranding(e: React.FormEvent) {
@@ -286,7 +287,7 @@ export default function Nav(p: {
 
         <nav aria-label="Main navigation" className="desktop-nav">
           {primaryLinks.map((l) => {
-            const on = l.href === '/' ? path === '/' : path.startsWith(l.href);
+            const on = l.matchPath === '/' ? path === '/' : path.startsWith(l.matchPath);
             return (
               <Link
                 key={l.href}
@@ -404,7 +405,7 @@ export default function Nav(p: {
       {/* Bottom Navigation Bar (Mobile & Tablet <= 1024px) */}
       <nav aria-label="Bottom navigation" className="bottom-nav no-print">
         {primaryLinks.map((l) => {
-          const on = l.href === '/' ? path === '/' : path.startsWith(l.href);
+          const on = l.matchPath === '/' ? path === '/' : path.startsWith(l.matchPath);
           return (
             <Link key={l.href} href={l.href} aria-current={on ? 'page' : undefined} style={{ position: 'relative' }}>
               <Icon name={l.icon} />

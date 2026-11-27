@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import {
   resolvePositionDisplayName,
@@ -17,13 +17,14 @@ import {
   OrgPositionModal,
   type OrgChartMeta,
 } from '@/components/OrgChartModals';
-
-const DEFAULT_META: OrgChartMeta = {
-  title: 'BP Waterworks Inc. — Iloilo Field Office',
-  subtitle: 'Master Organizational Chart & Shift Schedule',
-  legend1: 'Regular Duty: 7:00 AM – 4:00 PM',
-  legend2: 'Night Shift: 10:00 PM – 7:00 AM',
-};
+import {
+  BusConnector,
+  DEFAULT_META,
+  ORG_S,
+  StemDown,
+  THEME_STYLES,
+} from '@/components/OrgChartConnectors';
+import OrgChartMobileTree from '@/components/OrgChartMobileTree';
 
 interface Props {
   orgId: string;
@@ -36,79 +37,6 @@ interface Props {
   initialMeta?: Partial<OrgChartMeta> | null;
   migrationMissing?: boolean;
   error?: string;
-}
-
-const THEME_STYLES: Record<OrgColorTheme, { bg: string; fg: string; border: string; badgeBg: string; badgeFg: string }> = {
-  navy: { bg: '#0f2744', fg: '#ffffff', border: '#0f2744', badgeBg: '#1e3a5f', badgeFg: '#e2e8f0' },
-  blue: { bg: '#0284c7', fg: '#ffffff', border: '#0369a1', badgeBg: 'var(--info-bg)', badgeFg: 'var(--info-fg)' },
-  teal: { bg: '#0f766e', fg: '#ffffff', border: '#115e59', badgeBg: 'var(--ok-bg)', badgeFg: 'var(--ok-fg)' },
-  purple: { bg: '#5b21b6', fg: '#ffffff', border: '#4c1d95', badgeBg: 'var(--violet-bg)', badgeFg: 'var(--violet-fg)' },
-  amber: { bg: 'var(--warn-bg)', fg: 'var(--warn-fg)', border: 'var(--warn-border)', badgeBg: 'var(--warn-bg)', badgeFg: 'var(--warn-fg)' },
-  slate: { bg: 'var(--surface)', fg: 'var(--text)', border: 'var(--border)', badgeBg: 'var(--info-bg)', badgeFg: 'var(--info-fg)' },
-};
-
-const ORG_S = {
-  canvas: { background: 'var(--surface-muted)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 18px 20px', display: 'grid', gap: 0 },
-  execGrid: { display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'start', gap: 0 },
-  execCenter: { display: 'flex', flexDirection: 'column', alignItems: 'center' },
-  supportBox: { border: '1.5px dashed var(--border)', borderRadius: 8, background: 'var(--surface)' },
-  teamBox: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8 },
-  emptyTeamBox: { background: 'var(--surface)', border: '1px dashed var(--border)', borderRadius: 8 },
-  orphanBox: { border: '1px dashed var(--border)', borderRadius: 8, background: 'var(--surface)', marginTop: 12 },
-  stemWrap: { display: 'flex', justifyContent: 'center' },
-  stemLine: { width: 2, height: '100%', background: 'var(--border)' },
-  logoImg: { width: 48, height: 36, objectFit: 'contain' },
-} satisfies Record<string, CSSProperties>;
-
-function StemDown({ height = 14 }: { height?: number }) {
-  return (
-    <div style={{ ...ORG_S.stemWrap, height }}>
-      <div style={ORG_S.stemLine} />
-    </div>
-  );
-}
-
-function BusConnector({
-  items,
-  gridTemplateColumns,
-  height,
-}: {
-  items: Array<{ key: string; span?: number }>;
-  gridTemplateColumns: string;
-  height: number;
-}) {
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns, columnGap: 12 }}>
-      {items.map((item, idx) => (
-        <div
-          key={item.key}
-          style={{ gridColumn: item.span ? `span ${item.span}` : undefined, position: 'relative', height }}
-        >
-          <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: idx === 0 ? '50%' : -6,
-              right: idx === items.length - 1 ? '50%' : -6,
-              height: 2,
-              background: 'var(--border)',
-            }}
-          />
-          <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: '50%',
-              width: 2,
-              height,
-              background: 'var(--border)',
-              transform: 'translateX(-50%)',
-            }}
-          />
-        </div>
-      ))}
-    </div>
-  );
 }
 
 export default function OrgChart(p: Props) {
@@ -635,156 +563,21 @@ export default function OrgChart(p: Props) {
       </div>
 
       {/* Mobile Vertical Org Tree (<= 640px) */}
-      <div className="responsive-cards">
-        {/* Chart Header Card */}
-        <div
-          className="card"
-          style={{
-            padding: 12,
-            display: 'grid',
-            gap: 10,
-            cursor: editMode && p.canEdit ? 'pointer' : 'default',
-          }}
-          onClick={() => editMode && p.canEdit && openHeaderEditor()}
-        >
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/bpwi-logo.svg" alt="BPWI Logo" style={{ width: 40, height: 30, objectFit: 'contain', flexShrink: 0 }} />
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="font-bold" style={{ fontSize: 15, color: 'var(--text)', lineHeight: 1.25 }}>
-                {meta.title}
-              </div>
-              <div className="text-secondary-sm" style={{ marginTop: 2 }}>{meta.subtitle}</div>
-            </div>
-            {editMode && p.canEdit && (
-              <button
-                type="button"
-                className="no-print btn btn-sm"
-                style={{ flexShrink: 0 }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openHeaderEditor();
-                }}
-                title="Edit chart header & legends"
-              >
-                ✎ Edit
-              </button>
-            )}
-          </div>
-          {(meta.legend1 || meta.legend2) && (
-            <div className="row-wrap" style={{ gap: 6 }}>
-              {meta.legend1 && <span className="badge badge-info">{meta.legend1}</span>}
-              {meta.legend2 && <span className="badge badge-warn">{meta.legend2}</span>}
-            </div>
-          )}
-        </div>
-
-        {/* Tier 1: Executive + Support Group + Direct Staff */}
-        <div className="card" style={{ padding: 12, display: 'grid', gap: 10 }}>
-          <div className="section-eyebrow">EXECUTIVE</div>
-          <div style={{ display: 'grid', gap: 8 }}>
-            {executives.map((ex) => renderPersonCard(ex, false, false))}
-          </div>
-
-          {supportGroup.length > 0 && (
-            <div style={{ ...ORG_S.supportBox, padding: 10, display: 'grid', gap: 6 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span className="font-bold text-secondary-xs">SUPPORT GROUP</span>
-                <span className="text-secondary-xs" style={{ fontStyle: 'italic' }}>Advisory &amp; Control</span>
-              </div>
-              <div style={{ display: 'grid', gap: 6 }}>
-                {supportGroup.map((s) => renderPersonCard(s, true))}
-              </div>
-            </div>
-          )}
-
-          {execDirectStaff.length > 0 && (
-            <div style={{ display: 'grid', gap: 6 }}>
-              <div className="section-eyebrow">DIRECT REPORTS</div>
-              {execDirectStaff.map((s) => renderPersonCard(s, true))}
-            </div>
-          )}
-        </div>
-
-        {/* Tier 2 & 3: Department Heads -> Leadmen -> Crew Groups */}
-        {headColumns.map(({ head, groups }) => {
-          const headLeadmen = leadmen.filter((l) => l.parent_position_id === head.id);
-          return (
-            <div key={`m-${head.id}`} className="card" style={{ padding: 12, display: 'grid', gap: 10 }}>
-              {renderPersonCard(head, false, false)}
-
-              {headLeadmen.length > 0 && (
-                <div style={{ paddingLeft: 10, borderLeft: '2px solid var(--border)', display: 'grid', gap: 6 }}>
-                  <div className="section-eyebrow">LEADMAN / BRIDGE</div>
-                  {headLeadmen.map((lm) => renderPersonCard(lm, true))}
-                </div>
-              )}
-
-              <div style={{ paddingLeft: 10, borderLeft: '2px solid var(--border)', display: 'grid', gap: 8 }}>
-                {groups.length > 0 ? (
-                  groups.map(([groupName, members]) => (
-                    <div
-                      key={`m-${head.id}-${groupName}`}
-                      style={{
-                        background: 'var(--surface-muted)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 8,
-                        padding: 8,
-                        display: 'grid',
-                        gap: 6,
-                      }}
-                    >
-                      <div className="font-bold" style={{ fontSize: 11, color: 'var(--accent)', letterSpacing: '0.03em' }}>
-                        {groupName}
-                      </div>
-                      {members.map((m) => renderPersonCard(m, true))}
-                    </div>
-                  ))
-                ) : (
-                  <div className="card-pad-xs text-center text-muted-xs" style={ORG_S.emptyTeamBox}>
-                    No staff assigned yet
-                  </div>
-                )}
-              </div>
-
-              {editMode && p.canEdit && (
-                <button
-                  type="button"
-                  className="btn btn-sm btn-add"
-                  onClick={() =>
-                    setEditingPos({
-                      title: '',
-                      department_group: head.department_group || 'OPERATIONS',
-                      tier: 'staff',
-                      parent_position_id: head.id,
-                      secondary_parent_id: null,
-                      holder_user_id: null,
-                      holder_operator_id: null,
-                      fallback_name: '',
-                      shift_badge: '7AM–4PM',
-                      color_theme: 'slate',
-                      is_vacant: false,
-                      is_active: true,
-                      sort_order: positions.length * 5,
-                    })
-                  }
-                >
-                  + Add Position under {head.department_group || head.title}
-                </button>
-              )}
-            </div>
-          );
-        })}
-
-        {orphanStaff.length > 0 && (
-          <div className="card" style={{ padding: 12, display: 'grid', gap: 8, borderStyle: 'dashed' }}>
-            <div className="section-eyebrow">UNASSIGNED / OTHER NODES</div>
-            <div style={{ display: 'grid', gap: 6 }}>
-              {orphanStaff.map((s) => renderPersonCard(s, true))}
-            </div>
-          </div>
-        )}
-      </div>
+      <OrgChartMobileTree
+        meta={meta}
+        editMode={editMode}
+        canEdit={p.canEdit}
+        executives={executives}
+        supportGroup={supportGroup}
+        execDirectStaff={execDirectStaff}
+        headColumns={headColumns}
+        leadmen={leadmen}
+        orphanStaff={orphanStaff}
+        positionsCount={positions.length}
+        renderPersonCard={renderPersonCard}
+        onOpenHeaderEditor={openHeaderEditor}
+        onAddPositionUnderHead={setEditingPos}
+      />
 
       {editingHeader && (
         <OrgHeaderModal

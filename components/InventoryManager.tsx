@@ -16,6 +16,8 @@ import {
   StockMovementModal,
   type MovementActionKind,
 } from '@/components/InventoryModals';
+import InventoryLedgerTab from '@/components/InventoryLedgerTab';
+import InventoryCatalogTab from '@/components/InventoryCatalogTab';
 import {
   applyMovementsToBalances,
   AUTO_MOVEMENT_TYPES,
@@ -26,7 +28,6 @@ import {
   CONSUMABLE_CATEGORY_LABELS,
   formatInventoryQty,
   INVENTORY_LEDGER_PAGE_SIZE,
-  MOVEMENT_TYPE_LABELS,
   type ConsumableItemRow,
   type ConsumableMovementRow,
   type DbSiteBalanceRow,
@@ -558,272 +559,30 @@ export default function InventoryManager(p: InventoryManagerProps) {
       )}
 
       {tab === 'ledger' && (
-        <div className="card" style={{ padding: 12, display: 'grid', gap: 10 }}>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <SegmentedTabs
-              ariaLabel="Filter ledger source"
-              size="sm"
-              value={ledgerSource}
-              onChange={setLedgerSource}
-              items={[
-                { id: 'all', label: 'All Movements' },
-                { id: 'auto', label: 'Auto from Logs' },
-                { id: 'manual', label: 'Manual Entries' },
-              ]}
-            />
-            <select
-              className="input"
-              aria-label="Filter ledger by item"
-              value={ledgerItemId}
-              onChange={(e) => setLedgerItemId(e.target.value)}
-              style={{ flex: '1 1 200px', maxWidth: 300, minWidth: 0 }}
-            >
-              <option value="all">All Consumables</option>
-              {items.map((it) => (
-                <option key={it.id} value={it.id}>{it.name}</option>
-              ))}
-            </select>
-          </div>
-
-          {loadingLedger && filteredLedger.length === 0 ? (
-            <EmptyState title="Searching movements…" />
-          ) : filteredLedger.length === 0 ? (
-            <EmptyState title="No movements match these filters" />
-          ) : (
-            <>
-              <div className="responsive-cards">
-                {filteredLedger.map((m) => {
-                  const it = itemById.get(m.item_id);
-                  const unit = it?.unit ?? '';
-                  const isPositive = Number(m.quantity_delta) > 0;
-                  const isAuto = m.movement_type === 'activity_usage' || m.movement_type === 'activity_delivery';
-                  const who = m.created_by ? (p.userNameById[m.created_by] ?? 'Staff') : '';
-                  const refWho = [m.reference_no, who].filter(Boolean).join(' · ');
-                  return (
-                    <div
-                      key={`card-${m.id}`}
-                      style={{
-                        padding: '10px 12px',
-                        borderRadius: 8,
-                        border: '1px solid var(--border-light)',
-                        background: 'var(--surface-muted)',
-                        display: 'grid',
-                        gap: 6,
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 700 }}>{m.site_name}</div>
-                          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{it?.name ?? 'Unknown item'}</div>
-                        </div>
-                        <div
-                          className="tabular-nums"
-                          style={{
-                            fontWeight: 800,
-                            fontSize: 14,
-                            color: isPositive ? 'var(--ok-fg)' : 'var(--danger)',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {isPositive ? '+' : ''}{formatInventoryQty(Number(m.quantity_delta), unit)}
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <Badge tone={isAuto ? 'info' : isPositive ? 'ok' : 'warn'} size="sm">
-                          {MOVEMENT_TYPE_LABELS[m.movement_type]}
-                        </Badge>
-                        <span className="tabular-nums" style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                          {m.movement_date}
-                        </span>
-                      </div>
-                      {refWho && (
-                        <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                          Ref / By: {refWho}
-                        </div>
-                      )}
-                      {m.notes && (
-                        <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                          {m.notes}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="responsive-table-wrap scroll-x">
-                <table className="data-table data-table-sticky">
-                  <thead>
-                    <tr style={{ textAlign: 'left' }}>
-                      <th>Date</th>
-                      <th>Site / Well</th>
-                      <th>Consumable</th>
-                      <th>Type</th>
-                      <th style={{ textAlign: 'right' }}>Change</th>
-                      <th>Ref / By</th>
-                      <th>Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredLedger.map((m) => {
-                      const it = itemById.get(m.item_id);
-                      const unit = it?.unit ?? '';
-                      const isPositive = Number(m.quantity_delta) > 0;
-                      const isAuto = m.movement_type === 'activity_usage' || m.movement_type === 'activity_delivery';
-                      const who = m.created_by ? (p.userNameById[m.created_by] ?? 'Staff') : '';
-                      return (
-                        <tr key={m.id}>
-                          <td className="tabular-nums" style={{ whiteSpace: 'nowrap' }}>{m.movement_date}</td>
-                          <td style={{ fontWeight: 600 }}>{m.site_name}</td>
-                          <td>{it?.name ?? 'Unknown item'}</td>
-                          <td>
-                            <Badge tone={isAuto ? 'info' : isPositive ? 'ok' : 'warn'} size="sm">
-                              {MOVEMENT_TYPE_LABELS[m.movement_type]}
-                            </Badge>
-                          </td>
-                          <td
-                            className="tabular-nums"
-                            style={{
-                              textAlign: 'right',
-                              fontWeight: 700,
-                              color: isPositive ? 'var(--ok-fg)' : 'var(--danger)',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {isPositive ? '+' : ''}{formatInventoryQty(Number(m.quantity_delta), unit)}
-                          </td>
-                          <td style={{ color: 'var(--text-secondary)' }}>
-                            {[m.reference_no, who].filter(Boolean).join(' · ') || '—'}
-                          </td>
-                          <td style={{ color: 'var(--text-secondary)' }}>{m.notes ?? '—'}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {movements.length < totalMovements && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, paddingTop: 4 }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                    Showing {movements.length} of {totalMovements} movements
-                  </span>
-                  <button type="button" className="btn btn-sm" onClick={() => void loadMoreMovements()} disabled={loadingMore}>
-                    {loadingMore ? 'Loading…' : 'Load more movements'}
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+        <InventoryLedgerTab
+          items={items}
+          itemById={itemById}
+          filteredLedger={filteredLedger}
+          movementsCount={movements.length}
+          totalMovements={totalMovements}
+          loadingLedger={loadingLedger}
+          loadingMore={loadingMore}
+          ledgerSource={ledgerSource}
+          ledgerItemId={ledgerItemId}
+          userNameById={p.userNameById}
+          onChangeLedgerSource={setLedgerSource}
+          onChangeLedgerItemId={setLedgerItemId}
+          onLoadMore={() => void loadMoreMovements()}
+        />
       )}
 
       {tab === 'catalog' && (
-        <div className="card" style={{ padding: 12, display: 'grid', gap: 10 }}>
-          {items.length === 0 ? (
-            <EmptyState title="No consumables defined yet" />
-          ) : (
-            <>
-              <div className="responsive-cards">
-                {items.map((it) => (
-                  <div
-                    key={`card-${it.id}`}
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: 8,
-                      border: '1px solid var(--border-light)',
-                      background: 'var(--surface-muted)',
-                      display: 'grid',
-                      gap: 8,
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 700 }}>{it.name}</div>
-                        <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                          {CONSUMABLE_CATEGORY_LABELS[it.category]} · Unit: {it.unit} · Min {formatInventoryQty(Number(it.low_stock_threshold), it.unit)}
-                        </div>
-                      </div>
-                      <Badge tone={it.is_active ? 'ok' : 'neutral'} size="sm">
-                        {it.is_active ? 'Active' : 'Archived'}
-                      </Badge>
-                    </div>
-                    {p.canManage && (
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          onClick={() => setItemModal({ open: true, editing: it })}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          onClick={() => void toggleItemActive(it)}
-                        >
-                          {it.is_active ? 'Archive' : 'Restore'}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              <div className="responsive-table-wrap scroll-x">
-                <table className="data-table data-table-sticky">
-                  <thead>
-                    <tr style={{ textAlign: 'left' }}>
-                      <th>Consumable</th>
-                      <th>Category</th>
-                      <th>Unit</th>
-                      <th>Low Threshold / Site</th>
-                      <th>Status</th>
-                      {p.canManage && <th style={{ textAlign: 'right' }}>Actions</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((it) => (
-                      <tr key={it.id}>
-                        <td style={{ fontWeight: 700 }}>{it.name}</td>
-                        <td>{CONSUMABLE_CATEGORY_LABELS[it.category]}</td>
-                        <td>{it.unit}</td>
-                        <td className="tabular-nums">
-                          {formatInventoryQty(Number(it.low_stock_threshold), it.unit)}
-                        </td>
-                        <td>
-                          <Badge tone={it.is_active ? 'ok' : 'neutral'} size="sm">
-                            {it.is_active ? 'Active' : 'Archived'}
-                          </Badge>
-                        </td>
-                        {p.canManage && (
-                          <td style={{ textAlign: 'right' }}>
-                            <div style={{ display: 'inline-flex', gap: 6 }}>
-                              <button
-                                type="button"
-                                className="btn btn-sm"
-                                onClick={() => setItemModal({ open: true, editing: it })}
-                              >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-sm"
-                                onClick={() => void toggleItemActive(it)}
-                              >
-                                {it.is_active ? 'Archive' : 'Restore'}
-                              </button>
-                            </div>
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </div>
+        <InventoryCatalogTab
+          items={items}
+          canManage={p.canManage}
+          onEditItem={(it) => setItemModal({ open: true, editing: it })}
+          onToggleItemActive={(it) => void toggleItemActive(it)}
+        />
       )}
 
       <StockMovementModal
