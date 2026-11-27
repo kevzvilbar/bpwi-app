@@ -2517,5 +2517,131 @@ describe('PGlite SQL migrations (all) execution & security invariants', () => {
 
     // Re-running 040 migration is idempotent
     await db.exec(sql40);
+
+    // 24. 041 Harden Reviewed Deletes & Chlorine Units
+    const sql41 = fs.readFileSync(
+      path.join(MIGRATIONS_DIR, '041_harden_reviewed_deletes_and_chlorine_units.sql'),
+      'utf8',
+    );
+    await db.exec(sql41);
+
+    // 24a. Two-step bypass (flagged -> reset status='submitted' -> delete) is blocked by verified_at IS NOT NULL
+    let flaggedBypassId = '';
+    let sampleOwnFlaggedId = '';
+    await runAs(assignedUserId, async () => {
+      const rFuel = await db.query<{ id: string }>(
+        `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, site_or_well, details, is_sample)
+         values ($1, $2, 'genset_fuel_refill', '2026-11-27', 'Well 4 BAR', $3::jsonb, false) returning id`,
+        [orgId, assignedUserId, JSON.stringify({ fuelType: 'Diesel', fuelSource: 'Stock Drum / Container', litersAdded: 50 })],
+      );
+      flaggedBypassId = rFuel.rows[0].id;
+    }, true);
+
+    await runAs(mgr1Id, async () => {
+      const rSample = await db.query<{ id: string }>(
+        `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, site_or_well, is_sample)
+         values ($1, $2, 'pump_inspection', '2026-11-27', 'Well 4 BAR', true) returning id`,
+        [orgId, mgr1Id],
+      );
+      sampleOwnFlaggedId = rSample.rows[0].id;
+    }, true);
+
+    await runAs(adminId, async () => {
+      await db.query(
+        `update daily_activities set status = 'flagged', verified_by = $2, verified_at = now(), review_note = 'Recheck liters' where id = $1`,
+        [flaggedBypassId, adminId],
+      );
+      await db.query(
+        `update daily_activities set status = 'flagged', verified_by = $2, verified_at = now(), review_note = 'Sample check' where id = $1`,
+        [sampleOwnFlaggedId, adminId],
+      );
+    }, true);
+
+    await runAs(assignedUserId, async () => {
+      // Operator edits and resets status back to submitted while verified_at stays intact
+      const resetRes = await db.query<{ status: string }>(
+        `update daily_activities set status = 'submitted', notes = 'Corrected' where id = $1 returning status`,
+        [flaggedBypassId],
+      );
+      assert.equal(resetRes.rows[0]?.status, 'submitted');
+
+      // Delete STILL removes 0 rows because verified_at IS NOT NULL
+      const delAfterReset = await db.query(`delete from daily_activities where id = $1`, [flaggedBypassId]);
+      assert.equal(delAfterReset.rowCount, 0);
+    }, true);
+
+    await runAs(mgr1Id, async () => {
+      // Non-admin creator (department head) can still delete their own reviewed sample log
+      const delSample = await db.query(`delete from daily_activities where id = $1`, [sampleOwnFlaggedId]);
+      assert.equal(delSample.rowCount, 1);
+    }, true);
+
+    // 50L diesel stock deduction remains intact
+    await setAuthUid(db, null);
+    const intactBypassMove = await db.query<{ cnt: number }>(
+      `select count(*)::int as cnt from consumable_movements where activity_id = $1`,
+      [flaggedBypassId],
+    );
+    assert.equal(intactBypassMove.rows[0].cnt, 1);
+
+    // Admin cleanup works
+    await runAs(adminId, async () => {
+      const adminCleanup = await db.query(`delete from daily_activities where id = $1`, [flaggedBypassId]);
+      assert.equal(adminCleanup.rowCount, 1);
+    }, true);
+
+    // 24b. Missing chemicalType and unit mismatches (liquid in kg / granules in L) are rejected
+    const clLiqId = starterItemsRes.rows[1].id;
+    await assert.rejects(
+      () =>
+        runAs(assignedUserId, () =>
+          db.query(
+            `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, site_or_well, details, is_sample)
+             values ($1, $2, 'chlorine_refill', '2026-11-27', 'Well 4 BAR', $3::jsonb, false)`,
+            [orgId, assignedUserId, JSON.stringify({ chemicalType: '', amountAdded: 5, amountUnit: 'kg' })],
+          ),
+        ),
+      /Unrecognized or missing chlorine chemicalType/i,
+    );
+    await assert.rejects(
+      () =>
+        runAs(assignedUserId, () =>
+          db.query(
+            `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, site_or_well, details, is_sample)
+             values ($1, $2, 'chlorine_refill', '2026-11-27', 'Well 4 BAR', $3::jsonb, false)`,
+            [orgId, assignedUserId, JSON.stringify({ chemicalType: 'Sodium Hypochlorite 12.5% (liquid)', amountAdded: 5, amountUnit: 'kg' })],
+          ),
+        ),
+      /Liquid chlorine .* requires unit L/i,
+    );
+    await assert.rejects(
+      () =>
+        runAs(assignedUserId, () =>
+          db.query(
+            `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, site_or_well, details, is_sample)
+             values ($1, $2, 'chlorine_refill', '2026-11-27', 'Well 4 BAR', $3::jsonb, false)`,
+            [orgId, assignedUserId, JSON.stringify({ chemicalType: 'Calcium Hypochlorite 70% (granules)', amountAdded: 5, amountUnit: 'L' })],
+          ),
+        ),
+      /Granular chlorine .* requires unit kg/i,
+    );
+
+    // Valid Liquid (L) deducts CHLORINE_LIQ
+    await runAs(assignedUserId, async () => {
+      const liqOk = await db.query<{ id: string }>(
+        `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, site_or_well, details, is_sample)
+         values ($1, $2, 'chlorine_refill', '2026-11-27', 'Well 4 BAR', $3::jsonb, false) returning id`,
+        [orgId, assignedUserId, JSON.stringify({ chemicalType: 'Sodium Hypochlorite 12.5% (liquid)', amountAdded: 12.5, amountUnit: 'L' })],
+      );
+      const mv = await db.query<{ item_id: string; delta: string }>(
+        `select item_id::text, quantity_delta::text as delta from consumable_movements where activity_id = $1`,
+        [liqOk.rows[0].id],
+      );
+      assert.equal(mv.rows[0]?.item_id, clLiqId);
+      assert.equal(Number(mv.rows[0]?.delta), -12.5);
+    }, true);
+
+    // Re-running 041 migration is idempotent
+    await db.exec(sql41);
   });
 });

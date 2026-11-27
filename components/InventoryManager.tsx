@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { getErrorMessage } from '@/lib/error-utils';
 import {
@@ -18,7 +18,9 @@ import {
 } from '@/components/InventoryModals';
 import {
   applyMovementsToBalances,
+  AUTO_MOVEMENT_TYPES,
   buildInventoryCsv,
+  buildInventoryLedgerOrFilter,
   computeInventorySummaries,
   computeInventorySummariesFromBalances,
   CONSUMABLE_CATEGORY_LABELS,
@@ -74,7 +76,12 @@ export default function InventoryManager(p: InventoryManagerProps) {
   const [showEmptySites, setShowEmptySites] = useState(false);
   const [ledgerSource, setLedgerSource] = useState<'all' | 'auto' | 'manual'>('all');
   const [ledgerItemId, setLedgerItemId] = useState('all');
+  const [loadingLedger, setLoadingLedger] = useState(false);
   const [bannerErr, setBannerErr] = useState(p.initialError ?? '');
+  const ledgerReqIdRef = useRef(0);
+  const lastFetchedFilterKeyRef = useRef('all::all::');
+  const dbLedgerEnabled = balances !== null;
+  const pageSize = p.ledgerPageSize ?? INVENTORY_LEDGER_PAGE_SIZE;
 
   const [moveModal, setMoveModal] = useState<{
     open: boolean;
@@ -140,7 +147,87 @@ export default function InventoryManager(p: InventoryManagerProps) {
       });
   }, [sites, search, categoryFilter, lowOnly, showEmptySites]);
 
+  const buildMovementsQuery = useCallback(
+    (from: number, to: number, source: 'all' | 'auto' | 'manual', itemId: string, searchQuery: string) => {
+      let query = supabaseBrowser()
+        .from('consumable_movements')
+        .select(
+          'id, organization_id, item_id, site_name, movement_type, quantity_delta, movement_date, activity_id, reference_no, notes, created_by, created_at',
+          { count: 'exact' },
+        );
+      if (source === 'auto') {
+        query = query.in('movement_type', [...AUTO_MOVEMENT_TYPES]);
+      } else if (source === 'manual') {
+        query = query.not('movement_type', 'in', `(${AUTO_MOVEMENT_TYPES.join(',')})`);
+      }
+      if (itemId !== 'all') {
+        query = query.eq('item_id', itemId);
+      }
+      const token = searchQuery.trim().toLowerCase();
+      if (token) {
+        const matchingItemIds = items
+          .filter((it) => it.name.toLowerCase().includes(token))
+          .map((it) => it.id);
+        const orFilter = buildInventoryLedgerOrFilter(searchQuery, matchingItemIds);
+        if (orFilter) {
+          query = query.or(orFilter);
+        }
+      }
+      return query
+        .order('movement_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .range(from, to);
+    },
+    [items],
+  );
+
+  const ledgerFilterKey = `${ledgerSource}::${ledgerItemId}::${search.trim()}`;
+
+  useEffect(() => {
+    if (!dbLedgerEnabled || tab !== 'ledger') return;
+    if (lastFetchedFilterKeyRef.current === ledgerFilterKey) return;
+
+    const trimmedSearch = search.trim();
+    const delayMs = trimmedSearch ? 180 : 0;
+    const reqId = ++ledgerReqIdRef.current;
+
+    const timer = setTimeout(async () => {
+      setLoadingLedger(true);
+      setBannerErr('');
+      try {
+        const { data, error, count } = await buildMovementsQuery(
+          0,
+          pageSize - 1,
+          ledgerSource,
+          ledgerItemId,
+          search,
+        );
+        if (reqId !== ledgerReqIdRef.current) return;
+        if (error) {
+          setBannerErr(error.message);
+          return;
+        }
+        lastFetchedFilterKeyRef.current = ledgerFilterKey;
+        const rows = (data ?? []) as ConsumableMovementRow[];
+        setMovements(rows);
+        setTotalMovements(typeof count === 'number' ? count : rows.length);
+      } catch (ex: unknown) {
+        if (reqId !== ledgerReqIdRef.current) return;
+        setBannerErr(getErrorMessage(ex, 'Failed to filter movements'));
+      } finally {
+        if (reqId === ledgerReqIdRef.current) setLoadingLedger(false);
+      }
+    }, delayMs);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [dbLedgerEnabled, tab, ledgerFilterKey, ledgerSource, ledgerItemId, search, pageSize, buildMovementsQuery]);
+
   const filteredLedger = useMemo(() => {
+    if (dbLedgerEnabled && lastFetchedFilterKeyRef.current === ledgerFilterKey) {
+      return movements;
+    }
     const q = search.trim().toLowerCase();
     return movements.filter((m) => {
       const it = itemById.get(m.item_id);
@@ -157,7 +244,7 @@ export default function InventoryManager(p: InventoryManagerProps) {
       }
       return true;
     });
-  }, [movements, itemById, ledgerSource, ledgerItemId, search]);
+  }, [dbLedgerEnabled, ledgerFilterKey, movements, itemById, ledgerSource, ledgerItemId, search]);
 
   async function toggleItemActive(item: ConsumableItemRow) {
     if (!p.canManage) return;
@@ -181,19 +268,18 @@ export default function InventoryManager(p: InventoryManagerProps) {
     if (loadingMore) return;
     setLoadingMore(true);
     setBannerErr('');
+    const reqId = ++ledgerReqIdRef.current;
     try {
-      const pageSize = p.ledgerPageSize ?? INVENTORY_LEDGER_PAGE_SIZE;
       const from = movements.length;
       const to = from + pageSize - 1;
-      const { data, error, count } = await supabaseBrowser()
-        .from('consumable_movements')
-        .select(
-          'id, organization_id, item_id, site_name, movement_type, quantity_delta, movement_date, activity_id, reference_no, notes, created_by, created_at',
-          { count: 'exact' },
-        )
-        .order('movement_date', { ascending: false })
-        .order('created_at', { ascending: false })
-        .range(from, to);
+      const { data, error, count } = await buildMovementsQuery(
+        from,
+        to,
+        dbLedgerEnabled ? ledgerSource : 'all',
+        dbLedgerEnabled ? ledgerItemId : 'all',
+        dbLedgerEnabled ? search : '',
+      );
+      if (reqId !== ledgerReqIdRef.current) return;
       if (error) {
         setBannerErr(error.message);
         return;
@@ -206,9 +292,10 @@ export default function InventoryManager(p: InventoryManagerProps) {
       });
       if (typeof count === 'number') setTotalMovements(count);
     } catch (ex: unknown) {
+      if (reqId !== ledgerReqIdRef.current) return;
       setBannerErr(getErrorMessage(ex, 'Failed to load more movements'));
     } finally {
-      setLoadingMore(false);
+      if (reqId === ledgerReqIdRef.current) setLoadingMore(false);
     }
   }
 
@@ -285,7 +372,7 @@ export default function InventoryManager(p: InventoryManagerProps) {
             items={[
               { id: 'sites', label: `Stock by Site (${filteredSites.length})` },
               { id: 'items', label: `By Consumable (${itemSummaries.length})` },
-              { id: 'ledger', label: `Movement Ledger (${search.trim() || ledgerSource !== 'all' || ledgerItemId !== 'all' ? filteredLedger.length : totalMovements})` },
+              { id: 'ledger', label: `Movement Ledger (${!dbLedgerEnabled && (search.trim() || ledgerSource !== 'all' || ledgerItemId !== 'all') ? filteredLedger.length : totalMovements})` },
               { id: 'catalog', label: `Catalog (${items.length})` },
             ]}
           />
@@ -498,7 +585,9 @@ export default function InventoryManager(p: InventoryManagerProps) {
             </select>
           </div>
 
-          {filteredLedger.length === 0 ? (
+          {loadingLedger && filteredLedger.length === 0 ? (
+            <EmptyState title="Searching movements…" />
+          ) : filteredLedger.length === 0 ? (
             <EmptyState title="No movements match these filters" />
           ) : (
             <>
@@ -750,9 +839,27 @@ export default function InventoryManager(p: InventoryManagerProps) {
         initialItemId={moveModal.itemId}
         onClose={() => setMoveModal((prev) => ({ ...prev, open: false }))}
         onSaved={(inserted) => {
-          setMovements((prev) => [...inserted, ...prev]);
-          setTotalMovements((prev) => prev + inserted.length);
           setBalances((prev) => (prev !== null ? applyMovementsToBalances(prev, inserted) : null));
+          const q = search.trim().toLowerCase();
+          const matching = inserted.filter((m) => {
+            if (ledgerSource === 'auto') return false;
+            if (ledgerItemId !== 'all' && m.item_id !== ledgerItemId) return false;
+            if (!q) return true;
+            const it = itemById.get(m.item_id);
+            return (
+              m.site_name.toLowerCase().includes(q) ||
+              (it?.name ?? '').toLowerCase().includes(q) ||
+              (m.reference_no ?? '').toLowerCase().includes(q) ||
+              (m.notes ?? '').toLowerCase().includes(q)
+            );
+          });
+          if (matching.length > 0) {
+            setMovements((prev) => [...matching, ...prev]);
+            setTotalMovements((prev) => prev + matching.length);
+          }
+          if (dbLedgerEnabled && ledgerFilterKey !== lastFetchedFilterKeyRef.current) {
+            lastFetchedFilterKeyRef.current = '';
+          }
         }}
       />
 

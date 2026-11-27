@@ -36,7 +36,8 @@ export interface ActivityFeedCardProps {
   leadName?: string;
   crewNames: string[];
   canVerifyActivity: boolean;
-  canEditOrDelete: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
   isFlagging: boolean;
   flagReason: string;
   onFlagReasonChange: (reason: string) => void;
@@ -55,7 +56,8 @@ export default function ActivityFeedCard({
   leadName,
   crewNames,
   canVerifyActivity,
-  canEditOrDelete,
+  canEdit,
+  canDelete,
   isFlagging,
   flagReason,
   onFlagReasonChange,
@@ -223,14 +225,18 @@ export default function ActivityFeedCard({
             {specialPrint.label}
           </button>
         )}
-        {canEditOrDelete && (
+        {(canEdit || canDelete) && (
           <>
-            <button type="button" className="btn btn-sm" onClick={onEdit}>
-              Edit
-            </button>
-            <button type="button" className="btn btn-sm btn-danger-soft" onClick={onDelete}>
-              Delete
-            </button>
+            {canEdit && (
+              <button type="button" className="btn btn-sm" onClick={onEdit}>
+                Edit
+              </button>
+            )}
+            {canDelete && (
+              <button type="button" className="btn btn-sm btn-danger-soft" onClick={onDelete}>
+                Delete
+              </button>
+            )}
           </>
         )}
       </div>

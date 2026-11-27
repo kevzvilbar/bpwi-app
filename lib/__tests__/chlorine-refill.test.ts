@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   INITIAL_CHLORINE_REFILL_STATE,
   describeChlorineRefill,
+  expectedChlorineUnit,
   isDrumLevelLowerAfterRefill,
   validateChlorineRefill,
   type ChlorineRefillFormState,
@@ -62,6 +63,18 @@ describe('chlorine refill activity', () => {
       validateChlorineRefill({ ...filled, ...patch }, residual);
     assert.equal(check({}), null);
     assert.match(check({ drumLevelBefore: '' })!, /before refilling/);
+    assert.match(check({ chemicalType: '' })!, /chlorine chemical type/i);
+    assert.match(
+      check({ chemicalType: 'Sodium Hypochlorite 12.5% (liquid)', amountUnit: 'kg' })!,
+      /must be measured in liters \(L\)/,
+    );
+    assert.match(
+      check({ chemicalType: 'Calcium Hypochlorite 70% (granules)', amountUnit: 'L' })!,
+      /must be measured in kilograms \(kg\)/,
+    );
+    assert.equal(expectedChlorineUnit('Sodium Hypochlorite 12.5% (liquid)'), 'L');
+    assert.equal(expectedChlorineUnit('Calcium Hypochlorite 70% (granules)'), 'kg');
+    assert.equal(expectedChlorineUnit('Unrecognized chemical'), null);
     assert.match(check({ amountAdded: '' })!, /how much chlorine/);
     assert.match(check({ amountAdded: '0' })!, /how much chlorine/);
     assert.match(check({ pumpStrokePct: '', pumpSpeedPct: '' })!, /current dosing setting/);

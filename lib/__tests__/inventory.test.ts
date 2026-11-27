@@ -223,4 +223,18 @@ describe('consumables inventory helpers', () => {
     assert.equal(pavia?.balances[0].movementCount, 3);
     assert.equal(pavia?.balances[0].lastMovementDate, '2026-11-27');
   });
+
+  it('builds sanitized PostgREST OR filters for movement ledger search', async () => {
+    const mod = await import('../inventory.ts');
+    assert.equal(mod.sanitizePostgrestSearchToken('Well (4), DR-201*'), 'Well 4 DR-201');
+    assert.equal(mod.buildInventoryLedgerOrFilter('   ', ['item-1']), null);
+    assert.equal(
+      mod.buildInventoryLedgerOrFilter('DR-201', ['item-gas']),
+      'site_name.ilike.*DR-201*,reference_no.ilike.*DR-201*,notes.ilike.*DR-201*,item_id.in.(item-gas)',
+    );
+    assert.equal(
+      mod.buildInventoryLedgerOrFilter('Pavia', []),
+      'site_name.ilike.*Pavia*,reference_no.ilike.*Pavia*,notes.ilike.*Pavia*',
+    );
+  });
 });

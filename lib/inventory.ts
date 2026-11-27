@@ -49,6 +49,35 @@ export interface ConsumableMovementRow {
 
 export const INVENTORY_LEDGER_PAGE_SIZE = 50;
 
+export const AUTO_MOVEMENT_TYPES = ['activity_usage', 'activity_delivery'] as const;
+
+export function sanitizePostgrestSearchToken(raw: string): string {
+  return raw
+    .replace(/[,()\\*%'"]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function buildInventoryLedgerOrFilter(
+  search: string,
+  matchingItemIds: readonly string[],
+): string | null {
+  const token = sanitizePostgrestSearchToken(search);
+  if (!token) return null;
+  const safeIds = matchingItemIds
+    .map((id) => id.trim())
+    .filter((id) => /^[0-9a-zA-Z_-]+$/.test(id));
+  const clauses = [
+    `site_name.ilike.*${token}*`,
+    `reference_no.ilike.*${token}*`,
+    `notes.ilike.*${token}*`,
+  ];
+  if (safeIds.length > 0) {
+    clauses.push(`item_id.in.(${safeIds.join(',')})`);
+  }
+  return clauses.join(',');
+}
+
 export interface DbSiteBalanceRow {
   site_key: string;
   site_name: string;

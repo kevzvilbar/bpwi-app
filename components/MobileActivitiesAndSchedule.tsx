@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
-import { ACTIVITY_BY_ID, type DailyActivityRow } from '@/lib/activity-types';
+import { ACTIVITY_BY_ID, canDeleteActivity, canEditActivity, type DailyActivityRow } from '@/lib/activity-types';
 import { resolveActivityPhotoUrl } from '@/lib/activity-media';
 import { DEFAULT_STATION_CODE } from '@/lib/roster-helpers';
 import { SampleBadge } from '@/components/SampleBadge';
@@ -96,9 +96,17 @@ export default function MobileActivitiesAndSchedule({
     const targetId = pendingDeleteAct.id;
     setDeletingAct(true);
     try {
-      const { error } = await supabaseBrowser().from('daily_activities').delete().eq('id', targetId);
+      const { data, error } = await supabaseBrowser()
+        .from('daily_activities')
+        .delete()
+        .eq('id', targetId)
+        .select('id');
       if (error) {
         onError(error.message);
+        return;
+      }
+      if (!data || data.length === 0) {
+        onError('Could not delete activity: reviewed logs cannot be deleted.');
         return;
       }
       onActivityDeleted(targetId);
@@ -202,24 +210,28 @@ export default function MobileActivitiesAndSchedule({
                       ))}
                     </div>
                   )}
-                  {(role === 'admin' || (userId && act.logged_by === userId)) && act.status !== 'verified' && (
+                  {(canEditActivity(act, userId, role === 'admin') || canDeleteActivity(act, userId, role === 'admin')) && (
                     <div style={{ display: 'flex', gap: 6, marginTop: 4, borderTop: '1px solid var(--border-light)', paddingTop: 6 }}>
-                      <button
-                        type="button"
-                        className="btn"
-                        style={{ padding: '2px 10px', fontSize: 12 }}
-                        onClick={() => onEditActivity(act)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="btn"
-                        style={{ padding: '2px 10px', fontSize: 12, color: 'var(--danger)' }}
-                        onClick={() => setPendingDeleteAct(act)}
-                      >
-                        Delete
-                      </button>
+                      {canEditActivity(act, userId, role === 'admin') && (
+                        <button
+                          type="button"
+                          className="btn"
+                          style={{ padding: '2px 10px', fontSize: 12 }}
+                          onClick={() => onEditActivity(act)}
+                        >
+                          Edit
+                        </button>
+                      )}
+                      {canDeleteActivity(act, userId, role === 'admin') && (
+                        <button
+                          type="button"
+                          className="btn"
+                          style={{ padding: '2px 10px', fontSize: 12, color: 'var(--danger)' }}
+                          onClick={() => setPendingDeleteAct(act)}
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

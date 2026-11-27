@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  canDeleteActivity,
+  canEditActivity,
   computeMeterTestResult,
   parse12DigitAccount,
   resolveActivityTypeFromPm,
@@ -82,5 +84,83 @@ describe('resolveActivityTypeFromPm', () => {
     assert.equal(resolveActivityTypeFromPm({ activity_type: 'THERM', title: 'Thermal Scanning' }), 'thermal_scanning');
     assert.equal(resolveActivityTypeFromPm({ activity_type: 'LEVEL', title: 'SWL & PWL' }), 'water_level_monitoring');
     assert.equal(resolveActivityTypeFromPm({ activity_type: 'GENSET', title: 'Genset PMS' }), 'genset_monitoring');
+  });
+});
+
+describe('canEditActivity & canDeleteActivity', () => {
+  it('allows non-admin creator to edit flagged/submitted logs, but blocks delete once reviewed (even if reset to submitted)', () => {
+    assert.equal(
+      canEditActivity({ logged_by: 'op-1', status: 'submitted' }, 'op-1', false),
+      true,
+    );
+    assert.equal(
+      canDeleteActivity({ logged_by: 'op-1', status: 'submitted', verified_at: null, is_sample: false }, 'op-1', false),
+      true,
+    );
+
+    // Flagged log stays editable (for correction/resubmission), never deletable by non-admin
+    assert.equal(
+      canEditActivity({ logged_by: 'op-1', status: 'flagged' }, 'op-1', false),
+      true,
+    );
+    assert.equal(
+      canDeleteActivity(
+        { logged_by: 'op-1', status: 'flagged', verified_at: '2026-11-26T00:00:00Z', is_sample: false },
+        'op-1',
+        false,
+      ),
+      false,
+    );
+
+    // Resubmitted after flagging (status='submitted', verified_at non-null) still cannot be deleted by non-admin
+    assert.equal(
+      canDeleteActivity(
+        { logged_by: 'op-1', status: 'submitted', verified_at: '2026-11-26T00:00:00Z', is_sample: false },
+        'op-1',
+        false,
+      ),
+      false,
+    );
+
+    // Verified log cannot be edited or deleted by non-admin
+    assert.equal(
+      canEditActivity({ logged_by: 'op-1', status: 'verified' }, 'op-1', false),
+      false,
+    );
+    assert.equal(
+      canDeleteActivity(
+        { logged_by: 'op-1', status: 'verified', verified_at: '2026-11-26T00:00:00Z', is_sample: false },
+        'op-1',
+        false,
+      ),
+      false,
+    );
+  });
+
+  it('keeps sample logs deletable by creator and allows admins to delete reviewed logs', () => {
+    assert.equal(
+      canDeleteActivity(
+        { logged_by: 'mgr-1', status: 'flagged', verified_at: '2026-11-26T00:00:00Z', is_sample: true },
+        'mgr-1',
+        false,
+      ),
+      true,
+    );
+    assert.equal(
+      canDeleteActivity(
+        { logged_by: 'op-1', status: 'verified', verified_at: '2026-11-26T00:00:00Z', is_sample: false },
+        'admin-1',
+        true,
+      ),
+      true,
+    );
+    assert.equal(
+      canDeleteActivity(
+        { logged_by: 'op-1', status: 'submitted', verified_at: null, is_sample: false },
+        'op-2',
+        false,
+      ),
+      false,
+    );
   });
 });

@@ -3,6 +3,7 @@
 import {
   CHLORINE_CHEMICALS,
   DRUM_LEVEL_UNITS,
+  expectedChlorineUnit,
   isDrumLevelLowerAfterRefill,
   type ChlorineAmountUnit,
   type ChlorineRefillFormState,
@@ -22,6 +23,7 @@ const HEADING = { fontSize: 12, fontWeight: 700 } as const;
 /** Form section for the Chlorine Refilling (Dosing Drum) activity. */
 export default function ChlorineRefillFields({ fields, setFields }: ChlorineRefillFieldsProps) {
   const cl = fields.chlorine;
+  const expectedUnit = expectedChlorineUnit(cl.chemicalType);
   const patch = (updates: Partial<ChlorineRefillFormState>) =>
     setFields((prev) => ({ ...prev, chlorine: { ...prev.chlorine, ...updates } }));
 
@@ -51,7 +53,7 @@ export default function ChlorineRefillFields({ fields, setFields }: ChlorineRefi
 
       <div style={GRID}>
         <label style={LABEL}>
-          Chlorine type
+          Chlorine type *
           <select
             className="input"
             value={cl.chemicalType}
@@ -103,8 +105,8 @@ export default function ChlorineRefillFields({ fields, setFields }: ChlorineRefi
             value={cl.amountUnit}
             onChange={(e) => patch({ amountUnit: e.target.value as ChlorineAmountUnit })}
           >
-            <option value="kg">Kilograms (kg)</option>
-            <option value="L">Liters (L)</option>
+            <option value="kg" disabled={expectedUnit === 'L'}>Kilograms (kg)</option>
+            <option value="L" disabled={expectedUnit === 'kg'}>Liters (L)</option>
           </select>
         </label>
         {numberInput('Water added (L)', cl.waterAddedLiters, (v) => patch({ waterAddedLiters: v }))}

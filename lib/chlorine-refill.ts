@@ -13,6 +13,18 @@ export const CHLORINE_CHEMICALS: ReadonlyArray<{ name: string; unit: ChlorineAmo
   { name: 'Calcium Hypochlorite 70% (granules)', unit: 'kg' },
 ];
 
+/** Returns the expected measurement unit ('L' or 'kg') for a recognized chlorine chemical, or null. */
+export function expectedChlorineUnit(chemicalType: string): ChlorineAmountUnit | null {
+  const trimmed = chemicalType.trim();
+  if (!trimmed) return null;
+  const exact = CHLORINE_CHEMICALS.find((c) => c.name === trimmed);
+  if (exact) return exact.unit;
+  const lower = trimmed.toLowerCase();
+  if (/(sodium|liquid|12\.5)/.test(lower)) return 'L';
+  if (/(calcium|granul|powder|70%|tablet)/.test(lower)) return 'kg';
+  return null;
+}
+
 export const DRUM_LEVEL_UNITS: ReadonlyArray<{ value: DrumLevelUnit; label: string }> = [
   { value: 'L', label: 'Liters (L)' },
   { value: '%', label: 'Percent (%)' },
@@ -117,6 +129,14 @@ export function validateChlorineRefill(f: ChlorineRefillFormState, chlorineResid
     if (max !== null && n > max) return `${label} cannot be more than ${max}%.`;
   }
   if (!f.drumLevelBefore.trim()) return 'Enter the chlorine level of the drum before refilling.';
+  if (!f.chemicalType.trim()) return 'Select the chlorine chemical type.';
+  const expectedUnit = expectedChlorineUnit(f.chemicalType);
+  if (!expectedUnit) {
+    return 'Select a valid chlorine chemical type (liquid 12.5% or granules 70%).';
+  }
+  if (f.amountUnit !== expectedUnit) {
+    return `${f.chemicalType} must be measured in ${expectedUnit === 'L' ? 'liters (L)' : 'kilograms (kg)'}.`;
+  }
   if (!((numOrNull(f.amountAdded) ?? 0) > 0)) return 'Enter how much chlorine was added (more than 0).';
   if (!f.pumpStrokePct.trim() && !f.pumpSpeedPct.trim()) {
     return 'Enter the current dosing setting (pump stroke, speed, or both).';

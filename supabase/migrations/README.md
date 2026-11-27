@@ -1,6 +1,6 @@
 # Supabase Migrations (`bpwi-app`)
 
-Migrations in this folder are strictly numbered (`001`–`040`) and verified by `npm test` (`lib/__tests__/migrations.test.ts`), which checks:
+Migrations in this folder are strictly numbered (`001`–`041`) and verified by `npm test` (`lib/__tests__/migrations.test.ts`), which checks:
 - Sequential numbering with no gaps or duplicates.
 - Every newly created table enables Row Level Security (`ENABLE ROW LEVEL SECURITY`).
 
@@ -13,7 +13,7 @@ supabase db push
 ```
 
 ### Option B — Supabase SQL Editor (Manual Fallback)
-Run each file in ascending numeric order (`001_init.sql` → `040_field_integrity_and_inventory_hardening.sql`). All migrations are written idempotently (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
+Run each file in ascending numeric order (`001_init.sql` → `041_harden_reviewed_deletes_and_chlorine_units.sql`). All migrations are written idempotently (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
 
 ## Optional Local Seeds
 Org-chart structural templates do not commit employee names in migrations. To assign local directory names outside version control, copy `supabase/seeds/org_chart.example.sql` to `supabase/seeds/org_chart.local.sql` (gitignored) or assign holders in `/org-chart`.
@@ -50,3 +50,4 @@ Org-chart structural templates do not commit employee names in migrations. To as
 - `038`: Add GIN indexes on `daily_activities` (`photo_storage_paths`, `photo_urls`) for photo-proxy RLS lookups and add `service_role`-only `purge_expired_telemetry_pii(p_retention_days int default 365)` (minimum 30 days) to scrub expired GPS/signature/accuracy metadata on `daily_activities` and `contact_number` on completed/cancelled `job_orders`.
 - `039`: Add per-site consumables inventory (`consumable_items` and `consumable_movements`) with org starter seeding (`CHLORINE_GRAN`, `CHLORINE_LIQ`, `GASOLINE`, `DIESEL`), automatic stock sync trigger from real `daily_activities` chlorine & fuel logs (`sync_consumable_inventory_from_activity()`), manager/admin write RLS, and audit triggers.
 - `040`: Harden field log integrity & inventory computation: block non-admin deletion of `verified`/`flagged` `daily_activities`, add server-controlled `received_at` column + trigger on `daily_activities`, revoke direct execute on `seed_default_consumables(uuid)`, enforce strict positive quantity & chlorine/fuel validation in `sync_consumable_inventory_from_activity()` without stock churn on non-stock updates, and add `get_consumable_site_balances()` DB aggregation RPC.
+- `041`: Block two-step deletion of reviewed `daily_activities` logs by requiring `verified_at is null` for non-admin, non-sample deletes, and require an explicit chlorine `chemicalType` with unit enforcement (`L` for liquid, `kg` for granules) in `sync_consumable_inventory_from_activity()`.

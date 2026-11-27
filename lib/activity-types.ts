@@ -294,6 +294,31 @@ export type DailyActivityRow = {
   updated_at: string;
 };
 
+/** Whether a user can edit an activity row (blocked once verified, including for admins). */
+export function canEditActivity(
+  act: Pick<DailyActivityRow, 'logged_by' | 'status'>,
+  userId: string | null | undefined,
+  isAdmin: boolean,
+): boolean {
+  return (isAdmin || (Boolean(userId) && act.logged_by === userId)) && act.status !== 'verified';
+}
+
+/**
+ * Whether a user can delete an activity row.
+ * Mirrors RLS `daily_activities delete` policy: admins can delete any log; creators can delete
+ * their own sample logs or unreviewed logs (not verified, not flagged, verified_at IS NULL).
+ */
+export function canDeleteActivity(
+  act: Pick<DailyActivityRow, 'logged_by' | 'status' | 'verified_at' | 'is_sample'>,
+  userId: string | null | undefined,
+  isAdmin: boolean,
+): boolean {
+  if (isAdmin) return true;
+  if (!userId || act.logged_by !== userId) return false;
+  if (act.is_sample) return true;
+  return act.status !== 'verified' && act.status !== 'flagged' && !act.verified_at;
+}
+
 export type JobOrderRow = {
   id: string;
   organization_id: string;

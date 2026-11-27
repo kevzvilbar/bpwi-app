@@ -474,8 +474,13 @@ describe('ActivityLoggerModal', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/before refilling/);
     expect(activityInsertSingleMock).not.toHaveBeenCalled();
 
-    await user.selectOptions(screen.getByLabelText(/Chlorine type/i), 'Sodium Hypochlorite 12.5% (liquid)');
     await user.type(screen.getByLabelText(/Drum level before/i), '15');
+    await user.click(screen.getByRole('button', { name: 'Submit Activity Log' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Select the chlorine chemical type/i);
+    expect(activityInsertSingleMock).not.toHaveBeenCalled();
+
+    await user.selectOptions(screen.getByLabelText(/Chlorine type/i), 'Sodium Hypochlorite 12.5% (liquid)');
+    expect((screen.getByRole('option', { name: 'Kilograms (kg)' }) as HTMLOptionElement).disabled).toBe(true);
     await user.type(screen.getByLabelText(/Chlorine added/i), '4.25');
     await user.type(screen.getByLabelText(/^Pump stroke/i), '55');
     await user.click(screen.getByRole('button', { name: 'Submit Activity Log' }));

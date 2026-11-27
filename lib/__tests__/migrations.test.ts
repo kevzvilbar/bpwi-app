@@ -291,7 +291,19 @@ describe('Supabase SQL migrations integrity', () => {
 
     const rootReadme = fs.readFileSync(path.resolve(process.cwd(), 'README.md'), 'utf8');
     const migrationsReadme = fs.readFileSync(path.join(MIGRATIONS_DIR, 'README.md'), 'utf8');
-    assert.match(rootReadme, /040_field_integrity_and_inventory_hardening\.sql/);
-    assert.match(migrationsReadme, /\b040\b/);
+    assert.match(rootReadme, /041_harden_reviewed_deletes_and_chlorine_units\.sql/);
+    assert.match(migrationsReadme, /\b041\b/);
+  });
+
+  it('closes flagged-reset delete bypass and requires chlorine chemicalType/unit match in 041_harden_reviewed_deletes_and_chlorine_units.sql', () => {
+    const sql41 = fs.readFileSync(path.join(MIGRATIONS_DIR, '041_harden_reviewed_deletes_and_chlorine_units.sql'), 'utf8');
+    for (const required of [
+      'daily_activities delete',
+      'verified_at is null',
+      "v_unit not in ('l', 'liter', 'liters', 'litre', 'litres')",
+      "v_unit <> 'kg'",
+    ]) {
+      assert.ok(sql41.includes(required), `041_harden_reviewed_deletes_and_chlorine_units.sql missing required construct: ${required}`);
+    }
   });
 });

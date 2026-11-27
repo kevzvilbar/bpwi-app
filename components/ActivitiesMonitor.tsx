@@ -10,7 +10,7 @@ import { getErrorMessage } from '@/lib/error-utils';
 import { addIsoDays as addDays, fmtTimeManila } from '@/lib/date';
 import { isValidCoordinate } from '@/lib/route-footprints';
 import { resolvePmCreditedOperators } from '@/lib/pm-credit';
-import { ACTIVITY_TYPES, type DailyActivityRow, type JobOrderRow, type ShiftHandoverRow } from '@/lib/activity-types';
+import { ACTIVITY_TYPES, canDeleteActivity, canEditActivity, type DailyActivityRow, type JobOrderRow, type ShiftHandoverRow } from '@/lib/activity-types';
 import type { LinkedJobOrder } from '@/components/ActivityLoggerModal';
 import ActivityFeedCard, { type PrintPreviewMode } from '@/components/ActivityFeedCard';
 import { AlertBanner, Badge, EmptyState, SegmentedTabs } from '@/components/ui';
@@ -256,9 +256,17 @@ export default function ActivitiesMonitor(p: {
   async function handleDeleteActivity(act: DailyActivityRow) {
     setDeletingAct(true);
     try {
-      const { error } = await supabaseBrowser().from('daily_activities').delete().eq('id', act.id);
+      const { data, error } = await supabaseBrowser()
+        .from('daily_activities')
+        .delete()
+        .eq('id', act.id)
+        .select('id');
       if (error) {
         setBannerMsg(`Could not delete activity: ${error.message}`);
+        return;
+      }
+      if (!data || data.length === 0) {
+        setBannerMsg('Could not delete activity: reviewed logs cannot be deleted.');
         return;
       }
       setActivities((prev) => prev.filter((x) => x.id !== act.id));
@@ -487,7 +495,8 @@ export default function ActivitiesMonitor(p: {
                   leadName={act.lead_operator_id ? opBy.get(act.lead_operator_id)?.full_name : undefined}
                   crewNames={(act.crew_operator_ids ?? []).map((id) => opBy.get(id)?.full_name).filter(Boolean) as string[]}
                   canVerifyActivity={p.canVerifyActivity}
-                  canEditOrDelete={(p.isAdmin || act.logged_by === p.userId) && act.status !== 'verified'}
+                  canEdit={canEditActivity(act, p.userId, p.isAdmin)}
+                  canDelete={canDeleteActivity(act, p.userId, p.isAdmin)}
                   isFlagging={flaggingId === act.id} flagReason={flagReason}
                   onFlagReasonChange={setFlagReason}
                   onToggleFlag={() => { setFlaggingId(flaggingId === act.id ? null : act.id); setFlagReason(''); }}

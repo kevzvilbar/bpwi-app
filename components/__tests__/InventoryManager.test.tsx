@@ -10,9 +10,28 @@ const movementInsertPayloads: Array<Array<Record<string, unknown>>> = [];
 const itemInsertPayloads: Array<Record<string, unknown>> = [];
 
 const rangeMock = vi.fn<() => QueryResult<Record<string, unknown>[]> & { count?: number }>();
-const movementSelectMock = vi.fn(() => ({
-  order: () => ({ order: () => ({ range: rangeMock }) }),
-}));
+const movementQueryFilters: Array<{ op: string; args: unknown[] }> = [];
+const movementQueryChain = {
+  eq: (...args: unknown[]) => {
+    movementQueryFilters.push({ op: 'eq', args });
+    return movementQueryChain;
+  },
+  in: (...args: unknown[]) => {
+    movementQueryFilters.push({ op: 'in', args });
+    return movementQueryChain;
+  },
+  not: (...args: unknown[]) => {
+    movementQueryFilters.push({ op: 'not', args });
+    return movementQueryChain;
+  },
+  or: (...args: unknown[]) => {
+    movementQueryFilters.push({ op: 'or', args });
+    return movementQueryChain;
+  },
+  order: () => movementQueryChain,
+  range: () => rangeMock(),
+};
+const movementSelectMock = vi.fn(() => movementQueryChain);
 const movementInsertSelectMock = vi.fn<() => QueryResult<Record<string, unknown>[]>>();
 const movementInsertMock = vi.fn((payload: Array<Record<string, unknown>>) => {
   movementInsertPayloads.push(payload);
@@ -103,6 +122,7 @@ describe('InventoryManager', () => {
     vi.clearAllMocks();
     movementInsertPayloads.length = 0;
     itemInsertPayloads.length = 0;
+    movementQueryFilters.length = 0;
 
     movementInsertSelectMock.mockImplementation(async () => {
       const latest = movementInsertPayloads[movementInsertPayloads.length - 1] ?? [];
@@ -280,6 +300,76 @@ describe('InventoryManager', () => {
     await user.click(screen.getByRole('button', { name: 'Load more movements' }));
     await waitFor(() => {
       expect(screen.getAllByText('Older generator run').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('runs movement ledger search and filters in the database query when paginated', async () => {
+    const user = userEvent.setup();
+    const olderAutoRow: ConsumableMovementRow = {
+      id: 'mv-old-99',
+      organization_id: 'org-1',
+      item_id: 'item-gas',
+      site_name: 'Depot Pump',
+      movement_type: 'activity_delivery',
+      quantity_delta: 40,
+      movement_date: '2026-10-01',
+      activity_id: 'act-99',
+      reference_no: 'DR-OLD-99',
+      notes: 'Historical fuel receipt',
+      created_by: 'u-mgr',
+      created_at: '2026-10-01T00:00:00Z',
+    };
+
+    rangeMock
+      .mockResolvedValueOnce({ data: [olderAutoRow], error: null, count: 1 } as never)
+      .mockResolvedValueOnce({ data: [olderAutoRow], error: null, count: 1 } as never);
+
+    render(
+      <InventoryManager
+        orgId="org-1"
+        userId="u-op"
+        today="2026-11-26"
+        canManage={false}
+        inventoryTableReady={true}
+        initialItems={ITEMS}
+        initialBalances={[
+          {
+            site_key: 'well 4 bar',
+            site_name: 'Well 4 BAR',
+            item_id: 'item-cl',
+            balance: 40,
+            movement_count: 2,
+            last_movement_date: '2026-11-26',
+          },
+        ]}
+        initialMovements={MOVEMENTS}
+        initialTotalMovements={120}
+        ledgerPageSize={2}
+        savedSiteNames={['Well 4 BAR']}
+        userNameById={{ 'u-mgr': 'Kevin Vilbar' }}
+      />,
+    );
+
+    await user.click(screen.getByRole('tab', { name: /Movement Ledger \(120\)/i }));
+    await user.click(screen.getByRole('tab', { name: 'Auto from Logs' }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Historical fuel receipt').length).toBeGreaterThan(0);
+    });
+    expect(movementQueryFilters).toContainEqual({
+      op: 'in',
+      args: ['movement_type', ['activity_usage', 'activity_delivery']],
+    });
+
+    await user.selectOptions(screen.getByLabelText('Filter ledger by item'), 'item-gas');
+    await user.type(screen.getByLabelText('Search site or consumable'), 'DR-OLD-99');
+
+    await waitFor(() => {
+      expect(movementQueryFilters.some((f) => f.op === 'or')).toBe(true);
+    });
+    expect(movementQueryFilters).toContainEqual({
+      op: 'eq',
+      args: ['item_id', 'item-gas'],
     });
   });
 });
