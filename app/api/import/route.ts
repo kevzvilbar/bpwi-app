@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { supabaseServer } from '@/lib/supabase/server';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 import { getErrorMessage } from '@/lib/error-utils';
+import { isLegacyImportEnabled, parseImportOptions } from '@/lib/import-guard';
 import { normalizeLegacyStationCode } from '@/lib/roster-helpers';
 import { validateImportPayload, type LegacyArea } from '@/lib/import-validation';
 
@@ -61,6 +62,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Admins only' }, { status: 403 });
     }
 
+    if (
+      !isLegacyImportEnabled({
+        nodeEnv: process.env.NODE_ENV,
+        enableLegacyImport: process.env.ENABLE_LEGACY_IMPORT,
+      })
+    ) {
+      return NextResponse.json(
+        { error: 'Legacy JSON import is disabled in production. Set ENABLE_LEGACY_IMPORT=true temporarily to run an import.' },
+        { status: 403 },
+      );
+    }
+
+    const { dryRun, overwrite } = parseImportOptions(req.url);
+
     const { url } = getSupabaseEnv();
     const secretKey = (process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? '').trim();
     if (!url || !secretKey) {
@@ -96,41 +111,25 @@ export async function POST(req: Request) {
       return data as T;
     };
 
-    const ops = await must<KeyedIdRow[]>(
-      db
-        .from('operators')
-        .upsert(
-          (st.operators ?? []).map((o, i) => ({
-            organization_id: org,
-            legacy_key: o.id,
-            full_name: o.name,
-            position: o.role,
-            phone_number: o.phone,
-            default_station: o.defaultStation ? normalizeLegacyStationCode(o.defaultStation) : o.defaultStation,
-            sort_order: i,
-          })),
-          { onConflict: 'organization_id,legacy_key' },
-        )
-        .select('id, legacy_key'),
-    );
-    const shifts = await must<KeyedIdRow[]>(
-      db
-        .from('shift_types')
-        .upsert(
-          Object.values(st.shifts ?? {}).map((s) => ({
-            organization_id: org,
-            legacy_key: s.id,
-            code: s.label,
-            description: s.name,
-            duration_hours: s.hours ?? 0,
-            is_off: !!s.isOff,
-            background_color: s.bg,
-            text_color: s.text,
-          })),
-          { onConflict: 'organization_id,legacy_key' },
-        )
-        .select('id, legacy_key'),
-    );
+    const operatorRows = (st.operators ?? []).map((o, i) => ({
+      organization_id: org,
+      legacy_key: o.id,
+      full_name: o.name,
+      position: o.role,
+      phone_number: o.phone,
+      default_station: o.defaultStation ? normalizeLegacyStationCode(o.defaultStation) : o.defaultStation,
+      sort_order: i,
+    }));
+    const shiftRows = Object.values(st.shifts ?? {}).map((s) => ({
+      organization_id: org,
+      legacy_key: s.id,
+      code: s.label,
+      description: s.name,
+      duration_hours: s.hours ?? 0,
+      is_off: !!s.isOff,
+      background_color: s.bg,
+      text_color: s.text,
+    }));
     const mapAreaCategory = (a: LegacyArea, allowRest: boolean) => {
       const code = String(a.code ?? '').trim().toUpperCase();
       if (code === 'RD' || /rest\s*day/i.test(a.name ?? '')) return allowRest ? 'rest' : 'leave';
@@ -170,12 +169,90 @@ export async function POST(req: Request) {
       }
       return Array.from(deduped.values());
     };
-    let areaRes = await db.from('area_codes').upsert(areaPayload(true), { onConflict: 'organization_id,code' }).select('id, code');
+    const plannedAreas = areaPayload(true);
+
+    if (dryRun) {
+      const [existingOpsRes, existingShiftsRes, existingAreasRes, existingPmRes] = await Promise.all([
+        db.from('operators').select('legacy_key').eq('organization_id', org),
+        db.from('shift_types').select('legacy_key').eq('organization_id', org),
+        db.from('area_codes').select('code').eq('organization_id', org),
+        db.from('pm_tasks').select('legacy_key').eq('organization_id', org),
+      ]);
+      const existingErr =
+        existingOpsRes.error || existingShiftsRes.error || existingAreasRes.error || existingPmRes.error;
+      if (existingErr) throw new Error(existingErr.message);
+
+      const opSet = new Set(((existingOpsRes.data ?? []) as Array<{ legacy_key: string | null }>).map((r) => r.legacy_key));
+      const shiftSet = new Set(((existingShiftsRes.data ?? []) as Array<{ legacy_key: string | null }>).map((r) => r.legacy_key));
+      const areaSet = new Set(((existingAreasRes.data ?? []) as Array<{ code: string }>).map((r) => r.code.toUpperCase()));
+      const pmSet = new Set(((existingPmRes.data ?? []) as Array<{ legacy_key: string | null }>).map((r) => r.legacy_key));
+
+      let assignmentCount = 0;
+      let standbyCount = 0;
+      for (const days of Object.values(st.schedule ?? {})) {
+        for (const c of Object.values(days ?? {})) {
+          if (!c || (c.shift === 'white' && !c.text && !c.onCall)) continue;
+          assignmentCount += 1;
+          if (c.onCall) standbyCount += 1;
+        }
+      }
+
+      return NextResponse.json({
+        dryRun: true,
+        overwrite,
+        wouldProcess: {
+          operators: operatorRows.length,
+          shifts: shiftRows.length,
+          areas: plannedAreas.length,
+          assignments: assignmentCount,
+          standby: standbyCount,
+          pm_tasks: (st.pmTasks ?? []).length,
+        },
+        existingMatches: {
+          operators: operatorRows.filter((r) => opSet.has(r.legacy_key)).length,
+          shifts: shiftRows.filter((r) => shiftSet.has(r.legacy_key)).length,
+          areas: plannedAreas.filter((r) => areaSet.has(r.code.toUpperCase())).length,
+          pm_tasks: (st.pmTasks ?? []).filter((t) => pmSet.has(t.id)).length,
+        },
+      });
+    }
+
+    const opsUpserted = await must<KeyedIdRow[]>(
+      db
+        .from('operators')
+        .upsert(operatorRows, { onConflict: 'organization_id,legacy_key', ignoreDuplicates: !overwrite })
+        .select('id, legacy_key'),
+    );
+    const shiftsUpserted = await must<KeyedIdRow[]>(
+      db
+        .from('shift_types')
+        .upsert(shiftRows, { onConflict: 'organization_id,legacy_key', ignoreDuplicates: !overwrite })
+        .select('id, legacy_key'),
+    );
+    let areaRes = await db
+      .from('area_codes')
+      .upsert(plannedAreas, { onConflict: 'organization_id,code', ignoreDuplicates: !overwrite })
+      .select('id, code');
     if (areaRes.error?.code === '23514') {
-      areaRes = await db.from('area_codes').upsert(areaPayload(false), { onConflict: 'organization_id,code' }).select('id, code');
+      areaRes = await db
+        .from('area_codes')
+        .upsert(areaPayload(false), { onConflict: 'organization_id,code', ignoreDuplicates: !overwrite })
+        .select('id, code');
     }
     if (areaRes.error) throw new Error(areaRes.error.message);
-    const areas = (areaRes.data ?? []) as Array<{ id: string; code: string }>;
+
+    // ignoreDuplicates=true omits skipped existing rows from RETURNING, so reload org IDs before resolving schedules/PMs.
+    const ops = overwrite
+      ? opsUpserted
+      : await must<KeyedIdRow[]>(db.from('operators').select('id, legacy_key').eq('organization_id', org));
+    const shifts = overwrite
+      ? shiftsUpserted
+      : await must<KeyedIdRow[]>(db.from('shift_types').select('id, legacy_key').eq('organization_id', org));
+    const areas = overwrite
+      ? ((areaRes.data ?? []) as Array<{ id: string; code: string }>)
+      : await must<Array<{ id: string; code: string }>>(
+          db.from('area_codes').select('id, code').eq('organization_id', org),
+        );
     const opId = new Map(ops.map((o) => [o.legacy_key, o.id]));
     const shiftId = new Map(shifts.map((s) => [s.legacy_key, s.id]));
     const areaId = new Map(areas.map((a) => [a.code, a.id]));
@@ -198,10 +275,18 @@ export async function POST(req: Request) {
       }
     }
     for (let i = 0; i < asg.length; i += 500) {
-      await must(db.from('schedule_assignments').upsert(asg.slice(i, i + 500), { onConflict: 'operator_id,schedule_date' }));
+      await must(
+        db
+          .from('schedule_assignments')
+          .upsert(asg.slice(i, i + 500), { onConflict: 'operator_id,schedule_date', ignoreDuplicates: !overwrite }),
+      );
     }
     for (let i = 0; i < standby.length; i += 500) {
-      await must(db.from('standby_assignments').upsert(standby.slice(i, i + 500), { onConflict: 'operator_id,schedule_date' }));
+      await must(
+        db
+          .from('standby_assignments')
+          .upsert(standby.slice(i, i + 500), { onConflict: 'operator_id,schedule_date', ignoreDuplicates: !overwrite }),
+      );
     }
 
     const typeLabel = (k: string) =>
@@ -236,7 +321,11 @@ export async function POST(req: Request) {
       });
     }
     if (activityRows.length > 0) {
-      await must(db.from('pm_activity_types').upsert(activityRows, { onConflict: 'organization_id,code' }));
+      await must(
+        db
+          .from('pm_activity_types')
+          .upsert(activityRows, { onConflict: 'organization_id,code', ignoreDuplicates: !overwrite }),
+      );
     }
 
     const pm = (st.pmTasks ?? []).map((t) => ({
@@ -253,12 +342,18 @@ export async function POST(req: Request) {
       remarks: t.notes ?? null,
     }));
     for (let i = 0; i < pm.length; i += 500) {
-      await must(db.from('pm_tasks').upsert(pm.slice(i, i + 500), { onConflict: 'organization_id,legacy_key' }));
+      await must(
+        db
+          .from('pm_tasks')
+          .upsert(pm.slice(i, i + 500), { onConflict: 'organization_id,legacy_key', ignoreDuplicates: !overwrite }),
+      );
     }
     return NextResponse.json({
-      operators: ops.length,
-      shifts: shifts.length,
-      areas: areas.length,
+      dryRun: false,
+      overwrite,
+      operators: opsUpserted.length,
+      shifts: shiftsUpserted.length,
+      areas: (areaRes.data ?? []).length,
       assignments: asg.length,
       standby: standby.length,
       pm_tasks: pm.length,

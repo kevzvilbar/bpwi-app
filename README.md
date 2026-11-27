@@ -17,9 +17,9 @@
      select bootstrap_initial_org_admin('BP Waterworks, Inc.', 'owner@bpwaterworks.com', 'Owner Name');
      ```
 3. `cp .env.example .env.local`, fill in the keys, `npm install`, `npm run dev`.
-4. Import legacy data (admin session cookie required; payload validated at runtime):
-   `curl -X POST http://localhost:3000/api/import -H "Content-Type: application/json" -H "Cookie: <your session cookie>" --data @backup.json`
-   Re-running is safe (idempotent upsert).
+4. Import legacy data (admin session cookie required; payload validated at runtime; disabled in `production` unless `ENABLE_LEGACY_IMPORT=true`):
+   `curl -X POST "http://localhost:3000/api/import?dryRun=true" -H "Content-Type: application/json" -H "Cookie: <your session cookie>" --data @backup.json`
+   Default mode skips existing rows (`ignoreDuplicates: true`) so re-runs never overwrite newer edits; pass `?overwrite=true` explicitly to overwrite matching legacy records.
 5. Deploy: import the repo in Vercel and configure env vars (`SUPABASE_SECRET_KEY` server-only, `CRON_SECRET` for scheduled photo/cache purges). Self sign-up is enabled by default so staff can register with their employee name and wait for admin validation (`role = 'viewer'`, `is_active = false`); set `NEXT_PUBLIC_ALLOW_PUBLIC_SIGNUP=false` and disable **Allow new users to sign up** in Supabase Authentication settings for invite-only deployments, or enable **Confirm email** and configure **Sign-Up Access & Domain Allowlist** in **Operators & Setup → Users & roles** (`organizations.allowed_signup_domains`, migrations `030`–`032`). Enforce strong passwords (minimum 12 characters on sign-up/reset; set Supabase Auth minimum password length to 12 as well). Per-request nonce CSP headers are applied in [`middleware.ts`](middleware.ts).
 
 ## Department heads (migrations 007, 008 & 009)
@@ -67,6 +67,7 @@ Configure these in `.env.local` locally and in Vercel Project Settings for produ
 | `CRON_SECRET` | Server only | Required in prod | Bearer secret guarding scheduled `/api/activities/purge-photos` runs |
 | `NEXT_PUBLIC_ALLOW_PUBLIC_SIGNUP` | Client + Server | `true` | Set to `false` for invite-only deployments |
 | `CSP_REPORT_ONLY` | Server only | `false` | Set to `true` to report CSP violations without blocking |
+| `ENABLE_LEGACY_IMPORT` | Server only | `false` | Opt-in gate allowing `/api/import` in production |
 | `OSRM_BASE_URL` | Server only | Unset | Optional self-hosted OSRM routing server base URL |
 | `ALLOW_PUBLIC_OSRM_FALLBACK` | Server only | `false` | Allows public demo OSRM fallback in production when `OSRM_BASE_URL` is unset |
 | `ALLOW_MEMORY_RATE_LIMIT_FALLBACK` | Server only | `false` | Allows per-instance memory rate limiting in production when shared store is unavailable |

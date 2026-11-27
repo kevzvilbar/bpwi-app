@@ -7,9 +7,15 @@ interface ManifestIcon {
   purpose?: string;
 }
 
+interface ManifestShortcut {
+  name?: string;
+  url?: string;
+}
+
 interface WebAppManifest {
   display?: string;
   icons?: ManifestIcon[];
+  shortcuts?: ManifestShortcut[];
 }
 
 function attachBrowserErrorListeners(page: Page): {
@@ -108,9 +114,9 @@ test.describe('BPWI Smoke Suite', () => {
     expect(cspErrors).toEqual([]);
   });
 
-  test('unauthenticated protected routes redirect to /login and /api/import rejects unauthenticated POSTs', async ({ page, request }) => {
+  test('unauthenticated protected routes redirect to /login and protected APIs reject unauthenticated requests', async ({ page, request }) => {
     const { pageErrors, cspErrors } = attachBrowserErrorListeners(page);
-    const protectedRoutes = ['/', '/activities', '/pm', '/requests'] as const;
+    const protectedRoutes = ['/', '/activities', '/pm', '/requests', '/field', '/mobile'] as const;
 
     for (const route of protectedRoutes) {
       await page.goto(route);
@@ -123,14 +129,44 @@ test.describe('BPWI Smoke Suite', () => {
 
     const importRes = await request.post('/api/import', { data: {} });
     expect([401, 503]).toContain(importRes.status());
+
+    const telemetryRes = await request.post('/api/telemetry/client-error', {
+      data: { event: 'offline_sync_failed', category: 'network', message: 'offline' },
+    });
+    expect([401, 503]).toContain(telemetryRes.status());
+
+    const leaveExportRes = await request.get('/api/reports/leave-export');
+    expect([401, 503]).toContain(leaveExportRes.status());
   });
 
-  test('PWA installability endpoints serve valid manifest and service worker', async ({ request }) => {
+  test('/login fits mobile phone viewport cleanly without horizontal overflow', async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const page = await context.newPage();
+    const { pageErrors, cspErrors } = attachBrowserErrorListeners(page);
+
+    await page.goto('/login');
+    await expect(page.getByText(/field activity logs/i)).toBeVisible();
+    const overflow = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth);
+    expect(pageErrors).toEqual([]);
+    expect(cspErrors).toEqual([]);
+    await context.close();
+  });
+
+  test('PWA installability endpoints serve valid manifest (/field shortcut) and service worker', async ({ request }) => {
     const manifestRes = await request.get('/manifest.webmanifest');
     expect(manifestRes.status()).toBe(200);
 
     const manifest = (await manifestRes.json()) as WebAppManifest;
     expect(manifest.display).toBe('standalone');
+    expect(manifest.shortcuts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'Tasks & Logs', url: '/field' }),
+      ]),
+    );
 
     const icons = manifest.icons ?? [];
     expect(icons).toEqual(
@@ -146,5 +182,6 @@ test.describe('BPWI Smoke Suite', () => {
     expect(swRes.status()).toBe(200);
     const swBody = await swRes.text();
     expect(swBody.length).toBeGreaterThan(0);
+    expect(swBody).toMatch(/OFFLINE_PAGE_ALLOWLIST\s*=\s*new Set\(\['\/field'\]\)/);
   });
 });
