@@ -8,6 +8,7 @@ import {
   formatSharedStoreDegradedNotice,
   isCacheableRoutePayload,
   resolveRoutingPolicy,
+  shouldFailClosedOnDegradedRateLimit,
   shouldUseRemainingBudget,
 } from '../route-compute-guard.ts';
 
@@ -113,5 +114,20 @@ describe('org-scoped keys, payload caps, and degraded-store alerting', () => {
 
     assert.match(formatSharedStoreDegradedNotice('missing_service_key'), /SUPABASE_SECRET_KEY/);
     assert.match(formatSharedStoreDegradedNotice('rpc_unavailable'), /029_harden_route_compute_store\.sql/);
+    assert.match(formatSharedStoreDegradedNotice('missing_service_key', true), /503/);
+  });
+
+  it('fails closed in production unless memory fallback is explicitly opted in', () => {
+    assert.equal(shouldFailClosedOnDegradedRateLimit({ nodeEnv: 'production' }), true);
+    assert.equal(
+      shouldFailClosedOnDegradedRateLimit({ nodeEnv: 'production', allowMemoryFallback: 'false' }),
+      true,
+    );
+    assert.equal(
+      shouldFailClosedOnDegradedRateLimit({ nodeEnv: 'production', allowMemoryFallback: ' TRUE ' }),
+      false,
+    );
+    assert.equal(shouldFailClosedOnDegradedRateLimit({ nodeEnv: 'development' }), false);
+    assert.equal(shouldFailClosedOnDegradedRateLimit({ nodeEnv: 'test' }), false);
   });
 });

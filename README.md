@@ -41,7 +41,7 @@ Run `supabase/migrations/010_daily_activities.sql` and `supabase/migrations/011_
 
 - **Who can log (`operator` + `admin` only):** Only active `operator` and `admin` roles can submit daily field activity logs (enforced via Postgres RLS on `daily_activities` and UI gating). Operators can tag co-operators (`crew_operator_ids`) so all crew members receive activity credit.
 - **Schedule & Setup Integration:** Stations/areas link directly to `area_codes` configured in Operators & Setup (no hardcoded legacy facilities). Opening the activity logger on `/mobile` or `/activities` auto-fills the operator's roster shift, assigned area, and same-shift co-operators.
-- **Mobile Field Logger (`/mobile`):** Supports 20 water utility activity types with dynamic telemetry forms (Genset fuel, Pump pressure/flow, Flushing blow-offs, 3-trial volumetric Meter Test ±5% calculator + witness signature, Leak Repair materials, Water Hauling trips, and Water Sampling), GPS capture, and IndexedDB offline queue auto-sync.
+- **Mobile Field Logger (`/field` & `/mobile`):** Supports 20 water utility activity types with dynamic telemetry forms (Genset fuel, Pump pressure/flow, Flushing blow-offs, 3-trial volumetric Meter Test ±5% calculator + witness signature, Leak Repair materials, Water Hauling trips, and Water Sampling), GPS capture, and IndexedDB offline queue auto-sync.
 - **30-Day Photo Retention (`activity-media`) & 24h Sample Logs:** Uploaded photos are compressed client-side before upload to Supabase Storage and carry a 30-day expiration (`photos_expires_at`). Calling `POST /api/activities/purge-photos` (or clicking **Purge Expired Photos (>30d)** in `/activities`) removes expired photo objects while preserving the text and telemetry logs, and also sweeps expired 24-hour `is_sample` logs/photos across `daily_activities`, `job_orders`, `shift_handovers`, and `accomplishment_reports` (migration `034`). Sample logs are excluded from KPIs/reports/audit logs and visible only to their creator and admins for 24 hours. **Department heads can create, edit and delete sample logs only; real activity logs, job orders, handovers and accomplishment reports are read-only for them** (they can still verify/flag activities and check/return reports). Expired samples are deleted in SQL by the hourly `pg_cron` job (or the daily `/api/activities/purge-photos` cron as a fallback); their photo files are queued in `sample_photo_cleanup` and removed by that route, and admins see a warning banner on `/activities` if cleanup is overdue (migration `035`).
 - **Monitoring Hub (`/activities`):**
   - **Duty & Activity Feed:** Reconciles today's on-duty schedule against logged activities and PMs, highlights idle on-duty operators (`0 logs`), and provides supervisor verification (`verify` / `flag`) plus printable Field Activity Reports & Meter Test Certificates.
@@ -53,13 +53,55 @@ Route visualization in **Activities → Footprints & Routes** and map pin pickin
 
 - `OSRM_BASE_URL`: Base URL of your self-hosted OSRM router (e.g. `https://osrm.internal.example.com`). When set, `/api/routes/compute` exclusively routes through that server.
 - `ALLOW_PUBLIC_OSRM_FALLBACK`: Defaults to `false`. In `production`, when `OSRM_BASE_URL` is unset and `ALLOW_PUBLIC_OSRM_FALLBACK` is not `'true'`, `/api/routes/compute` does not call public demo OSRM servers and instead returns straight-line Haversine leg distances. Set to `'true'` only if non-critical public demo fallback is intended.
-- `NEXT_PUBLIC_MAP_STREET_TILE_URL` & `NEXT_PUBLIC_MAP_STREET_ATTRIBUTION`: Custom `{z}/{x}/{y}` street tile template and HTML attribution. When unset, the map falls back to `tile.openstreetmap.org` and displays an admin-only notice on the map.
-- `NEXT_PUBLIC_MAP_SATELLITE_TILE_URL` & `NEXT_PUBLIC_MAP_SATELLITE_ATTRIBUTION`: Custom `{z}/{x}/{y}` satellite tile template and attribution. When unset, Satellite mode falls back to Esri World Imagery and displays an admin-only notice on the map.
-- **Shared Route Cache & Rate Limits (migrations `028` & `029`):** Apply `supabase/migrations/028_route_compute_store_and_pm_sub_limit.sql` and `029_harden_route_compute_store.sql` and ensure `SUPABASE_SECRET_KEY` is configured on the server so `/api/routes/compute` shares organization-scoped, size-bounded route caching (30 min TTL) and fixed per-user rate limits (60 req / 5 min total, 20 upstream req / 5 min) across serverless instances via `service_role`-only Postgres RPCs (swept automatically by `/api/activities/purge-photos`). If `SUPABASE_SECRET_KEY` or `029` is missing, `/api/routes/compute` logs a server warning, surfaces an admin banner on the Routes tab, and falls back to per-instance memory.
+- **Map Basemap (OpenFreeMap + MapLibre GL):** By default, maps render via **MapLibre GL** and **OpenFreeMap** (`tiles.openfreemap.org`, Liberty style in Street mode) with ESRI World Imagery in Satellite mode. Optional `NEXT_PUBLIC_MAP_STREET_TILE_URL` / `NEXT_PUBLIC_MAP_STREET_ATTRIBUTION` and `NEXT_PUBLIC_MAP_SATELLITE_TILE_URL` / `NEXT_PUBLIC_MAP_SATELLITE_ATTRIBUTION` env vars override those defaults with custom `{z}/{x}/{y}` XYZ layers.
+- **Shared Route Cache & Rate Limits (migrations `028` & `029`):** Apply `supabase/migrations/028_route_compute_store_and_pm_sub_limit.sql` and `supabase/migrations/029_harden_route_compute_store.sql` and ensure `SUPABASE_SECRET_KEY` is configured on the server so `/api/routes/compute` shares organization-scoped, size-bounded route caching (30 min TTL) and fixed per-user rate limits (60 req / 5 min total, 20 upstream req / 5 min) across serverless instances via `service_role`-only Postgres RPCs (swept automatically by `/api/activities/purge-photos`). In `production`, `/api/routes/compute` **fails closed (`503`)** when `SUPABASE_SECRET_KEY` or migration `029` is unavailable (unless `ALLOW_MEMORY_RATE_LIMIT_FALLBACK=true` is explicitly set); dev/test falls back to per-instance memory with an admin notice.
 
-## Included (v1 core)
-Login, role-aware monthly roster with click-to-paint (admin/scheduler), RLS, audit triggers, realtime-ready tables, JSON importer.
-Also: Daily Activity Monitor (`/activities`), PM Planner (`/pm`: monthly/week calendar, recurring series, editable activity names/colors, `.ics` export), Leave Summary (`/leave`), Call Sheet (`/call-sheet`), Mobile/Tasks (`/mobile`), Generate Schedule (`/generate`: repeating shift cycles), Operators & Setup (`/operators`, admin only: operators, shift types, area/leave codes, users & roles), OC standby painting, drag-to-paint, Ctrl+Z/Ctrl+Y undo/redo, Ctrl+C/Ctrl+V copy/paste, realtime sync, CSV/print exports, PWA offline support.
+## Environment Variables
+Configure these in `.env.local` locally and in Vercel Project Settings for production (see [`.env.example`](.env.example)):
+
+| Variable | Scope | Default / Requirement | Purpose |
+| --- | --- | --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Client + Server | Required | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Client + Server | Required | Supabase anon/publishable key |
+| `SUPABASE_SECRET_KEY` | Server only | Required in prod | Service-role key for route rate limits/cache, photo purge, and admin operations |
+| `CRON_SECRET` | Server only | Required in prod | Bearer secret guarding scheduled `/api/activities/purge-photos` runs |
+| `NEXT_PUBLIC_ALLOW_PUBLIC_SIGNUP` | Client + Server | `true` | Set to `false` for invite-only deployments |
+| `CSP_REPORT_ONLY` | Server only | `false` | Set to `true` to report CSP violations without blocking |
+| `OSRM_BASE_URL` | Server only | Unset | Optional self-hosted OSRM routing server base URL |
+| `ALLOW_PUBLIC_OSRM_FALLBACK` | Server only | `false` | Allows public demo OSRM fallback in production when `OSRM_BASE_URL` is unset |
+| `ALLOW_MEMORY_RATE_LIMIT_FALLBACK` | Server only | `false` | Allows per-instance memory rate limiting in production when shared store is unavailable |
+| `NEXT_PUBLIC_MAP_STREET_TILE_URL` / `_ATTRIBUTION` | Client | Unset | Optional custom `{z}/{x}/{y}` street tile URL and attribution |
+| `NEXT_PUBLIC_MAP_SATELLITE_TILE_URL` / `_ATTRIBUTION` | Client | Unset | Optional custom `{z}/{x}/{y}` satellite tile URL and attribution |
+
+## Roles & Permissions Matrix
+Permissions are computed in [`lib/permissions.ts`](lib/permissions.ts) and enforced by Postgres Row-Level Security:
+
+| Capability | `admin` | `scheduler` | `manager` (Dept Head) | `operator` | `viewer` |
+| --- | :---: | :---: | :---: | :---: | :---: |
+| Monthly Roster & Standby Paint | Full | Full | Propose (or Direct w/ Grant) | Read | Read |
+| Approve / Reject Change Requests | Full | Delegated (`can_approve`) | No | No | No |
+| Schedule Generator (`/generate`) | Yes | Yes | No | No | No |
+| Daily Field Activity Logs (`/field`, `/mobile`, `/activities`) | Real + Sample | Verify / Flag only | Sample only + Verify / Flag | Real logs | Read |
+| Close / Reopen PM Tasks (`/pm`, `/field`) | Yes | Yes | Only w/ Active Edit Grant | Yes | No |
+| Job Orders, Handovers & Reports | Full | Read | Read (Check/Return Reports) | Dispatch/Close/Handover | Read |
+| Organization Chart (`/org`) | Full + Restructure | View only | Edit positions/assignments | No | No |
+| Operators, Setup & User Roles (`/operators`) | Full | No | No | No | No |
+
+## Offline Mode & Sync Semantics
+Field operations support offline work through the static `/field` PWA shell and IndexedDB:
+- **Static App Shell (`/field`):** Cached without embedded user data or server-rendered dates; works offline with dynamic local-date initialization and serves as the service worker offline navigation fallback.
+- **Per-User Reference Snapshots:** Operators, area codes, shifts, roster assignments, PM tasks, and recent logs are cached per user ID in IndexedDB with `lastUpdatedAt` timestamps so signing out or switching accounts never clears or leaks another user's queued work.
+- **Unified Outbox & Binary Photo Drafts:** Pending activity logs, accomplishment reports, PM status updates/reopens, shift handovers, and job order completions live in a single IndexedDB outbox. Open form drafts and compressed evidence photos are stored as binary `Blob`s and flushed on app open, `online` event, tab foregrounding, and periodic timers with request timeouts so weak signals fall back to the queue cleanly.
+- **Idempotency & Conflict Handling:** Client-generated UUID `id` keys let retries safely ignore Postgres duplicate-key (`23505`) responses without creating duplicate rows. Device capture time (`created_at` / completion timestamp) is preserved separately from server arrival (`received_at`), and offline PM/job-order mutations send `expected_updated_at` / `expectedStatus` checks so concurrent server edits surface as conflicts instead of silently overwriting newer data.
+
+## Testing & Verification
+```bash
+npm run typecheck   # TypeScript type check
+npm run lint        # ESLint
+npm test            # Node unit & migration/CSP/offline/rate-limit tests
+npm run test:ui     # Vitest + React Testing Library UI component tests
+npm run build       # Production Next.js build
+```
 
 ## Documentation
 - [System & Security Architecture (`docs/ARCHITECTURE.md`)](docs/ARCHITECTURE.md) — App Router layout, defense-in-depth Postgres/CSP architecture, RBAC role matrix, and operations/DR runbook.

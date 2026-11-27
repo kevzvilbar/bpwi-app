@@ -10,6 +10,7 @@ import {
   formatSharedStoreDegradedNotice,
   isCacheableRoutePayload,
   resolveRoutingPolicy,
+  shouldFailClosedOnDegradedRateLimit,
   shouldUseRemainingBudget,
   type RouteStoreDegradedReason,
 } from '@/lib/route-compute-guard';
@@ -100,26 +101,87 @@ function logStoreDegradation(reason: RouteStoreDegradedReason, detail?: string) 
   }
 }
 
+interface SharedRateLimitCheck {
+  allowed: boolean;
+  retryAfterSeconds: number;
+  store: 'shared' | 'memory' | 'unavailable';
+  degradedReason: RouteStoreDegradedReason | null;
+  failClosed: boolean;
+}
+
+function resolveDegradedRateLimit(
+  reason: RouteStoreDegradedReason,
+  fallback: SlidingWindowRateLimiter,
+  userId: string,
+): SharedRateLimitCheck {
+  if (
+    shouldFailClosedOnDegradedRateLimit({
+      nodeEnv: process.env.NODE_ENV,
+      allowMemoryFallback: process.env.ALLOW_MEMORY_RATE_LIMIT_FALLBACK,
+    })
+  ) {
+    return {
+      allowed: false,
+      retryAfterSeconds: 60,
+      store: 'unavailable',
+      degradedReason: reason,
+      failClosed: true,
+    };
+  }
+  const local = fallback.check(userId);
+  return {
+    allowed: local.allowed,
+    retryAfterSeconds: local.retryAfterSeconds,
+    store: 'memory',
+    degradedReason: reason,
+    failClosed: false,
+  };
+}
+
+function buildRateLimitRejection(
+  rate: SharedRateLimitCheck,
+  limitMessage: string,
+  isAdmin: boolean,
+): NextResponse {
+  if (rate.failClosed) {
+    return NextResponse.json(
+      {
+        error: 'Route calculation is temporarily unavailable because the shared rate-limit store is not configured or reachable.',
+        routeStore: 'unavailable',
+        ...(isAdmin && rate.degradedReason
+          ? { storeWarning: formatSharedStoreDegradedNotice(rate.degradedReason, true) }
+          : {}),
+      },
+      {
+        status: 503,
+        headers: {
+          'Retry-After': String(rate.retryAfterSeconds),
+          'X-Route-Store': rate.store,
+        },
+      },
+    );
+  }
+  return NextResponse.json(
+    { error: limitMessage },
+    {
+      status: 429,
+      headers: {
+        'Retry-After': String(rate.retryAfterSeconds),
+        'X-Route-Store': rate.store,
+      },
+    },
+  );
+}
+
 async function checkSharedRateLimit(
   serviceDb: SupabaseClient | null,
   bucket: 'total' | 'upstream',
   fallback: SlidingWindowRateLimiter,
   userId: string,
-): Promise<{
-  allowed: boolean;
-  retryAfterSeconds: number;
-  store: 'shared' | 'memory';
-  degradedReason: RouteStoreDegradedReason | null;
-}> {
+): Promise<SharedRateLimitCheck> {
   if (!serviceDb) {
     logStoreDegradation('missing_service_key');
-    const local = fallback.check(userId);
-    return {
-      allowed: local.allowed,
-      retryAfterSeconds: local.retryAfterSeconds,
-      store: 'memory',
-      degradedReason: 'missing_service_key',
-    };
+    return resolveDegradedRateLimit('missing_service_key', fallback, userId);
   }
 
   try {
@@ -135,6 +197,7 @@ async function checkSharedRateLimit(
           retryAfterSeconds: Math.max(1, Number(row.retry_after_seconds) || 1),
           store: 'shared',
           degradedReason: null,
+          failClosed: false,
         };
       }
     }
@@ -143,13 +206,7 @@ async function checkSharedRateLimit(
     logStoreDegradation('rpc_unavailable', err instanceof Error ? err.message : 'RPC exception');
   }
 
-  const local = fallback.check(userId);
-  return {
-    allowed: local.allowed,
-    retryAfterSeconds: local.retryAfterSeconds,
-    store: 'memory',
-    degradedReason: 'rpc_unavailable',
-  };
+  return resolveDegradedRateLimit('rpc_unavailable', fallback, userId);
 }
 
 async function readSharedRouteCache(
@@ -252,15 +309,10 @@ export async function POST(req: NextRequest) {
   const serviceDb = getServiceRouteClient();
   const totalRate = await checkSharedRateLimit(serviceDb, 'total', totalLimiter, profile.user.id);
   if (!totalRate.allowed) {
-    return NextResponse.json(
-      { error: 'Too many route calculations. Please wait before trying again.' },
-      {
-        status: 429,
-        headers: {
-          'Retry-After': String(totalRate.retryAfterSeconds),
-          'X-Route-Store': totalRate.store,
-        },
-      },
+    return buildRateLimitRejection(
+      totalRate,
+      'Too many route calculations. Please wait before trying again.',
+      profile.isAdmin,
     );
   }
 
@@ -359,15 +411,10 @@ export async function POST(req: NextRequest) {
 
   const upstreamRate = await checkSharedRateLimit(serviceDb, 'upstream', upstreamLimiter, profile.user.id);
   if (!upstreamRate.allowed) {
-    return NextResponse.json(
-      { error: 'Rate limit reached for road routing requests. Please wait a few minutes.' },
-      {
-        status: 429,
-        headers: {
-          'Retry-After': String(upstreamRate.retryAfterSeconds),
-          'X-Route-Store': upstreamRate.store,
-        },
-      },
+    return buildRateLimitRejection(
+      upstreamRate,
+      'Rate limit reached for road routing requests. Please wait a few minutes.',
+      profile.isAdmin,
     );
   }
 

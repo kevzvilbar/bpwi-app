@@ -227,9 +227,24 @@ export class DegradedStoreAlertGate {
   }
 }
 
-export function formatSharedStoreDegradedNotice(reason: RouteStoreDegradedReason): string {
+export function formatSharedStoreDegradedNotice(
+  reason: RouteStoreDegradedReason,
+  failClosed = false,
+): string {
+  const consequence = failClosed
+    ? 'route computation fails closed (503) in production unless ALLOW_MEMORY_RATE_LIMIT_FALLBACK=true.'
+    : 'route rate limits and cache fell back to per-instance memory.';
   if (reason === 'missing_service_key') {
-    return 'SUPABASE_SECRET_KEY is not configured on the server; route rate limits and cache fell back to per-instance memory.';
+    return `SUPABASE_SECRET_KEY is not configured on the server; ${consequence}`;
   }
-  return 'Shared route store RPCs failed (ensure migration 029_harden_route_compute_store.sql is applied); route rate limits and cache fell back to per-instance memory.';
+  return `Shared route store RPCs failed (ensure migration 029_harden_route_compute_store.sql is applied); ${consequence}`;
+}
+
+/** Fails closed in production when the shared rate-limit store is unavailable unless explicitly opted into memory fallback. */
+export function shouldFailClosedOnDegradedRateLimit(env: {
+  nodeEnv?: string;
+  allowMemoryFallback?: string;
+}): boolean {
+  if (env.nodeEnv !== 'production') return false;
+  return env.allowMemoryFallback?.trim().toLowerCase() !== 'true';
 }
