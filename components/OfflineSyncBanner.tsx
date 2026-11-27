@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import { classifySyncError } from '@/lib/error-utils';
 import {
   flushOfflineQueue,
   flushOfflineReports,
@@ -26,6 +27,8 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
   const [detailsOpen, setDetailsOpen] = useState<boolean>(false);
   const [statusNote, setStatusNote] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const didAutoSyncOnMountRef = useRef<boolean>(false);
+  const totalQueuedRef = useRef<number>(0);
+  const syncingRef = useRef<boolean>(false);
 
   const refreshQueue = useCallback(async () => {
     const [nextActs, nextReps] = await Promise.all([getOfflineQueue(userId), getOfflineReports(userId)]);
@@ -55,14 +58,31 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
     const totalFailed = actRes.failed + repRes.failed;
     if (totalFailed > 0) {
       const firstErr = actRes.errors[0]?.message ?? repRes.errors[0]?.message ?? 'Sync failed';
-      setStatusNote({
-        kind: 'err',
-        text:
-          totalSynced > 0
-            ? `Synced ${totalSynced} item(s), but ${totalFailed} failed: ${firstErr}`
-            : `${totalFailed} queued item${totalFailed === 1 ? '' : 's'} failed to sync: ${firstErr}`,
-      });
-      setDetailsOpen(true);
+      const errKind = classifySyncError(firstErr);
+      if (errKind === 'auth') {
+        setStatusNote({
+          kind: 'err',
+          text: `Session expired — sign in again to sync ${totalFailed} queued item${totalFailed === 1 ? '' : 's'}. Your unsent work is safe on this device.`,
+        });
+        setDetailsOpen(true);
+      } else if (errKind === 'network') {
+        setStatusNote({
+          kind: 'err',
+          text:
+            totalSynced > 0
+              ? `Synced ${totalSynced} item(s); connection is weak so ${totalFailed} remaining item(s) will retry automatically.`
+              : `Connection is weak — ${totalFailed} queued item${totalFailed === 1 ? '' : 's'} will retry automatically.`,
+        });
+      } else {
+        setStatusNote({
+          kind: 'err',
+          text:
+            totalSynced > 0
+              ? `Synced ${totalSynced} item(s), but ${totalFailed} failed: ${firstErr}`
+              : `${totalFailed} queued item${totalFailed === 1 ? '' : 's'} failed to sync: ${firstErr}`,
+        });
+        setDetailsOpen(true);
+      }
     } else if (totalSynced > 0) {
       setStatusNote({
         kind: 'ok',
@@ -71,6 +91,14 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
       setTimeout(() => setStatusNote(null), 4000);
     }
   }, [refreshQueue, userId]);
+
+  useEffect(() => {
+    totalQueuedRef.current = acts.length + reps.length;
+  }, [acts.length, reps.length]);
+
+  useEffect(() => {
+    syncingRef.current = syncing;
+  }, [syncing]);
 
   useEffect(() => {
     const isNowOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
@@ -88,14 +116,28 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
     };
     const onOffline = () => setOnline(false);
     const onQueueChanged = () => void refreshQueue();
+    const tryForegroundSync = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+      if (totalQueuedRef.current > 0 && !syncingRef.current) {
+        void syncAll();
+      }
+    };
 
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
     window.addEventListener('bpwi-offline-queue-changed', onQueueChanged);
+    window.addEventListener('focus', tryForegroundSync);
+    document.addEventListener('visibilitychange', tryForegroundSync);
+    const retryInterval = setInterval(tryForegroundSync, 120_000);
+
     return () => {
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
       window.removeEventListener('bpwi-offline-queue-changed', onQueueChanged);
+      window.removeEventListener('focus', tryForegroundSync);
+      document.removeEventListener('visibilitychange', tryForegroundSync);
+      clearInterval(retryInterval);
     };
   }, [refreshQueue, syncAll]);
 

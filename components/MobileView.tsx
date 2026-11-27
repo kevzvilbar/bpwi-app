@@ -9,6 +9,7 @@ import PmCompleteModal from '@/components/PmCompleteModal';
 import MobileActivitiesAndSchedule, { type MobileArea, type MobileOp, type MobileShift } from '@/components/MobileActivitiesAndSchedule';
 import MobileTaskCard, { type MobileActType, type MobileTask } from '@/components/MobileTaskCard';
 import { ACTIVITY_BY_ID, type DailyActivityRow } from '@/lib/activity-types';
+import { manilaToday } from '@/lib/date';
 import { enqueueOfflineActivity } from '@/lib/offline-queue';
 import { buildPmActualPerformerIds, isMissingCompletedByColumnError } from '@/lib/pm-credit';
 import { AlertBanner, Badge, SegmentedTabs } from '@/components/ui';
@@ -99,6 +100,8 @@ export default function MobileView(p: {
   const [busyId, setBusyId] = useState('');
   const [msg, setMsg] = useState(p.error);
   const [nowMinutes, setNowMinutes] = useState(p.nowMinutes);
+  const [online, setOnline] = useState(true);
+  const [liveToday, setLiveToday] = useState(p.today);
   const [undoToast, setUndoToast] = useState<{
     task: MobileTask;
     prevStatus: MobileTask['status'];
@@ -153,9 +156,33 @@ export default function MobileView(p: {
   }, [p.date, router]);
 
   useEffect(() => {
-    setNowMinutes(manilaClockMinutes());
-    const id = setInterval(() => setNowMinutes(manilaClockMinutes()), 60_000);
-    return () => clearInterval(id);
+    const syncClockAndOnline = () => {
+      setNowMinutes(manilaClockMinutes());
+      setLiveToday(manilaToday());
+      if (typeof navigator !== 'undefined') setOnline(navigator.onLine);
+    };
+    syncClockAndOnline();
+    const id = setInterval(syncClockAndOnline, 60_000);
+    const onOnline = () => {
+      setOnline(true);
+      setLiveToday(manilaToday());
+    };
+    const onOffline = () => {
+      setOnline(false);
+      setLiveToday(manilaToday());
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') syncClockAndOnline();
+    };
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, []);
 
   useEffect(() => () => { if (undoTimerRef.current) clearTimeout(undoTimerRef.current); }, []);
@@ -319,9 +346,18 @@ export default function MobileView(p: {
     { ariaLabel: 'Completed tasks', title: 'Completed', titleColor: 'var(--ok-fg)', tone: 'ok' as const, items: completedTasks, emptyText: 'No completed tasks in this window.' },
   ];
 
+  const isStaleOfflineDate = !online && p.date !== liveToday;
+  const effectiveLogDate = editingActivity ? editingActivity.activity_date : isStaleOfflineDate ? liveToday : p.date;
+
   return (
     <div className="tasks-shell stack-md">
       <h1 className="sr-only">Tasks, Field Logs and Schedule</h1>
+
+      {isStaleOfflineDate && (
+        <AlertBanner tone="warn">
+          Showing cached schedule from {p.date}. New logs will be dated {liveToday} (today); reconnect to refresh today&apos;s roster and PM tasks.
+        </AlertBanner>
+      )}
 
       <div className="card card-pad-sm stack-sm mobile-toolbar-compact">
         <SegmentedTabs
@@ -507,13 +543,13 @@ export default function MobileView(p: {
               setTasks((prev) =>
                 prev.map((x) =>
                   x.id === linkedPmForLog.id
-                    ? { ...x, status: 'done', completed_at: p.date, completed_by_operator_ids: performedByIds, remarks: act.notes || x.remarks }
+                    ? { ...x, status: 'done', completed_at: effectiveLogDate, completed_by_operator_ids: performedByIds, remarks: act.notes || x.remarks }
                     : x,
                 ),
               );
             }
           }}
-          orgId={p.orgId} userId={p.userId ?? ''} role={p.role} operatorId={p.operatorId} date={p.date}
+          orgId={p.orgId} userId={p.userId ?? ''} role={p.role} operatorId={p.operatorId} date={effectiveLogDate}
           operators={p.operators} areas={p.areas} shifts={p.shifts} assignments={p.assignments}
           linkedPmTask={linkedPmForLog} pmActivityTypes={p.activityTypes} editingActivity={editingActivity}
         />

@@ -564,10 +564,11 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
     };
 
     const trimmedTat = joTatJustification.trim() || null;
+    const capturedAtIso = new Date().toISOString();
     const newLogId = p.editingActivity ? null : newLogIdRef.current || (newLogIdRef.current = newClientId());
-    const offlinePayload: ActivitySubmitPayload & { id?: string } = {
+    const offlinePayload: ActivitySubmitPayload & { id?: string; created_at?: string } = {
       ...payload,
-      ...(newLogId ? { id: newLogId } : {}),
+      ...(newLogId ? { id: newLogId, created_at: capturedAtIso } : {}),
       ...(p.editingActivity
         ? { status: p.editingActivity.status === 'flagged' ? 'submitted' : p.editingActivity.status }
         : {}),
@@ -585,8 +586,8 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
       verified_at: null,
       review_note: null,
       photos_purged_at: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      created_at: capturedAtIso,
+      updated_at: capturedAtIso,
     });
 
     const queueOffline = async () => {
@@ -725,7 +726,7 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
       if (!effectiveIsSample && p.linkedJobOrder?.id) {
         const joRes = await sb
           .from('job_orders')
-          .update({ status: 'completed', completed_at: new Date().toISOString(), ...(trimmedTat ? { tat_justification: trimmedTat } : {}) })
+          .update({ status: 'completed', completed_at: resolvedCompletedAt, ...(trimmedTat ? { tat_justification: trimmedTat } : {}) })
           .eq('id', p.linkedJobOrder.id);
         if (joRes.error) joErrMsg = joRes.error.message;
       }

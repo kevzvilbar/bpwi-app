@@ -1,36 +1,61 @@
 'use client';
 
+import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase/client';
-import { clearOfflineQueues } from '@/lib/offline-queue';
+import { clearOfflineQueues, countOfflineItems } from '@/lib/offline-queue';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import { Badge } from '@/components/ui';
 
 export default function PendingApproval({
   pending,
+  userId,
   userName,
   userEmail,
   children,
 }: {
   pending: boolean;
+  userId: string;
   userName: string;
   userEmail: string;
   children: React.ReactNode;
 }) {
   const path = usePathname();
+  const [confirmDiscardCount, setConfirmDiscardCount] = useState(0);
+  const [signingOut, setSigningOut] = useState(false);
+
   if (!pending || path.startsWith('/login')) {
     return <>{children}</>;
   }
 
-  async function signOut() {
-    await clearOfflineQueues();
-    await supabaseBrowser().auth.signOut();
-    localStorage.removeItem('bpwi-last-sync');
-    navigator.serviceWorker?.controller?.postMessage('CLEAR_CACHE');
-    if ('caches' in window) {
-      const keys = await caches.keys();
-      await Promise.all(keys.map((k) => caches.delete(k)));
+  async function executeSignOut() {
+    setSigningOut(true);
+    try {
+      if (userId) {
+        await clearOfflineQueues(userId);
+      }
+      await supabaseBrowser().auth.signOut();
+      localStorage.removeItem('bpwi-last-sync');
+      navigator.serviceWorker?.controller?.postMessage('CLEAR_CACHE');
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+      window.location.href = '/login';
+    } catch {
+      setSigningOut(false);
     }
-    window.location.href = '/login';
+  }
+
+  async function handleSignOutClick() {
+    if (userId) {
+      const queued = await countOfflineItems(userId);
+      if (queued > 0) {
+        setConfirmDiscardCount(queued);
+        return;
+      }
+    }
+    await executeSignOut();
   }
 
   return (
@@ -62,11 +87,21 @@ export default function PendingApproval({
           <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>
             Check Approval Status
           </button>
-          <button type="button" className="btn" onClick={() => void signOut()}>
-            Sign out
+          <button type="button" className="btn" disabled={signingOut} onClick={() => void handleSignOutClick()}>
+            {signingOut ? 'Signing out…' : 'Sign out'}
           </button>
         </div>
       </div>
+      <ConfirmDialog
+        open={confirmDiscardCount > 0}
+        title="Discard unsent offline work?"
+        description={`You still have ${confirmDiscardCount} unsent offline item${confirmDiscardCount === 1 ? '' : 's'} saved for this account. Signing out will permanently delete your queued logs on this device.`}
+        confirmLabel={signingOut ? 'Signing out…' : 'Sign out & discard'}
+        tone="danger"
+        busy={signingOut}
+        onCancel={() => setConfirmDiscardCount(0)}
+        onConfirm={() => void executeSignOut()}
+      />
     </div>
   );
 }

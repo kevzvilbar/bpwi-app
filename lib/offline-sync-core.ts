@@ -233,11 +233,15 @@ export async function syncQueuedActivity(
   }
   const jobOrderId = !isSample && typeof payload.job_order_id === 'string' ? payload.job_order_id : null;
   if (jobOrderId) {
+    const jobCompletedAt =
+      (typeof payload.completed_at === 'string' && payload.completed_at.trim()) ||
+      (typeof payload.created_at === 'string' && payload.created_at.trim()) ||
+      new Date().toISOString();
     const r = await sb
       .from('job_orders')
       .update({
         status: 'completed',
-        completed_at: new Date().toISOString(),
+        completed_at: jobCompletedAt,
         ...(tatJustification ? { tat_justification: tatJustification } : {}),
       })
       .eq('id', jobOrderId)

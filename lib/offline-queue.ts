@@ -9,6 +9,14 @@ const DB_VERSION = 2;
 const STORE_NAME = 'pending_activities';
 const REPORT_STORE_NAME = 'pending_reports';
 
+let persistentStorageRequested = false;
+
+function requestPersistentStorage(): void {
+  if (persistentStorageRequested || typeof navigator === 'undefined') return;
+  persistentStorageRequested = true;
+  navigator.storage?.persist?.().catch(() => {});
+}
+
 export type EnqueueOfflineOptions = {
   editingId?: string | null;
   expectedUpdatedAt?: string | null;
@@ -110,6 +118,7 @@ export async function enqueueOfflineActivity(
     // Client-generated primary key makes a retried insert sync idempotent (see offline-sync-core.ts)
     payload: nextPayload,
   };
+  requestPersistentStorage();
   await putRecord(STORE_NAME, item);
   notifyQueueChanged();
   return item;
@@ -249,6 +258,7 @@ export async function enqueueOfflineReport(
     expectedUpdatedAt: opts?.expectedUpdatedAt ?? null,
     payload: nextPayload,
   };
+  requestPersistentStorage();
   await putRecord(REPORT_STORE_NAME, item);
   notifyQueueChanged();
   return item;

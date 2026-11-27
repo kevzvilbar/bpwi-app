@@ -375,4 +375,26 @@ describe('offline queue user ownership scoping and descriptions', () => {
     assert.equal(rep.title, 'Shift Report (Submit)');
     assert.equal(rep.subtitle, '2026-11-20 · 2 rows · Pending send to head');
   });
+
+  it('preserves client created_at and closes linked job_orders using completed_at instead of sync time', async () => {
+    const f = fakeSb();
+    const row = await syncQueuedActivity(
+      f.sb,
+      'q-ts-1',
+      {
+        id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        organization_id: 'org1',
+        activity_date: '2026-11-26',
+        activity_type: 'leak_repair',
+        created_at: '2026-11-26T04:10:00.000Z',
+        completed_at: '2026-11-26T04:05:00.000Z',
+        job_order_id: 'jo-offline-1',
+      },
+      async (_sb, _org, url) => ({ url, storagePath: null }),
+    );
+    assert.equal(row.created_at, '2026-11-26T04:10:00.000Z');
+    const joUpdate = f.pm.find((u) => u.table === 'job_orders');
+    assert.ok(joUpdate, 'expected linked job_orders update');
+    assert.equal((joUpdate.patch as { completed_at?: string }).completed_at, '2026-11-26T04:05:00.000Z');
+  });
 });

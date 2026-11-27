@@ -142,7 +142,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {profile.hasUser && !pendingApproval && <OfflineSyncBanner userId={profile.userId} />}
         {profile.isManager && !pendingApproval && <EditAccessBanner active={profile.editGrant} next={profile.nextGrant} userId={profile.userId} />}
         <main className="app-main">
-          <PendingApproval pending={pendingApproval} userName={profile.name} userEmail={profile.userEmail}>
+          <PendingApproval pending={pendingApproval} userId={profile.userId} userName={profile.name} userEmail={profile.userEmail}>
             {children}
           </PendingApproval>
         </main>

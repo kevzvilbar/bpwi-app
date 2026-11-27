@@ -14,5 +14,17 @@ export function getErrorMessage(err: unknown, fallback = 'Unexpected error'): st
  * "load failed" is matched as whole words so that "Photo upload failed" is not treated as a network error.
  */
 export function isNetworkErrorMessage(message: string): boolean {
-  return /fetch|network|failed to load|\bload failed\b/i.test(message);
+  return /fetch|network|failed to load|\bload failed\b|timed out|timeout|aborted/i.test(message);
+}
+
+export type SyncErrorKind = 'network' | 'auth' | 'conflict' | 'other';
+
+/** Categorizes offline sync errors so weak-signal retries, expired sessions, and conflicts get distinct handling. */
+export function classifySyncError(message: string): SyncErrorKind {
+  if (/^conflict:/i.test(message.trim())) return 'conflict';
+  if (/jwt|refresh token|session.*expired|not authenticated|unauthorized|\b401\b/i.test(message)) {
+    return 'auth';
+  }
+  if (isNetworkErrorMessage(message)) return 'network';
+  return 'other';
 }

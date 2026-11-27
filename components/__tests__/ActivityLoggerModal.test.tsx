@@ -505,7 +505,11 @@ describe('ActivityLoggerModal', () => {
     await user.click(screen.getByRole('button', { name: 'Test attach GPS' }));
     await user.click(screen.getByRole('button', { name: 'Submit Activity Log' }));
     await waitFor(() => expect(onQueuedOffline).toHaveBeenCalledTimes(1));
-    expect(onQueuedOffline.mock.calls[0][0]).toMatchObject({ gps_lat: 14.5995, gps_lng: 120.9842 });
+    expect(onQueuedOffline.mock.calls[0][0]).toMatchObject({
+      gps_lat: 14.5995,
+      gps_lng: 120.9842,
+      created_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+    });
   });
 
   it('passes editingId and expectedUpdatedAt when queuing an edited activity offline', async () => {

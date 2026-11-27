@@ -83,7 +83,7 @@ export default function PwaRegister() {
         textAlign: 'center',
       }}
     >
-      Offline mode — showing cached copy{cachedAt ? ` from ${cachedAt}` : ''}. Changes require a connection.
+      Offline mode — showing cached copy{cachedAt ? ` from ${cachedAt}` : ''}. Field logs and shift reports are queued on this device; other changes require a connection.
     </div>
   );
 }
