@@ -217,10 +217,10 @@ export default function ActivitiesRoutesTab(p: {
           encodedPolylines?: string[];
           error?: string;
         };
-        if (!res.ok) throw new Error(json.error || `Route calculation failed (HTTP ${res.status})`);
         if (controller.signal.aborted) return;
 
         setStoreWarning(typeof json.storeWarning === 'string' && json.storeWarning ? json.storeWarning : null);
+        if (!res.ok) throw new Error(json.error || `Route calculation failed (HTTP ${res.status})`);
         const paths = (json.encodedPolylines ?? []).map((enc) => decodeEncodedPolyline(enc)).filter((pts) => pts.length >= 2);
         const source: RouteSource = json.source === 'osrm' ? 'osrm' : 'straight-line';
         const result: ComputedRouteResult = {
