@@ -14,22 +14,20 @@ import {
 import { getErrorMessage, isNetworkErrorMessage } from '@/lib/error-utils';
 import { resolveActivityPhotoUrl } from '@/lib/activity-media';
 import { extractGpsMetadata, validateRequiredGps, type GpsSource } from '@/lib/gps-accuracy';
-import { buildPmActualPerformerIds, getDefaultPmPerformers, isMissingCompletedByColumnError } from '@/lib/pm-credit';
-import { DAILY_ACTIVITY_LIST_COLUMNS } from '@/lib/query-columns';
-import { computePhotoExpiryIso } from '@/lib/photo-retention';
+import { getDefaultPmPerformers } from '@/lib/pm-credit';
 import {
-  buildActivityDetailsPayload,
+  buildActivitySubmitPayload,
+  persistActivitySubmission,
+  uploadPendingActivityPhotos,
+  type ActivitySubmitPayload,
+} from '@/lib/activity-logger-submit';
+import {
   currentManilaHHMM,
   hydrateActivityDetailFields,
   INITIAL_ACTIVITY_DETAIL_FIELDS,
-  toManilaTimestampIso,
   type ActivityDetailFieldsState,
 } from '@/lib/activity-logger-details';
-import {
-  normalizePulloutDateYMD,
-  normalizePulloutTimeHHMM,
-} from '@/lib/well-pullout-types';
-import { compressImageFile, uploadActivityPhoto, uploadBlobPhoto, uploadDataUrlPhoto } from '@/lib/image-compress';
+import { compressImageFile, uploadActivityPhoto } from '@/lib/image-compress';
 import { CHLORINE_REFILL_ACTIVITY_TYPE, validateChlorineRefill } from '@/lib/chlorine-refill';
 import { extractOfflineBlobId, newClientId, OFFLINE_BLOB_PREFIX } from '@/lib/offline-sync-core';
 import {
@@ -50,12 +48,7 @@ export type LoggerArea = { id: string; code: string; name: string | null; catego
 export type LoggerShift = { id: string; code: string; description?: string | null; start_time?: string | null; end_time?: string | null; is_off?: boolean };
 export type LoggerAssignment = { operator_id: string; shift_type_id: string | null; area_code_id: string | null };
 
-export type ActivitySubmitPayload = Omit<
-  DailyActivityRow,
-  'id' | 'verified_by' | 'verified_at' | 'review_note' | 'photos_purged_at' | 'created_at' | 'updated_at'
-> & {
-  tat_justification?: string | null;
-};
+export type { ActivitySubmitPayload };
 
 export type ActivityLoggerModalProps = {
   open: boolean;
@@ -674,82 +667,36 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
         ? sigCanvasRef.current.toDataURL('image/png')
         : null;
 
-    const isPullout = activityType === 'well_pull_out';
-    const isTankClean = activityType === 'tank_cleaning';
-    const wpStartYmd = normalizePulloutDateYMD(details.wellPullout.dateStarted, p.date);
-    const wpEndYmd = normalizePulloutDateYMD(details.wellPullout.dateFinished, wpStartYmd);
-    const tcStartYmd = normalizePulloutDateYMD(details.tankCleaning.dateStarted, p.date);
-    const tcEndYmd = normalizePulloutDateYMD(details.tankCleaning.dateFinished, tcStartYmd);
-    const resolvedStartedAt = isPullout
-      ? toManilaTimestampIso(wpStartYmd, normalizePulloutTimeHHMM(details.wellPullout.timeStarted))
-      : isTankClean
-        ? toManilaTimestampIso(tcStartYmd, normalizePulloutTimeHHMM(details.tankCleaning.timeStarted))
-        : toManilaTimestampIso(p.date, startedHHMM);
-    const resolvedCompletedAt = isPullout
-      ? toManilaTimestampIso(wpEndYmd, normalizePulloutTimeHHMM(details.wellPullout.timeFinished)) ?? new Date().toISOString()
-      : isTankClean
-        ? toManilaTimestampIso(tcEndYmd, normalizePulloutTimeHHMM(details.tankCleaning.timeFinished)) ?? new Date().toISOString()
-        : toManilaTimestampIso(p.date, completedHHMM) ?? new Date().toISOString();
-    const resolvedNotes = isPullout
-      ? details.wellPullout.overallRemarks.trim() || notes.trim() || null
-      : isTankClean
-        ? details.tankCleaning.conclusionRecommendations.trim() || notes.trim() || null
-        : notes.trim() || null;
-
-    const siteText = siteOrWell.trim();
-    const locText = [siteText, blockLot.trim()].filter(Boolean).join(' · ');
-    const detailsForSubmit: ActivityDetailFieldsState = isPullout
-      ? { ...details, wellPullout: { ...details.wellPullout, dateStarted: wpStartYmd, dateFinished: wpEndYmd, performedByContractor: performedBySummary || details.wellPullout.performedByContractor } }
-      : isTankClean
-        ? { ...details, tankCleaning: { ...details.tankCleaning, tankId: siteText || details.tankCleaning.tankId, dateStarted: tcStartYmd, dateFinished: tcEndYmd } }
-        : {
-            ...details,
-            samplePoint: activityType === 'water_sampling' ? locText || details.samplePoint : details.samplePoint,
-            filterUnit: activityType === 'backwash' ? siteText || details.filterUnit : details.filterUnit,
-            scannedEquipment: activityType === 'thermal_scanning' ? siteText || details.scannedEquipment : details.scannedEquipment,
-            driverName: activityType === 'tankering' ? leadOpName || details.driverName : details.driverName,
-          };
-
-    const preservedExpiry =
-      p.editingActivity?.photos_expires_at ??
-      (p.editingActivity?.created_at
-        ? computePhotoExpiryIso(activityType, new Date(p.editingActivity.created_at).getTime())
-        : computePhotoExpiryIso(activityType));
-    const baseDetails = buildActivityDetailsPayload(activityType, detailsForSubmit, meterCalc);
-    const gpsMetaPayload =
-      gpsLat !== null && gpsLng !== null
-        ? {
-            ...(gpsSource ? { gpsSource } : {}),
-            ...(gpsAccuracyM !== null ? { gpsAccuracyM } : {}),
-          }
-        : {};
-    const effectiveIsSample = p.editingActivity ? Boolean(p.editingActivity.is_sample) : Boolean(p.sampleOnly || isSample);
-    const payload: ActivitySubmitPayload = {
-      organization_id: p.orgId,
-      activity_date: p.date,
-      logged_by: p.userId,
-      lead_operator_id: leadOpId || null,
-      crew_operator_ids: crewOpIds.filter((id) => id && id !== leadOpId),
-      shift_type_id: shiftTypeId || null,
-      area_code_id: areaCodeId || null,
-      site_or_well: siteOrWell.trim() || null,
-      block_lot: blockLot.trim() || null,
-      activity_type: activityType,
-      pm_task_id: p.linkedPmTask?.id ?? null,
-      status: 'submitted',
-      started_at: resolvedStartedAt,
-      completed_at: resolvedCompletedAt,
-      gps_lat: gpsLat,
-      gps_lng: gpsLng,
-      notes: resolvedNotes,
-      details: { ...baseDetails, ...gpsMetaPayload },
-      photo_urls: photos.map((ph) => ph.url),
-      photo_storage_paths: photos.map((ph) => ph.storagePath).filter((sp): sp is string => Boolean(sp)),
-      photos_expires_at: photos.length > 0 ? preservedExpiry : null,
-      signature_data: sigData,
-      is_sample: effectiveIsSample,
-      ...(p.linkedJobOrder?.id ? { job_order_id: p.linkedJobOrder.id } : {}),
-    };
+    const { payload, resolvedCompletedAt, effectiveIsSample } = buildActivitySubmitPayload({
+      orgId: p.orgId,
+      userId: p.userId,
+      date: p.date,
+      activityType,
+      leadOpId,
+      crewOpIds,
+      leadOpName,
+      performedBySummary,
+      shiftTypeId,
+      areaCodeId,
+      siteOrWell,
+      blockLot,
+      startedHHMM,
+      completedHHMM,
+      notes,
+      details,
+      meterCalc,
+      gpsLat,
+      gpsLng,
+      gpsAccuracyM,
+      gpsSource,
+      photos,
+      sigData,
+      isSample,
+      sampleOnly: p.sampleOnly,
+      editingActivity: p.editingActivity,
+      linkedPmTask: p.linkedPmTask,
+      linkedJobOrder: p.linkedJobOrder,
+    });
 
     const trimmedTat = joTatJustification.trim() || null;
     const capturedAtIso = new Date().toISOString();
@@ -795,156 +742,46 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
 
     try {
       const sb = supabaseBrowser();
-      const uploadedBlobIds: string[] = [];
+      let uploadedBlobIds: string[] = [];
 
       // Photos still held locally (IndexedDB blobs or data URLs) failed to upload earlier.
       // Upload them now; base64 image data must never be written into the database row.
       if (payload.photo_urls.some((u) => u.startsWith('data:') || u.startsWith(OFFLINE_BLOB_PREFIX))) {
-        const ready: ActivityPhotoEntry[] = [];
-        let uploadFailure = '';
-        for (const ph of photos) {
-          const isPending = ph.url.startsWith('data:') || ph.url.startsWith(OFFLINE_BLOB_PREFIX);
-          if (!isPending || uploadFailure) {
-            ready.push(ph);
-            continue;
-          }
-          try {
-            const blobId = extractOfflineBlobId(ph.url);
-            let up: { url: string; storagePath: string | null };
-            if (blobId) {
-              const blob = await getOfflinePhotoBlob(blobId);
-              if (!blob) {
-                throw new Error('Queued photo file is missing from device storage');
-              }
-              up = await uploadBlobPhoto(sb, p.orgId, blob, { requireStorage: true, sample: effectiveIsSample });
-              if (up.storagePath) uploadedBlobIds.push(blobId);
-            } else {
-              up = await uploadDataUrlPhoto(sb, p.orgId, ph.url, { requireStorage: true, sample: effectiveIsSample });
-            }
-            ready.push({ url: up.url, storagePath: up.storagePath, preview: up.url });
-          } catch (err: unknown) {
-            uploadFailure = getErrorMessage(err, 'Photo upload failed');
-            ready.push(ph);
-          }
-        }
-        // Remember successful uploads so another attempt does not upload them twice.
-        setPhotos(ready);
-        const photoUrls = ready.map((ph) => ph.url);
-        const photoPaths = ready.map((ph) => ph.storagePath).filter((path): path is string => Boolean(path));
+        const upRes = await uploadPendingActivityPhotos(sb, p.orgId, photos, effectiveIsSample);
+        uploadedBlobIds = upRes.uploadedBlobIds;
+        setPhotos(upRes.ready);
+        const photoUrls = upRes.ready.map((ph) => ph.url);
+        const photoPaths = upRes.ready.map((ph) => ph.storagePath).filter((path): path is string => Boolean(path));
         payload.photo_urls = photoUrls;
         payload.photo_storage_paths = photoPaths;
         offlinePayload.photo_urls = photoUrls;
         offlinePayload.photo_storage_paths = photoPaths;
-        if (uploadFailure) {
-          // The offline queue keeps the photos on this device and retries; its banner shows any error.
+        if (upRes.uploadFailure) {
           if (await queueOffline()) return;
           setSubmitting(false);
-          setErrMsg(`Photo upload failed: ${uploadFailure}. Try again, or remove the photo.`);
+          setErrMsg(`Photo upload failed: ${upRes.uploadFailure}. Try again, or remove the photo.`);
           return;
         }
       }
 
-      const { tat_justification: _omitTat, ...dbInsertPayload } = payload;
-      if (p.editingActivity?.id) {
-        const updatePayload: Omit<Partial<ActivitySubmitPayload>, 'tat_justification'> = {
-          lead_operator_id: payload.lead_operator_id,
-          crew_operator_ids: payload.crew_operator_ids,
-          shift_type_id: payload.shift_type_id,
-          area_code_id: payload.area_code_id,
-          site_or_well: payload.site_or_well,
-          block_lot: payload.block_lot,
-          activity_type: payload.activity_type,
-          started_at: payload.started_at,
-          completed_at: payload.completed_at,
-          gps_lat: payload.gps_lat,
-          gps_lng: payload.gps_lng,
-          notes: payload.notes,
-          details: payload.details,
-          photo_urls: payload.photo_urls,
-          photo_storage_paths: payload.photo_storage_paths,
-          photos_expires_at: payload.photos_expires_at,
-          ...(sigData !== null ? { signature_data: sigData } : {}),
-          status: p.editingActivity.status === 'flagged' ? 'submitted' : p.editingActivity.status,
-        };
-        const { data, error } = await sb
-          .from('daily_activities')
-          .update(updatePayload)
-          .eq('id', p.editingActivity.id)
-          .select(DAILY_ACTIVITY_LIST_COLUMNS)
-          .single();
-        if (error) throw error;
-        draftGenRef.current += 1;
-        if (draftKey) void deleteActivityDraft(draftKey);
-        if (uploadedBlobIds.length > 0) void deleteOfflinePhotoBlobs(uploadedBlobIds);
-        revokeAllObjectUrls();
-        setDraftRestoredAt(null);
-        setSubmitting(false);
-        const savedRow: DailyActivityRow = {
-          ...(data as unknown as DailyActivityRow),
-          ...(sigData !== null ? { signature_data: sigData } : {}),
-        };
-        p.onSaved(savedRow);
-        p.onClose();
-        return;
-      }
-
-      let { data, error } = await sb
-        .from('daily_activities')
-        .insert({ ...dbInsertPayload, id: newLogId as string })
-        .select(DAILY_ACTIVITY_LIST_COLUMNS)
-        .single();
-      if (error?.code === '23505') {
-        // An earlier attempt reached the server but its response was lost. Apply the current form values
-        // to that row instead of creating a second one.
-        const {
-          organization_id: _org,
-          logged_by: _loggedBy,
-          is_sample: _isSample,
-          pm_task_id: _pmTaskId,
-          job_order_id: _jobOrderId,
-          signature_data: signature,
-          ...latest
-        } = dbInsertPayload;
-        ({ data, error } = await sb
-          .from('daily_activities')
-          .update({ ...latest, ...(signature !== null ? { signature_data: signature } : {}) })
-          .eq('id', newLogId as string)
-          .select(DAILY_ACTIVITY_LIST_COLUMNS)
-          .single());
-      }
-      if (error) throw error;
-
-      const pmPerformers =
-        !effectiveIsSample && p.linkedPmTask?.id
-          ? buildPmActualPerformerIds(leadOpId, p.role === 'operator' && p.operatorId ? [...crewOpIds, p.operatorId] : crewOpIds)
-          : undefined;
-      let pmErrMsg: string | null = null;
-      if (!effectiveIsSample && p.linkedPmTask?.id) {
-        const pmBase = {
-          status: 'done' as const,
-          completed_at: p.date,
-          remarks: notes.trim() || `Logged via field activity (${activityType})`,
-        };
-        let pmRes = await sb.from('pm_tasks').update({ ...pmBase, completed_by_operator_ids: pmPerformers }).eq('id', p.linkedPmTask.id);
-        if (isMissingCompletedByColumnError(pmRes.error)) {
-          pmRes = await sb.from('pm_tasks').update(pmBase).eq('id', p.linkedPmTask.id);
-        }
-        if (pmRes.error) pmErrMsg = pmRes.error.message;
-      }
-
-      let joErrMsg: string | null = null;
-      if (!effectiveIsSample && p.linkedJobOrder?.id) {
-        const joRes = await sb
-          .from('job_orders')
-          .update({ status: 'completed', completed_at: resolvedCompletedAt, ...(trimmedTat ? { tat_justification: trimmedTat } : {}) })
-          .eq('id', p.linkedJobOrder.id);
-        if (joRes.error) joErrMsg = joRes.error.message;
-      }
-
-      const warnParts: string[] = [];
-      if (pmErrMsg) warnParts.push(`PM task could not be marked done (${pmErrMsg})`);
-      if (joErrMsg) warnParts.push(`Job Order could not be closed (${joErrMsg})`);
-      const linkedWarning = warnParts.length > 0 ? `Activity saved, but ${warnParts.join('; ')}.` : undefined;
+      const result = await persistActivitySubmission(sb, {
+        payload,
+        resolvedCompletedAt,
+        trimmedTat,
+        sigData,
+        newLogId,
+        effectiveIsSample,
+        role: p.role,
+        operatorId: p.operatorId,
+        leadOpId,
+        crewOpIds,
+        date: p.date,
+        activityType,
+        notes,
+        editingActivity: p.editingActivity,
+        linkedPmTask: p.linkedPmTask,
+        linkedJobOrder: p.linkedJobOrder,
+      });
 
       draftGenRef.current += 1;
       if (draftKey) void deleteActivityDraft(draftKey);
@@ -952,16 +789,16 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
       revokeAllObjectUrls();
       setDraftRestoredAt(null);
       setSubmitting(false);
-      const savedRow: DailyActivityRow = {
-        ...(data as unknown as DailyActivityRow),
-        ...(sigData !== null ? { signature_data: sigData } : {}),
-      };
-      p.onSaved(savedRow, {
-        tatJustification: trimmedTat,
-        completedByIds: pmPerformers,
-        pmUpdateFailed: Boolean(pmErrMsg),
-        linkedWarning,
-      });
+      if (result.isEdit) {
+        p.onSaved(result.savedRow);
+      } else {
+        p.onSaved(result.savedRow, {
+          tatJustification: trimmedTat,
+          completedByIds: result.pmPerformers,
+          pmUpdateFailed: result.pmUpdateFailed,
+          linkedWarning: result.linkedWarning,
+        });
+      }
       p.onClose();
     } catch (err: unknown) {
       const message = getErrorMessage(err, 'Save failed');

@@ -157,7 +157,7 @@ function LoginForm() {
             style={{ objectFit: 'contain', flexShrink: 0 }}
           />
           <div>
-            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
               BP Waterworks, Inc.
             </div>
             <h1 style={{ fontSize: 19.5, fontWeight: 800, letterSpacing: '-0.025em', margin: '2px 0 0', color: 'var(--text)' }}>Plant Operations Schedule</h1>
@@ -219,7 +219,7 @@ function LoginForm() {
             <AlertBanner tone="danger">
               <div>{configWarning}</div>
               {(!isConfigured || urlError === 'missing_config') && (
-                <details style={{ marginTop: 6, fontSize: 11.5, color: 'var(--danger-fg)' }}>
+                <details style={{ marginTop: 6, fontSize: 12, color: 'var(--danger-fg)' }}>
                   <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Administrator setup details</summary>
                   <div style={{ marginTop: 4 }}>
                     Set <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY</code> (or{' '}
@@ -251,7 +251,7 @@ function LoginForm() {
                 required
                 disabled={loading}
               />
-              <span style={{ fontSize: 11.5, fontWeight: 400, color: 'var(--text-muted)' }}>
+              <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text-muted)' }}>
                 Enter your full name as listed on the employee roster so an admin can validate and approve your account.
               </span>
             </label>
@@ -297,7 +297,7 @@ function LoginForm() {
                 disabled={loading}
               />
               {(mode === 'signup' || mode === 'reset') && (
-                <span style={{ fontSize: 11.5, fontWeight: 400, color: 'var(--text-muted)' }}>
+                <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text-muted)' }}>
                   Minimum 12 characters.
                 </span>
               )}
@@ -347,7 +347,7 @@ function LoginForm() {
             </p>
           )}
         </form>
-        <p style={{ marginTop: 14, fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.45, marginBottom: 0 }}>
+        <p style={{ marginTop: 14, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.45, marginBottom: 0 }}>
           Internal BP Waterworks, Inc. operations platform. Account details, shift/activity logs, and the GPS location of field activity logs are processed for utility dispatch and audit under the Data Privacy Act (RA 10173). Field photos expire after 30 days (180 days for meter tests and leak repairs, up to 365 days when held).
         </p>
       </div>

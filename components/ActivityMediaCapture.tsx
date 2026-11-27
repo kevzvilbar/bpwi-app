@@ -145,7 +145,7 @@ export default function ActivityMediaCapture({
               onClick={handleClearGps}
               aria-label="Clear GPS location"
               title="Clear location"
-              style={{ fontSize: 11.5, padding: '4px 8px' }}
+              style={{ fontSize: 12, padding: '4px 8px' }}
             >
               ✕
             </button>
@@ -185,7 +185,7 @@ export default function ActivityMediaCapture({
       </div>
 
       {liveStatus && (
-        <div style={{ fontSize: 11.5, color: 'var(--accent)', fontWeight: 600 }}>
+        <div style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>
           {liveStatus}
         </div>
       )}
@@ -193,7 +193,7 @@ export default function ActivityMediaCapture({
       {gpsError && (
         <div
           style={{
-            fontSize: 11.5,
+            fontSize: 12,
             padding: '6px 9px',
             borderRadius: 6,
             background: 'var(--warn-bg)',
@@ -210,7 +210,7 @@ export default function ActivityMediaCapture({
           <button
             type="button"
             className="btn"
-            style={{ fontSize: 11.5, minHeight: 36, padding: '4px 10px', fontWeight: 700 }}
+            style={{ fontSize: 12, minHeight: 36, padding: '4px 10px', fontWeight: 700 }}
             onClick={() => setPinModalOpen(true)}
           >
             Pin on Satellite Map
@@ -218,7 +218,7 @@ export default function ActivityMediaCapture({
         </div>
       )}
 
-      <div style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+      <div style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
         <span>{helperNote ?? 'GPS location is required to save a log and is captured only when you tap a location button · Photos auto-delete after 30 days (180d for meter tests & leak repairs) · Telemetry governed by BPWI RA 10173 retention policy.'}</span>
         {savedBytesTotal > 0 && (
           <span style={{ color: 'var(--ok-fg)', fontWeight: 700 }}>

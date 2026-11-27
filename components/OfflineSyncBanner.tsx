@@ -338,9 +338,9 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
                   <div style={{ fontWeight: 700, fontSize: 12.5 }}>
                     Activity · {meta.title}
                   </div>
-                  <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{meta.subtitle}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{meta.subtitle}</div>
                   {item.lastError && (
-                    <div style={{ fontSize: 11.5, color: 'var(--danger)', fontWeight: 600 }}>
+                    <div style={{ fontSize: 12, color: 'var(--danger)', fontWeight: 600 }}>
                       Sync error{item.attempts ? ` (attempt ${item.attempts})` : ''}: {item.lastError}
                     </div>
                   )}
@@ -420,9 +420,9 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
               >
                 <div style={{ display: 'grid', gap: 2, minWidth: 0, flex: '1 1 220px' }}>
                   <div style={{ fontWeight: 700, fontSize: 12.5 }}>{meta.title}</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{meta.subtitle}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{meta.subtitle}</div>
                   {item.lastError && (
-                    <div style={{ fontSize: 11.5, color: 'var(--danger)', fontWeight: 600 }}>
+                    <div style={{ fontSize: 12, color: 'var(--danger)', fontWeight: 600 }}>
                       Sync error{item.attempts ? ` (attempt ${item.attempts})` : ''}: {item.lastError}
                     </div>
                   )}
@@ -502,9 +502,9 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
               >
                 <div style={{ display: 'grid', gap: 2, minWidth: 0, flex: '1 1 220px' }}>
                   <div style={{ fontWeight: 700, fontSize: 12.5 }}>{meta.title}</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{meta.subtitle}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{meta.subtitle}</div>
                   {item.lastError && (
-                    <div style={{ fontSize: 11.5, color: 'var(--danger)', fontWeight: 600 }}>
+                    <div style={{ fontSize: 12, color: 'var(--danger)', fontWeight: 600 }}>
                       Sync error{item.attempts ? ` (attempt ${item.attempts})` : ''}: {item.lastError}
                     </div>
                   )}

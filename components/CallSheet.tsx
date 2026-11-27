@@ -204,10 +204,10 @@ export default function CallSheet(p: {
         {/* Left Column: Standby Dispatch & Shift Coverage Summary */}
         <section className="card call-sheet-standby-sticky" style={{ padding: 12, display: 'grid', gap: 10 }} aria-label="Emergency standby dispatch">
           <div style={{ display: 'grid', gap: 6, padding: 10, borderRadius: 8, background: 'var(--surface-muted)', border: '1px solid var(--border-light)' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
               Today&apos;s Shift Summary
             </div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 11.5, fontWeight: 700 }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 12, fontWeight: 700 }}>
               <Badge tone="violet" size="sm">{coverageCounts.standby} Standby</Badge>
               <Badge tone="ok" size="sm">{coverageCounts.onDutyNow} On Duty Now</Badge>
               <Badge tone="info" size="sm">{coverageCounts.onDutyToday} Duty Today</Badge>
@@ -217,7 +217,7 @@ export default function CallSheet(p: {
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong style={{ fontSize: 14 }}>Emergency Standby</strong>
-            <span style={{ fontSize: 11.5, color: 'var(--text-secondary)', fontWeight: 600 }}>
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600 }}>
               {priorityList.length} on call
             </span>
           </div>
@@ -241,12 +241,12 @@ export default function CallSheet(p: {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 6 }}>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{op.full_name}</div>
-                    {op.position && <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{op.position}</div>}
+                    {op.position && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{op.position}</div>}
                   </div>
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     {standbyType && <Badge tone="violet" size="sm">{standbyType}</Badge>}
                     {isNow && shift && (
-                      <span style={{ background: shift.background_color, color: shift.text_color, padding: '2px 7px', borderRadius: 6, fontSize: 10.5, fontWeight: 700, border: '1px solid var(--border)' }}>
+                      <span style={{ background: shift.background_color, color: shift.text_color, padding: '2px 7px', borderRadius: 6, fontSize: 12, fontWeight: 700, border: '1px solid var(--border)' }}>
                         NOW · {shift.code}
                       </span>
                     )}
@@ -305,7 +305,7 @@ export default function CallSheet(p: {
                   </td>
                   <td style={{ padding: '8px 10px' }}>
                     <div style={{ fontWeight: 700, color: 'var(--text)' }}>{op.full_name}</div>
-                    {op.position && <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{op.position}</div>}
+                    {op.position && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{op.position}</div>}
                   </td>
                   <td style={{ padding: '8px 10px' }}>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -322,7 +322,7 @@ export default function CallSheet(p: {
                             padding: '3px 9px',
                             borderRadius: 6,
                             fontWeight: 700,
-                            fontSize: 11.5,
+                            fontSize: 12,
                             border: '1px solid var(--border)',
                           }}
                         >
