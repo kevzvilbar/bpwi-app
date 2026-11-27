@@ -20,7 +20,7 @@
 4. Import legacy data (admin session cookie required; payload validated at runtime; disabled in `production` unless `ENABLE_LEGACY_IMPORT=true`):
    `curl -X POST "http://localhost:3000/api/import?dryRun=true" -H "Content-Type: application/json" -H "Cookie: <your session cookie>" --data @backup.json`
    Default mode skips existing rows (`ignoreDuplicates: true`) so re-runs never overwrite newer edits; pass `?overwrite=true` explicitly to overwrite matching legacy records.
-5. Deploy: import the repo in Vercel and configure env vars (`SUPABASE_SECRET_KEY` server-only, `CRON_SECRET` for scheduled photo/cache purges). Self sign-up is enabled by default so staff can register with their employee name and wait for admin validation (`role = 'viewer'`, `is_active = false`); set `NEXT_PUBLIC_ALLOW_PUBLIC_SIGNUP=false` and disable **Allow new users to sign up** in Supabase Authentication settings for invite-only deployments, or enable **Confirm email** and configure **Sign-Up Access & Domain Allowlist** in **Operators & Setup → Users & roles** (`organizations.allowed_signup_domains`, migrations `030`–`032`). Enforce strong passwords (minimum 12 characters on sign-up/reset; set Supabase Auth minimum password length to 12 as well). Per-request nonce CSP headers are applied in [`middleware.ts`](middleware.ts).
+5. Deploy: import the repo in Vercel and configure env vars (`SUPABASE_SECRET_KEY` server-only, `CRON_SECRET` for scheduled photo/cache purges). Self sign-up is enabled by default so staff can register with their employee name and wait for admin validation (`role = 'viewer'`, `is_active = false`); set `NEXT_PUBLIC_ALLOW_PUBLIC_SIGNUP=false` and disable **Allow new users to sign up** in Supabase Authentication settings for invite-only deployments, or enable **Confirm email** and configure **Sign-Up Access & Domain Allowlist** in **Operators & Setup → Users & roles** (`organizations.allowed_signup_domains`, migrations `030`–`032`). Enforce strong passwords (minimum 12 characters on sign-up/reset; set Supabase Auth minimum password length to 12 as well). Per-request nonce CSP headers are applied in [`proxy.ts`](proxy.ts).
 
 ## Department heads (migrations 007, 008 & 009)
 Run `007_manager_role.sql` **on its own first** (PostgreSQL cannot use a new enum value in the transaction that adds it), then `008_department_heads.sql`, followed by `009_change_requests.sql`.
@@ -90,7 +90,7 @@ Permissions are computed in [`lib/permissions.ts`](lib/permissions.ts) and enfor
 
 ## Offline Mode & Sync Semantics
 Field operations support offline work through the data-free `/field` PWA shell and IndexedDB:
-- **Data-Free App Shell (`/field`):** Rendered dynamically per request so [`middleware.ts`](middleware.ts) can attach per-request CSP nonces, while containing zero SSR table queries or baked-in dates; cached client-side by the service worker with dynamic local-date initialization and used as the offline navigation fallback.
+- **Data-Free App Shell (`/field`):** Rendered dynamically per request so [`proxy.ts`](proxy.ts) can attach per-request CSP nonces, while containing zero SSR table queries or baked-in dates; cached client-side by the service worker with dynamic local-date initialization and used as the offline navigation fallback.
 - **Per-User Reference Snapshots:** Operators, area codes, shifts, roster assignments, PM tasks, and recent logs are cached per user ID in IndexedDB with `lastUpdatedAt` timestamps so signing out or switching accounts never clears or leaks another user's queued work.
 - **Unified Outbox & Binary Photo Drafts:** Pending activity logs, accomplishment reports, PM status updates/reopens, shift handovers, and job order completions live in a single IndexedDB outbox. Open form drafts and compressed evidence photos are stored as binary `Blob`s and flushed on app open, `online` event, tab foregrounding, and periodic timers with request timeouts so weak signals fall back to the queue cleanly.
 - **Idempotency & Conflict Handling:** Client-generated UUID `id` keys let retries safely ignore Postgres duplicate-key (`23505`) responses without creating duplicate rows. Device capture time (`created_at` / completion timestamp) is preserved separately from server arrival (`received_at`), and offline PM/job-order mutations send `expected_updated_at` / `expectedStatus` checks so concurrent server edits surface as conflicts instead of silently overwriting newer data.
@@ -102,7 +102,9 @@ npm run lint        # ESLint
 npm test            # Node unit & migration/CSP/offline/rate-limit tests
 npm run test:ui     # Vitest + React Testing Library UI component tests
 npm run build       # Production Next.js build
+npm run test:e2e    # Playwright smoke & PWA checks (builds + starts on :3100)
 ```
+To include the authenticated offline-sync and proposal/approval workflow tests in [`e2e/workflows.spec.ts`](e2e/workflows.spec.ts) against a staging Supabase environment, also set `E2E_ALLOW_MUTATIONS=true`, `E2E_OPERATOR_EMAIL`/`PASSWORD`, `E2E_MANAGER_EMAIL`/`PASSWORD`, and `E2E_ADMIN_EMAIL`/`PASSWORD`.
 
 ## Documentation
 - [System & Security Architecture (`docs/ARCHITECTURE.md`)](docs/ARCHITECTURE.md) — App Router layout, defense-in-depth Postgres/CSP architecture, RBAC role matrix, and operations/DR runbook.

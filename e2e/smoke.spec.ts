@@ -145,7 +145,7 @@ test.describe('BPWI Smoke Suite', () => {
     const { pageErrors, cspErrors } = attachBrowserErrorListeners(page);
 
     await page.goto('/login');
-    await expect(page.getByText(/field activity logs/i)).toBeVisible();
+    await expect(page.getByText(/Sign in to manage schedules, field activity logs/i)).toBeVisible();
     const overflow = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
       clientWidth: document.documentElement.clientWidth,

@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint app components lib middleware.ts --ext .ts,.tsx",
+    "lint": "eslint app components lib proxy.ts",
     "test": "node scripts/run-tests.mjs",
     "test:ui": "vitest run",
     "test:e2e": "playwright test",
@@ -17,9 +17,9 @@
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.119.2",
     "maplibre-gl": "^6.19.0",
-    "next": "^15.5.29",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "next": "^16.4.6",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.6.0",
@@ -28,13 +28,13 @@
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.13",
     "@types/node": "^20.14.0",
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.5.2",
-    "eslint": "^8.57.1",
-    "eslint-config-next": "^15.5.29",
+    "@types/react": "^19.3.3",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.4.6",
     "jsdom": "^26.1.0",
     "typescript": "^5.5.0",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.12"
   }
 }

@@ -6,7 +6,7 @@ import { shouldBypassSessionAuth } from '@/lib/middleware-rules';
 
 let warnedReportOnlyInProd = false;
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const nonce = generateCspNonce();
   const csp = buildCspHeader({
@@ -97,7 +97,7 @@ export async function middleware(req: NextRequest) {
 
     return res;
   } catch (err) {
-    console.error('Middleware auth error:', err);
+    console.error('Proxy auth error:', err);
     if (isApiRoute) {
       return withCsp(NextResponse.json({ error: 'Authentication check failed' }, { status: 500 }));
     }

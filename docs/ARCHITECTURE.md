@@ -2,7 +2,7 @@
 
 ## 1. System Overview
 
-`bpwi-app` is the internal shift scheduling, field activity monitoring, preventive maintenance (PM), job-order dispatch, and accomplishment reporting platform for **BP Waterworks, Inc.** Built on **Next.js 15 App Router** (React 18, strict TypeScript), **Supabase** (PostgreSQL + Auth + Storage + Realtime), and **Vercel**:
+`bpwi-app` is the internal shift scheduling, field activity monitoring, preventive maintenance (PM), job-order dispatch, and accomplishment reporting platform for **BP Waterworks, Inc.** Built on **Next.js 16 App Router** (React 19, strict TypeScript), **Supabase** (PostgreSQL + Auth + Storage + Realtime), and **Vercel**:
 
 - **Server-Rendered Data-Loader Pages (`page.tsx` RSC):**
   - `/` (Monthly Roster), `/activities` (Daily Activity Monitor, Job Orders, Shift Handovers, Employee KPIs & Fuel, Footprints & Routes), `/pm` (PM Planner), `/leave` (Leave Summary), `/call-sheet` (Call Sheet & Escalation), `/mobile` (Mobile Field Logger & Tasks), `/generate` (Shift Cycle Generator), `/operators` (Operators & Setup, admin-only), `/org-chart` (Organizational Chart), `/reports` (Daily Accomplishment Reports / `BPEMS-F-002`), and `/requests` (Department Head Change Request Review Queue).
@@ -25,9 +25,9 @@
 
 ## 2. Defense-in-Depth Security Architecture
 
-1. **Middleware & Session Boundaries (`middleware.ts`, `lib/middleware-rules.ts`):**
+1. **Proxy & Session Boundaries (`proxy.ts`, `lib/middleware-rules.ts`):**
    - Generates a per-request cryptographic nonce (`generateCspNonce`) and sets strict `Content-Security-Policy` headers via `buildCspHeader` (`lib/csp.ts`: `script-src 'self' 'nonce-...' 'strict-dynamic'`, `frame-ancestors 'none'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `report-uri /api/csp-report`).
-   - Cookie-only `getSession()` in middleware gates unauthenticated page redirects; every RSC page and API route re-validates the session via `supabaseServer()` `auth.getUser()`.
+   - Cookie-only `getSession()` in the request proxy gates unauthenticated page redirects; every RSC page and API route re-validates the session via `supabaseServer()` `auth.getUser()`.
 2. **Postgres Row Level Security (RLS):**
    - Every table in `supabase/migrations/` enables `ROW LEVEL SECURITY` (enforced by `lib/__tests__/migrations.test.ts`), scoped by `organization_id = current_org()` and `current_role_name()`.
    - Storage bucket `activity-media` is private and org-prefixed (`<org_id>/<user_id>/...`), with role- and ownership-scoped delete protection (`activity_media_is_protected()` in `037`).

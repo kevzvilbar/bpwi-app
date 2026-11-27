@@ -114,15 +114,14 @@ export default async function RequestsPage() {
   // Live conflict detection for open items (schedule, standby, PM, leave), same rules as the RPC.
   const openItems = rawItems.filter((i) => i.status === 'pending' || i.status === 'conflict');
   const snap = emptySnapshot();
-  let liveCheckFailed = false;
 
   async function loadCells(
     table: 'schedule_assignments' | 'standby_assignments',
     columns: string,
     onRow: (r: Record<string, string | null>) => void,
-  ) {
+  ): Promise<boolean> {
     const items = openItems.filter((i) => i.target_table === table && i.operator_id && i.schedule_date);
-    if (items.length === 0) return;
+    if (items.length === 0) return false;
     const opIds = Array.from(new Set(items.map((i) => i.operator_id as string)));
     const dates = items.map((i) => i.schedule_date as string).sort();
     const [min, max] = [dates[0], dates[dates.length - 1]];
@@ -134,25 +133,29 @@ export default async function RequestsPage() {
         ),
       ),
     );
+    let failed = false;
     for (const r of results) {
-      if (r.error) liveCheckFailed = true;
+      if (r.error) failed = true;
       else r.data.forEach(onRow);
     }
+    return failed;
   }
 
-  async function loadById<T extends { id: string }>(table: 'pm_tasks' | 'leave_records', columns: string, ids: string[], onRow: (r: T) => void) {
+  async function loadById<T extends { id: string }>(table: 'pm_tasks' | 'leave_records', columns: string, ids: string[], onRow: (r: T) => void): Promise<boolean> {
     const uniq = Array.from(new Set(ids));
-    if (uniq.length === 0) return;
+    if (uniq.length === 0) return false;
     const results = await Promise.all(
       chunk(uniq, 60).map((c) => fetchAll<T>((from, to) => sb.from(table).select(columns).in('id', c).order('id').range(from, to) as unknown as Page<T>)),
     );
+    let failed = false;
     for (const r of results) {
-      if (r.error) liveCheckFailed = true;
+      if (r.error) failed = true;
       else r.data.forEach(onRow);
     }
+    return failed;
   }
 
-  await Promise.all([
+  const checkFailures = await Promise.all([
     loadCells('schedule_assignments', 'operator_id, schedule_date, shift_type_id, area_code_id', (r) =>
       snap.schedule.set(cellKey(r.operator_id, r.schedule_date), { shift_type_id: r.shift_type_id, area_code_id: r.area_code_id }),
     ),
@@ -172,6 +175,7 @@ export default async function RequestsPage() {
       (r) => snap.leave.set(r.id, r),
     ),
   ]);
+  const liveCheckFailed = checkFailures.some(Boolean);
 
   // If any live lookup failed, don't guess: leave statuses as stored (the server re-checks on approval anyway).
   if (!liveCheckFailed) {
