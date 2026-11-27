@@ -44,6 +44,7 @@ export interface ActivityFeedCardProps {
   onToggleFlag: () => void;
   onVerify: () => void;
   onConfirmFlag: () => void;
+  onTogglePhotoHold?: () => void;
   onPrint: (mode: PrintPreviewMode) => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -64,6 +65,7 @@ export default function ActivityFeedCard({
   onToggleFlag,
   onVerify,
   onConfirmFlag,
+  onTogglePhotoHold,
   onPrint,
   onEdit,
   onDelete,
@@ -85,6 +87,11 @@ export default function ActivityFeedCard({
         </span>
         <span className="row-wrap" style={{ gap: 5, justifyContent: 'flex-end' }}>
           {act.is_sample && <SampleBadge expiresAt={act.sample_expires_at} />}
+          {act.photo_hold && !act.photos_purged_at && (
+            <Badge size="sm" tone="warn">
+              EVIDENCE HOLD
+            </Badge>
+          )}
           <Badge size="sm" tone={statusTone}>
             {act.status.toUpperCase()}
           </Badge>
@@ -159,7 +166,7 @@ export default function ActivityFeedCard({
       {/* Photo thumbnails or purged notice */}
       {act.photos_purged_at ? (
         <div className="text-muted-xs" style={{ fontStyle: 'italic' }}>
-          Photos auto-purged after 30-day storage retention ({act.photos_purged_at.slice(0, 10)}).
+          Photos auto-purged after storage retention ({act.photos_purged_at.slice(0, 10)}).
         </div>
       ) : Array.isArray(act.photo_urls) && act.photo_urls.length > 0 ? (
         <div className="stack-xs">
@@ -177,13 +184,19 @@ export default function ActivityFeedCard({
               );
             })}
           </div>
-          {expDays !== null && (
-            <span
-              className="text-secondary-xs"
-              style={{ color: expDays <= 5 ? 'var(--warn-fg)' : undefined }}
-            >
-              {expDays > 0 ? `Storage auto-expires in ${expDays}d` : 'Photo retention expired — ready to purge'}
+          {act.photo_hold || act.status === 'flagged' ? (
+            <span className="text-secondary-xs" style={{ color: 'var(--warn-fg)' }}>
+              {act.photo_hold ? 'Protected by supervisor evidence hold (max 365d)' : 'Flagged log exempt from auto-purge (max 365d)'}
             </span>
+          ) : (
+            expDays !== null && (
+              <span
+                className="text-secondary-xs"
+                style={{ color: expDays <= 5 ? 'var(--warn-fg)' : undefined }}
+              >
+                {expDays > 0 ? `Storage auto-expires in ${expDays}d` : 'Photo retention expired — ready to purge'}
+              </span>
+            )
           )}
         </div>
       ) : null}
@@ -210,6 +223,11 @@ export default function ActivityFeedCard({
             onClick={onToggleFlag}
           >
             ⚠ Flag
+          </button>
+        )}
+        {canVerifyActivity && !act.is_sample && !act.photos_purged_at && Array.isArray(act.photo_urls) && act.photo_urls.length > 0 && onTogglePhotoHold && (
+          <button type="button" className="btn btn-sm" onClick={onTogglePhotoHold}>
+            {act.photo_hold ? 'Release Hold' : 'Hold Photos'}
           </button>
         )}
         <button type="button" className="btn btn-sm" onClick={() => onPrint('activity')}>

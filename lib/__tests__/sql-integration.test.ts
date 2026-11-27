@@ -2644,7 +2644,217 @@ describe('PGlite SQL migrations (all) execution & security invariants', () => {
     // Re-running 041 migration is idempotent
     await db.exec(sql41);
 
-    // 25. End-state catalog audit: RLS, policies, and SECURITY DEFINER search_path
+    // 25. 042 Photo storage RLS, photo_hold, 180d/365d retention, expanded PII cleanup, and viewer JO exclusion
+    const sql42 = fs.readFileSync(path.join(MIGRATIONS_DIR, '042_photo_storage_retention_and_jo_rls.sql'), 'utf8');
+    await setAuthUid(db, null);
+    await db.exec(sql42);
+    await db.exec(`
+      grant usage on schema storage to authenticated;
+      grant select on storage.objects to authenticated;
+      grant select on job_orders to authenticated;
+    `);
+
+    const viewerUserId = 'aaaaaaaa-4242-4242-8424-aaaaaaaaaaaa';
+    await db.query(
+      `insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data)
+       values ($1, 'viewer042@bpwi.test', $2::jsonb, $3::jsonb)`,
+      [viewerUserId, JSON.stringify({ full_name: 'Viewer User' }), JSON.stringify({ organization_id: orgId })],
+    );
+    await db.query(`update user_profiles set role = 'viewer', is_active = true where id = $1`, [viewerUserId]);
+
+    // 25a. Storage object read RLS follows daily_activities visibility
+    const pathAssignedOp = `${orgId}/2026-11-28/assigned-op.webp`;
+    const pathSubOp = `${orgId}/2026-11-28/sub-op.webp`;
+    const pathMgrSample = `${orgId}/2026-11-28/sample-mgr.webp`;
+
+    await db.query(
+      `insert into storage.objects (bucket_id, name, owner)
+       values ('activity-media', $1, $4), ('activity-media', $2, $5), ('activity-media', $3, $6)`,
+      [pathAssignedOp, pathSubOp, pathMgrSample, assignedUserId, subUserId, mgr1Id],
+    );
+
+    await runAs(
+      assignedUserId,
+      () =>
+        db.query(
+          `insert into daily_activities (organization_id, logged_by, lead_operator_id, activity_type, activity_date, photo_urls, photo_storage_paths, is_sample)
+           values ($1, $2, $3, 'pump_monitoring', '2026-11-28', array[$4], array[$5], false)`,
+          [orgId, assignedUserId, opId, `/api/activities/photo?path=${pathAssignedOp}`, pathAssignedOp],
+        ),
+      true,
+    );
+    await runAs(
+      subUserId,
+      () =>
+        db.query(
+          `insert into daily_activities (organization_id, logged_by, lead_operator_id, activity_type, activity_date, photo_urls, photo_storage_paths, is_sample)
+           values ($1, $2, $3, 'pump_monitoring', '2026-11-28', array[$4], array[$5], false)`,
+          [orgId, subUserId, subOpId, `/api/activities/photo?path=${pathSubOp}`, pathSubOp],
+        ),
+      true,
+    );
+    await runAs(
+      mgr1Id,
+      () =>
+        db.query(
+          `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, photo_urls, photo_storage_paths, is_sample)
+           values ($1, $2, 'pump_monitoring', '2026-11-28', array[$3], array[$4], true)`,
+          [orgId, mgr1Id, `/api/activities/photo?path=${pathMgrSample}`, pathMgrSample],
+        ),
+      true,
+    );
+
+    // Viewer sees 0 photos in storage.objects
+    await runAs(viewerUserId, async () => {
+      const res = await db.query<{ name: string }>(
+        `select name from storage.objects where bucket_id = 'activity-media' and name = any($1::text[])`,
+        [[pathAssignedOp, pathSubOp, pathMgrSample]],
+      );
+      assert.deepEqual(res.rows, []);
+    });
+
+    // Substitute operator only sees their own real log's photo, never assignedUser's or manager's sample
+    await runAs(subUserId, async () => {
+      const res = await db.query<{ name: string }>(
+        `select name from storage.objects where bucket_id = 'activity-media' and name = any($1::text[])`,
+        [[pathAssignedOp, pathSubOp, pathMgrSample]],
+      );
+      assert.deepEqual(
+        res.rows.map((r) => r.name),
+        [pathSubOp],
+      );
+    });
+
+    // Manager sees both real logs and their own sample log
+    await runAs(mgr1Id, async () => {
+      const res = await db.query<{ name: string }>(
+        `select name from storage.objects where bucket_id = 'activity-media' and name = any($1::text[]) order by name`,
+        [[pathAssignedOp, pathSubOp, pathMgrSample]],
+      );
+      assert.deepEqual(
+        res.rows.map((r) => r.name),
+        [pathAssignedOp, pathMgrSample, pathSubOp].sort(),
+      );
+    });
+
+    // 25b. Operator cannot set photo_hold; supervisor can place/release; 180d & 365d expiry bounds hold
+    await assert.rejects(
+      () =>
+        runAs(subUserId, () =>
+          db.query(
+            `insert into daily_activities (organization_id, logged_by, activity_type, activity_date, photo_hold)
+             values ($1, $2, 'pump_monitoring', '2026-11-28', true)`,
+            [orgId, subUserId],
+          ),
+        ),
+      /Only supervisors can place an evidence photo hold/i,
+    );
+
+    const subHoldActRes = await runAs(
+      subUserId,
+      () =>
+        db.query<{ id: string }>(
+          `insert into daily_activities (organization_id, logged_by, lead_operator_id, activity_type, activity_date, photos_expires_at)
+           values ($1, $2, $3, 'meter_test', '2026-11-28', null)
+           returning id`,
+          [orgId, subUserId, subOpId],
+        ),
+      true,
+    );
+    const subHoldActId = subHoldActRes.rows[0].id;
+
+    await assert.rejects(
+      () =>
+        runAs(subUserId, () =>
+          db.query(`update daily_activities set photo_hold = true where id = $1`, [subHoldActId]),
+        ),
+      /Only supervisors can modify photo holds/i,
+    );
+
+    await runAs(
+      mgr1Id,
+      async () => {
+        const held = await db.query<{ photo_hold: boolean }>(
+          `update daily_activities set photo_hold = true, photo_hold_by = $2, photo_hold_at = now() where id = $1 returning photo_hold`,
+          [subHoldActId, mgr1Id],
+        );
+        assert.equal(held.rows[0]?.photo_hold, true);
+      },
+      true,
+    );
+
+    // 180d default for meter_test with photo & null photos_expires_at, and 365d ceiling enforcement
+    const meterRetentionRes = await runAs(
+      subUserId,
+      () =>
+        db.query<{ exp_days: number; capped_days: number }>(
+          `with ins1 as (
+             insert into daily_activities (organization_id, logged_by, lead_operator_id, activity_type, activity_date, photo_urls, photos_expires_at)
+             values ($1, $2, $3, 'meter_test', '2026-11-28', array['https://x.test/a.webp'], null)
+             returning extract(epoch from (photos_expires_at - created_at)) / 86400.0 as exp_days
+           ), ins2 as (
+             insert into daily_activities (organization_id, logged_by, lead_operator_id, activity_type, activity_date, photo_urls, photos_expires_at)
+             values ($1, $2, $3, 'leak_repair', '2026-11-28', array['https://x.test/b.webp'], now() + interval '500 days')
+             returning extract(epoch from (photos_expires_at - created_at)) / 86400.0 as capped_days
+           )
+           select round(ins1.exp_days)::int as exp_days, round(ins2.capped_days)::int as capped_days from ins1, ins2`,
+          [orgId, subUserId, subOpId],
+        ),
+      true,
+    );
+    assert.equal(meterRetentionRes.rows[0]?.exp_days, 180);
+    assert.equal(meterRetentionRes.rows[0]?.capped_days, 365);
+
+    // 25c. Expanded 365-day PII purge scrubs witnessedBy/witnessName/accountName & JO account_name while keeping account_number
+    await setAuthUid(db, null);
+    const oldWitnessActRes = await db.query<{ id: string }>(
+      `insert into daily_activities (organization_id, logged_by, activity_type, details, is_sample, created_at)
+       values ($1, $2, 'meter_test', $3::jsonb, false, now() - interval '400 days')
+       returning id`,
+      [orgId, assignedUserId, JSON.stringify({ witnessedBy: 'Maria Santos', witnessName: 'Pedro', accountName: 'Ana Reyes', meterReading: 42 })],
+    );
+    const oldPiiJoRes = await db.query<{ id: string }>(
+      `insert into job_orders (organization_id, jo_number, title, status, account_number, account_name, contact_number, completed_at, created_at, updated_at, created_by, is_sample)
+       values ($1, 'AUTO', 'Old PII JO', 'completed', '123456789012', 'Juan Dela Cruz', '09170001111', now() - interval '400 days', now() - interval '405 days', now() - interval '400 days', $2, false)
+       returning id`,
+      [orgId, adminId],
+    );
+
+    await db.exec('begin; set local role service_role;');
+    await db.query(`select * from purge_expired_telemetry_pii(365)`);
+    await db.exec('commit;');
+
+    const scrubbedAct = await db.query<{ details: Record<string, unknown> }>(
+      `select details from daily_activities where id = $1`,
+      [oldWitnessActRes.rows[0].id],
+    );
+    assert.deepEqual(scrubbedAct.rows[0]?.details, { meterReading: 42 });
+
+    const scrubbedJo = await db.query<{ account_number: string | null; account_name: string | null; contact_number: string | null }>(
+      `select account_number, account_name, contact_number from job_orders where id = $1`,
+      [oldPiiJoRes.rows[0].id],
+    );
+    assert.deepEqual(scrubbedJo.rows[0], {
+      account_number: '123456789012',
+      account_name: null,
+      contact_number: null,
+    });
+
+    // 25d. Viewer role cannot read job_orders; operator can
+    await runAs(viewerUserId, async () => {
+      const joViewerRes = await db.query<{ cnt: number }>(`select count(*)::int as cnt from job_orders`);
+      assert.equal(joViewerRes.rows[0]?.cnt, 0);
+    });
+    await runAs(subUserId, async () => {
+      const joOpRes = await db.query<{ cnt: number }>(`select count(*)::int as cnt from job_orders`);
+      assert.ok((joOpRes.rows[0]?.cnt ?? 0) > 0);
+    });
+
+    // Re-running 042 migration is idempotent
+    await setAuthUid(db, null);
+    await db.exec(sql42);
+
+    // 26. End-state catalog audit: RLS, policies, and SECURITY DEFINER search_path
     const definerFns = await db.query<{ name: string; proconfig: string[] | null }>(
       `select p.proname::text as name, p.proconfig
        from pg_proc p

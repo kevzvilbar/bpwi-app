@@ -6,7 +6,7 @@
    supabase link --project-ref <your-project-ref>
    supabase db push
    ```
-   (Or run `supabase/migrations/001_init.sql` through `041_harden_reviewed_deletes_and_chlorine_units.sql` in ascending order in the SQL Editor; see [`supabase/migrations/README.md`](supabase/migrations/README.md).)
+   (Or run `supabase/migrations/001_init.sql` through `042_photo_storage_retention_and_jo_rls.sql` in ascending order in the SQL Editor; see [`supabase/migrations/README.md`](supabase/migrations/README.md).)
 2. Bootstrap the organization and initial admin (sign-ups never auto-promote to `admin`):
    - First, initialize the organization in the Supabase SQL Editor:
      ```sql
@@ -41,8 +41,8 @@ Run `supabase/migrations/010_daily_activities.sql` and `supabase/migrations/011_
 
 - **Who can log (`operator` + `admin` only):** Only active `operator` and `admin` roles can submit daily field activity logs (enforced via Postgres RLS on `daily_activities` and UI gating). Operators can tag co-operators (`crew_operator_ids`) so all crew members receive activity credit.
 - **Schedule & Setup Integration:** Stations/areas link directly to `area_codes` configured in Operators & Setup (no hardcoded legacy facilities). Opening the activity logger on `/mobile` or `/activities` auto-fills the operator's roster shift, assigned area, and same-shift co-operators.
-- **Mobile Field Logger (`/field` & `/mobile`):** Supports 20 water utility activity types with dynamic telemetry forms (Genset fuel, Pump pressure/flow, Flushing blow-offs, 3-trial volumetric Meter Test ±5% calculator + witness signature, Leak Repair materials, Water Hauling trips, and Water Sampling), GPS capture, and IndexedDB offline queue auto-sync.
-- **30-Day Photo Retention (`activity-media`) & 24h Sample Logs:** Uploaded photos are compressed client-side before upload to Supabase Storage and carry a 30-day expiration (`photos_expires_at`). Calling `POST /api/activities/purge-photos` (or clicking **Purge Expired Photos (>30d)** in `/activities`) removes expired photo objects while preserving the text and telemetry logs, and also sweeps expired 24-hour `is_sample` logs/photos across `daily_activities`, `job_orders`, `shift_handovers`, and `accomplishment_reports` (migration `034`). Sample logs are excluded from KPIs/reports/audit logs and visible only to their creator and admins for 24 hours. **Department heads can create, edit and delete sample logs only; real activity logs, job orders, handovers and accomplishment reports are read-only for them** (they can still verify/flag activities and check/return reports). Expired samples are deleted in SQL by the hourly `pg_cron` job (or the daily `/api/activities/purge-photos` cron as a fallback); their photo files are queued in `sample_photo_cleanup` and removed by that route, and admins see a warning banner on `/activities` if cleanup is overdue (migration `035`).
+- **Mobile Field Logger (`/field` & `/mobile`):** Supports 20 water utility activity types with dynamic telemetry forms (Genset fuel, Pump pressure/flow, Flushing blow-offs, 3-trial volumetric Meter Test ±5% calculator + witness signature, Leak Repair materials, Water Hauling trips, and Water Sampling), GPS capture, and IndexedDB offline queue auto-sync (`/field` is the only HTML shell cached offline by the service worker).
+- **Evidence Photo Retention (`activity-media`), Automated 365d PII Cleanup & 24h Sample Logs:** Uploaded photos are compressed client-side before upload to private Supabase Storage (storage reads follow `daily_activities` RLS visibility) and default to **30-day** expiration (`180 days` for `meter_test` and `leak_repair`; flagged logs and supervisor `photo_hold` records are exempt up to a hard **365-day** ceiling). Daily Vercel Cron `GET /api/activities/purge-photos` (and manual supervisor `POST`) removes expired photo objects, drains expired 24-hour `is_sample` photo queues, and invokes `purge_expired_telemetry_pii(365)` to scrub GPS/signatures/witness & customer names (`job_orders.account_number` is kept for billing audit) while failing HTTP `500` on RPC error. Sample logs (`is_sample`) are excluded from KPIs/reports/audit logs and visible only to their creator and admins for 24 hours. **Department heads can create, edit and delete sample logs only; real activity logs, job orders, handovers and accomplishment reports are read-only for them** (they can still verify/flag activities, hold evidence photos, and check/return reports). Expired samples are deleted in SQL by the hourly `pg_cron` job (or the daily `/api/activities/purge-photos` cron as a fallback); their photo files are queued in `sample_photo_cleanup` and removed by that route, and admins see a warning banner on `/activities` if cleanup is overdue (migration `035`).
 - **Monitoring Hub (`/activities`):**
   - **Duty & Activity Feed:** Reconciles today's on-duty schedule against logged activities and PMs, highlights idle on-duty operators (`0 logs`), and provides supervisor verification (`verify` / `flag`) plus printable Field Activity Reports & Meter Test Certificates.
   - **Job Orders & Shift Handovers:** Dispatches job orders with 12-digit utility account auto-parsing, Turnaround Time (TAT) / SLA tracking, end-of-shift handovers, and a Daily Operations Huddle Brief.
@@ -83,7 +83,7 @@ Permissions are computed in [`lib/permissions.ts`](lib/permissions.ts) and enfor
 | Schedule Generator (`/generate`) | Yes | Yes | No | No | No |
 | Daily Field Activity Logs (`/field`, `/mobile`, `/activities`) | Real + Sample | Verify / Flag only | Sample only + Verify / Flag | Real logs | Read |
 | Close / Reopen PM Tasks (`/pm`, `/field`) | Yes | Yes | Only w/ Active Edit Grant | Yes | No |
-| Job Orders, Handovers & Reports | Full | Read | Read (Check/Return Reports) | Dispatch/Close/Handover | Read |
+| Job Orders, Handovers & Reports | Full | Read | Read (Check/Return Reports) | Dispatch/Close/Handover | Handovers & Reports only (no Job Orders) |
 | Organization Chart (`/org`) | Full + Restructure | View only | Edit positions/assignments | No | No |
 | Operators, Setup & User Roles (`/operators`) | Full | No | No | No | No |
 
@@ -106,4 +106,4 @@ npm run build       # Production Next.js build
 ## Documentation
 - [System & Security Architecture (`docs/ARCHITECTURE.md`)](docs/ARCHITECTURE.md) — App Router layout, defense-in-depth Postgres/CSP architecture, RBAC role matrix, and operations/DR runbook.
 - [Privacy & Data Retention (`docs/PRIVACY_AND_RETENTION.md`)](docs/PRIVACY_AND_RETENTION.md) — RA 10173 data inventory, 24h/30d/365d retention & scrubbing schedules, and admin execution guide.
-- [Supabase Migrations Index (`supabase/migrations/README.md`)](supabase/migrations/README.md) — Ordered migration guide (`001`–`041`) and RLS test conventions.
+- [Supabase Migrations Index (`supabase/migrations/README.md`)](supabase/migrations/README.md) — Ordered migration guide (`001`–`042`) and RLS test conventions.

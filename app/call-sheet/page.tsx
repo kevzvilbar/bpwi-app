@@ -46,6 +46,7 @@ export default async function CallSheetPage() {
     areas.error?.message ||
     allAsg.error?.message ||
     standby.error?.message ||
+    (heads.error ? `Could not load management escalation contacts: ${heads.error.message}` : '') ||
     '';
 
   return (

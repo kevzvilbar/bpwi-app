@@ -137,11 +137,11 @@ describe('PWA installability & manifest', () => {
     );
   });
 
-  it('keeps sw.js OFFLINE_PAGE_ALLOWLIST restricted to /field and /mobile while providing offline navigation fallback for /', async () => {
+  it('keeps sw.js OFFLINE_PAGE_ALLOWLIST restricted to /field while providing offline navigation fallback for /', async () => {
     const swPath = resolve(process.cwd(), 'public/sw.js');
     const source = readFileSync(swPath, 'utf8');
-    assert.match(source, /CACHE_NAME\s*=\s*'bpwi-ops-v9'/);
-    assert.match(source, /OFFLINE_PAGE_ALLOWLIST\s*=\s*new Set\(\['\/field',\s*'\/mobile'\]\)/);
+    assert.match(source, /CACHE_NAME\s*=\s*'bpwi-ops-v10'/);
+    assert.match(source, /OFFLINE_PAGE_ALLOWLIST\s*=\s*new Set\(\['\/field'\]\)/);
 
     // 1. Online navigation to '/' goes network-only and NEVER stores '/' in cache
     const onlineSw = loadServiceWorker({
@@ -153,9 +153,11 @@ describe('PWA installability & manifest', () => {
     assert.equal(await onlineRes.text(), '<html>roster</html>');
     assert.deepEqual(onlineSw.storedKeys, []);
 
-    // 2. Sensitive routes like /call-sheet are not intercepted or cached
+    // 2. Sensitive routes like /call-sheet and /mobile are not intercepted or cached
     const callSheetPromise = dispatchFetch(onlineSw.fetchHandler, makeNavRequest('/call-sheet'));
     assert.equal(callSheetPromise, null);
+    const mobilePromise = dispatchFetch(onlineSw.fetchHandler, makeNavRequest('/mobile'));
+    assert.equal(mobilePromise, null);
 
     // 3. Offline launch on '/' serves cached /field when available
     const cachedFieldSw = loadServiceWorker({

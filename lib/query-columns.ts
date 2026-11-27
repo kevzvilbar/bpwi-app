@@ -5,7 +5,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * (base64 PNG signatures are loaded lazily only when printing a Meter Test Certificate).
  */
 export const DAILY_ACTIVITY_LIST_COLUMNS =
-  'id, organization_id, activity_date, logged_by, lead_operator_id, crew_operator_ids, shift_type_id, area_code_id, site_or_well, block_lot, activity_type, pm_task_id, job_order_id, status, started_at, completed_at, gps_lat, gps_lng, notes, details, photo_urls, photo_storage_paths, photos_expires_at, photos_purged_at, verified_by, verified_at, review_note, is_sample, sample_expires_at, created_at, updated_at';
+  'id, organization_id, activity_date, logged_by, lead_operator_id, crew_operator_ids, shift_type_id, area_code_id, site_or_well, block_lot, activity_type, pm_task_id, job_order_id, status, started_at, completed_at, gps_lat, gps_lng, notes, details, photo_urls, photo_storage_paths, photos_expires_at, photos_purged_at, photo_hold, verified_by, verified_at, review_note, is_sample, sample_expires_at, created_at, updated_at';
 
 /** Minimal `daily_activities` columns required to build BPEMS-F-002 accomplishment rows. */
 export const DAILY_ACTIVITY_REPORT_COLUMNS =

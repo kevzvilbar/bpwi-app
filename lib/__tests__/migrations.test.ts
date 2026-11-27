@@ -291,8 +291,8 @@ describe('Supabase SQL migrations integrity', () => {
 
     const rootReadme = fs.readFileSync(path.resolve(process.cwd(), 'README.md'), 'utf8');
     const migrationsReadme = fs.readFileSync(path.join(MIGRATIONS_DIR, 'README.md'), 'utf8');
-    assert.match(rootReadme, /041_harden_reviewed_deletes_and_chlorine_units\.sql/);
-    assert.match(migrationsReadme, /\b041\b/);
+    assert.match(rootReadme, /042_photo_storage_retention_and_jo_rls\.sql/);
+    assert.match(migrationsReadme, /\b042\b/);
   });
 
   it('closes flagged-reset delete bypass and requires chlorine chemicalType/unit match in 041_harden_reviewed_deletes_and_chlorine_units.sql', () => {
@@ -304,6 +304,24 @@ describe('Supabase SQL migrations integrity', () => {
       "v_unit <> 'kg'",
     ]) {
       assert.ok(sql41.includes(required), `041_harden_reviewed_deletes_and_chlorine_units.sql missing required construct: ${required}`);
+    }
+  });
+
+  it('scopes storage reads, enforces photo_hold & 180d/365d retention, expands PII cleanup, and restricts viewer job_orders in 042', () => {
+    const sql42 = fs.readFileSync(path.join(MIGRATIONS_DIR, '042_photo_storage_retention_and_jo_rls.sql'), 'utf8');
+    for (const required of [
+      'activity-media org read',
+      'from public.daily_activities da',
+      'photo_hold',
+      "interval '180 days'",
+      "interval '365 days'",
+      'purge_expired_telemetry_pii',
+      "'witnessedBy'",
+      'account_name = null',
+      'job_orders read',
+      "current_role_name() in ('admin', 'scheduler', 'manager', 'operator')",
+    ]) {
+      assert.ok(sql42.includes(required), `042_photo_storage_retention_and_jo_rls.sql missing required construct: ${required}`);
     }
   });
 });

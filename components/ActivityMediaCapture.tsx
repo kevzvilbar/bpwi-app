@@ -219,7 +219,7 @@ export default function ActivityMediaCapture({
       )}
 
       <div style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-        <span>{helperNote ?? 'GPS location is required to save a log and is captured only when you tap a location button · Photos auto-delete after 30 days · Telemetry governed by BPWI RA 10173 retention policy.'}</span>
+        <span>{helperNote ?? 'GPS location is required to save a log and is captured only when you tap a location button · Photos auto-delete after 30 days (180d for meter tests & leak repairs) · Telemetry governed by BPWI RA 10173 retention policy.'}</span>
         {savedBytesTotal > 0 && (
           <span style={{ color: 'var(--ok-fg)', fontWeight: 700 }}>
             Saved {(savedBytesTotal / 1024).toFixed(0)} KB

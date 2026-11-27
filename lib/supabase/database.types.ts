@@ -822,6 +822,9 @@ export type Database = {
           photo_storage_paths: string[];
           photos_expires_at: string | null;
           photos_purged_at: string | null;
+          photo_hold: boolean;
+          photo_hold_by: string | null;
+          photo_hold_at: string | null;
           signature_data: string | null;
           verified_by: string | null;
           verified_at: string | null;
@@ -857,6 +860,9 @@ export type Database = {
           photo_storage_paths?: string[];
           photos_expires_at?: string | null;
           photos_purged_at?: string | null;
+          photo_hold?: boolean;
+          photo_hold_by?: string | null;
+          photo_hold_at?: string | null;
           signature_data?: string | null;
           verified_by?: string | null;
           verified_at?: string | null;
@@ -892,6 +898,9 @@ export type Database = {
           photo_storage_paths?: string[];
           photos_expires_at?: string | null;
           photos_purged_at?: string | null;
+          photo_hold?: boolean;
+          photo_hold_by?: string | null;
+          photo_hold_at?: string | null;
           signature_data?: string | null;
           verified_by?: string | null;
           verified_at?: string | null;

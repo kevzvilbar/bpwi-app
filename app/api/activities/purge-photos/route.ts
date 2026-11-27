@@ -5,6 +5,7 @@ import { supabaseServer } from '@/lib/supabase/server';
 import { getSupabaseEnv } from '@/lib/supabase/env';
 import { getErrorMessage } from '@/lib/error-utils';
 import { ACTIVITY_MEDIA_BUCKET, extractActivityStoragePath, isSamplePhotoPath, isStoragePathOwnedByOrg } from '@/lib/activity-media';
+import { isPhotoPurgeEligible } from '@/lib/photo-retention';
 
 function isAuthorizedBearer(header: string, secret: string): boolean {
   if (!secret) return false;
@@ -16,8 +17,13 @@ function isAuthorizedBearer(header: string, secret: string): boolean {
 interface ActivityPhotoRow {
   id: string;
   organization_id: string | null;
+  activity_type?: string | null;
+  status?: string | null;
+  photo_hold?: boolean | null;
   photo_storage_paths: unknown;
   photo_urls: unknown;
+  photos_expires_at?: string | null;
+  created_at?: string | null;
 }
 
 function collectMediaRowsAndPaths(rows: ActivityPhotoRow[], logPrefix: string) {
@@ -80,21 +86,23 @@ async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
   const nowMs = Date.now();
   const nowIso = new Date(nowMs).toISOString();
   const cutoffIso = new Date(nowMs - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const ceilingIso = new Date(nowMs - 365 * 24 * 60 * 60 * 1000).toISOString();
 
   let purgedCount = 0;
   let filesRemoved = 0;
-  // Rows whose Storage removal failed stay unpurged at the front of the ordering; page past them so they
-  // cannot block newer rows. They are retried on the next run.
+  // Rows whose Storage removal failed (or whose evidence is flagged/held under 365d) stay unpurged at the
+  // front of the ordering; page past them so they cannot block newer rows.
   let skippedRows = 0;
+  let heldOrFlaggedSkipped = 0;
   const allFailedPaths = new Set<string>();
   let hasMore = true;
 
   for (let batch = 0; hasMore && batch < PHOTO_PURGE_MAX_BATCHES; batch += 1) {
     let query = db
       .from('daily_activities')
-      .select('id, organization_id, photo_storage_paths, photo_urls')
+      .select('id, organization_id, activity_type, status, photo_hold, photo_storage_paths, photo_urls, photos_expires_at, created_at')
       .is('photos_purged_at', null)
-      .or(`photos_expires_at.lt.${nowIso},and(photos_expires_at.is.null,created_at.lt.${cutoffIso})`)
+      .or(`photos_expires_at.lt.${nowIso},and(photos_expires_at.is.null,created_at.lt.${cutoffIso}),created_at.lt.${ceilingIso}`)
       // Only rows that still hold media. Photo-less rows are never marked purged, so without this filter
       // they accumulate, fill the response (PostgREST caps it) and hide the rows that do need purging.
       .or('photo_storage_paths.neq.{},photo_urls.neq.{}');
@@ -116,7 +124,14 @@ async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
     hasMore = fetched.length > 0;
     if (!hasMore) break;
 
-    const { pathsByRow, allPaths } = collectMediaRowsAndPaths(fetched, '[purge-photos]');
+    const eligibleRows = fetched.filter((r) => isPhotoPurgeEligible(r, nowMs));
+    heldOrFlaggedSkipped += fetched.length - eligibleRows.length;
+    if (eligibleRows.length === 0) {
+      skippedRows += fetched.length;
+      continue;
+    }
+
+    const { pathsByRow, allPaths } = collectMediaRowsAndPaths(eligibleRows, '[purge-photos]');
 
     // Only rows whose files were really removed may be marked purged. If a storage call fails, the
     // row keeps its paths so the next run retries; otherwise the files would be orphaned forever.
@@ -162,14 +177,15 @@ async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
     };
   }
 
-  return {
-    purgedCount,
-    filesRemoved,
-    skippedRows,
-    // True only when the per-run batch limit was reached with rows possibly still waiting.
-    hasMore,
-    status: 200 as const,
-  };
+    return {
+      purgedCount,
+      filesRemoved,
+      skippedRows,
+      heldOrFlaggedSkipped,
+      // True only when the per-run batch limit was reached with rows possibly still waiting.
+      hasMore,
+      status: 200 as const,
+    };
 }
 
 const SAMPLE_QUEUE_BATCH = 500;
@@ -271,12 +287,39 @@ export async function GET(req: Request) {
     if ('error' in res) {
       return NextResponse.json({ error: res.error }, { status: res.status });
     }
+    const telemetryPiiRes = await db.rpc('purge_expired_telemetry_pii', { p_retention_days: 365 });
+    if (telemetryPiiRes.error) {
+      console.error(
+        JSON.stringify({
+          type: 'cron_pii_purge_failed',
+          ts: new Date().toISOString(),
+          error: telemetryPiiRes.error.message,
+        }),
+      );
+      return NextResponse.json(
+        {
+          error: `Telemetry PII purge failed: ${telemetryPiiRes.error.message}`,
+          purgedCount: res.purgedCount,
+          filesRemoved: res.filesRemoved,
+          skippedRows: res.skippedRows,
+          heldOrFlaggedSkipped: res.heldOrFlaggedSkipped,
+          hasMore: res.hasMore,
+          samplesPurged,
+        },
+        { status: 500 },
+      );
+    }
+    const telemetryRow = Array.isArray(telemetryPiiRes.data)
+      ? (telemetryPiiRes.data[0] as { activities_scrubbed?: number; job_orders_scrubbed?: number } | undefined)
+      : undefined;
     return NextResponse.json({
       purgedCount: res.purgedCount,
       filesRemoved: res.filesRemoved,
       skippedRows: res.skippedRows,
+      heldOrFlaggedSkipped: res.heldOrFlaggedSkipped,
       hasMore: res.hasMore,
       samplesPurged,
+      telemetryPiiPurged: telemetryRow ?? { activities_scrubbed: 0, job_orders_scrubbed: 0 },
     });
   } catch (err: unknown) {
     return NextResponse.json({ error: getErrorMessage(err, 'Cron purge failed') }, { status: 500 });
@@ -331,6 +374,7 @@ export async function POST() {
       purgedCount: res.purgedCount,
       filesRemoved: res.filesRemoved,
       skippedRows: res.skippedRows,
+      heldOrFlaggedSkipped: res.heldOrFlaggedSkipped,
       hasMore: res.hasMore,
       samplesPurged,
     });

@@ -11,6 +11,7 @@ import { addIsoDays as addDays, fmtTimeManila } from '@/lib/date';
 import { isValidCoordinate } from '@/lib/route-footprints';
 import { resolvePmCreditedOperators } from '@/lib/pm-credit';
 import { ACTIVITY_TYPES, canDeleteActivity, canEditActivity, type DailyActivityRow, type JobOrderRow, type ShiftHandoverRow } from '@/lib/activity-types';
+import { isPhotoPurgeEligible } from '@/lib/photo-retention';
 import type { LinkedJobOrder } from '@/components/ActivityLoggerModal';
 import ActivityFeedCard, { type PrintPreviewMode } from '@/components/ActivityFeedCard';
 import { AlertBanner, Badge, EmptyState, SegmentedTabs } from '@/components/ui';
@@ -201,7 +202,7 @@ export default function ActivitiesMonitor(p: {
     for (const a of activities) {
       if (!a.photos_purged_at && Array.isArray(a.photo_urls) && a.photo_urls.length > 0) {
         activeWithPhotos += 1;
-        if (a.photos_expires_at && new Date(a.photos_expires_at).getTime() < nowMs) expiredCount += 1;
+        if (isPhotoPurgeEligible(a, nowMs)) expiredCount += 1;
       }
     }
     return { activeWithPhotos, expiredCount };
@@ -251,6 +252,27 @@ export default function ActivitiesMonitor(p: {
     setActivities((prev) => prev.map((x) => (x.id === act.id ? (data as unknown as DailyActivityRow) : x)));
     setFlaggingId(null);
     setFlagReason('');
+  }
+
+  async function togglePhotoHold(act: DailyActivityRow) {
+    if (!p.canVerifyActivity || act.is_sample) return;
+    const nextHold = !act.photo_hold;
+    const { data, error } = await supabaseBrowser()
+      .from('daily_activities')
+      .update({
+        photo_hold: nextHold,
+        photo_hold_by: nextHold ? p.userId : null,
+        photo_hold_at: nextHold ? new Date().toISOString() : null,
+      })
+      .eq('id', act.id)
+      .select(DAILY_ACTIVITY_LIST_COLUMNS)
+      .single();
+    if (error) {
+      setBannerMsg(`Could not update photo hold: ${error.message}`);
+      return;
+    }
+    setActivities((prev) => prev.map((x) => (x.id === act.id ? (data as unknown as DailyActivityRow) : x)));
+    setBannerMsg(nextHold ? '✓ Evidence hold placed on photos (protected up to 365 days).' : '✓ Evidence photo hold released.');
   }
 
   async function handleDeleteActivity(act: DailyActivityRow) {
@@ -320,8 +342,8 @@ export default function ActivitiesMonitor(p: {
         </div>
 
         <div className="row-wrap">
-          <Badge tone="neutral" title="Photos uploaded to Supabase Storage auto-expire after 30 days to stay within storage limits.">
-            30d Photo Retention ({photoRetention.activeWithPhotos} active)
+          <Badge tone="neutral" title="Default 30d retention; 180d for meter tests & leak repairs; flagged or held photos stay up to 365d.">
+            Photo Retention 30d/180d ({photoRetention.activeWithPhotos} active)
           </Badge>
           {p.canVerifyActivity && (
             <button type="button" className="btn btn-sm" disabled={purging} onClick={handlePurgeExpiredPhotos}>
@@ -502,6 +524,7 @@ export default function ActivitiesMonitor(p: {
                   onToggleFlag={() => { setFlaggingId(flaggingId === act.id ? null : act.id); setFlagReason(''); }}
                   onVerify={() => void updateActivityVerification(act, 'verified')}
                   onConfirmFlag={() => void updateActivityVerification(act, 'flagged', flagReason)}
+                  onTogglePhotoHold={() => void togglePhotoHold(act)}
                   onPrint={(mode) => setPrintState({ mode, activity: act })}
                   onEdit={() => { setLinkedJoForLog(null); setEditingActivity(act); setLoggerOpen(true); }}
                   onDelete={() => setPendingDeleteAct(act)}

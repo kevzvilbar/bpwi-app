@@ -16,6 +16,7 @@ import { resolveActivityPhotoUrl } from '@/lib/activity-media';
 import { extractGpsMetadata, validateRequiredGps, type GpsSource } from '@/lib/gps-accuracy';
 import { buildPmActualPerformerIds, getDefaultPmPerformers, isMissingCompletedByColumnError } from '@/lib/pm-credit';
 import { DAILY_ACTIVITY_LIST_COLUMNS } from '@/lib/query-columns';
+import { computePhotoExpiryIso } from '@/lib/photo-retention';
 import {
   buildActivityDetailsPayload,
   currentManilaHHMM,
@@ -709,12 +710,11 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
             driverName: activityType === 'tankering' ? leadOpName || details.driverName : details.driverName,
           };
 
-    const expiresIso = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     const preservedExpiry =
       p.editingActivity?.photos_expires_at ??
       (p.editingActivity?.created_at
-        ? new Date(new Date(p.editingActivity.created_at).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
-        : expiresIso);
+        ? computePhotoExpiryIso(activityType, new Date(p.editingActivity.created_at).getTime())
+        : computePhotoExpiryIso(activityType));
     const baseDetails = buildActivityDetailsPayload(activityType, detailsForSubmit, meterCalc);
     const gpsMetaPayload =
       gpsLat !== null && gpsLng !== null

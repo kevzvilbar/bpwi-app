@@ -165,7 +165,7 @@ function LoginForm() {
         </div>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 14px' }}>
           {mode === 'signin'
-            ? 'Sign in to view or manage the monthly roster.'
+            ? 'Sign in to manage schedules, field activity logs, maintenance, and job orders.'
             : mode === 'signup'
               ? 'Create an account to get started.'
               : mode === 'forgot'
@@ -348,7 +348,7 @@ function LoginForm() {
           )}
         </form>
         <p style={{ marginTop: 14, fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.45, marginBottom: 0 }}>
-          Internal BP Waterworks, Inc. operations platform. Account details, shift/activity logs, and the GPS location of field activity logs are processed for utility dispatch and audit under the Data Privacy Act (RA 10173). Field photos expire after 30 days.
+          Internal BP Waterworks, Inc. operations platform. Account details, shift/activity logs, and the GPS location of field activity logs are processed for utility dispatch and audit under the Data Privacy Act (RA 10173). Field photos expire after 30 days (180 days for meter tests and leak repairs, up to 365 days when held).
         </p>
       </div>
     </div>

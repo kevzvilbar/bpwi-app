@@ -69,23 +69,35 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
   // Load draft items if this user is a department head (including when an edit window opened mid-draft)
   let draftItems: ChangeRequestItem[] = [];
   let initialDraftRequestId: string | null = null;
+  let draftItemsErrorMessage: string | null = null;
   if (draftReqRes.data?.id) {
     initialDraftRequestId = draftReqRes.data.id;
-    const { data: items } = await sb
+    const { data: items, error: draftItemsError } = await sb
       .from('change_request_items')
       .select(CHANGE_REQUEST_ITEM_COLUMNS)
       .eq('request_id', draftReqRes.data.id);
+    if (draftItemsError) {
+      draftItemsErrorMessage = draftItemsError.message;
+    }
     draftItems = (items ?? []) as ChangeRequestItem[];
   }
 
-  const errors = [
-    ops.error?.message,
-    shifts.error?.message,
-    areas.error?.message,
-    rows.error,
-    standby.error,
-    pmTasks.error?.message,
-  ].filter((e): e is string => Boolean(e));
+  const errors = Array.from(
+    new Set(
+      [
+        ops.error?.message,
+        shifts.error?.message,
+        areas.error?.message,
+        rows.error,
+        standby.error,
+        pmTasks.error?.message,
+        holidaysRes.error?.message,
+        pendingReqItems.error?.message,
+        draftReqRes.error?.message,
+        draftItemsErrorMessage,
+      ].filter((e): e is string => Boolean(e)),
+    ),
+  );
 
   return (
     <Roster
@@ -110,7 +122,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ m
       pendingItems={pendingReqItems.data ?? []}
       initialDraftRequestId={initialDraftRequestId}
       initialDraftItems={draftItems}
-      initialError={errors[0] ?? ''}
+      initialError={errors.join(' · ')}
     />
   );
 }

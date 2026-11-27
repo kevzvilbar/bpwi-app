@@ -3,16 +3,36 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const ORG = '11111111-1111-4111-8111-111111111111';
 const SERVER_ROW_CAP = 1000;
 
-type Row = { id: string; organization_id: string; photo_storage_paths: string[]; photo_urls: string[]; purged: boolean };
+type Row = {
+  id: string;
+  organization_id: string;
+  activity_type: string;
+  status: 'draft' | 'submitted' | 'verified' | 'flagged';
+  photo_hold: boolean;
+  photo_storage_paths: string[];
+  photo_urls: string[];
+  photos_expires_at: string | null;
+  created_at: string;
+  purged: boolean;
+};
 
 let rows: Row[] = [];
 let failingPaths = new Set<string>();
 let serverCap = SERVER_ROW_CAP;
+let rpcCalls: Array<{ fn: string; args: unknown }> = [];
+let piiRpcResult: { data: unknown; error: { message: string } | null } = {
+  data: [{ activities_scrubbed: 2, job_orders_scrubbed: 1 }],
+  error: null,
+};
 
 /** In-memory stand-in for the parts of PostgREST + Storage the purge uses. Rows are in created_at order. */
 function fakeDb() {
   return {
-    rpc: async () => ({ data: null, error: null }),
+    rpc: async (fn: string, args?: unknown) => {
+      rpcCalls.push({ fn, args });
+      if (fn === 'purge_expired_telemetry_pii') return piiRpcResult;
+      return { data: null, error: null };
+    },
     storage: {
       from: () => ({
         remove: async (paths: string[]) => ({
@@ -63,12 +83,19 @@ vi.mock('@/lib/supabase/server', () => ({ supabaseServer: async () => fakeDb() }
 vi.mock('@/lib/supabase/env', () => ({ getSupabaseEnv: () => ({ url: 'http://db.test', key: 'k', isConfigured: true }) }));
 
 const path = (n: number) => `${ORG}/2026-01-01/photo-${n}.webp`;
-const makeRow = (n: number, withPhoto: boolean): Row => ({
+const DAY_MS = 24 * 60 * 60 * 1000;
+const makeRow = (n: number, withPhoto: boolean, overrides: Partial<Row> = {}): Row => ({
   id: `row-${n}`,
   organization_id: ORG,
+  activity_type: 'pump_monitoring',
+  status: 'submitted',
+  photo_hold: false,
   photo_storage_paths: withPhoto ? [path(n)] : [],
   photo_urls: [],
+  photos_expires_at: new Date(Date.now() - 2 * DAY_MS).toISOString(),
+  created_at: new Date(Date.now() - 35 * DAY_MS).toISOString(),
   purged: false,
+  ...overrides,
 });
 
 async function runCron() {
@@ -83,6 +110,8 @@ describe('purge-photos cron', () => {
     process.env.SUPABASE_SECRET_KEY = 'service';
     failingPaths = new Set();
     serverCap = SERVER_ROW_CAP;
+    rpcCalls = [];
+    piiRpcResult = { data: [{ activities_scrubbed: 2, job_orders_scrubbed: 1 }], error: null };
   });
 
   it('is not starved by more than a full response of photo-less expired logs', async () => {
@@ -115,5 +144,34 @@ describe('purge-photos cron', () => {
     failingPaths = new Set([path(1)]);
     const { status } = await runCron();
     expect(status).toBe(500);
+  });
+
+  it('skips flagged and held logs under 365 days while purging >365d logs and invoking telemetry PII purge', async () => {
+    rows = [
+      makeRow(1, true, { status: 'flagged', created_at: new Date(Date.now() - 200 * DAY_MS).toISOString() }),
+      makeRow(2, true, { photo_hold: true, created_at: new Date(Date.now() - 200 * DAY_MS).toISOString() }),
+      makeRow(3, true, { status: 'flagged', photo_hold: true, created_at: new Date(Date.now() - 370 * DAY_MS).toISOString() }),
+      makeRow(4, true),
+    ];
+    const { status, body } = await runCron();
+    expect(status).toBe(200);
+    expect(body).toMatchObject({
+      purgedCount: 2,
+      heldOrFlaggedSkipped: 2,
+      telemetryPiiPurged: { activities_scrubbed: 2, job_orders_scrubbed: 1 },
+    });
+    expect(rows[0].purged).toBe(false);
+    expect(rows[1].purged).toBe(false);
+    expect(rows[2].purged).toBe(true);
+    expect(rows[3].purged).toBe(true);
+    expect(rpcCalls.some((c) => c.fn === 'purge_expired_telemetry_pii')).toBe(true);
+  });
+
+  it('returns 500 if telemetry PII purge fails during cron execution', async () => {
+    rows = [];
+    piiRpcResult = { data: null, error: { message: 'rpc failed' } };
+    const { status, body } = await runCron();
+    expect(status).toBe(500);
+    expect(body.error).toMatch(/Telemetry PII purge failed/);
   });
 });

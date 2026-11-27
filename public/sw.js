@@ -1,7 +1,7 @@
-const CACHE_NAME = 'bpwi-ops-v9';
+const CACHE_NAME = 'bpwi-ops-v10';
 const PRECACHE = ['/app-icon.svg', '/apple-touch-icon.png', '/app-icon-192.png', '/app-icon-512.png', '/manifest.webmanifest'];
-// Strict allow-list: only cache HTML for the offline field-logger views, never phone lists, user roles, or admin reports.
-const OFFLINE_PAGE_ALLOWLIST = new Set(['/field', '/mobile']);
+// Strict allow-list: only cache HTML for the data-free /field shell, never /mobile, phone lists, user roles, or admin reports.
+const OFFLINE_PAGE_ALLOWLIST = new Set(['/field']);
 
 const OFFLINE_FALLBACK_HTML = `<!doctype html>
 <html lang="en">
@@ -43,8 +43,8 @@ function offlineFallbackResponse() {
 let cacheGeneration = 0;
 
 /**
- * Saves the offline field logger and the build assets its HTML references. In-app navigation never requests
- * the /mobile document, so without this it is only cached if someone happens to load that URL directly.
+ * Saves the data-free /field app shell and the build assets its HTML references so offline launches work
+ * cleanly without caching any server-rendered directory or phone-list pages.
  */
 async function warmOfflinePage() {
   const generation = cacheGeneration;
@@ -126,7 +126,6 @@ self.addEventListener('fetch', (event) => {
       fetch(req).catch(() =>
         caches
           .match('/field')
-          .then((cached) => cached || caches.match('/mobile'))
           .then((cached) => cached || offlineFallbackResponse()),
       ),
     );
@@ -151,7 +150,6 @@ self.addEventListener('fetch', (event) => {
           caches
             .match(req)
             .then((cached) => cached || caches.match('/field'))
-            .then((cached) => cached || caches.match('/mobile'))
             .then((cached) => cached || offlineFallbackResponse()),
         ),
     );
