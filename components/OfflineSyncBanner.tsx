@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import { reportClientTelemetry } from '@/lib/client-telemetry';
 import { classifySyncError } from '@/lib/error-utils';
 import {
   flushOfflineMutations,
@@ -72,6 +73,14 @@ export default function OfflineSyncBanner({ userId }: { userId?: string }) {
       const firstErr =
         actRes.errors[0]?.message ?? repRes.errors[0]?.message ?? mutRes.errors[0]?.message ?? 'Sync failed';
       const errKind = classifySyncError(firstErr);
+      reportClientTelemetry({
+        event: 'offline_sync_failed',
+        category: errKind,
+        failedCount: totalFailed,
+        syncedCount: totalSynced,
+        route: typeof window !== 'undefined' ? window.location.pathname : undefined,
+        message: firstErr,
+      });
       if (errKind === 'auth') {
         setStatusNote({
           kind: 'err',

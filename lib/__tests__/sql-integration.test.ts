@@ -2643,5 +2643,89 @@ describe('PGlite SQL migrations (all) execution & security invariants', () => {
 
     // Re-running 041 migration is idempotent
     await db.exec(sql41);
+
+    // 25. End-state catalog audit: RLS, policies, and SECURITY DEFINER search_path
+    const definerFns = await db.query<{ name: string; proconfig: string[] | null }>(
+      `select p.proname::text as name, p.proconfig
+       from pg_proc p
+       join pg_namespace n on n.oid = p.pronamespace
+       where n.nspname = 'public' and p.prosecdef = true
+       order by p.proname`,
+    );
+    assert.ok(definerFns.rows.length > 0, 'Expected SECURITY DEFINER functions in public schema');
+    for (const fn of definerFns.rows) {
+      const hasPinnedSearchPath = (fn.proconfig ?? []).some((cfg) => /^search_path=/i.test(cfg));
+      assert.ok(
+        hasPinnedSearchPath,
+        `SECURITY DEFINER function public.${fn.name} must pin SET search_path`,
+      );
+    }
+
+    const publicTables = await db.query<{ tablename: string; rls_enabled: boolean }>(
+      `select c.relname::text as tablename, c.relrowsecurity as rls_enabled
+       from pg_class c
+       join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'public' and c.relkind in ('r', 'p')
+       order by c.relname`,
+    );
+    assert.ok(publicTables.rows.length > 0, 'Expected tables in public schema');
+    for (const tbl of publicTables.rows) {
+      assert.equal(tbl.rls_enabled, true, `Table public.${tbl.tablename} must have RLS enabled`);
+    }
+
+    const allPolicies = await db.query<{
+      tablename: string;
+      policyname: string;
+      permissive: string;
+      cmd: string;
+      qual: string | null;
+      with_check: string | null;
+    }>(
+      `select tablename::text, policyname::text, permissive::text, cmd::text, qual::text, with_check::text
+       from pg_policies
+       where schemaname = 'public'
+       order by tablename, policyname`,
+    );
+
+    const SERVICE_ROLE_ONLY_TABLES = new Set([
+      'route_compute_cache',
+      'route_compute_rate_hits',
+      'sample_photo_cleanup',
+    ]);
+    const policiesByTable = new Map<string, typeof allPolicies.rows>();
+    for (const pol of allPolicies.rows) {
+      const list = policiesByTable.get(pol.tablename) ?? [];
+      list.push(pol);
+      policiesByTable.set(pol.tablename, list);
+
+      if (pol.permissive === 'PERMISSIVE') {
+        assert.notEqual(
+          (pol.qual ?? '').trim().toLowerCase(),
+          'true',
+          `Policy ${pol.policyname} on ${pol.tablename} must not use unguarded USING (true)`,
+        );
+        assert.notEqual(
+          (pol.with_check ?? '').trim().toLowerCase(),
+          'true',
+          `Policy ${pol.policyname} on ${pol.tablename} must not use unguarded WITH CHECK (true)`,
+        );
+      }
+    }
+
+    for (const tbl of publicTables.rows) {
+      const count = (policiesByTable.get(tbl.tablename) ?? []).length;
+      if (SERVICE_ROLE_ONLY_TABLES.has(tbl.tablename)) {
+        assert.equal(
+          count,
+          0,
+          `Service-role-only table public.${tbl.tablename} must have 0 RLS policies`,
+        );
+      } else {
+        assert.ok(
+          count >= 1,
+          `User-accessible table public.${tbl.tablename} must have at least 1 RLS policy`,
+        );
+      }
+    }
   });
 });

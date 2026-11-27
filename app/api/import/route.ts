@@ -171,7 +171,7 @@ export async function POST(req: Request) {
       return Array.from(deduped.values());
     };
     let areaRes = await db.from('area_codes').upsert(areaPayload(true), { onConflict: 'organization_id,code' }).select('id, code');
-    if (areaRes.error && /area_codes_category_check/i.test(areaRes.error.message)) {
+    if (areaRes.error?.code === '23514') {
       areaRes = await db.from('area_codes').upsert(areaPayload(false), { onConflict: 'organization_id,code' }).select('id, code');
     }
     if (areaRes.error) throw new Error(areaRes.error.message);

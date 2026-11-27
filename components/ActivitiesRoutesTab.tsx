@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import type { DailyActivityRow } from '@/lib/activity-types';
+import { reportClientTelemetry } from '@/lib/client-telemetry';
 import { fmtTimeManila } from '@/lib/date';
 import { startHighAccuracyGpsCapture } from '@/lib/gps-accuracy';
 import { getMapStyleOptions, getPublicTileAdminNotice, resolveMapTileConfig } from '@/lib/map-tiles';
@@ -220,6 +221,15 @@ export default function ActivitiesRoutesTab(p: {
         if (controller.signal.aborted) return;
 
         setStoreWarning(typeof json.storeWarning === 'string' && json.storeWarning ? json.storeWarning : null);
+        if (res.status === 503) {
+          reportClientTelemetry({
+            event: 'route_compute_503',
+            category: json.storeWarning ? 'shared_store_degraded' : 'service_unavailable',
+            httpStatus: 503,
+            route: '/activities',
+            message: json.error || 'Route calculation unavailable (503)',
+          });
+        }
         if (!res.ok) throw new Error(json.error || `Route calculation failed (HTTP ${res.status})`);
         const paths = (json.encodedPolylines ?? []).map((enc) => decodeEncodedPolyline(enc)).filter((pts) => pts.length >= 2);
         const source: RouteSource = json.source === 'osrm' ? 'osrm' : 'straight-line';
