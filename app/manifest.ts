@@ -23,7 +23,7 @@ export default function manifest(): MetadataRoute.Manifest {
       {
         name: 'Tasks & Logs',
         short_name: 'Tasks',
-        url: '/mobile',
+        url: '/field',
         icons: [{ src: '/app-icon-192.png', sizes: '192x192', type: 'image/png' }],
       },
       {

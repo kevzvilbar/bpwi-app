@@ -104,6 +104,8 @@ describe('PWA installability & manifest', () => {
     assert.ok(icons.some((i) => i.sizes === '512x512' && i.purpose === 'any'));
     assert.ok(icons.some((i) => i.sizes === '512x512' && i.purpose === 'maskable'));
     assert.ok((m.shortcuts ?? []).length >= 2);
+    const tasksShortcut = (m.shortcuts ?? []).find((s) => s.name === 'Tasks & Logs');
+    assert.equal(tasksShortcut?.url, '/field');
   });
 
   it('detects mobile and standalone install platforms accurately', () => {

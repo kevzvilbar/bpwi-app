@@ -42,6 +42,10 @@ function fakeDb() {
     },
     from: (table: string) => {
       let mediaOnly = false;
+      let excludeFlagged = false;
+      let requiredHold: boolean | null = null;
+      let createdBeforeIso: string | null = null;
+      let expiryOrClause: string | null = null;
       let ids: string[] | null = null;
       const q = {
         select: () => {
@@ -51,9 +55,21 @@ function fakeDb() {
           return Promise.resolve({ data: hit.map((r) => ({ id: r.id })), error: null });
         },
         is: () => q,
-        eq: () => q,
+        neq: (col: string, val: unknown) => {
+          if (col === 'status' && val === 'flagged') excludeFlagged = true;
+          return q;
+        },
+        eq: (col: string, val: unknown) => {
+          if (col === 'photo_hold' && typeof val === 'boolean') requiredHold = val;
+          return q;
+        },
+        lt: (col: string, val: string) => {
+          if (col === 'created_at') createdBeforeIso = val;
+          return q;
+        },
         or: (filter: string) => {
           if (filter === 'photo_storage_paths.neq.{},photo_urls.neq.{}') mediaOnly = true;
+          else if (filter.startsWith('photos_expires_at.lt.')) expiryOrClause = filter;
           return q;
         },
         order: () => q,
@@ -65,9 +81,23 @@ function fakeDb() {
           return q;
         },
         range: async (from: number, to: number) => {
-          const matching = rows.filter(
-            (r) => !r.purged && (!mediaOnly || r.photo_storage_paths.length > 0 || r.photo_urls.length > 0),
-          );
+          const matching = rows.filter((r) => {
+            if (r.purged) return false;
+            if (mediaOnly && r.photo_storage_paths.length === 0 && r.photo_urls.length === 0) return false;
+            if (excludeFlagged && r.status === 'flagged') return false;
+            if (requiredHold !== null && r.photo_hold !== requiredHold) return false;
+            if (createdBeforeIso && Date.parse(r.created_at) >= Date.parse(createdBeforeIso)) return false;
+            if (expiryOrClause) {
+              const expMatch = expiryOrClause.match(/photos_expires_at\.lt\.([^,]+)/);
+              const cutMatch = expiryOrClause.match(/created_at\.lt\.([^)]+)/);
+              const nowMs = expMatch ? Date.parse(expMatch[1]) : Date.now();
+              const cutMs = cutMatch ? Date.parse(cutMatch[1]) : Date.now() - 30 * 24 * 60 * 60 * 1000;
+              const expOk = r.photos_expires_at !== null && Date.parse(r.photos_expires_at) < nowMs;
+              const fallbackOk = r.photos_expires_at === null && Date.parse(r.created_at) < cutMs;
+              if (!expOk && !fallbackOk) return false;
+            }
+            return true;
+          });
           return { data: matching.slice(from, Math.min(to + 1, from + serverCap)), error: null };
         },
         // The sample-photo queue is empty in these tests.
@@ -146,7 +176,7 @@ describe('purge-photos cron', () => {
     expect(status).toBe(500);
   });
 
-  it('skips flagged and held logs under 365 days while purging >365d logs and invoking telemetry PII purge', async () => {
+  it('excludes flagged and held logs under 365 days in SQL while purging >365d logs and invoking telemetry PII purge', async () => {
     rows = [
       makeRow(1, true, { status: 'flagged', created_at: new Date(Date.now() - 200 * DAY_MS).toISOString() }),
       makeRow(2, true, { photo_hold: true, created_at: new Date(Date.now() - 200 * DAY_MS).toISOString() }),
@@ -157,7 +187,7 @@ describe('purge-photos cron', () => {
     expect(status).toBe(200);
     expect(body).toMatchObject({
       purgedCount: 2,
-      heldOrFlaggedSkipped: 2,
+      heldOrFlaggedSkipped: 0,
       telemetryPiiPurged: { activities_scrubbed: 2, job_orders_scrubbed: 1 },
     });
     expect(rows[0].purged).toBe(false);
@@ -165,6 +195,24 @@ describe('purge-photos cron', () => {
     expect(rows[2].purged).toBe(true);
     expect(rows[3].purged).toBe(true);
     expect(rpcCalls.some((c) => c.fn === 'purge_expired_telemetry_pii')).toBe(true);
+  });
+
+  it('does not let 5,100 held/flagged records starve newer expired photos', async () => {
+    const heldBacklog = Array.from({ length: 5100 }, (_, i) =>
+      makeRow(i, true, {
+        status: i % 2 === 0 ? 'flagged' : 'verified',
+        photo_hold: i % 2 === 1,
+        created_at: new Date(Date.now() - 200 * DAY_MS).toISOString(),
+      }),
+    );
+    const newerExpired = Array.from({ length: 10 }, (_, i) => makeRow(5100 + i, true));
+    rows = [...heldBacklog, ...newerExpired];
+
+    const { status, body } = await runCron();
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ purgedCount: 10, heldOrFlaggedSkipped: 0, hasMore: false });
+    expect(heldBacklog.every((r) => !r.purged)).toBe(true);
+    expect(newerExpired.every((r) => r.purged)).toBe(true);
   });
 
   it('returns 500 if telemetry PII purge fails during cron execution', async () => {

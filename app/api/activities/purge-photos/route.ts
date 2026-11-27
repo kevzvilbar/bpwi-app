@@ -90,84 +90,113 @@ async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
 
   let purgedCount = 0;
   let filesRemoved = 0;
-  // Rows whose Storage removal failed (or whose evidence is flagged/held under 365d) stay unpurged at the
-  // front of the ordering; page past them so they cannot block newer rows.
-  let skippedRows = 0;
+  // Rows whose Storage removal failed stay unpurged at the front of their pass; page past them so they
+  // cannot block newer rows. Flagged & held rows under 365d are excluded directly in the Pass 1 SQL filter
+  // so large backlogs never starve newer expired photos.
+  let totalSkippedRows = 0;
   let heldOrFlaggedSkipped = 0;
   const allFailedPaths = new Set<string>();
-  let hasMore = true;
+  let remainingBatches = PHOTO_PURGE_MAX_BATCHES;
+  let hasMore = false;
 
-  for (let batch = 0; hasMore && batch < PHOTO_PURGE_MAX_BATCHES; batch += 1) {
-    let query = db
-      .from('daily_activities')
-      .select('id, organization_id, activity_type, status, photo_hold, photo_storage_paths, photo_urls, photos_expires_at, created_at')
-      .is('photos_purged_at', null)
-      .or(`photos_expires_at.lt.${nowIso},and(photos_expires_at.is.null,created_at.lt.${cutoffIso}),created_at.lt.${ceilingIso}`)
+  for (const pass of ['standard', 'ceiling'] as const) {
+    let passSkippedRows = 0;
+    let passHasMore = true;
+
+    while (passHasMore && remainingBatches > 0) {
+      remainingBatches -= 1;
+
+      let query = db
+        .from('daily_activities')
+        .select('id, organization_id, activity_type, status, photo_hold, photo_storage_paths, photo_urls, photos_expires_at, created_at')
+        .is('photos_purged_at', null);
+
+      if (pass === 'standard') {
+        query = query
+          .neq('status', 'flagged')
+          .eq('photo_hold', false)
+          .or(`photos_expires_at.lt.${nowIso},and(photos_expires_at.is.null,created_at.lt.${cutoffIso})`);
+      } else {
+        query = query.lt('created_at', ceilingIso);
+      }
+
       // Only rows that still hold media. Photo-less rows are never marked purged, so without this filter
       // they accumulate, fill the response (PostgREST caps it) and hide the rows that do need purging.
-      .or('photo_storage_paths.neq.{},photo_urls.neq.{}');
+      query = query.or('photo_storage_paths.neq.{},photo_urls.neq.{}');
 
-    if (orgId) {
-      query = query.eq('organization_id', orgId);
+      if (orgId) {
+        query = query.eq('organization_id', orgId);
+      }
+
+      const { data: expiredRows, error: fetchErr } = await query
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(passSkippedRows, passSkippedRows + PHOTO_PURGE_BATCH - 1);
+      if (fetchErr) {
+        return { error: fetchErr.message, status: 500 as const };
+      }
+
+      const fetched = (expiredRows ?? []) as ActivityPhotoRow[];
+      // A server row cap below the batch size must not end the loop early, so stop only on an empty page.
+      passHasMore = fetched.length > 0;
+      if (!passHasMore) break;
+
+      const eligibleRows = fetched.filter((r) => isPhotoPurgeEligible(r, nowMs));
+      const skippedInBatch = fetched.length - eligibleRows.length;
+      heldOrFlaggedSkipped += skippedInBatch;
+      if (eligibleRows.length === 0) {
+        passSkippedRows += fetched.length;
+        totalSkippedRows += fetched.length;
+        continue;
+      }
+
+      const { pathsByRow, allPaths } = collectMediaRowsAndPaths(eligibleRows, '[purge-photos]');
+
+      // Only rows whose files were really removed may be marked purged. If a storage call fails, the
+      // row keeps its paths so the next run retries; otherwise the files would be orphaned forever.
+      const removal = await removeStoragePathsInChunks(db, allPaths, '[purge-photos]');
+      filesRemoved += removal.filesRemoved;
+      removal.failedPaths.forEach((p) => allFailedPaths.add(p));
+
+      const idsToUpdate = [...pathsByRow.entries()]
+        .filter(([, paths]) => paths.every((p) => !removal.failedPaths.has(p)))
+        .map(([id]) => id);
+      const batchFailedOrExempt = fetched.length - idsToUpdate.length;
+      passSkippedRows += batchFailedOrExempt;
+      totalSkippedRows += batchFailedOrExempt;
+
+      if (idsToUpdate.length === 0) continue;
+
+      let updQuery = db
+        .from('daily_activities')
+        .update({
+          photo_urls: [],
+          photo_storage_paths: [],
+          photos_purged_at: nowIso,
+        })
+        .in('id', idsToUpdate);
+
+      if (orgId) {
+        updQuery = updQuery.eq('organization_id', orgId);
+      }
+
+      // Count what the database really changed: an update filtered out by RLS succeeds with zero rows, and
+      // those rows must be paged past instead of being fetched again.
+      const { data: updated, error: updErr } = await updQuery.select('id');
+      if (updErr) {
+        return { error: updErr.message, status: 500 as const };
+      }
+      const updatedCount = updated?.length ?? 0;
+      purgedCount += updatedCount;
+      const rlsSkipped = idsToUpdate.length - updatedCount;
+      passSkippedRows += rlsSkipped;
+      totalSkippedRows += rlsSkipped;
     }
 
-    const { data: expiredRows, error: fetchErr } = await query
-      .order('created_at', { ascending: true })
-      .order('id', { ascending: true })
-      .range(skippedRows, skippedRows + PHOTO_PURGE_BATCH - 1);
-    if (fetchErr) {
-      return { error: fetchErr.message, status: 500 as const };
+    if (passHasMore) {
+      hasMore = true;
+      break;
     }
-
-    const fetched = (expiredRows ?? []) as ActivityPhotoRow[];
-    // A server row cap below the batch size must not end the loop early, so stop only on an empty page.
-    hasMore = fetched.length > 0;
-    if (!hasMore) break;
-
-    const eligibleRows = fetched.filter((r) => isPhotoPurgeEligible(r, nowMs));
-    heldOrFlaggedSkipped += fetched.length - eligibleRows.length;
-    if (eligibleRows.length === 0) {
-      skippedRows += fetched.length;
-      continue;
-    }
-
-    const { pathsByRow, allPaths } = collectMediaRowsAndPaths(eligibleRows, '[purge-photos]');
-
-    // Only rows whose files were really removed may be marked purged. If a storage call fails, the
-    // row keeps its paths so the next run retries; otherwise the files would be orphaned forever.
-    const removal = await removeStoragePathsInChunks(db, allPaths, '[purge-photos]');
-    filesRemoved += removal.filesRemoved;
-    removal.failedPaths.forEach((p) => allFailedPaths.add(p));
-
-    const idsToUpdate = [...pathsByRow.entries()]
-      .filter(([, paths]) => paths.every((p) => !removal.failedPaths.has(p)))
-      .map(([id]) => id);
-    skippedRows += fetched.length - idsToUpdate.length;
-
-    if (idsToUpdate.length === 0) continue;
-
-    let updQuery = db
-      .from('daily_activities')
-      .update({
-        photo_urls: [],
-        photo_storage_paths: [],
-        photos_purged_at: nowIso,
-      })
-      .in('id', idsToUpdate);
-
-    if (orgId) {
-      updQuery = updQuery.eq('organization_id', orgId);
-    }
-
-    // Count what the database really changed: an update filtered out by RLS succeeds with zero rows, and
-    // those rows must be paged past instead of being fetched again.
-    const { data: updated, error: updErr } = await updQuery.select('id');
-    if (updErr) {
-      return { error: updErr.message, status: 500 as const };
-    }
-    const updatedCount = updated?.length ?? 0;
-    purgedCount += updatedCount;
-    skippedRows += idsToUpdate.length - updatedCount;
   }
 
   if (purgedCount === 0 && allFailedPaths.size > 0) {
@@ -177,15 +206,15 @@ async function executePhotoPurge(db: SupabaseClient, orgId?: string) {
     };
   }
 
-    return {
-      purgedCount,
-      filesRemoved,
-      skippedRows,
-      heldOrFlaggedSkipped,
-      // True only when the per-run batch limit was reached with rows possibly still waiting.
-      hasMore,
-      status: 200 as const,
-    };
+  return {
+    purgedCount,
+    filesRemoved,
+    skippedRows: totalSkippedRows,
+    heldOrFlaggedSkipped,
+    // True only when the per-run batch limit was reached with rows possibly still waiting.
+    hasMore,
+    status: 200 as const,
+  };
 }
 
 const SAMPLE_QUEUE_BATCH = 500;
