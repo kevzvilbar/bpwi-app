@@ -88,8 +88,8 @@ Permissions are computed in [`lib/permissions.ts`](lib/permissions.ts) and enfor
 | Operators, Setup & User Roles (`/operators`) | Full | No | No | No | No |
 
 ## Offline Mode & Sync Semantics
-Field operations support offline work through the static `/field` PWA shell and IndexedDB:
-- **Static App Shell (`/field`):** Cached without embedded user data or server-rendered dates; works offline with dynamic local-date initialization and serves as the service worker offline navigation fallback.
+Field operations support offline work through the data-free `/field` PWA shell and IndexedDB:
+- **Data-Free App Shell (`/field`):** Rendered dynamically per request so [`middleware.ts`](middleware.ts) can attach per-request CSP nonces, while containing zero SSR table queries or baked-in dates; cached client-side by the service worker with dynamic local-date initialization and used as the offline navigation fallback.
 - **Per-User Reference Snapshots:** Operators, area codes, shifts, roster assignments, PM tasks, and recent logs are cached per user ID in IndexedDB with `lastUpdatedAt` timestamps so signing out or switching accounts never clears or leaks another user's queued work.
 - **Unified Outbox & Binary Photo Drafts:** Pending activity logs, accomplishment reports, PM status updates/reopens, shift handovers, and job order completions live in a single IndexedDB outbox. Open form drafts and compressed evidence photos are stored as binary `Blob`s and flushed on app open, `online` event, tab foregrounding, and periodic timers with request timeouts so weak signals fall back to the queue cleanly.
 - **Idempotency & Conflict Handling:** Client-generated UUID `id` keys let retries safely ignore Postgres duplicate-key (`23505`) responses without creating duplicate rows. Device capture time (`created_at` / completion timestamp) is preserved separately from server arrival (`received_at`), and offline PM/job-order mutations send `expected_updated_at` / `expectedStatus` checks so concurrent server edits surface as conflicts instead of silently overwriting newer data.

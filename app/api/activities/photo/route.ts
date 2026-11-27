@@ -8,6 +8,8 @@ import {
 } from '@/lib/activity-media';
 import { buildPhotoCacheHeaders } from '@/lib/photo-proxy';
 
+const MAX_PHOTO_PROXY_BYTES = 10 * 1024 * 1024;
+
 /**
  * Authenticated, org-scoped image proxy for private 'activity-media' field photos.
  */
@@ -87,12 +89,15 @@ export async function GET(req: Request) {
     if (error || !blob) {
       return NextResponse.json({ error: 'Photo not found' }, { status: 404 });
     }
+    if (blob.size > MAX_PHOTO_PROXY_BYTES) {
+      return NextResponse.json({ error: 'Photo exceeds maximum proxy size' }, { status: 413 });
+    }
 
-    const buf = await blob.arrayBuffer();
-    return new NextResponse(buf, {
+    return new NextResponse(blob.stream(), {
       status: 200,
       headers: {
         'Content-Type': getActivityPhotoContentType(storagePath),
+        'Content-Length': String(blob.size),
         ...cacheHeaders,
         'X-Content-Type-Options': 'nosniff',
         'Content-Security-Policy': "default-src 'none'",

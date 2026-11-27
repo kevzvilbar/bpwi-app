@@ -4,3 +4,7 @@ node_modules
 .env
 tsconfig.tsbuildinfo
 supabase/seeds/*.local.sql
+test-results/
+playwright-report/
+coverage/
+.vercel
