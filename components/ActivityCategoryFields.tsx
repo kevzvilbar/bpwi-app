@@ -433,7 +433,7 @@ export default function ActivityCategoryFields({
               />
             </label>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-              Pressure In — Start (PSI) *
+              Pressure In — Before Backwash (PSI) *
               <input
                 className="input"
                 type="number"
@@ -446,7 +446,7 @@ export default function ActivityCategoryFields({
               />
             </label>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-              Pressure Out — Start (PSI) *
+              Pressure Out — Before Backwash (PSI) *
               <input
                 className="input"
                 type="number"

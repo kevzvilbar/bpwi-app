@@ -702,7 +702,7 @@ describe('activity-telemetry formatTelemetrySummary', () => {
         productTurbidityStartNtu: '1.2',
         productTurbidityEndNtu: '0.4',
       }) ?? '',
-      /Pressure In at Start/i,
+      /Pressure In before backwash starts/i,
     );
     assert.match(
       validateBackwashTelemetry({
@@ -713,7 +713,7 @@ describe('activity-telemetry formatTelemetrySummary', () => {
         productTurbidityStartNtu: '1.2',
         productTurbidityEndNtu: '0.4',
       }) ?? '',
-      /Pressure Out at Start/i,
+      /Pressure Out before backwash starts/i,
     );
     assert.match(
       validateBackwashTelemetry({
@@ -777,7 +777,7 @@ describe('activity-telemetry formatTelemetrySummary', () => {
       [
         'Unit: MMF-1',
         '28 mins',
-        'Pressure (Start): 35 in / 22 out PSI',
+        'Pressure (Before Backwash): 35 in / 22 out PSI',
         'Clarity: Slightly Turbid',
         'Product Turb: 1.85 → 0.42 NTU',
       ],

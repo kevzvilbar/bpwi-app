@@ -601,11 +601,11 @@ export function validateBackwashTelemetry(input: {
   }
   const pInRaw = input.backwashPressureInPsi.trim();
   if (!pInRaw || !Number.isFinite(Number(pInRaw)) || Number(pInRaw) < 0) {
-    return 'Please enter Pressure In at Start of Backwash (PSI, 0 or higher).';
+    return 'Please enter Pressure In before backwash starts (PSI, 0 or higher).';
   }
   const pOutRaw = input.backwashPressureOutPsi.trim();
   if (!pOutRaw || !Number.isFinite(Number(pOutRaw)) || Number(pOutRaw) < 0) {
-    return 'Please enter Pressure Out at Start of Backwash (PSI, 0 or higher).';
+    return 'Please enter Pressure Out before backwash starts (PSI, 0 or higher).';
   }
   const startRaw = input.productTurbidityStartNtu.trim();
   if (!startRaw || !Number.isFinite(Number(startRaw)) || Number(startRaw) < 0) {

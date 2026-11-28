@@ -577,11 +577,11 @@ describe('ActivityLoggerModal', () => {
 
     // Bypass native HTML `required` tooltip via form submit to verify app-level validation guard
     fireEvent.submit(durationInput.closest('form')!);
-    expect(await screen.findByRole('alert')).toHaveTextContent(/Pressure In at Start of Backwash/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Pressure In before backwash starts/i);
 
     await user.click(screen.getByRole('button', { name: 'Test attach GPS' }));
-    await user.type(screen.getByLabelText(/Pressure In — Start \(PSI\)/i), '35');
-    await user.type(screen.getByLabelText(/Pressure Out — Start \(PSI\)/i), '22');
+    await user.type(screen.getByLabelText(/Pressure In — Before Backwash \(PSI\)/i), '35');
+    await user.type(screen.getByLabelText(/Pressure Out — Before Backwash \(PSI\)/i), '22');
     await user.type(screen.getByLabelText(/Product Turbidity — Start \(NTU\)/i), '1.85');
     await user.type(screen.getByLabelText(/Product Turbidity — End \(NTU\)/i), '0.42');
     await user.click(screen.getByRole('button', { name: 'Submit Activity Log' }));

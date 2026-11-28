@@ -142,11 +142,11 @@ export function formatTelemetrySummary(act: DailyActivityRow): string[] {
     const pIn = prim('backwashPressureInPsi');
     const pOut = prim('backwashPressureOutPsi');
     if (pIn !== null && pOut !== null) {
-      parts.push(`Pressure (Start): ${pIn} in / ${pOut} out PSI`);
+      parts.push(`Pressure (Before Backwash): ${pIn} in / ${pOut} out PSI`);
     } else if (pIn !== null) {
-      parts.push(`Pressure In (Start): ${pIn} PSI`);
+      parts.push(`Pressure In (Before Backwash): ${pIn} PSI`);
     } else if (pOut !== null) {
-      parts.push(`Pressure Out (Start): ${pOut} PSI`);
+      parts.push(`Pressure Out (Before Backwash): ${pOut} PSI`);
     } else if (prim('pressurePsi') !== null) {
       parts.push(`${prim('pressurePsi')} PSI`);
     }
