@@ -669,6 +669,8 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
       const problem = validateBackwashTelemetry({
         startedHHMM,
         completedHHMM,
+        backwashPressureInPsi: details.backwashPressureInPsi,
+        backwashPressureOutPsi: details.backwashPressureOutPsi,
         productTurbidityStartNtu: details.productTurbidityStartNtu,
         productTurbidityEndNtu: details.productTurbidityEndNtu,
       });

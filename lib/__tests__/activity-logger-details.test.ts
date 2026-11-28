@@ -203,6 +203,8 @@ describe('activity-logger-details helpers', () => {
       samplePoint: 'Clubhouse Tap',
       filterUnit: 'MMF-1',
       backwashDurationMin: '18',
+      backwashPressureInPsi: '35',
+      backwashPressureOutPsi: '22',
       waterClarity: 'Clear',
       productTurbidityStartNtu: '1.85',
       productTurbidityEndNtu: '0.42',
@@ -275,7 +277,8 @@ describe('activity-logger-details helpers', () => {
     assert.deepEqual(buildActivityDetailsPayload('backwash', base, SAMPLE_METER_CALC), {
       filterUnit: 'MMF-1',
       backwashDurationMin: 18,
-      pressurePsi: 42,
+      backwashPressureInPsi: 35,
+      backwashPressureOutPsi: 22,
       waterClarity: 'Clear',
       productTurbidityStartNtu: 1.85,
       productTurbidityEndNtu: 0.42,
@@ -667,11 +670,13 @@ describe('activity-telemetry formatTelemetrySummary', () => {
     assert.deepEqual(formatTelemetrySummary(fallbackAct), ['Tank: Pavia Tank 2 · Ground Reservoir']);
   });
 
-  it('validates backwash Start/End times and Product Turbidity (NTU) and formats backwash telemetry', () => {
+  it('validates backwash Start/End times, Pressure In/Out, and Product Turbidity (NTU) and formats backwash telemetry', () => {
     assert.match(
       validateBackwashTelemetry({
         startedHHMM: '',
         completedHHMM: '00:50',
+        backwashPressureInPsi: '35',
+        backwashPressureOutPsi: '22',
         productTurbidityStartNtu: '1.2',
         productTurbidityEndNtu: '0.4',
       }) ?? '',
@@ -681,6 +686,8 @@ describe('activity-telemetry formatTelemetrySummary', () => {
       validateBackwashTelemetry({
         startedHHMM: '00:50',
         completedHHMM: '00:50',
+        backwashPressureInPsi: '35',
+        backwashPressureOutPsi: '22',
         productTurbidityStartNtu: '1.2',
         productTurbidityEndNtu: '0.4',
       }) ?? '',
@@ -690,6 +697,30 @@ describe('activity-telemetry formatTelemetrySummary', () => {
       validateBackwashTelemetry({
         startedHHMM: '00:22',
         completedHHMM: '00:50',
+        backwashPressureInPsi: '',
+        backwashPressureOutPsi: '22',
+        productTurbidityStartNtu: '1.2',
+        productTurbidityEndNtu: '0.4',
+      }) ?? '',
+      /Pressure In at Start/i,
+    );
+    assert.match(
+      validateBackwashTelemetry({
+        startedHHMM: '00:22',
+        completedHHMM: '00:50',
+        backwashPressureInPsi: '35',
+        backwashPressureOutPsi: '-1',
+        productTurbidityStartNtu: '1.2',
+        productTurbidityEndNtu: '0.4',
+      }) ?? '',
+      /Pressure Out at Start/i,
+    );
+    assert.match(
+      validateBackwashTelemetry({
+        startedHHMM: '00:22',
+        completedHHMM: '00:50',
+        backwashPressureInPsi: '35',
+        backwashPressureOutPsi: '22',
         productTurbidityStartNtu: '',
         productTurbidityEndNtu: '0.4',
       }) ?? '',
@@ -699,6 +730,8 @@ describe('activity-telemetry formatTelemetrySummary', () => {
       validateBackwashTelemetry({
         startedHHMM: '00:22',
         completedHHMM: '00:50',
+        backwashPressureInPsi: '35',
+        backwashPressureOutPsi: '22',
         productTurbidityStartNtu: '1.2',
         productTurbidityEndNtu: '-0.1',
       }) ?? '',
@@ -708,6 +741,8 @@ describe('activity-telemetry formatTelemetrySummary', () => {
       validateBackwashTelemetry({
         startedHHMM: '00:22',
         completedHHMM: '00:50',
+        backwashPressureInPsi: '35',
+        backwashPressureOutPsi: '22',
         productTurbidityStartNtu: '1.85',
         productTurbidityEndNtu: '0',
       }),
@@ -716,11 +751,14 @@ describe('activity-telemetry formatTelemetrySummary', () => {
 
     const hydrated = hydrateActivityDetailFields({
       backwashDurationMin: 28,
-      pressurePsi: 10,
+      backwashPressureInPsi: 35,
+      backwashPressureOutPsi: 22,
       waterClarity: 'Slightly Turbid',
       productTurbidityStartNtu: 1.85,
       productTurbidityEndNtu: 0.42,
     });
+    assert.equal(hydrated.backwashPressureInPsi, '35');
+    assert.equal(hydrated.backwashPressureOutPsi, '22');
     assert.equal(hydrated.productTurbidityStartNtu, '1.85');
     assert.equal(hydrated.productTurbidityEndNtu, '0.42');
 
@@ -729,13 +767,31 @@ describe('activity-telemetry formatTelemetrySummary', () => {
         makeActivity('backwash', {
           filterUnit: 'MMF-1',
           backwashDurationMin: 28,
-          pressurePsi: 10,
+          backwashPressureInPsi: 35,
+          backwashPressureOutPsi: 22,
           waterClarity: 'Slightly Turbid',
           productTurbidityStartNtu: 1.85,
           productTurbidityEndNtu: 0.42,
         }),
       ),
-      ['Unit: MMF-1', '28 mins', '10 PSI', 'Clarity: Slightly Turbid', 'Product Turb: 1.85 → 0.42 NTU'],
+      [
+        'Unit: MMF-1',
+        '28 mins',
+        'Pressure (Start): 35 in / 22 out PSI',
+        'Clarity: Slightly Turbid',
+        'Product Turb: 1.85 → 0.42 NTU',
+      ],
+    );
+
+    assert.deepEqual(
+      formatTelemetrySummary(
+        makeActivity('backwash', {
+          backwashDurationMin: 20,
+          pressurePsi: 10,
+          waterClarity: 'Clear',
+        }),
+      ),
+      ['20 mins', '10 PSI', 'Clarity: Clear'],
     );
   });
 });

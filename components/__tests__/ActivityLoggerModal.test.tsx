@@ -555,7 +555,7 @@ describe('ActivityLoggerModal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('auto-calculates readonly Duration and requires Start/End Product Turbidity (NTU) for backwash', async () => {
+  it('auto-calculates readonly Duration and requires Start Pressure In/Out and Product Turbidity (NTU) for backwash', async () => {
     const user = userEvent.setup();
     const onSaved = vi.fn();
     activityInsertSingleMock.mockResolvedValue({
@@ -577,9 +577,11 @@ describe('ActivityLoggerModal', () => {
 
     // Bypass native HTML `required` tooltip via form submit to verify app-level validation guard
     fireEvent.submit(durationInput.closest('form')!);
-    expect(await screen.findByRole('alert')).toHaveTextContent(/Product Turbidity at Start of Backwash/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Pressure In at Start of Backwash/i);
 
     await user.click(screen.getByRole('button', { name: 'Test attach GPS' }));
+    await user.type(screen.getByLabelText(/Pressure In — Start \(PSI\)/i), '35');
+    await user.type(screen.getByLabelText(/Pressure Out — Start \(PSI\)/i), '22');
     await user.type(screen.getByLabelText(/Product Turbidity — Start \(NTU\)/i), '1.85');
     await user.type(screen.getByLabelText(/Product Turbidity — End \(NTU\)/i), '0.42');
     await user.click(screen.getByRole('button', { name: 'Submit Activity Log' }));
@@ -589,6 +591,8 @@ describe('ActivityLoggerModal', () => {
       activity_type: 'backwash',
       details: {
         backwashDurationMin: 28,
+        backwashPressureInPsi: 35,
+        backwashPressureOutPsi: 22,
         productTurbidityStartNtu: 1.85,
         productTurbidityEndNtu: 0.42,
         waterClarity: 'Clear',

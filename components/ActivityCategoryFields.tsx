@@ -433,8 +433,30 @@ export default function ActivityCategoryFields({
               />
             </label>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
-              Pressure (PSI)
-              <input className="input" type="number" step="0.1" value={fields.pressurePsi} onChange={(e) => patch({ pressurePsi: e.target.value })} />
+              Pressure In — Start (PSI) *
+              <input
+                className="input"
+                type="number"
+                step="0.1"
+                min="0"
+                required
+                placeholder="e.g. 35"
+                value={fields.backwashPressureInPsi}
+                onChange={(e) => patch({ backwashPressureInPsi: e.target.value })}
+              />
+            </label>
+            <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
+              Pressure Out — Start (PSI) *
+              <input
+                className="input"
+                type="number"
+                step="0.1"
+                min="0"
+                required
+                placeholder="e.g. 22"
+                value={fields.backwashPressureOutPsi}
+                onChange={(e) => patch({ backwashPressureOutPsi: e.target.value })}
+              />
             </label>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
               Discharge Clarity

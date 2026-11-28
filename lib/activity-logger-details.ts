@@ -147,6 +147,8 @@ export interface ActivityDetailFieldsState {
   // 8. Backwash / Thermal Scanning / Water Level Monitoring
   filterUnit: string;
   backwashDurationMin: string;
+  backwashPressureInPsi: string;
+  backwashPressureOutPsi: string;
   waterClarity: 'Clear' | 'Slightly Turbid' | 'Turbid';
   productTurbidityStartNtu: string;
   productTurbidityEndNtu: string;
@@ -217,6 +219,8 @@ export const INITIAL_ACTIVITY_DETAIL_FIELDS: ActivityDetailFieldsState = {
   samplePoint: '',
   filterUnit: '',
   backwashDurationMin: '',
+  backwashPressureInPsi: '',
+  backwashPressureOutPsi: '',
   waterClarity: 'Clear',
   productTurbidityStartNtu: '',
   productTurbidityEndNtu: '',
@@ -330,6 +334,8 @@ export function hydrateActivityDetailFields(
   if (d.samplePoint) next.samplePoint = String(d.samplePoint);
   if (d.filterUnit) next.filterUnit = String(d.filterUnit);
   if (d.backwashDurationMin != null) next.backwashDurationMin = String(d.backwashDurationMin);
+  if (d.backwashPressureInPsi != null) next.backwashPressureInPsi = String(d.backwashPressureInPsi);
+  if (d.backwashPressureOutPsi != null) next.backwashPressureOutPsi = String(d.backwashPressureOutPsi);
   if (d.waterClarity === 'Clear' || d.waterClarity === 'Slightly Turbid' || d.waterClarity === 'Turbid') {
     next.waterClarity = d.waterClarity;
   }
@@ -509,7 +515,8 @@ export function buildActivityDetailsPayload(
     return {
       filterUnit: f.filterUnit.trim() || null,
       backwashDurationMin: f.backwashDurationMin !== '' ? Number(f.backwashDurationMin) : null,
-      pressurePsi: f.pressurePsi !== '' ? Number(f.pressurePsi) : null,
+      backwashPressureInPsi: f.backwashPressureInPsi !== '' ? Number(f.backwashPressureInPsi) : null,
+      backwashPressureOutPsi: f.backwashPressureOutPsi !== '' ? Number(f.backwashPressureOutPsi) : null,
       waterClarity: f.waterClarity,
       productTurbidityStartNtu: f.productTurbidityStartNtu !== '' ? Number(f.productTurbidityStartNtu) : null,
       productTurbidityEndNtu: f.productTurbidityEndNtu !== '' ? Number(f.productTurbidityEndNtu) : null,
@@ -579,16 +586,26 @@ export function calcDurationMinutes(startHHMM: string, endHHMM: string): string 
   return diff > 0 ? String(diff) : '';
 }
 
-/** Validates required Start/Completion times and Start/End Product Turbidity (NTU) for backwash logs. */
+/** Validates required Start/Completion times, Start Pressure In/Out, and Start/End Product Turbidity (NTU) for backwash logs. */
 export function validateBackwashTelemetry(input: {
   startedHHMM: string;
   completedHHMM: string;
+  backwashPressureInPsi: string;
+  backwashPressureOutPsi: string;
   productTurbidityStartNtu: string;
   productTurbidityEndNtu: string;
 }): string | null {
   const durationMin = calcDurationMinutes(input.startedHHMM, input.completedHHMM);
   if (!input.startedHHMM || !input.completedHHMM || !durationMin) {
     return 'Please enter both Start Time and Completion Time for backwash (duration must be > 0 mins).';
+  }
+  const pInRaw = input.backwashPressureInPsi.trim();
+  if (!pInRaw || !Number.isFinite(Number(pInRaw)) || Number(pInRaw) < 0) {
+    return 'Please enter Pressure In at Start of Backwash (PSI, 0 or higher).';
+  }
+  const pOutRaw = input.backwashPressureOutPsi.trim();
+  if (!pOutRaw || !Number.isFinite(Number(pOutRaw)) || Number(pOutRaw) < 0) {
+    return 'Please enter Pressure Out at Start of Backwash (PSI, 0 or higher).';
   }
   const startRaw = input.productTurbidityStartNtu.trim();
   if (!startRaw || !Number.isFinite(Number(startRaw)) || Number(startRaw) < 0) {

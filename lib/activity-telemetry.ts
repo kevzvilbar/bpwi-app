@@ -139,7 +139,17 @@ export function formatTelemetrySummary(act: DailyActivityRow): string[] {
   if (act.activity_type === 'backwash') {
     if (str('filterUnit')) parts.push(`Unit: ${str('filterUnit')}`);
     if (prim('backwashDurationMin') !== null) parts.push(`${prim('backwashDurationMin')} mins`);
-    if (prim('pressurePsi') !== null) parts.push(`${prim('pressurePsi')} PSI`);
+    const pIn = prim('backwashPressureInPsi');
+    const pOut = prim('backwashPressureOutPsi');
+    if (pIn !== null && pOut !== null) {
+      parts.push(`Pressure (Start): ${pIn} in / ${pOut} out PSI`);
+    } else if (pIn !== null) {
+      parts.push(`Pressure In (Start): ${pIn} PSI`);
+    } else if (pOut !== null) {
+      parts.push(`Pressure Out (Start): ${pOut} PSI`);
+    } else if (prim('pressurePsi') !== null) {
+      parts.push(`${prim('pressurePsi')} PSI`);
+    }
     if (str('waterClarity')) parts.push(`Clarity: ${str('waterClarity')}`);
     const turbStart = prim('productTurbidityStartNtu');
     const turbEnd = prim('productTurbidityEndNtu');
