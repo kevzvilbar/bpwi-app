@@ -342,38 +342,37 @@ export default function FieldOfflineShell() {
 
   return (
     <div className="stack-sm">
-      <div
-        className="card card-pad-sm"
-        style={{
-          margin: '10px auto 0',
-          maxWidth: 1120,
-          width: 'calc(100% - 24px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 8,
-          flexWrap: 'wrap',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 12.5 }}>
-          <Badge tone={online ? 'ok' : 'warn'}>{online ? 'Field Mode' : 'Offline Snapshot'}</Badge>
-          <span style={{ color: 'var(--text-secondary)' }}>
-            Last updated: <b>{snapshot.snapshotDate}</b> at <b>{savedLabel}</b>
-          </span>
-          {syncError && (
-            <span style={{ color: 'var(--danger)' }}>· {syncError}</span>
+      <div className="tasks-shell" style={{ paddingBottom: 0 }}>
+        <div
+          className="card card-pad-sm"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 12.5 }}>
+            <Badge tone={online ? 'ok' : 'warn'}>{online ? 'Field Mode' : 'Offline Snapshot'}</Badge>
+            <span style={{ color: 'var(--text-secondary)' }}>
+              Last updated: <b>{snapshot.snapshotDate}</b> at <b>{savedLabel}</b>
+            </span>
+            {syncError && (
+              <span style={{ color: 'var(--danger)' }}>· {syncError}</span>
+            )}
+          </div>
+          {online && (
+            <button
+              type="button"
+              className="btn btn-sm"
+              disabled={refreshing}
+              onClick={() => void refreshOnlineData(liveToday)}
+            >
+              {refreshing ? 'Refreshing…' : 'Refresh Data'}
+            </button>
           )}
         </div>
-        {online && (
-          <button
-            type="button"
-            className="btn btn-sm"
-            disabled={refreshing}
-            onClick={() => void refreshOnlineData(liveToday)}
-          >
-            {refreshing ? 'Refreshing…' : 'Refresh Data'}
-          </button>
-        )}
       </div>
 
       <MobileView
