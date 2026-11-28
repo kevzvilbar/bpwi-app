@@ -7,6 +7,7 @@ import {
   buildActivityDetailsPayload,
   hydrateActivityDetailFields,
   isMeterFieldActivity,
+  validateBackwashTelemetry,
   type ActivityDetailFieldsState,
 } from '../activity-logger-details.ts';
 import { formatTelemetrySummary } from '../activity-telemetry.ts';
@@ -203,6 +204,8 @@ describe('activity-logger-details helpers', () => {
       filterUnit: 'MMF-1',
       backwashDurationMin: '18',
       waterClarity: 'Clear',
+      productTurbidityStartNtu: '1.85',
+      productTurbidityEndNtu: '0.42',
       scannedEquipment: 'VFD Panel A',
       maxTempC: '47.5',
       hotspotFound: 'No',
@@ -274,6 +277,8 @@ describe('activity-logger-details helpers', () => {
       backwashDurationMin: 18,
       pressurePsi: 42,
       waterClarity: 'Clear',
+      productTurbidityStartNtu: 1.85,
+      productTurbidityEndNtu: 0.42,
     });
 
     assert.deepEqual(buildActivityDetailsPayload('thermal_scanning', base, SAMPLE_METER_CALC), {
@@ -660,5 +665,77 @@ describe('activity-telemetry formatTelemetrySummary', () => {
     const fallbackAct = makeActivity('tank_cleaning', { tankType: 'Ground Reservoir' });
     fallbackAct.site_or_well = 'Pavia Tank 2';
     assert.deepEqual(formatTelemetrySummary(fallbackAct), ['Tank: Pavia Tank 2 · Ground Reservoir']);
+  });
+
+  it('validates backwash Start/End times and Product Turbidity (NTU) and formats backwash telemetry', () => {
+    assert.match(
+      validateBackwashTelemetry({
+        startedHHMM: '',
+        completedHHMM: '00:50',
+        productTurbidityStartNtu: '1.2',
+        productTurbidityEndNtu: '0.4',
+      }) ?? '',
+      /Start Time and Completion Time/i,
+    );
+    assert.match(
+      validateBackwashTelemetry({
+        startedHHMM: '00:50',
+        completedHHMM: '00:50',
+        productTurbidityStartNtu: '1.2',
+        productTurbidityEndNtu: '0.4',
+      }) ?? '',
+      /duration must be > 0/i,
+    );
+    assert.match(
+      validateBackwashTelemetry({
+        startedHHMM: '00:22',
+        completedHHMM: '00:50',
+        productTurbidityStartNtu: '',
+        productTurbidityEndNtu: '0.4',
+      }) ?? '',
+      /Start of Backwash/i,
+    );
+    assert.match(
+      validateBackwashTelemetry({
+        startedHHMM: '00:22',
+        completedHHMM: '00:50',
+        productTurbidityStartNtu: '1.2',
+        productTurbidityEndNtu: '-0.1',
+      }) ?? '',
+      /End of Backwash/i,
+    );
+    assert.equal(
+      validateBackwashTelemetry({
+        startedHHMM: '00:22',
+        completedHHMM: '00:50',
+        productTurbidityStartNtu: '1.85',
+        productTurbidityEndNtu: '0',
+      }),
+      null,
+    );
+
+    const hydrated = hydrateActivityDetailFields({
+      backwashDurationMin: 28,
+      pressurePsi: 10,
+      waterClarity: 'Slightly Turbid',
+      productTurbidityStartNtu: 1.85,
+      productTurbidityEndNtu: 0.42,
+    });
+    assert.equal(hydrated.productTurbidityStartNtu, '1.85');
+    assert.equal(hydrated.productTurbidityEndNtu, '0.42');
+
+    assert.deepEqual(
+      formatTelemetrySummary(
+        makeActivity('backwash', {
+          filterUnit: 'MMF-1',
+          backwashDurationMin: 28,
+          pressurePsi: 10,
+          waterClarity: 'Slightly Turbid',
+          productTurbidityStartNtu: 1.85,
+          productTurbidityEndNtu: 0.42,
+        }),
+      ),
+      ['Unit: MMF-1', '28 mins', '10 PSI', 'Clarity: Slightly Turbid', 'Product Turb: 1.85 → 0.42 NTU'],
+    );
   });
 });

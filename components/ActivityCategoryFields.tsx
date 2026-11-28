@@ -417,10 +417,20 @@ export default function ActivityCategoryFields({
       {activityType === 'backwash' && (
         <div className="card" style={{ padding: 10, display: 'grid', gap: 8, borderColor: 'var(--violet-border)' }}>
           <strong style={{ fontSize: 12.5, color: 'var(--violet-fg)' }}>MMF / Filter Backwash Telemetry</strong>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, alignItems: 'end' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, alignItems: 'end' }}>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
               Duration (mins, auto from time)
-              <input className="input" type="number" step="1" value={fields.backwashDurationMin} onChange={(e) => patch({ backwashDurationMin: e.target.value })} />
+              <input
+                className="input"
+                type="text"
+                inputMode="numeric"
+                value={fields.backwashDurationMin}
+                readOnly
+                aria-readonly="true"
+                tabIndex={-1}
+                placeholder="Auto from start & end time"
+                style={{ background: 'var(--surface-muted)', color: 'var(--text-secondary)', cursor: 'not-allowed' }}
+              />
             </label>
             <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
               Pressure (PSI)
@@ -437,6 +447,32 @@ export default function ActivityCategoryFields({
                 <option value="Slightly Turbid">Slightly Turbid</option>
                 <option value="Turbid">Turbid</option>
               </select>
+            </label>
+            <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
+              Product Turbidity — Start (NTU) *
+              <input
+                className="input"
+                type="number"
+                step="0.01"
+                min="0"
+                required
+                placeholder="e.g. 1.25"
+                value={fields.productTurbidityStartNtu}
+                onChange={(e) => patch({ productTurbidityStartNtu: e.target.value })}
+              />
+            </label>
+            <label style={{ display: 'grid', gap: 3, fontSize: 12 }}>
+              Product Turbidity — End (NTU) *
+              <input
+                className="input"
+                type="number"
+                step="0.01"
+                min="0"
+                required
+                placeholder="e.g. 0.45"
+                value={fields.productTurbidityEndNtu}
+                onChange={(e) => patch({ productTurbidityEndNtu: e.target.value })}
+              />
             </label>
           </div>
         </div>

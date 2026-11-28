@@ -7,6 +7,7 @@ import { DAILY_ACTIVITY_LIST_COLUMNS } from '@/lib/query-columns';
 import { computePhotoExpiryIso } from '@/lib/photo-retention';
 import {
   buildActivityDetailsPayload,
+  calcDurationMinutes,
   toManilaTimestampIso,
   type ActivityDetailFieldsState,
 } from '@/lib/activity-logger-details';
@@ -116,6 +117,10 @@ export function buildActivitySubmitPayload(input: BuildActivitySubmitPayloadInpu
           ...details,
           samplePoint: activityType === 'water_sampling' ? locText || details.samplePoint : details.samplePoint,
           filterUnit: activityType === 'backwash' ? siteText || details.filterUnit : details.filterUnit,
+          backwashDurationMin:
+            activityType === 'backwash'
+              ? calcDurationMinutes(startedHHMM, completedHHMM)
+              : details.backwashDurationMin,
           scannedEquipment: activityType === 'thermal_scanning' ? siteText || details.scannedEquipment : details.scannedEquipment,
           driverName: activityType === 'tankering' ? input.leadOpName || details.driverName : details.driverName,
         };

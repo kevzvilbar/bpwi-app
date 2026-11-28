@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ActivityLoggerModal, {
@@ -553,5 +553,46 @@ describe('ActivityLoggerModal', () => {
       { editingId: 'act-edit-99', expectedUpdatedAt: '2026-04-10T09:15:30.123Z' },
     );
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('auto-calculates readonly Duration and requires Start/End Product Turbidity (NTU) for backwash', async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn();
+    activityInsertSingleMock.mockResolvedValue({
+      data: makeSavedRow({ id: 'act-bw-1', activity_type: 'backwash' }),
+      error: null,
+    });
+
+    render(<ActivityLoggerModal {...loggerProps} onClose={vi.fn()} onSaved={onSaved} />);
+    await user.selectOptions(screen.getByLabelText(/Activity Type/i), 'backwash');
+
+    const durationInput = screen.getByLabelText(/Duration \(mins, auto from time\)/i) as HTMLInputElement;
+    expect(durationInput.readOnly).toBe(true);
+
+    const startInput = screen.getByLabelText(/Start Time \*/i) as HTMLInputElement;
+    const endInput = screen.getByLabelText(/Completion Time \*/i) as HTMLInputElement;
+    fireEvent.change(startInput, { target: { value: '00:22' } });
+    fireEvent.change(endInput, { target: { value: '00:50' } });
+    await waitFor(() => expect(durationInput.value).toBe('28'));
+
+    // Bypass native HTML `required` tooltip via form submit to verify app-level validation guard
+    fireEvent.submit(durationInput.closest('form')!);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Product Turbidity at Start of Backwash/i);
+
+    await user.click(screen.getByRole('button', { name: 'Test attach GPS' }));
+    await user.type(screen.getByLabelText(/Product Turbidity — Start \(NTU\)/i), '1.85');
+    await user.type(screen.getByLabelText(/Product Turbidity — End \(NTU\)/i), '0.42');
+    await user.click(screen.getByRole('button', { name: 'Submit Activity Log' }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(activityInsertPayloads[0]).toMatchObject({
+      activity_type: 'backwash',
+      details: {
+        backwashDurationMin: 28,
+        productTurbidityStartNtu: 1.85,
+        productTurbidityEndNtu: 0.42,
+        waterClarity: 'Clear',
+      },
+    });
   });
 });

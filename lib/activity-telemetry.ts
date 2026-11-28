@@ -141,6 +141,15 @@ export function formatTelemetrySummary(act: DailyActivityRow): string[] {
     if (prim('backwashDurationMin') !== null) parts.push(`${prim('backwashDurationMin')} mins`);
     if (prim('pressurePsi') !== null) parts.push(`${prim('pressurePsi')} PSI`);
     if (str('waterClarity')) parts.push(`Clarity: ${str('waterClarity')}`);
+    const turbStart = prim('productTurbidityStartNtu');
+    const turbEnd = prim('productTurbidityEndNtu');
+    if (turbStart !== null && turbEnd !== null) {
+      parts.push(`Product Turb: ${turbStart} → ${turbEnd} NTU`);
+    } else if (turbStart !== null) {
+      parts.push(`Product Turb (Start): ${turbStart} NTU`);
+    } else if (turbEnd !== null) {
+      parts.push(`Product Turb (End): ${turbEnd} NTU`);
+    }
   }
 
   if (act.activity_type === 'thermal_scanning') {

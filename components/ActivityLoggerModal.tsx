@@ -329,33 +329,35 @@ export default function ActivityLoggerModal(p: ActivityLoggerModalProps) {
           <>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: 10 }}>
               <label className="field-label">
-                Start Time (optional)
+                {f.activityType === 'backwash' ? 'Start Time *' : 'Start Time (optional)'}
                 <input
                   className="input"
                   type="time"
+                  required={f.activityType === 'backwash'}
                   value={f.startedHHMM}
                   onChange={(e) => {
                     const nextStart = e.target.value;
                     f.setStartedHHMM(nextStart);
                     if (f.activityType === 'backwash') {
                       const mins = calcDurationMinutes(nextStart, f.completedHHMM);
-                      if (mins) f.setDetails((prev) => ({ ...prev, backwashDurationMin: mins }));
+                      f.setDetails((prev) => ({ ...prev, backwashDurationMin: mins }));
                     }
                   }}
                 />
               </label>
               <label className="field-label">
-                Completion Time
+                {f.activityType === 'backwash' ? 'Completion Time *' : 'Completion Time'}
                 <input
                   className="input"
                   type="time"
+                  required={f.activityType === 'backwash'}
                   value={f.completedHHMM}
                   onChange={(e) => {
                     const nextEnd = e.target.value;
                     f.setCompletedHHMM(nextEnd);
                     if (f.activityType === 'backwash') {
                       const mins = calcDurationMinutes(f.startedHHMM, nextEnd);
-                      if (mins) f.setDetails((prev) => ({ ...prev, backwashDurationMin: mins }));
+                      f.setDetails((prev) => ({ ...prev, backwashDurationMin: mins }));
                     }
                   }}
                 />

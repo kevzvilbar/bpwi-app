@@ -148,6 +148,8 @@ export interface ActivityDetailFieldsState {
   filterUnit: string;
   backwashDurationMin: string;
   waterClarity: 'Clear' | 'Slightly Turbid' | 'Turbid';
+  productTurbidityStartNtu: string;
+  productTurbidityEndNtu: string;
   scannedEquipment: string;
   maxTempC: string;
   hotspotFound: 'No' | 'Yes';
@@ -216,6 +218,8 @@ export const INITIAL_ACTIVITY_DETAIL_FIELDS: ActivityDetailFieldsState = {
   filterUnit: '',
   backwashDurationMin: '',
   waterClarity: 'Clear',
+  productTurbidityStartNtu: '',
+  productTurbidityEndNtu: '',
   scannedEquipment: '',
   maxTempC: '',
   hotspotFound: 'No',
@@ -329,6 +333,8 @@ export function hydrateActivityDetailFields(
   if (d.waterClarity === 'Clear' || d.waterClarity === 'Slightly Turbid' || d.waterClarity === 'Turbid') {
     next.waterClarity = d.waterClarity;
   }
+  if (d.productTurbidityStartNtu != null) next.productTurbidityStartNtu = String(d.productTurbidityStartNtu);
+  if (d.productTurbidityEndNtu != null) next.productTurbidityEndNtu = String(d.productTurbidityEndNtu);
   if (d.scannedEquipment) next.scannedEquipment = String(d.scannedEquipment);
   if (d.maxTempC != null) next.maxTempC = String(d.maxTempC);
   if (d.hotspotFound === 'No' || d.hotspotFound === 'Yes') next.hotspotFound = d.hotspotFound;
@@ -505,6 +511,8 @@ export function buildActivityDetailsPayload(
       backwashDurationMin: f.backwashDurationMin !== '' ? Number(f.backwashDurationMin) : null,
       pressurePsi: f.pressurePsi !== '' ? Number(f.pressurePsi) : null,
       waterClarity: f.waterClarity,
+      productTurbidityStartNtu: f.productTurbidityStartNtu !== '' ? Number(f.productTurbidityStartNtu) : null,
+      productTurbidityEndNtu: f.productTurbidityEndNtu !== '' ? Number(f.productTurbidityEndNtu) : null,
     };
   }
   if (activityType === 'thermal_scanning') {
@@ -569,4 +577,26 @@ export function calcDurationMinutes(startHHMM: string, endHHMM: string): string 
   if (endM < startM) endM += 24 * 60;
   const diff = endM - startM;
   return diff > 0 ? String(diff) : '';
+}
+
+/** Validates required Start/Completion times and Start/End Product Turbidity (NTU) for backwash logs. */
+export function validateBackwashTelemetry(input: {
+  startedHHMM: string;
+  completedHHMM: string;
+  productTurbidityStartNtu: string;
+  productTurbidityEndNtu: string;
+}): string | null {
+  const durationMin = calcDurationMinutes(input.startedHHMM, input.completedHHMM);
+  if (!input.startedHHMM || !input.completedHHMM || !durationMin) {
+    return 'Please enter both Start Time and Completion Time for backwash (duration must be > 0 mins).';
+  }
+  const startRaw = input.productTurbidityStartNtu.trim();
+  if (!startRaw || !Number.isFinite(Number(startRaw)) || Number(startRaw) < 0) {
+    return 'Please enter Product Turbidity at Start of Backwash (NTU, 0 or higher).';
+  }
+  const endRaw = input.productTurbidityEndNtu.trim();
+  if (!endRaw || !Number.isFinite(Number(endRaw)) || Number(endRaw) < 0) {
+    return 'Please enter Product Turbidity at End of Backwash (NTU, 0 or higher).';
+  }
+  return null;
 }

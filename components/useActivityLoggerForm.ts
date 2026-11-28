@@ -22,9 +22,11 @@ import {
   type ActivitySubmitPayload,
 } from '@/lib/activity-logger-submit';
 import {
+  calcDurationMinutes,
   currentManilaHHMM,
   hydrateActivityDetailFields,
   INITIAL_ACTIVITY_DETAIL_FIELDS,
+  validateBackwashTelemetry,
   type ActivityDetailFieldsState,
 } from '@/lib/activity-logger-details';
 import { compressImageFile, uploadActivityPhoto } from '@/lib/image-compress';
@@ -464,6 +466,14 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
     }
   }, [p.open, currentSnapshot, openSeq]);
 
+  useEffect(() => {
+    if (!p.open || activityType !== 'backwash') return;
+    const computed = calcDurationMinutes(startedHHMM, completedHHMM);
+    setDetails((prev) =>
+      prev.backwashDurationMin === computed ? prev : { ...prev, backwashDurationMin: computed },
+    );
+  }, [p.open, activityType, startedHHMM, completedHHMM]);
+
   const isDirty = Boolean(initialSnapshot) && initPhaseRef.current === 'settled' && currentSnapshot !== initialSnapshot;
 
   useEffect(() => {
@@ -650,6 +660,18 @@ export function useActivityLoggerForm(p: ActivityLoggerModalProps) {
     }
     if (activityType === CHLORINE_REFILL_ACTIVITY_TYPE) {
       const problem = validateChlorineRefill(details.chlorine, details.chlorineResidual);
+      if (problem) {
+        setErrMsg(problem);
+        return;
+      }
+    }
+    if (activityType === 'backwash') {
+      const problem = validateBackwashTelemetry({
+        startedHHMM,
+        completedHHMM,
+        productTurbidityStartNtu: details.productTurbidityStartNtu,
+        productTurbidityEndNtu: details.productTurbidityEndNtu,
+      });
       if (problem) {
         setErrMsg(problem);
         return;
