@@ -83,6 +83,11 @@ test.describe('BPWI Workflow & PWA Integrity E2E', () => {
     expect(swBody).toMatch(/bpwi-ops-v\d+/);
     expect(swBody).toMatch(/OFFLINE_PAGE_ALLOWLIST\s*=\s*new Set\(\['\/field'\]\)/);
 
+    const workerRes = await request.get('/maplibre-gl-worker.mjs');
+    expect(workerRes.status()).toBe(200);
+    expect(workerRes.headers()['content-type'] ?? '').toMatch(/javascript/i);
+    expect((await workerRes.text()).length).toBeGreaterThan(100_000);
+
     await page.goto('/login');
     const hasServiceWorkerApi = await page.evaluate(() => typeof navigator.serviceWorker !== 'undefined');
     expect(hasServiceWorkerApi).toBe(true);

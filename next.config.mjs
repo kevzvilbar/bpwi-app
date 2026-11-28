@@ -33,6 +33,14 @@ const nextConfig = {
         ],
       },
       {
+        source: '/maplibre-gl-worker.mjs',
+        headers: [
+          ...securityHeaders,
+          { key: 'Content-Type', value: 'application/javascript; charset=utf-8' },
+          { key: 'Cache-Control', value: 'public, max-age=86400, must-revalidate' },
+        ],
+      },
+      {
         source: '/(.*)',
         headers: securityHeaders,
       },

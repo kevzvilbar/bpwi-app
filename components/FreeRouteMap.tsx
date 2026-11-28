@@ -6,6 +6,7 @@ import type * as MapLibreGL from 'maplibre-gl';
 import { fmtTimeManila } from '@/lib/date';
 import { formatGpsBadgeLabel } from '@/lib/gps-accuracy';
 import { buildRasterMapStyle, resolveMapTileConfig, type MapStyle } from '@/lib/map-tiles';
+import { loadMapLibre } from '@/lib/maplibre-client';
 import type { LatLng, RouteStop } from '@/lib/route-footprints';
 
 export type FreeMapStyle = MapStyle;
@@ -257,10 +258,9 @@ export default function FreeRouteMap(p: {
     let resizeObserver: ResizeObserver | null = null;
     const initialStyle = activeStyleRef.current;
 
-    import('maplibre-gl')
-      .then((mod) => {
+    loadMapLibre()
+      .then((maplibregl) => {
         if (disposed || !containerRef.current) return;
-        const maplibregl = ((mod as unknown as { default?: typeof MapLibreGL }).default ?? mod) as typeof MapLibreGL;
         maplibreRef.current = maplibregl;
 
         const map = new maplibregl.Map({

@@ -1,5 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { buildCspHeader, extractOrigin, generateCspNonce } from '../csp.ts';
 import { shouldBypassSessionAuth } from '../middleware-rules.ts';
 
@@ -60,5 +62,13 @@ describe('CSP header & nonce helpers', () => {
   it('allows POST /api/csp-report to bypass session auth while keeping GET blocked', () => {
     assert.equal(shouldBypassSessionAuth('/api/csp-report', 'POST'), true);
     assert.equal(shouldBypassSessionAuth('/api/csp-report', 'GET'), false);
+  });
+
+  it('allows GET /maplibre-gl-worker.mjs to bypass session auth and keeps public worker synced', () => {
+    assert.equal(shouldBypassSessionAuth('/maplibre-gl-worker.mjs', 'GET'), true);
+    assert.equal(shouldBypassSessionAuth('/maplibre-gl-worker.mjs', 'POST'), false);
+    const src = fs.readFileSync(path.join(process.cwd(), 'node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs'));
+    const pub = fs.readFileSync(path.join(process.cwd(), 'public/maplibre-gl-worker.mjs'));
+    assert.equal(Buffer.compare(src, pub), 0);
   });
 });

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import type * as MapLibreGL from 'maplibre-gl';
 import { SegmentedTabs } from '@/components/ui';
 import { buildRasterMapStyle, getMapStyleOptions, getPublicTileAdminNotice, resolveMapTileConfig } from '@/lib/map-tiles';
+import { loadMapLibre } from '@/lib/maplibre-client';
 import type { FreeMapStyle } from '@/components/FreeRouteMap';
 
 const DEFAULT_PH_CENTER: [number, number] = [122.5621, 10.7202];
@@ -138,10 +139,9 @@ export default function GpsPinPickerModal(p: {
     let resizeObserver: ResizeObserver | null = null;
     const initialStyle = activeStyleRef.current;
 
-    import('maplibre-gl')
-      .then((mod) => {
+    loadMapLibre()
+      .then((maplibregl) => {
         if (disposed || !containerRef.current) return;
-        const maplibregl = ((mod as unknown as { default?: typeof MapLibreGL }).default ?? mod) as typeof MapLibreGL;
         maplibreRef.current = maplibregl;
 
         const startLat = p.initialLat ?? p.hintCoords?.lat ?? DEFAULT_PH_CENTER[1];
